@@ -270,39 +270,47 @@ function _scheduleRow(year, m, days) {
     });
 
     td.appendChild(container);
-
-    // 드래그 이벤트
-    td.addEventListener('mousedown', e => {
-      if (isFuture(year, m, d)) return;
-      dragStart = dateKey(year, m, d);
-      dragEnd = dragStart;
-    });
-
-    td.addEventListener('mousemove', e => {
-      if (!dragStart) return;
-      if (isFuture(year, m, d)) return;
-      dragEnd = dateKey(year, m, d);
-      // 하이라이트 업데이트 (행 전체)
-      const allCells = row.querySelectorAll('.schedule-cell[data-date]');
-      const lo = dragStart <= dragEnd ? dragStart : dragEnd;
-      const hi = dragStart <= dragEnd ? dragEnd : dragStart;
-      allCells.forEach(cell => {
-        if (cell.dataset.date >= lo && cell.dataset.date <= hi) {
-          cell.classList.add('drag-highlight');
-        } else {
-          cell.classList.remove('drag-highlight');
-        }
-      });
-    });
-
     row.appendChild(td);
   }
 
-  // mouseup은 document 레벨에서 한 번만
+  // 드래그 이벤트 (월간달력과 동일한 방식)
+  function getDate(el) {
+    const d = el?.closest?.('.schedule-cell')?.dataset?.date || null;
+    return (d && !isFuture(year, m, parseInt(d.split('-')[2]))) ? d : null;
+  }
+
+  function highlight(s, e) {
+    const lo = s <= e ? s : e;
+    const hi = s <= e ? e : s;
+    row.querySelectorAll('.schedule-cell[data-date]').forEach(c => {
+      c.classList.toggle('drag-highlight', c.dataset.date >= lo && c.dataset.date <= hi);
+    });
+  }
+
+  function clear() {
+    row.querySelectorAll('.drag-highlight').forEach(c => c.classList.remove('drag-highlight'));
+  }
+
+  // Mouse
+  row.addEventListener('mousedown', e => {
+    const d = getDate(e.target);
+    if (!d) return;
+    dragStart = d;
+    dragEnd = d;
+    e.preventDefault();
+  });
+
+  row.addEventListener('mousemove', e => {
+    if (!dragStart) return;
+    const d = getDate(e.target);
+    if (!d || d === dragEnd) return;
+    dragEnd = d;
+    highlight(dragStart, dragEnd);
+  });
+
   const onUp = () => {
     if (!dragStart) return;
-    const allCells = row.querySelectorAll('.schedule-cell');
-    allCells.forEach(c => c.classList.remove('drag-highlight'));
+    clear();
     if (dragEnd && dragStart !== dragEnd) {
       const s = dragStart <= dragEnd ? dragStart : dragEnd;
       const e = dragStart <= dragEnd ? dragEnd : dragStart;
