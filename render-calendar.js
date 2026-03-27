@@ -18,6 +18,7 @@ let _scheduleDragEnd    = null;
 let _scheduleDragYear   = null;
 let _scheduleDragMonth  = null;
 let _scheduleWasDragged = false;
+let _scheduleDragOverlay = null;
 
 export function changeYear(delta) {
   _currentYear += delta;
@@ -87,28 +88,59 @@ function _highlightScheduleDrag(year, m) {
 
   if (!monthSec) return;
 
+  const wrap = monthSec.querySelector('.grid-wrap');
+  if (!wrap) return;
+
+  // 기존 드래그 오버레이 제거
+  const existingOverlay = wrap.querySelector('.schedule-drag-overlay-container');
+  if (existingOverlay) existingOverlay.remove();
+
   const s = Math.min(_scheduleDragStart, _scheduleDragEnd);
   const e = Math.max(_scheduleDragStart, _scheduleDragEnd);
 
-  monthSec.querySelectorAll('tr').forEach((tr, rowIdx) => {
-    if (rowIdx === 0) return;  // thead 스킵
-    const cells = tr.querySelectorAll('.schedule-cell');
-    cells.forEach((cell, colIdx) => {
-      const dayNum = parseInt(cell.querySelector('.day-num')?.textContent || 0);
-      if (dayNum >= s && dayNum <= e) {
-        cell.classList.add('schedule-drag-highlight');
-      } else {
-        cell.classList.remove('schedule-drag-highlight');
-      }
-    });
-  });
+  const days = daysInMonth(year, m);
+  const monthStart = dateKey(year, m, 1);
+  const monthEnd = dateKey(year, m, days);
+
+  // 드래그 범위를 나타내는 오버레이 바 생성
+  const startDate = dateKey(year, m, s);
+  const endDate = dateKey(year, m, e);
+
+  const dragOverlay = document.createElement('div');
+  dragOverlay.className = 'schedule-drag-overlay-container';
+  dragOverlay.style.cssText = 'position:relative;width:100%;overflow:visible;';
+
+  // 드래그 범위의 열 위치 계산
+  const startCol = s;
+  const endCol = e;
+
+  const BAR_H = 12;
+  const pctL = ((startCol) / (days + 1)) * 100;
+  const pctW = ((endCol - startCol + 1) / (days + 1)) * 100;
+
+  const bar = document.createElement('div');
+  bar.className = 'schedule-drag-bar';
+  bar.style.cssText = [
+    `left:calc(${pctL}% + 38px)`,
+    `width:calc(${pctW}% - 40px)`,
+    `height:${BAR_H}px`,
+    `background:rgba(245,158,11,0.3)`,
+    `border:2px solid #f59e0b`,
+    'position:absolute',
+    'border-radius:3px',
+    'margin-top:2px',
+  ].join(';');
+
+  dragOverlay.appendChild(bar);
+  wrap.appendChild(dragOverlay);
+  _scheduleDragOverlay = dragOverlay;
 }
 
 function _clearScheduleDragHighlight() {
-  const cal = document.getElementById('calendar');
-  cal?.querySelectorAll('.schedule-drag-highlight')?.forEach(el => {
-    el.classList.remove('schedule-drag-highlight');
-  });
+  if (_scheduleDragOverlay) {
+    _scheduleDragOverlay.remove();
+    _scheduleDragOverlay = null;
+  }
 }
 
 export function renderCalendar() {
