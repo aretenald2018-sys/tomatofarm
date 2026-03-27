@@ -10,7 +10,8 @@
       "Bash(ls -la \"C:\\\\Users\\\\USER\\\\Desktop\\\\dashboard3-main\\(backup\\)\\\\public\\\\data\" \")",
       "Bash(ls -la \"C:\\\\Users\\\\USER\\\\Desktop\\\\dashboard3-main\\(backup\\)\\\\public\"\")",
       "Bash(find \"C:/Users/USER/Desktop/dashboard3-main\\(backup\\)\" -name \"foods.csv\")",
-      "Bash(tail -100 \"C:/Users/USER/Desktop/dashboard3-main\\(backup\\)/app.js\")"
+      "Bash(tail -100 \"C:/Users/USER/Desktop/dashboard3-main\\(backup\\)/app.js\")",
+      "Bash(wc -l \"C:\\\\Users\\\\USER\\\\Desktop\\\\dashboard3-main\\(backup\\)\\\\modals\\\\nutrition-search-modal.js\")"
     ]
   }
 }

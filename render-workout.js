@@ -634,7 +634,10 @@ export function wtRemoveFoodItem(meal, idx) {
 
 // ── 식단 자동 저장 헬퍼 ────────────────────────────────────────────
 async function _autoSaveDiet() {
-  if (!_date) return;
+  if (!_date) {
+    console.warn('[render-workout] 날짜 정보가 없어 저장할 수 없습니다');
+    return;
+  }
   const { y, m, d } = _date;
 
   // 현재 입력값 반영
@@ -646,6 +649,8 @@ async function _autoSaveDiet() {
   const cleanEx = _exercises
     .map(e => ({ ...e, sets: e.sets.filter(s => s.kg > 0 || s.reps > 0) }))
     .filter(e => e.sets.length > 0 || e.note);
+
+  console.log('[render-workout] 식단 자동 저장 시작:', { dateKey: dateKey(y, m, d), foods: { b: _diet.bFoods?.length || 0, l: _diet.lFoods?.length || 0, d: _diet.dFoods?.length || 0 } });
 
   try {
     await saveDay(dateKey(y, m, d), {
@@ -671,6 +676,7 @@ async function _autoSaveDiet() {
       sProtein:_diet.sProtein, sCarbs:_diet.sCarbs, sFat:_diet.sFat,
       bFoods:_diet.bFoods||[], lFoods:_diet.lFoods||[], dFoods:_diet.dFoods||[], sFoods:_diet.sFoods||[],
     });
+    console.log('[render-workout] 식단 자동 저장 완료');
   } catch(e) {
     console.error('[render-workout] 자동 저장 실패:', e);
   }

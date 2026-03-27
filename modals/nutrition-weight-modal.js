@@ -41,8 +41,9 @@ export function openNutritionWeightModal(item) {
   window._nutritionWeightItem = item;
 
   // 항목 정보 표시 (원래 저장된 단위 기준)
+  // servingSize는 DB/수기입력 데이터일 때만, CSV는 항상 100g 기준
   const servingSize = item.servingSize || 100;
-  const kcal = item.nutrition?.kcal || item.kcal || 0;
+  const kcal = item.nutrition?.kcal || item.kcal || item.energy || 0;
   const carbs = item.nutrition?.carbs || item.carbs || 0;
   const protein = item.nutrition?.protein || item.protein || 0;
   const fat = item.nutrition?.fat || item.fat || 0;
@@ -69,7 +70,7 @@ export function updateNutritionWeightPreview() {
   const item = window._nutritionWeightItem;
   const servingSize = item.servingSize || 100;
 
-  const baseKcal = item.nutrition?.kcal || item.kcal || 0;
+  const baseKcal = item.nutrition?.kcal || item.kcal || item.energy || 0;
   const baseCarbs = item.nutrition?.carbs || item.carbs || 0;
   const baseProtein = item.nutrition?.protein || item.protein || 0;
   const baseFat = item.nutrition?.fat || item.fat || 0;
@@ -100,7 +101,7 @@ export function confirmNutritionItemWithWeight() {
   const mealId = window._nutritionSearchMeal;
   const servingSize = item.servingSize || 100;
 
-  const baseKcal = item.nutrition?.kcal || item.kcal || 0;
+  const baseKcal = item.nutrition?.kcal || item.kcal || item.energy || 0;
   const baseCarbs = item.nutrition?.carbs || item.carbs || 0;
   const baseProtein = item.nutrition?.protein || item.protein || 0;
   const baseFat = item.nutrition?.fat || item.fat || 0;
@@ -122,9 +123,14 @@ export function confirmNutritionItemWithWeight() {
     fat: fat,
   };
 
+  console.log('[nutrition-weight-modal] 음식 추가:', { mealId, foodItem, wtAddFoodItem: !!window.wtAddFoodItem });
+
   // render-workout.js의 wtAddFoodItem()을 호출하여 상태 관리 및 렌더링 처리
   if (window.wtAddFoodItem) {
     window.wtAddFoodItem(mealId, foodItem);
+    console.log('[nutrition-weight-modal] 음식이 추가되었습니다');
+  } else {
+    console.error('[nutrition-weight-modal] wtAddFoodItem 함수를 찾을 수 없습니다!');
   }
 
   // 모달 닫기
