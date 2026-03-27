@@ -156,11 +156,6 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans KR',sans-seri
 .schedule-event-bar{position:absolute;left:1px;right:1px;height:10px;border-radius:2px;font-size:6px;color:#fff;overflow:hidden;white-space:nowrap;padding:0 2px;display:flex;align-items:center;cursor:pointer;pointer-events:auto;opacity:.85;transition:opacity .1s;line-height:1;}
 .schedule-event-bar:hover{opacity:1;z-index:10;}
 
-/* 스케줄 이벤트 바 (월 단위 연속 표시) */
-.schedule-events-row{position:relative;width:100%;}
-.schedule-event-bar-month{position:absolute;height:18px;border-radius:4px;padding:1px 4px;font-size:9px;color:#fff;overflow:hidden;white-space:nowrap;cursor:pointer;opacity:.85;transition:opacity .1s,z-index .1s;display:flex;align-items:center;user-select:none;}
-.schedule-event-bar-month:hover{opacity:1;z-index:10;}
-.event-bar-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .sheet-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:500;display:none;align-items:flex-end;justify-content:center;}
 .sheet-overlay.open{display:flex;animation:fadeIn .15s ease;}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
