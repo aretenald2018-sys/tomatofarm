@@ -758,6 +758,7 @@ let _nutritionSearchMeal = null;
 
 async function openNutritionSearch(mealId) {
   _nutritionSearchMeal = mealId;
+  window._nutritionSearchMeal = mealId;  // window에도 저장 (디버깅용)
   document.getElementById('nutrition-search-input').value = '';
 
   // CSV 데이터 로드 (첫 번 호출 시만)
@@ -908,23 +909,27 @@ function selectNutritionItem(itemId) {
 
   if (!item || !_nutritionSearchMeal) return;
 
-  // 해당 식사 텍스트 필드에 이름 삽입
-  const mealInput = document.getElementById(`wt-meal-${_nutritionSearchMeal}`);
-  if (mealInput) {
-    const cur = mealInput.value.trim();
-    mealInput.value = cur ? `${cur}, ${item.name}` : item.name;
-    mealInput.dispatchEvent(new Event('input'));
-  }
-
-  // kcal 필드가 있으면 합산 (DB 또는 CSV 형식 모두 지원)
-  const kcalInput = document.getElementById(`wt-kcal-${_nutritionSearchMeal}`);
-  if (kcalInput) {
+  // 음식 항목 생성 (wt-foods-{meal}에 추가)
+  const foodListContainer = document.getElementById(`wt-foods-${_nutritionSearchMeal}`);
+  if (foodListContainer) {
     const kcal = item.nutrition?.kcal || item.kcal || item.energy || 0;
-    if (kcal) {
-      const cur = parseFloat(kcalInput.value) || 0;
-      kcalInput.value = cur + kcal;
-      kcalInput.dispatchEvent(new Event('input'));
-    }
+    const carbs = item.nutrition?.carbs || item.carbs || 0;
+    const protein = item.nutrition?.protein || item.protein || 0;
+    const fat = item.nutrition?.fat || item.fat || 0;
+
+    const foodItem = document.createElement('div');
+    foodItem.className = 'meal-food-item';
+    foodItem.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:8px;background:var(--bg2);border-radius:4px;margin-bottom:4px;font-size:12px';
+
+    foodItem.innerHTML = `
+      <div style="flex:1">
+        <div style="font-weight:500;margin-bottom:2px">${item.name}</div>
+        <div style="color:var(--muted);font-size:11px">${kcal}kcal | 탄${carbs}g 단${protein}g 지${fat}g</div>
+      </div>
+      <button onclick="this.parentElement.remove()" style="background:none;border:none;color:var(--muted);cursor:pointer;padding:4px;font-size:14px" title="삭제">✕</button>
+    `;
+
+    foodListContainer.appendChild(foodItem);
   }
 
   document.getElementById('nutrition-search-modal').classList.remove('open');
