@@ -12,107 +12,10 @@ import { MUSCLES }                                               from './config.
 let _currentYear = new Date().getFullYear();
 export const getCurrentYear = () => _currentYear;
 
-// ── 드래그 상태 ──────────────────────────────────────────────────────────────────────────
-let _scheduleDragStart  = null;
-let _scheduleDragEnd    = null;
-let _scheduleDragYear   = null;
-let _scheduleDragMonth  = null;
-let _scheduleWasDragged = false;
-let _scheduleDragOverlay = null;
-
 export function changeYear(delta) {
   _currentYear += delta;
   renderCalendar();
 }
-
-// ── 스케줄 드래그 핸들러 ──────────────────────────────────────────
-function _scheduleStartDrag(year, m, d, e) {
-  // 스케줄은 미래 날짜도 허용
-
-  _scheduleDragStart = d;
-  _scheduleDragEnd = d;
-  _scheduleDragYear = year;
-  _scheduleDragMonth = m;
-  _scheduleWasDragged = false;
-
-  e.preventDefault();
-
-  const handleMove = (e2) => {
-    const target = e2.target.closest('.schedule-cell');
-    if (!target) return;
-
-    const dayNumEl = target.querySelector('.day-num');
-    if (!dayNumEl) return;
-
-    const d2 = parseInt(dayNumEl.textContent);
-    if (isNaN(d2)) return;
-
-    if (d2 !== _scheduleDragEnd) {
-      _scheduleDragEnd = d2;
-      _scheduleWasDragged = true;
-      _highlightScheduleDrag(year, m);
-    }
-  };
-
-  const handleUp = () => {
-    document.removeEventListener('mousemove', handleMove);
-    document.removeEventListener('mouseup', handleUp);
-
-    _clearScheduleDragHighlight();
-
-    if (_scheduleWasDragged && _scheduleDragEnd && _scheduleDragStart !== _scheduleDragEnd) {
-      const s = _scheduleDragStart <= _scheduleDragEnd ? _scheduleDragStart : _scheduleDragEnd;
-      const e = _scheduleDragStart <= _scheduleDragEnd ? _scheduleDragEnd : _scheduleDragStart;
-      const startDate = dateKey(year, m, s);
-      const endDate = dateKey(year, m, e);
-      window.openCalEventModal(startDate, endDate, null);
-    }
-
-    _scheduleDragStart = null;
-    _scheduleDragEnd = null;
-    _scheduleDragYear = null;
-    _scheduleDragMonth = null;
-    setTimeout(() => { _scheduleWasDragged = false; }, 50);
-  };
-
-  document.addEventListener('mousemove', handleMove);
-  document.addEventListener('mouseup', handleUp);
-}
-
-function _highlightScheduleDrag(year, m) {
-  // 드래그 중인 월만 오버레이 업데이트
-  const cal = document.getElementById('calendar');
-  const monthSec = Array.from(cal.querySelectorAll('.month-section')).find(sec => {
-    const hdr = sec.querySelector('.month-header');
-    return hdr && hdr.textContent.includes(`${year}년 ${MONTHS[m]}`);
-  });
-
-  if (!monthSec) return;
-
-  const wrap = monthSec.querySelector('.grid-wrap');
-  const table = monthSec.querySelector('.grid-table');
-  if (!wrap || !table) return;
-
-  // 기존 드래그 오버레이 제거
-  const existingOverlay = wrap.querySelector('.schedule-events-overlay[data-drag="true"]');
-  if (existingOverlay) existingOverlay.remove();
-
-  // 오버레이 재구성 (드래그 상태 포함)
-  const days = daysInMonth(year, m);
-  const newOverlay = _buildScheduleEventsOverlay(year, m, days, table);
-  if (newOverlay) {
-    wrap.appendChild(newOverlay);
-    _scheduleDragOverlay = newOverlay;
-  }
-}
-
-function _clearScheduleDragHighlight() {
-  if (_scheduleDragOverlay) {
-    _scheduleDragOverlay.remove();
-    _scheduleDragOverlay = null;
-  }
-}
-
 export function renderCalendar() {
   document.getElementById('year-label').textContent = _currentYear + '년';
   const cal = document.getElementById('calendar');
@@ -145,10 +48,6 @@ export function renderCalendar() {
     table.appendChild(tbody);
 
     wrap.appendChild(table);
-
-    // 스케줄 event bar 오버레이 추가 (월간 캘린더 스타일)
-    const scheduleEventsOverlay = _buildScheduleEventsOverlay(_currentYear, m, days, table);
-    if (scheduleEventsOverlay) wrap.appendChild(scheduleEventsOverlay);
 
     sec.appendChild(wrap); cal.appendChild(sec);
   }
@@ -265,33 +164,9 @@ function _scheduleRow(year, m, days) {
   const row = document.createElement('tr');
   const lbl = document.createElement('td');
   lbl.className='row-label';
-
-  const lblContainer = document.createElement('div');
-  lblContainer.style.display = 'flex';
-  lblContainer.style.alignItems = 'center';
-  lblContainer.style.gap = '8px';
-
-  const lblText = document.createElement('span');
-  lblText.textContent = '📅 스케줄';
-  lblContainer.appendChild(lblText);
-
-  const addBtn = document.createElement('button');
-  addBtn.className = 'schedule-add-btn';
-  addBtn.textContent = '+';
-  addBtn.style.fontSize = '14px';
-  addBtn.style.padding = '2px 6px';
-  addBtn.style.border = '1px solid #666';
-  addBtn.style.borderRadius = '4px';
-  addBtn.style.background = 'transparent';
-  addBtn.style.color = '#fff';
-  addBtn.style.cursor = 'pointer';
-  addBtn.addEventListener('click', () => window.openScheduleCreateModal());
-  lblContainer.appendChild(addBtn);
-
-  lbl.appendChild(lblContainer);
+  lbl.textContent='📅 스케줄';
   row.appendChild(lbl);
 
-  // 각 날짜의 셀 생성 (event bar는 별도 오버레이로 렌더링)
   for (let d = 1; d <= days; d++) {
     const td = document.createElement('td');
     if (isBeforeStart(year, m, d)) { td.style.display = 'none'; row.appendChild(td); continue; }
@@ -303,118 +178,9 @@ function _scheduleRow(year, m, days) {
 
     const dn = document.createElement('div'); dn.className='day-num'; dn.textContent=d; cell.appendChild(dn);
 
-    // 드래그 이벤트 리스너 추가
-    cell.addEventListener('mousedown', (e) => _scheduleStartDrag(year, m, d, e));
-
     td.appendChild(cell); row.appendChild(td);
   }
   return row;
-}
-
-function _buildScheduleEventsOverlay(year, m, days, table) {
-  // 이번 월의 모든 이벤트 가져오기
-  const monthStart = dateKey(year, m, 1);
-  const monthEnd   = dateKey(year, m, days);
-  let allEvents  = getEvents().filter(ev => ev.start <= monthEnd && ev.end >= monthStart);
-
-  // 드래그 중이면 임시 이벤트 추가
-  if (_scheduleDragYear === year && _scheduleDragMonth === m && _scheduleDragStart && _scheduleDragEnd) {
-    const s = Math.min(_scheduleDragStart, _scheduleDragEnd);
-    const e = Math.max(_scheduleDragStart, _scheduleDragEnd);
-    const dragEvent = {
-      start: dateKey(year, m, s),
-      end: dateKey(year, m, e),
-      title: '',
-      color: 'rgba(245,158,11,0.3)',
-      isDrag: true,
-      borderColor: '#f59e0b'
-    };
-    allEvents = [...allEvents, dragEvent];
-  }
-
-  if (!allEvents.length) return null;
-
-  // 트랙 배정 (겹치는 이벤트 처리)
-  const tracks = [];
-  const evTracks = allEvents.map(ev => {
-    const s = ev.start < monthStart ? monthStart : ev.start;
-    const e = ev.end > monthEnd ? monthEnd : ev.end;
-    for (let t = 0; t < tracks.length; t++) {
-      if (!tracks[t].some(r => r.s <= e && r.e >= s)) {
-        tracks[t].push({s,e}); return t;
-      }
-    }
-    tracks.push([{s,e}]); return tracks.length - 1;
-  });
-
-  const BAR_H = 12, BAR_GAP = 2;
-  const totalH = tracks.length * (BAR_H + BAR_GAP);
-
-  const overlay = document.createElement('div');
-  overlay.className = 'schedule-events-overlay';
-  overlay.style.height = `${totalH}px`;
-
-  // 각 이벤트를 오버레이에 배치
-  allEvents.forEach((ev, idx) => {
-    const track = evTracks[idx];
-    const dateRange = _getEventColumnRange(year, m, days, ev, monthStart, monthEnd);
-    if (!dateRange) return;
-
-    const { startCol, endCol } = dateRange;
-    const pctL = (startCol / (days + 1)) * 100;  // +1은 row-label 때문
-    const pctW = ((endCol - startCol + 1) / (days + 1)) * 100;
-
-    const bar = document.createElement('div');
-    bar.className = 'schedule-event-bar-overlay';
-
-    const styles = [
-      `left:${pctL}%`,
-      `width:${pctW}%`,
-      `top:${track * (BAR_H + BAR_GAP)}px`,
-      `height:${BAR_H}px`,
-      `background:${ev.color || '#f59e0b'}`,
-    ];
-
-    // 드래그 바의 경우 border 추가
-    if (ev.isDrag) {
-      styles.push(`border:2px solid ${ev.borderColor || '#f59e0b'}`);
-      styles.push('box-sizing:border-box');
-    }
-
-    bar.style.cssText = styles.join(';');
-    bar.textContent = ev.title;
-
-    if (!ev.isDrag) {
-      bar.addEventListener('click', (e) => {
-        e.stopPropagation();
-        window.openCalEventModal(ev.start, ev.end, ev.id);
-      });
-    }
-
-    overlay.appendChild(bar);
-  });
-
-  return overlay;
-}
-
-function _getEventColumnRange(year, m, days, ev, monthStart, monthEnd) {
-  // 이벤트의 시작/종료 날짜를 월 내의 열 인덱스로 변환
-  let startDate = ev.start >= monthStart ? ev.start : monthStart;
-  let endDate = ev.end <= monthEnd ? ev.end : monthEnd;
-
-  // dateKey 형식 (YYYY-MM-DD)에서 일자 추출
-  const startDay = parseInt(startDate.split('-')[2]);
-  const endDay = parseInt(endDate.split('-')[2]);
-
-  // 이전 달 날짜 체크
-  if (ev.start < monthStart) {
-    const prevMonthDays = daysInMonth(
-      parseInt(monthStart.split('-')[0]),
-      parseInt(monthStart.split('-')[1]) - 1
-    );
-  }
-
-  return { startCol: startDay, endCol: endDay };
 }
 
 function _makeCell(y, m, d) {

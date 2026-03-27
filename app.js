@@ -558,63 +558,6 @@ function closeMonthlyCalendarModal(e) {
   document.getElementById('monthly-calendar-modal').classList.remove('open');
 }
 
-// ── 스케줄 생성 모달 ──────────────────────────────────────────────
-function openScheduleCreateModal() {
-  const modal = document.getElementById('schedule-create-modal');
-  if (!modal) return;
-
-  // 오늘 날짜를 기본값으로 설정
-  const today = new Date();
-  const todayStr = today.toISOString().split('T')[0];
-
-  document.getElementById('schedule-start-date').value = todayStr;
-  document.getElementById('schedule-end-date').value = todayStr;
-
-  modal.classList.add('open');
-
-  // input 포커스
-  setTimeout(() => document.getElementById('schedule-start-date').focus(), 100);
-}
-
-function closeScheduleCreateModal(e) {
-  if (e && e.target !== document.getElementById('schedule-create-modal')) return;
-  document.getElementById('schedule-create-modal').classList.remove('open');
-}
-
-function createScheduleFromModal() {
-  const startInput = document.getElementById('schedule-start-date');
-  const endInput = document.getElementById('schedule-end-date');
-
-  const start = startInput.value;
-  const end = endInput.value;
-
-  if (!start || !end) {
-    alert('시작 날짜와 종료 날짜를 선택하세요.');
-    return;
-  }
-
-  if (start > end) {
-    alert('시작 날짜가 종료 날짜보다 빠르거나 같아야 합니다.');
-    return;
-  }
-
-  // 새 이벤트 생성
-  const eventId = 'evt_' + Date.now();
-  const newEvent = {
-    id: eventId,
-    start: start,
-    end: end,
-    title: '일정',
-    color: '#f59e0b'
-  };
-
-  saveEvent(newEvent);
-
-  // UI 업데이트
-  renderCalendar();
-  closeScheduleCreateModal();
-}
-
 // CSV 내보내기 ─────────────────────────────────────────────────
 function openExportModal() {
   document.getElementById('export-modal').classList.add('open');
@@ -1453,10 +1396,6 @@ window.saveCalEventFromModal    = saveCalEventFromModal;
 window.deleteCalEventFromModal  = deleteCalEventFromModal;
 window.openMonthlyCalendarModal = openMonthlyCalendarModal;
 window.closeMonthlyCalendarModal = closeMonthlyCalendarModal;
-// 스케줄 생성
-window.openScheduleCreateModal = openScheduleCreateModal;
-window.closeScheduleCreateModal = closeScheduleCreateModal;
-window.createScheduleFromModal = createScheduleFromModal;
 // CSV
 window.openExportModal          = openExportModal;
 window.closeExportModal         = closeExportModal;
