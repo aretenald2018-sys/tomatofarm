@@ -26,7 +26,7 @@ export function changeYear(delta) {
 
 // ── 스케줄 드래그 핸들러 ──────────────────────────────────────────
 function _scheduleStartDrag(year, m, d, e) {
-  if (isFuture(year, m, d)) return;  // 미래 날짜는 드래그 불가
+  // 스케줄은 미래 날짜도 허용
 
   _scheduleDragStart = d;
   _scheduleDragEnd = d;
@@ -44,7 +44,7 @@ function _scheduleStartDrag(year, m, d, e) {
     if (!dayNumEl) return;
 
     const d2 = parseInt(dayNumEl.textContent);
-    if (isNaN(d2) || isFuture(year, m, d2)) return;
+    if (isNaN(d2)) return;
 
     if (d2 !== _scheduleDragEnd) {
       _scheduleDragEnd = d2;
@@ -125,6 +125,10 @@ export function renderCalendar() {
     const sec  = document.createElement('div'); sec.className = 'month-section';
     const hdr  = document.createElement('div'); hdr.className = 'month-header';
     hdr.textContent = _currentYear + '년 ' + MONTHS[m];
+    hdr.style.cursor = 'pointer';
+    hdr.addEventListener('click', () => {
+      window.openMonthlyCalendarModal(_currentYear, m);
+    });
     sec.appendChild(hdr);
 
     const wrap  = document.createElement('div'); wrap.className = 'grid-wrap';
@@ -133,6 +137,8 @@ export function renderCalendar() {
 
     const tbody = document.createElement('tbody');
     tbody.appendChild(_scheduleRow(_currentYear, m, days));
+    const evRow = _buildScheduleEventsRow(_currentYear, m, days);
+    if (evRow) tbody.appendChild(evRow);
     tbody.appendChild(_gymRow(_currentYear, m, days));
     tbody.appendChild(_cfRow(_currentYear, m, days));
     tbody.appendChild(_dietRow(_currentYear, m, days));
@@ -253,10 +259,34 @@ function _scheduleRow(year, m, days) {
   const row = document.createElement('tr');
   const lbl = document.createElement('td'); lbl.className='row-label'; lbl.textContent='📅 스케줄'; row.appendChild(lbl);
 
-  // 이번 월의 모든 이벤트 가져오기
+  // 각 날짜의 셀만 생성 (이벤트 바는 별도 행에서 렌더링)
+  for (let d = 1; d <= days; d++) {
+    const td = document.createElement('td');
+    if (isBeforeStart(year, m, d)) { td.style.display = 'none'; row.appendChild(td); continue; }
+
+    const cell = document.createElement('div');
+    cell.className = 'schedule-cell';
+    if (isToday(year,m,d))  cell.classList.add('today-cell');
+    if (isFuture(year,m,d)) cell.classList.add('future');
+
+    const dn = document.createElement('div'); dn.className='day-num'; dn.textContent=d; cell.appendChild(dn);
+
+    // 드래그 이벤트 (스케줄 생성) - 미래 날짜도 허용
+    cell.addEventListener('mousedown', (e) => {
+      _scheduleStartDrag(year, m, d, e);
+    });
+
+    td.appendChild(cell); row.appendChild(td);
+  }
+  return row;
+}
+
+function _buildScheduleEventsRow(year, m, days) {
   const monthStart = dateKey(year, m, 1);
   const monthEnd   = dateKey(year, m, days);
   const allEvents  = getEvents().filter(ev => ev.start <= monthEnd && ev.end >= monthStart);
+
+  if (!allEvents.length) return null;
 
   // 트랙 배정 (겹치는 이벤트 처리)
   const tracks = [];
@@ -271,50 +301,54 @@ function _scheduleRow(year, m, days) {
     tracks.push([{s,e}]); return tracks.length - 1;
   });
 
-  // 각 날짜의 셀 생성
-  for (let d = 1; d <= days; d++) {
-    const td = document.createElement('td');
-    if (isBeforeStart(year, m, d)) { td.style.display = 'none'; row.appendChild(td); continue; }
+  const BAR_H = 18, BAR_GAP = 2;
+  const totalH = tracks.length * (BAR_H + BAR_GAP);
 
-    const cell = document.createElement('div');
-    cell.className = 'schedule-cell';
-    if (isToday(year,m,d))  cell.classList.add('today-cell');
-    if (isFuture(year,m,d)) cell.classList.add('future');
+  const row = document.createElement('tr');
+  const td = document.createElement('td');
+  const evRow = document.createElement('div');
+  evRow.className = 'schedule-events-row';
+  evRow.style.height = `${totalH}px`;
 
-    const dn = document.createElement('div'); dn.className='day-num'; dn.textContent=d; cell.appendChild(dn);
+  allEvents.forEach((ev, idx) => {
+    const track = evTracks[idx];
+    const startDateObj = new Date(ev.start + 'T00:00:00');
+    const endDateObj = new Date(ev.end + 'T00:00:00');
+    const monthStartObj = new Date(monthStart + 'T00:00:00');
+    const monthEndObj = new Date(monthEnd + 'T23:59:59');
 
-    // 이 날짜에 걸친 이벤트 바 렌더링
-    const dateStr = dateKey(year, m, d);
-    const cellEvents = allEvents.filter(ev => ev.start <= dateStr && ev.end >= dateStr);
+    const colS = Math.floor((startDateObj - monthStartObj) / (1000*60*60*24));
+    const colE = Math.floor((endDateObj - monthStartObj) / (1000*60*60*24));
 
-    if (cellEvents.length > 0) {
-      const barsDiv = document.createElement('div');
-      barsDiv.className = 'schedule-event-bars';
+    const pctL = (colS / days) * 100;
+    const pctW = ((colE - colS + 1) / days) * 100;
+    const isStart = ev.start >= monthStart;
+    const isEnd   = ev.end <= monthEnd;
 
-      cellEvents.forEach((ev, idx) => {
-        const track = evTracks[allEvents.indexOf(ev)];
-        const bar = document.createElement('div');
-        bar.className = 'schedule-event-bar';
-        bar.style.background = ev.color || '#f59e0b';
-        bar.style.top = `${track * 14}px`;
-        bar.textContent = ev.title;
-        bar.addEventListener('click', (e) => {
-          e.stopPropagation();
-          window.openCalEventModal(ev.start, ev.end, ev.id);
-        });
-        barsDiv.appendChild(bar);
-      });
+    const bar = document.createElement('div');
+    bar.className = 'schedule-event-bar-month';
+    bar.style.cssText = [
+      `left:calc(${pctL}% + 1px)`,
+      `width:calc(${pctW}% - 2px)`,
+      `top:${track*(BAR_H+BAR_GAP)}px`,
+      `height:${BAR_H}px`,
+      `background:${ev.color||'#f59e0b'}`,
+      `border-radius:${isStart?'4px':'0'} ${isEnd?'4px':'0'} ${isEnd?'4px':'0'} ${isStart?'4px':'0'}`,
+    ].join(';');
 
-      cell.appendChild(barsDiv);
-    }
-
-    // 드래그 이벤트 (스케줄 생성)
-    cell.addEventListener('mousedown', (e) => {
-      _scheduleStartDrag(year, m, d, e);
+    const prefix = !isStart ? '← ' : '';
+    const suffix = !isEnd   ? ' →' : '';
+    bar.innerHTML = `<span class="event-bar-title">${prefix}${ev.title}${suffix}</span>`;
+    bar.addEventListener('click', e => {
+      e.stopPropagation();
+      window.openCalEventModal(ev.start, ev.end, ev.id);
     });
+    evRow.appendChild(bar);
+  });
 
-    td.appendChild(cell); row.appendChild(td);
-  }
+  td.colSpan = 100;
+  td.appendChild(evRow);
+  row.appendChild(td);
   return row;
 }
 

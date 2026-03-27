@@ -22,7 +22,7 @@ import { getDietRec, getWorkoutRec,
 import { renderCalendar, changeYear }             from './render-calendar.js';
 import { renderStats, setPeriod, exportCSV }      from './render-stats.js';
 import { renderHome }                             from './render-home.js';
-import { renderMonthlyCalendar,
+import { renderMonthlyCalendar, renderMonthlyCalendarInModal,
          changeMonthlyMonth }                     from './render-monthly-calendar.js';
 import { renderLoa, toggleLoaCheck, toggleLoaWeekly,
          setLoaActiveChar, deleteLoaChar,
@@ -124,7 +124,6 @@ function switchTab(tab) {
   if (tab === 'calendar') renderCalendar();
   if (tab === 'wine')     renderWine();
   if (tab === 'loa')      renderLoa();
-  if (tab === 'monthly')  renderMonthlyCalendar();
   if (tab === 'cooking')  renderCooking();
   if (tab === 'workout')  loadWorkoutDate(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
 }
@@ -133,14 +132,11 @@ function renderAll() {
   renderHome();
   if (_currentTab === 'calendar') renderCalendar();
   if (_currentTab === 'stats')    renderStats();
-  if (_currentTab === 'monthly')  renderMonthlyCalendar();
   if (_currentTab === 'cooking')  renderCooking();
 }
 
 document.addEventListener('sheet:saved',   renderAll);
-document.addEventListener('cooking:saved', () => {
-  if (_currentTab === 'monthly') renderMonthlyCalendar();
-});
+document.addEventListener('cooking:saved', renderAll);
 
 // ── 운동탭에서 날짜 지정 진입 ────────────────────────────────────
 function openWorkoutTab(y, m, d) {
@@ -551,7 +547,20 @@ async function deleteCalEventFromModal() {
   }
 }
 
-// ── CSV 내보내기 ─────────────────────────────────────────────────
+// ── 월간 캘린더 모달 ──────────────────────────────────────────────
+function openMonthlyCalendarModal(year, month) {
+  const content = document.getElementById('monthly-calendar-modal-content');
+  if (!content) return;
+  renderMonthlyCalendarInModal(year, month, content);
+  document.getElementById('monthly-calendar-modal').classList.add('open');
+}
+
+function closeMonthlyCalendarModal(e) {
+  if (e && e.target !== document.getElementById('monthly-calendar-modal')) return;
+  document.getElementById('monthly-calendar-modal').classList.remove('open');
+}
+
+// CSV 내보내기 ─────────────────────────────────────────────────
 function openExportModal() {
   document.getElementById('export-modal').classList.add('open');
 }
@@ -1387,6 +1396,8 @@ window.closeCalEventModal       = closeCalEventModal;
 window.selectEventColor         = selectEventColor;
 window.saveCalEventFromModal    = saveCalEventFromModal;
 window.deleteCalEventFromModal  = deleteCalEventFromModal;
+window.openMonthlyCalendarModal = openMonthlyCalendarModal;
+window.closeMonthlyCalendarModal = closeMonthlyCalendarModal;
 // CSV
 window.openExportModal          = openExportModal;
 window.closeExportModal         = closeExportModal;

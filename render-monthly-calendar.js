@@ -33,12 +33,28 @@ export function renderMonthlyCalendar() {
   if (!el) return;
   el.innerHTML = '';
 
+  _renderMonthlyInto(el, _currentYear, _currentMonth);
+}
+
+export function renderMonthlyCalendarInModal(year, month, element) {
+  if (!element) return;
+  element.innerHTML = '';
+  _renderMonthlyInto(element, year, month);
+}
+
+function _renderMonthlyInto(el, year, month) {
+  // 임시로 전역 상태 저장 (복원하기 위해)
+  const savedYear = _currentYear;
+  const savedMonth = _currentMonth;
+  _currentYear = year;
+  _currentMonth = month;
+
   // ── 월간 요약 카드 ──
-  const sum = _calcMonthSummary();
+  const sum = _calcMonthSummary(year, month);
   const summaryCard = document.createElement('div');
   summaryCard.className = 'monthly-summary-card';
   summaryCard.innerHTML = `
-    <div class="monthly-summary-title">${_currentYear}년 ${MONTHS[_currentMonth]} 요약</div>
+    <div class="monthly-summary-title">${year}년 ${MONTHS[month]} 요약</div>
     <div class="monthly-summary-stats">
       <div class="monthly-stat"><span class="monthly-stat-val" style="color:var(--gym)">${sum.gymDays}</span><span class="monthly-stat-lbl">헬스</span></div>
       <div class="monthly-stat"><span class="monthly-stat-val" style="color:var(--cf)">${sum.cfDays}</span><span class="monthly-stat-lbl">클핏</span></div>
@@ -110,6 +126,10 @@ export function renderMonthlyCalendar() {
 
   el.appendChild(calWrap);
   _initDrag(calWrap);
+
+  // 전역 상태 복원
+  _currentYear = savedYear;
+  _currentMonth = savedMonth;
 }
 
 // ── 주 목록 ──────────────────────────────────────────────────────
@@ -334,8 +354,8 @@ function _getMonthEvents() {
 }
 
 // ── 월간 통계 ────────────────────────────────────────────────────
-function _calcMonthSummary() {
-  const y = _currentYear, m = _currentMonth;
+function _calcMonthSummary(year = _currentYear, month = _currentMonth) {
+  const y = year, m = month;
   let gymDays=0,cfDays=0,dietOkDays=0,stretchDays=0,wineFreeDays=0,cookingDays=0;
   const mStr = `${y}-${String(m+1).padStart(2,'0')}`;
   for (let d=1; d<=daysInMonth(y,m); d++) {

@@ -23,7 +23,6 @@
   <button class="tab-btn active" data-tab="home"     draggable="true" onclick="switchTab('home')">🏠 홈</button>
   <button class="tab-btn"        data-tab="workout"  draggable="true" onclick="switchTab('workout')">💪 운동·식단</button>
   <button class="tab-btn"        data-tab="cooking"  draggable="true" onclick="switchTab('cooking')">🍳 요리</button>
-  <button class="tab-btn"        data-tab="monthly"  draggable="true" onclick="switchTab('monthly')">📅 월간기록</button>
   <button class="tab-btn"        data-tab="calendar" draggable="true" onclick="switchTab('calendar')">📆 Streak</button>
   <button class="tab-btn"        data-tab="wine"     draggable="true" onclick="switchTab('wine')">🍷 와인</button>
   <button class="tab-btn"        data-tab="stats"    draggable="true" onclick="switchTab('stats')">📊 통계</button>
@@ -297,16 +296,6 @@
   <div id="cooking-list" class="cooking-list"></div>
 </div>
 
-<!-- ═══ 월간 캘린더 탭 ═══ -->
-<div id="tab-monthly" class="tab-panel">
-  <div class="nav-bar">
-    <button class="nav-btn" onclick="changeMonthlyMonth(-1)">◀</button>
-    <span class="nav-year" id="monthly-label"></span>
-    <button class="nav-btn" onclick="changeMonthlyMonth(1)">▶</button>
-  </div>
-  <div id="monthly-calendar-content" style="padding:12px 16px 80px;"></div>
-</div>
-
 <!-- ═══ 연간 달력 탭 ═══ -->
 <div id="tab-calendar" class="tab-panel">
   <div class="nav-bar">
@@ -387,6 +376,14 @@
 
 <!-- 모달들은 modals/*.js에서 동적으로 주입됩니다 -->
 <div id="modals-container"></div>
+
+<!-- 월간 캘린더 모달 -->
+<div class="modal-overlay" id="monthly-calendar-modal" onclick="closeMonthlyCalendarModal(event)">
+  <div class="modal-sheet" style="max-height:90vh;overflow-y:auto;max-width:600px;padding:12px;">
+    <div class="sheet-handle"></div>
+    <div id="monthly-calendar-modal-content" style="padding:12px 16px 80px;"></div>
+  </div>
+</div>
 
 <div id="tab-loa" class="tab-panel">
 <div class="loa-tab-header">
