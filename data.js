@@ -316,6 +316,13 @@ export async function deleteNutritionItem(id) {
 export const getNutritionDB       = () => [..._nutritionDB].sort((a,b) => (a.name||'').localeCompare(b.name||''));
 export const searchNutritionDB    = (q) => _nutritionDB.filter(n => n.name?.toLowerCase().includes((q||'').toLowerCase()));
 
+// 최근 음식 N개 반환 (createdAt 역순)
+export const getRecentNutritionItems = (limit = 10) => {
+  return [..._nutritionDB]
+    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+    .slice(0, limit);
+};
+
 // OCR/파싱 결과를 정규화하여 저장
 export async function saveNutritionItemFromOCR(parsedData, source = 'ocr') {
   const item = {

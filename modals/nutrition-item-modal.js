@@ -6,6 +6,7 @@ let _niEditingId = null;
 let _niCurrentTab = 'manual';
 let _niPhotoBase64 = null;
 let _niParsedData = null;
+let _niConfidence = null;  // OCR 신뢰도
 
 export const MODAL_HTML = `
 <div class="modal-overlay" id="nutrition-item-modal" onclick="closeNutritionItemModal(event)">
@@ -23,17 +24,17 @@ export const MODAL_HTML = `
     <!-- ═══ TAB 1: 수기 입력 ═══ -->
     <div class="ni-tab-content active" id="ni-tab-content-manual">
       <div class="ex-editor-form">
-        <div><div class="ex-editor-label">음식 이름 *</div><input class="ex-editor-input" id="ni-name" placeholder="예: 닭가슴살 구이"></div>
+        <div><div class="ex-editor-label">음식 이름 * <span id="ni-name-confidence" style="font-size:11px;color:var(--muted)"></span></div><input class="ex-editor-input" id="ni-name" placeholder="예: 닭가슴살 구이"></div>
         <div class="diet-plan-row">
           <div><div class="ex-editor-label">기준 단위</div><input class="ex-editor-input" id="ni-unit" placeholder="예: 100g, 1개, 1공기"></div>
-          <div><div class="ex-editor-label">칼로리 (kcal)</div><input class="ex-editor-input" id="ni-kcal" type="number" placeholder="165"></div>
+          <div><div class="ex-editor-label">칼로리 (kcal) <span id="ni-kcal-confidence" style="font-size:11px;color:var(--muted)"></span></div><input class="ex-editor-input" id="ni-kcal" type="number" placeholder="165"></div>
         </div>
         <div class="diet-plan-row">
-          <div><div class="ex-editor-label">탄수화물 (g)</div><input class="ex-editor-input" id="ni-carbs" type="number" step="0.1" placeholder="0"></div>
-          <div><div class="ex-editor-label">단백질 (g)</div><input class="ex-editor-input" id="ni-protein" type="number" step="0.1" placeholder="31"></div>
+          <div><div class="ex-editor-label">탄수화물 (g) <span id="ni-carbs-confidence" style="font-size:11px;color:var(--muted)"></span></div><input class="ex-editor-input" id="ni-carbs" type="number" step="0.1" placeholder="0"></div>
+          <div><div class="ex-editor-label">단백질 (g) <span id="ni-protein-confidence" style="font-size:11px;color:var(--muted)"></span></div><input class="ex-editor-input" id="ni-protein" type="number" step="0.1" placeholder="31"></div>
         </div>
         <div class="diet-plan-row">
-          <div><div class="ex-editor-label">지방 (g)</div><input class="ex-editor-input" id="ni-fat" type="number" step="0.1" placeholder="3.6"></div>
+          <div><div class="ex-editor-label">지방 (g) <span id="ni-fat-confidence" style="font-size:11px;color:var(--muted)"></span></div><input class="ex-editor-input" id="ni-fat" type="number" step="0.1" placeholder="3.6"></div>
           <div><div class="ex-editor-label">메모</div><input class="ex-editor-input" id="ni-note" placeholder="선택 사항"></div>
         </div>
       </div>
@@ -344,6 +345,11 @@ async function _analyzeNutritionPhoto() {
 
     // 폼에 자동 채우기
     _populateNutritionForm(_niParsedData);
+
+    // OCR 분석 후 자동으로 수기입력 탭으로 전환 (사용자 수정 용이)
+    setTimeout(() => {
+      switchNutritionTab('manual');
+    }, 300);
   } catch (e) {
     console.error('OCR 분석 실패:', e);
     alert('사진 분석 실패: ' + e.message);
@@ -456,6 +462,9 @@ export async function deleteNutritionItemFromModal() {
 // ═════════════════════════════════════════════════════════════
 
 function _populateNutritionForm(data) {
+  _niConfidence = data.confidence || 0.8;
+  const confidencePct = Math.round(_niConfidence * 100);
+
   document.getElementById('ni-name').value = data.name || '';
   document.getElementById('ni-unit').value = data.unit || '100g';
   document.getElementById('ni-kcal').value = data.nutrition?.kcal || '';
@@ -463,6 +472,23 @@ function _populateNutritionForm(data) {
   document.getElementById('ni-protein').value = data.nutrition?.protein || '';
   document.getElementById('ni-fat').value = data.nutrition?.fat || '';
   document.getElementById('ni-note').value = data.notes || '';
+
+  // 신뢰도 표시 (OCR 분석일 때만)
+  if (_niCurrentTab === 'photo' || _niCurrentTab === 'text') {
+    const confText = `(신뢰도 ${confidencePct}%)`;
+    document.getElementById('ni-name-confidence').textContent = confText;
+    document.getElementById('ni-kcal-confidence').textContent = confText;
+    document.getElementById('ni-carbs-confidence').textContent = confText;
+    document.getElementById('ni-protein-confidence').textContent = confText;
+    document.getElementById('ni-fat-confidence').textContent = confText;
+  } else {
+    // 수기입력일 때는 신뢰도 숨기기
+    document.getElementById('ni-name-confidence').textContent = '';
+    document.getElementById('ni-kcal-confidence').textContent = '';
+    document.getElementById('ni-carbs-confidence').textContent = '';
+    document.getElementById('ni-protein-confidence').textContent = '';
+    document.getElementById('ni-fat-confidence').textContent = '';
+  }
 }
 
 function _clearNutritionForm() {

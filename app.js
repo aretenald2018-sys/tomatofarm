@@ -13,7 +13,7 @@ import { loadAll, saveGoal, deleteGoal, getGoals,
          getTabOrder, saveTabOrder,
          getDietPlan, saveDietPlan, calcDietMetrics,
          saveBodyCheckin, deleteBodyCheckin, getBodyCheckins,
-         saveNutritionItem, deleteNutritionItem, getNutritionDB, searchNutritionDB,
+         saveNutritionItem, deleteNutritionItem, getNutritionDB, searchNutritionDB, getRecentNutritionItems,
          imageToBase64 } from './data.js';
 import { loadCSVDatabase, searchCSVFood } from './fatsecret-api.js';
 import { loadStocks }                             from './stocks.js';
@@ -770,30 +770,125 @@ function closeNutritionSearch(e) {
 }
 
 function renderNutritionSearchResults() {
-  const q       = (document.getElementById('nutrition-search-input').value || '').trim();
-  const results = q ? searchNutritionDB(q) : getNutritionDB().slice(0, 30);
+  const q = (document.getElementById('nutrition-search-input').value || '').trim();
   const container = document.getElementById('nutrition-search-results');
-  if (!results.length) {
-    container.innerHTML = `<div style="font-size:12px;color:var(--muted);text-align:center;padding:16px">
-      ${q ? '검색 결과 없음' : 'DB가 비어 있어요. 아래에서 음식을 추가해보세요'}</div>`;
-    return;
+
+  let html = '';
+
+  if (!q) {
+    // 검색어 없음: 즐겨찾기 + CSV 데이터 표시
+    const recentItems = getRecentNutritionItems(10);
+    const csvResults = searchCSVFood(''); // CSV 상위 30개
+
+    if (recentItems.length > 0) {
+      html += `<div style="font-size:12px;font-weight:600;color:var(--text);padding:12px 8px;border-bottom:1px solid var(--border)">⭐ 즐겨찾기 (최근 ${recentItems.length}개)</div>`;
+      html += recentItems.map(item => `
+        <div class="nutrition-result-row" onclick="selectNutritionItem('${item.id}')">
+          <div class="nutrition-result-name">🏠 ${item.name}</div>
+          <div class="nutrition-result-meta">
+            ${item.unit ? `<span>${item.unit}</span>` : ''}
+            <span>${item.nutrition?.kcal || item.kcal || 0}kcal</span>
+            ${item.nutrition?.carbs != null ? `<span>탄${item.nutrition.carbs}g</span>` : item.carbs != null ? `<span>탄${item.carbs}g</span>` : ''}
+            ${item.nutrition?.protein != null ? `<span>단${item.nutrition.protein}g</span>` : item.protein != null ? `<span>단${item.protein}g</span>` : ''}
+            ${item.nutrition?.fat != null ? `<span>지${item.nutrition.fat}g</span>` : item.fat != null ? `<span>지${item.fat}g</span>` : ''}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    if (csvResults.length > 0) {
+      html += `<div style="font-size:12px;font-weight:600;color:var(--text);padding:12px 8px;border-bottom:1px solid var(--border);margin-top:8px">📊 CSV 데이터</div>`;
+      html += csvResults.slice(0, 20).map(item => `
+        <div class="nutrition-result-row" onclick="selectNutritionItem('${item.id}')">
+          <div class="nutrition-result-name">📊 ${item.name}</div>
+          <div class="nutrition-result-meta">
+            <span>${item.energy || 0}kcal</span>
+            ${item.carbs != null ? `<span>탄${item.carbs}g</span>` : ''}
+            ${item.protein != null ? `<span>단${item.protein}g</span>` : ''}
+            ${item.fat != null ? `<span>지${item.fat}g</span>` : ''}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    if (!recentItems.length && !csvResults.length) {
+      html = `<div style="font-size:12px;color:var(--muted);text-align:center;padding:16px">
+        DB가 비어 있어요. 아래에서 음식을 추가해보세요</div>`;
+    }
+  } else {
+    // 검색어 있음: 즐겨찾기 + DB 결과 + CSV 결과 표시
+    const recentFiltered = getRecentNutritionItems(10).filter(n => n.name?.toLowerCase().includes(q.toLowerCase()));
+    const dbResults = searchNutritionDB(q);
+    const csvResults = searchCSVFood(q);
+
+    // 즐겨찾기 (검색 결과 중)
+    if (recentFiltered.length > 0) {
+      html += `<div style="font-size:12px;font-weight:600;color:var(--accent);padding:12px 8px;border-bottom:1px solid var(--border)">⭐ 즐겨찾기</div>`;
+      html += recentFiltered.map(item => `
+        <div class="nutrition-result-row" onclick="selectNutritionItem('${item.id}')">
+          <div class="nutrition-result-name">🏠 ${item.name}</div>
+          <div class="nutrition-result-meta">
+            ${item.unit ? `<span>${item.unit}</span>` : ''}
+            <span>${item.nutrition?.kcal || item.kcal || 0}kcal</span>
+            ${item.nutrition?.carbs != null ? `<span>탄${item.nutrition.carbs}g</span>` : item.carbs != null ? `<span>탄${item.carbs}g</span>` : ''}
+            ${item.nutrition?.protein != null ? `<span>단${item.nutrition.protein}g</span>` : item.protein != null ? `<span>단${item.protein}g</span>` : ''}
+            ${item.nutrition?.fat != null ? `<span>지${item.nutrition.fat}g</span>` : item.fat != null ? `<span>지${item.fat}g</span>` : ''}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // DB 결과
+    if (dbResults.length > 0) {
+      html += `<div style="font-size:12px;font-weight:600;color:var(--text);padding:12px 8px;border-bottom:1px solid var(--border);margin-top:8px">🏠 DB 검색 결과</div>`;
+      html += dbResults.slice(0, 15).map(item => `
+        <div class="nutrition-result-row" onclick="selectNutritionItem('${item.id}')">
+          <div class="nutrition-result-name">🏠 ${item.name}</div>
+          <div class="nutrition-result-meta">
+            ${item.unit ? `<span>${item.unit}</span>` : ''}
+            <span>${item.nutrition?.kcal || item.kcal || 0}kcal</span>
+            ${item.nutrition?.carbs != null ? `<span>탄${item.nutrition.carbs}g</span>` : item.carbs != null ? `<span>탄${item.carbs}g</span>` : ''}
+            ${item.nutrition?.protein != null ? `<span>단${item.nutrition.protein}g</span>` : item.protein != null ? `<span>단${item.protein}g</span>` : ''}
+            ${item.nutrition?.fat != null ? `<span>지${item.nutrition.fat}g</span>` : item.fat != null ? `<span>지${item.fat}g</span>` : ''}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // CSV 결과
+    if (csvResults.length > 0) {
+      html += `<div style="font-size:12px;font-weight:600;color:var(--text);padding:12px 8px;border-bottom:1px solid var(--border);margin-top:8px">📊 CSV 검색 결과</div>`;
+      html += csvResults.slice(0, 15).map(item => `
+        <div class="nutrition-result-row" onclick="selectNutritionItem('${item.id}')">
+          <div class="nutrition-result-name">📊 ${item.name}</div>
+          <div class="nutrition-result-meta">
+            <span>${item.energy || 0}kcal</span>
+            ${item.carbs != null ? `<span>탄${item.carbs}g</span>` : ''}
+            ${item.protein != null ? `<span>단${item.protein}g</span>` : ''}
+            ${item.fat != null ? `<span>지${item.fat}g</span>` : ''}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    if (!recentFiltered.length && !dbResults.length && !csvResults.length) {
+      html = `<div style="font-size:12px;color:var(--muted);text-align:center;padding:16px">검색 결과 없음</div>`;
+    }
   }
-  container.innerHTML = results.map(item => `
-    <div class="nutrition-result-row" onclick="selectNutritionItem('${item.id}')">
-      <div class="nutrition-result-name">${item.name}</div>
-      <div class="nutrition-result-meta">
-        ${item.unit ? `<span>${item.unit}</span>` : ''}
-        <span>${item.kcal}kcal</span>
-        ${item.carbs  != null ? `<span>탄${item.carbs}g</span>`  : ''}
-        ${item.protein!= null ? `<span>단${item.protein}g</span>`:''}
-        ${item.fat    != null ? `<span>지${item.fat}g</span>`    : ''}
-      </div>
-    </div>
-  `).join('');
+
+  container.innerHTML = html;
 }
 
 function selectNutritionItem(itemId) {
-  const item = getNutritionDB().find(n => n.id === itemId);
+  // DB에서 찾기
+  let item = getNutritionDB().find(n => n.id === itemId);
+
+  // DB에 없으면 CSV에서 찾기
+  if (!item) {
+    const csvResults = searchCSVFood('');
+    item = csvResults.find(c => c.id === itemId);
+  }
+
   if (!item || !_nutritionSearchMeal) return;
 
   // 해당 식사 텍스트 필드에 이름 삽입
@@ -804,12 +899,15 @@ function selectNutritionItem(itemId) {
     mealInput.dispatchEvent(new Event('input'));
   }
 
-  // kcal 필드가 있으면 합산
+  // kcal 필드가 있으면 합산 (DB 또는 CSV 형식 모두 지원)
   const kcalInput = document.getElementById(`wt-kcal-${_nutritionSearchMeal}`);
-  if (kcalInput && item.kcal) {
-    const cur = parseFloat(kcalInput.value) || 0;
-    kcalInput.value = cur + item.kcal;
-    kcalInput.dispatchEvent(new Event('input'));
+  if (kcalInput) {
+    const kcal = item.nutrition?.kcal || item.kcal || item.energy || 0;
+    if (kcal) {
+      const cur = parseFloat(kcalInput.value) || 0;
+      kcalInput.value = cur + kcal;
+      kcalInput.dispatchEvent(new Event('input'));
+    }
   }
 
   document.getElementById('nutrition-search-modal').classList.remove('open');
