@@ -197,7 +197,7 @@ function _scheduleRow(year, m, days) {
     tracks.push([{ s, e }]); return tracks.length - 1;
   });
 
-  const totalH = Math.max(28, tracks.length * (BAR_H + BAR_GAP) + BAR_GAP);
+  const totalH = Math.max(112, tracks.length * (BAR_H + BAR_GAP) + BAR_GAP);
 
   const row = document.createElement('tr');
   const lbl = document.createElement('td');
@@ -316,7 +316,7 @@ function _scheduleRow(year, m, days) {
   const onUp = () => {
     if (!dragStart) return;
     clear();
-    if (dragEnd && dragStart !== dragEnd) {
+    if (dragEnd) {
       const s = dragStart <= dragEnd ? dragStart : dragEnd;
       const e = dragStart <= dragEnd ? dragEnd : dragStart;
       window.openCalEventModal(s, e, null);
