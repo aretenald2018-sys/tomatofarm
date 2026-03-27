@@ -1372,6 +1372,7 @@ window.fatsecretSearch           = fatsecretSearch;
 window.fatsecretSelectFoodById   = fatsecretSelectFoodById;
 window.fatsecretAddFood          = fatsecretAddFood;
 window.fatsecretBackToSearch     = fatsecretBackToSearch;
+window.wtAddFoodItem            = wtAddFoodItem;
 window.wtRemoveFoodItem         = wtRemoveFoodItem;
 
 // ── 모달 HTML 주입 ────────────────────────────────────────────────
