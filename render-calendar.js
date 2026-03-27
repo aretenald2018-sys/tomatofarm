@@ -214,8 +214,6 @@ function _scheduleRow(year, m, days) {
   for (let i = 0; i < N; i++) {
     const d = visibleDays[i];
     const td = document.createElement('td');
-    if (isBeforeStart(year, m, d)) { td.style.display = 'none'; row.appendChild(td); continue; }
-
     td.className = 'schedule-cell';
     td.dataset.date = dateKey(year, m, d);
     td.style.position = 'relative';
