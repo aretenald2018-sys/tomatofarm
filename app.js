@@ -518,11 +518,9 @@ async function saveCalEventFromModal() {
   const title    = document.getElementById('cal-event-title').value.trim();
   const start    = document.getElementById('cal-event-start').value;
   const end      = document.getElementById('cal-event-end').value;
-  const todayStr = dateKey(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
   if (!title) { alert('일정 이름을 입력해주세요.'); return; }
   if (!start || !end) { alert('기간을 입력해주세요.'); return; }
   if (end < start) { alert('종료일이 시작일보다 빠릅니다.'); return; }
-  if (start > todayStr) { alert('미래 날짜에는 일정을 추가할 수 없습니다.'); return; }
 
   const ev = {
     id:    _calEventId || `ev_${Date.now()}`,
