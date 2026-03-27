@@ -16,7 +16,11 @@
       "Bash(head -2 \"C:\\\\Users\\\\USER\\\\Desktop\\\\dashboard3-main\\(backup\\)\\\\public\\\\data\\\\foods.csv\")",
       "Bash(tail -30 \"C:\\\\Users\\\\USER\\\\Desktop\\\\dashboard3-main\\(backup\\)\\\\render-workout.js\")",
       "Bash(find \"C:\\\\Users\\\\USER\\\\Desktop\\\\dashboard3-main\\(backup\\)\" -name \"*nutrition*\" -o -name \"*db*\")",
-      "Bash(grep -E \"\\\\.\\(js|jsx\\)$\")"
+      "Bash(grep -E \"\\\\.\\(js|jsx\\)$\")",
+      "Bash(ls -la \"C:\\\\Users\\\\USER\\\\Desktop\\\\dashboard3-main\\(backup\\)\")",
+      "Bash(ls -la \"C:\\\\Users\\\\USER\\\\Desktop\\\\dashboard3-main\\(backup\\)\\\\.claude\")",
+      "Bash(gh repo:*)",
+      "Bash(gh run:*)"
     ]
   }
 }

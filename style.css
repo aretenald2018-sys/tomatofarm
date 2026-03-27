@@ -149,12 +149,17 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans KR',sans-seri
 .schedule-cell{min-width:34px;width:34px;height:34px;background:var(--surface);border:1px solid var(--border);border-radius:5px;cursor:pointer;position:relative;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;user-select:none;transition:background .1s,border-color .1s;}
 .schedule-cell:active{transform:scale(.91);}
 .schedule-cell.today-cell{border-style:dashed;border-color:var(--accent);border-width:1.5px;}
-.schedule-cell.future{opacity:.2;}
+.schedule-cell.future{}
 .schedule-cell.schedule-drag-highlight{background:rgba(245,158,11,.25)!important;border:1px solid #f59e0b;border-width:2px;}
 
 .schedule-event-bars{position:absolute;inset:0;}
 .schedule-event-bar{position:absolute;left:1px;right:1px;height:10px;border-radius:2px;font-size:6px;color:#fff;overflow:hidden;white-space:nowrap;padding:0 2px;display:flex;align-items:center;cursor:pointer;pointer-events:auto;opacity:.85;transition:opacity .1s;line-height:1;}
 .schedule-event-bar:hover{opacity:1;z-index:10;}
+
+/* ── 스케줄 이벤트 오버레이 (연속 바) ────────────────────── */
+.schedule-events-overlay{position:relative;width:100%;overflow:visible;margin-top:4px;}
+.schedule-event-bar-overlay{position:absolute;display:flex;align-items:center;overflow:hidden;cursor:pointer;transition:opacity .12s;-webkit-tap-highlight-color:transparent;border-radius:3px;font-size:8px;font-weight:600;color:#fff;padding:0 4px;white-space:nowrap;opacity:.88;}
+.schedule-event-bar-overlay:hover{opacity:1;z-index:10;}
 
 .sheet-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:500;display:none;align-items:flex-end;justify-content:center;}
 .sheet-overlay.open{display:flex;animation:fadeIn .15s ease;}
