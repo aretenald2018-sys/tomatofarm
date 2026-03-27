@@ -106,17 +106,17 @@ function _highlightScheduleDrag(year, m) {
   const startDate = dateKey(year, m, s);
   const endDate = dateKey(year, m, e);
 
-  const dragOverlay = document.createElement('div');
-  dragOverlay.className = 'schedule-drag-overlay-container';
-  dragOverlay.style.cssText = 'position:relative;width:100%;overflow:visible;';
-
   // 드래그 범위의 열 위치 계산
   const startCol = s;
   const endCol = e;
 
   const BAR_H = 12;
-  const pctL = ((startCol) / (days + 1)) * 100;
+  const pctL = (startCol / (days + 1)) * 100;
   const pctW = ((endCol - startCol + 1) / (days + 1)) * 100;
+
+  const dragOverlay = document.createElement('div');
+  dragOverlay.className = 'schedule-drag-overlay-container';
+  dragOverlay.style.cssText = `position:relative;width:100%;height:${BAR_H + 4}px;overflow:visible;margin-top:2px;`;
 
   const bar = document.createElement('div');
   bar.className = 'schedule-drag-bar';
@@ -128,7 +128,7 @@ function _highlightScheduleDrag(year, m) {
     `border:2px solid #f59e0b`,
     'position:absolute',
     'border-radius:3px',
-    'margin-top:2px',
+    'top:0',
   ].join(';');
 
   dragOverlay.appendChild(bar);
