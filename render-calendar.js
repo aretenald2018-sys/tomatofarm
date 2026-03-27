@@ -233,33 +233,38 @@ function _scheduleRow(year, m, days) {
       const idxS     = dayToIdx[cStart];
       const idxE     = dayToIdx[cEnd];
       if (idxS === undefined || idxE === undefined) return;
-      if (i < idxS || i > idxE) return;  // 이 셀에 걸치지 않음
+      if (i !== idxS) return;  // 시작 셀에서만 처리
 
       const track = evTracks[idx];
+      const span = idxE - idxS + 1;  // 일정이 이 달에 며칠 동안 이어지는지 계산
+
       const bar = document.createElement('div');
       bar.className = 'schedule-event-bar';
-      const isStart = i === idxS;
-      const isEnd   = i === idxE;
+
+      // 월을 넘어가는 일정일 경우 모서리를 직각으로 처리하기 위한 진짜 시작/종료 판별
+      const isRealStart = ev.start >= mStart;
+      const isRealEnd   = ev.end <= mEnd;
 
       bar.style.cssText = [
         `position:absolute`,
         `left:0`,
-        `width:100%`,
+        `width:calc(${span * 100}% + ${span}px)`,
         `top:${BAR_GAP + track * (BAR_H + BAR_GAP)}px`,
         `height:${BAR_H}px`,
         `background:${ev.color || '#f59e0b'}`,
-        `border-radius:${isStart?'4px':'0'} ${isEnd?'4px':'0'} ${isEnd?'4px':'0'} ${isStart?'4px':'0'}`,
+        `border-radius:${isRealStart ? '4px' : '0'} ${isRealEnd ? '4px' : '0'} ${isRealEnd ? '4px' : '0'} ${isRealStart ? '4px' : '0'}`,
         `pointer-events:auto`,
         `cursor:pointer`,
         `display:flex`,
         `align-items:center`,
         `overflow:hidden`,
         `transition:opacity .12s`,
+        `z-index:2`,
       ].join(';');
 
-      const prefix = !isStart && i === idxS ? '← ' : '';
-      const suffix = !isEnd && i === idxE ? ' →' : '';
-      bar.innerHTML = `<span class="event-bar-title">${prefix}${ev.title}${suffix}</span>`;
+      const prefix = !isRealStart ? '← ' : '';
+      const suffix = !isRealEnd ? ' →' : '';
+      bar.innerHTML = `<span class="event-bar-title" style="padding-left: 4px;">${prefix}${ev.title}${suffix}</span>`;
       bar.addEventListener('click', e => {
         e.stopPropagation();
         window.openCalEventModal(ev.start, ev.end, ev.id);
