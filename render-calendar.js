@@ -289,7 +289,11 @@ function _scheduleRow(year, m, days) {
       const lo = dragStart <= dragEnd ? dragStart : dragEnd;
       const hi = dragStart <= dragEnd ? dragEnd : dragStart;
       allCells.forEach(cell => {
-        cell.classList.toggle('drag-highlight', cell.dataset.date >= lo && cell.dataset.date <= hi);
+        if (cell.dataset.date >= lo && cell.dataset.date <= hi) {
+          cell.classList.add('drag-highlight');
+        } else {
+          cell.classList.remove('drag-highlight');
+        }
       });
     });
 
