@@ -843,15 +843,18 @@ function renderNutritionSearchResults() {
     if (recentFiltered.length > 0) {
       html += `<div style="font-size:12px;font-weight:600;color:var(--accent);padding:12px 8px;border-bottom:1px solid var(--border)">⭐ 즐겨찾기</div>`;
       html += recentFiltered.map(item => `
-        <div class="nutrition-result-row" onclick="selectNutritionItem('${item.id}')">
-          <div class="nutrition-result-name">🏠 ${item.name}</div>
-          <div class="nutrition-result-meta">
-            ${item.unit ? `<span>${item.unit}</span>` : ''}
-            <span>${item.nutrition?.kcal || item.kcal || 0}kcal</span>
-            ${item.nutrition?.carbs != null ? `<span>탄${item.nutrition.carbs}g</span>` : item.carbs != null ? `<span>탄${item.carbs}g</span>` : ''}
-            ${item.nutrition?.protein != null ? `<span>단${item.nutrition.protein}g</span>` : item.protein != null ? `<span>단${item.protein}g</span>` : ''}
-            ${item.nutrition?.fat != null ? `<span>지${item.nutrition.fat}g</span>` : item.fat != null ? `<span>지${item.fat}g</span>` : ''}
+        <div class="nutrition-result-row" style="position:relative">
+          <div onclick="selectNutritionItem('${item.id}')" style="cursor:pointer;flex:1">
+            <div class="nutrition-result-name">🏠 ${item.name}</div>
+            <div class="nutrition-result-meta">
+              ${item.unit ? `<span>${item.unit}</span>` : ''}
+              <span>${item.nutrition?.kcal || item.kcal || 0}kcal</span>
+              ${item.nutrition?.carbs != null ? `<span>탄${item.nutrition.carbs}g</span>` : item.carbs != null ? `<span>탄${item.carbs}g</span>` : ''}
+              ${item.nutrition?.protein != null ? `<span>단${item.nutrition.protein}g</span>` : item.protein != null ? `<span>단${item.protein}g</span>` : ''}
+              ${item.nutrition?.fat != null ? `<span>지${item.nutrition.fat}g</span>` : item.fat != null ? `<span>지${item.fat}g</span>` : ''}
+            </div>
           </div>
+          <button onclick="deleteNutritionItemAndRefresh('${item.id}')" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;padding:4px" title="삭제">✕</button>
         </div>
       `).join('');
     }
@@ -895,6 +898,16 @@ function renderNutritionSearchResults() {
   }
 
   container.innerHTML = html;
+}
+
+async function deleteNutritionItemAndRefresh(itemId) {
+  try {
+    await deleteNutritionItem(itemId);
+    renderNutritionSearchResults();
+    console.log('[영양검색] 항목 삭제 완료:', itemId);
+  } catch (e) {
+    console.error('[영양검색] 삭제 실패:', e);
+  }
 }
 
 function selectNutritionItem(itemId) {
@@ -1290,7 +1303,8 @@ window.deleteCheckinFromModal   = deleteCheckinFromModal;
 window.openNutritionSearch      = openNutritionSearch;
 window.closeNutritionSearch     = closeNutritionSearch;
 window.renderNutritionSearchResults = renderNutritionSearchResults;
-window.selectNutritionItem      = selectNutritionItem;
+window.selectNutritionItem           = selectNutritionItem;
+window.deleteNutritionItemAndRefresh = deleteNutritionItemAndRefresh;
 // 영양 DB 편집 (nutrition-item-modal.js에서 window에 이미 등록됨)
 // 추가로 필요한 식단 탭 함수
 window.openNutritionPhotoUpload = openNutritionPhotoUpload;
