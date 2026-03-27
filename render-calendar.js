@@ -281,7 +281,7 @@ function _scheduleRow(year, m, days) {
     const cell = el?.closest?.('.schedule-cell');
     if (!cell) return null;
     const d = cell.dataset.date;
-    return (d && !isFuture(year, m, parseInt(d.split('-')[2]))) ? d : null;
+    return d || null;
   }
 
   function highlight(s, e) {
