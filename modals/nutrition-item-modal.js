@@ -42,11 +42,19 @@ export const MODAL_HTML = `
     <!-- ═══ TAB 2: 사진 인식 ═══ -->
     <div class="ni-tab-content" id="ni-tab-content-photo">
       <div class="ex-editor-form">
-        <div class="ni-upload-zone" id="ni-photo-upload-zone" onclick="document.getElementById('ni-photo-input').click()">
-          <div style="font-size:40px;margin-bottom:8px">📷</div>
-          <div style="font-weight:500">사진을 클릭하여 선택</div>
-          <div style="font-size:12px;color:var(--muted);margin-top:4px">또는 드래그해서 놓기</div>
-          <input type="file" id="ni-photo-input" accept="image/*" style="display:none" onchange="handleNutritionPhotoSelect(event)">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+          <div class="ni-upload-zone" style="padding:20px 12px;cursor:pointer" onclick="document.getElementById('ni-photo-input').click()">
+            <div style="font-size:32px;margin-bottom:4px">🖼️</div>
+            <div style="font-weight:500;font-size:12px">갤러리</div>
+            <div style="font-size:10px;color:var(--muted)">저장된 사진</div>
+            <input type="file" id="ni-photo-input" accept="image/*" style="display:none" onchange="handleNutritionPhotoSelect(event)">
+          </div>
+          <div class="ni-upload-zone" style="padding:20px 12px;cursor:pointer" onclick="document.getElementById('ni-camera-input').click()">
+            <div style="font-size:32px;margin-bottom:4px">📸</div>
+            <div style="font-weight:500;font-size:12px">카메라</div>
+            <div style="font-size:10px;color:var(--muted)">지금 촬영</div>
+            <input type="file" id="ni-camera-input" accept="image/*;capture=environment" style="display:none" onchange="handleNutritionPhotoSelect(event)">
+          </div>
         </div>
         <div id="ni-photo-preview" style="display:none;margin-top:12px">
           <img id="ni-photo-img" style="max-width:100%;max-height:200px;border-radius:8px;margin-bottom:8px">
@@ -112,14 +120,30 @@ export const MODAL_HTML = `
 
 .ni-tab-btn {
   flex: 1;
-  padding: 10px;
+  padding: 12px 8px;
   border: none;
   background: transparent;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 12px;
   cursor: pointer;
   border-bottom: 2px solid transparent;
   transition: all 0.2s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+@media (max-width: 480px) {
+  .ni-tabs {
+    gap: 2px;
+    padding: 0 4px;
+  }
+
+  .ni-tab-btn {
+    padding: 10px 4px;
+    font-size: 11px;
+  }
 }
 
 .ni-tab-btn.active {
@@ -139,7 +163,7 @@ export const MODAL_HTML = `
 .ni-upload-zone {
   border: 2px dashed var(--border);
   border-radius: 8px;
-  padding: 40px 20px;
+  padding: 20px 16px;
   text-align: center;
   cursor: pointer;
   transition: all 0.2s;
@@ -153,6 +177,12 @@ export const MODAL_HTML = `
 .ni-upload-zone.dragover {
   border-color: var(--accent);
   background: var(--bg-secondary);
+}
+
+@media (max-width: 480px) {
+  .ni-upload-zone {
+    padding: 16px 12px;
+  }
 }
 
 #ni-photo-preview {
@@ -238,7 +268,12 @@ export async function handleNutritionPhotoSelect(event) {
     const img = document.getElementById('ni-photo-img');
     img.src = `data:image/jpeg;base64,${_niPhotoBase64}`;
     preview.style.display = 'block';
-    document.getElementById('ni-photo-upload-zone').style.display = 'none';
+
+    // 갤러리/카메라 버튼 숨기기
+    const uploadZones = document.querySelectorAll('.ni-tab-content.active .ni-upload-zone');
+    uploadZones.forEach(zone => {
+      if (zone.parentElement) zone.parentElement.style.display = 'none';
+    });
 
     // OCR 분석 시작
     _analyzeNutritionPhoto();
@@ -251,8 +286,15 @@ export function clearNutritionPhoto() {
   _niPhotoBase64 = null;
   _niParsedData = null;
   document.getElementById('ni-photo-input').value = '';
+  document.getElementById('ni-camera-input').value = '';
   document.getElementById('ni-photo-preview').style.display = 'none';
-  document.getElementById('ni-photo-upload-zone').style.display = 'block';
+
+  // 갤러리/카메라 버튼 영역 다시 표시
+  const uploadZone = document.querySelector('.ni-tab-content.active .ni-upload-zone:first-of-type');
+  if (uploadZone) {
+    uploadZone.parentElement.style.display = 'grid';
+  }
+
   document.getElementById('ni-photo-result').style.display = 'none';
 }
 
