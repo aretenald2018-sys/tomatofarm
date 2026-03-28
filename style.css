@@ -321,11 +321,24 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans KR',sans-seri
 .activity-status-row{display:flex;align-items:center;gap:8px;padding:8px 0;flex-wrap:wrap;}
 .activity-status-label{font-size:11px;font-weight:700;color:var(--muted2);min-width:72px;flex-shrink:0;}
 .activity-status-btns{display:flex;gap:5px;}
-.act-btn{padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--muted2);font-family:'Noto Sans KR',sans-serif;font-size:11px;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:all .12s;}
+.act-btn{padding:6px 12px;border-radius:6px;border:1.5px solid var(--border);background:var(--surface2);color:var(--text);font-family:'Noto Sans KR',sans-serif;font-size:11px;font-weight:500;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:all .12s;}
+.act-btn:hover{border-color:var(--muted);background:var(--surface3);}
 .act-btn:active{transform:scale(.95);}
-.act-btn#wt-gym-btn-done.active,.act-btn#wt-cf-btn-done.active{background:var(--gym-dim);border-color:var(--gym);color:var(--gym);}
-.act-btn#wt-gym-btn-skip.active,.act-btn#wt-cf-btn-skip.active{background:#1a1a1a;border-color:#4b5563;color:#6b7280;}
-.act-btn#wt-gym-btn-health.active,.act-btn#wt-cf-btn-health.active{background:#0a2010;border-color:#16a34a;color:#22c55e;}
+
+/* 헬스 완료 */
+.act-btn#wt-gym-btn-done.active{background:var(--gym-dim);border-color:var(--gym);color:var(--gym);box-shadow:0 0 8px rgba(249,115,22,0.3);font-weight:700;}
+/* 크로스핏 완료 */
+.act-btn#wt-cf-btn-done.active{background:var(--cf-dim);border-color:var(--cf);color:var(--cf);box-shadow:0 0 8px rgba(239,68,68,0.3);font-weight:700;}
+
+/* 헬스 미실시 */
+.act-btn#wt-gym-btn-skip.active{background:#1a1a1a;border-color:#4b5563;color:#9ca3af;box-shadow:0 0 8px rgba(75,85,99,0.3);font-weight:700;}
+/* 크로스핏 미실시 */
+.act-btn#wt-cf-btn-skip.active{background:#1a1a1a;border-color:#4b5563;color:#9ca3af;box-shadow:0 0 8px rgba(75,85,99,0.3);font-weight:700;}
+
+/* 헬스 건강이슈 */
+.act-btn#wt-gym-btn-health.active{background:#0a2010;border-color:#16a34a;color:#22c55e;box-shadow:0 0 8px rgba(34,197,94,0.3);font-weight:700;}
+/* 크로스핏 건강이슈 */
+.act-btn#wt-cf-btn-health.active{background:#0a2010;border-color:#16a34a;color:#22c55e;box-shadow:0 0 8px rgba(34,197,94,0.3);font-weight:700;}
 
 /* ── 스트레칭/와인프리 토글 ── */
 .extra-toggle-row{display:flex;gap:16px;padding:10px 0;border-top:1px solid var(--border);}

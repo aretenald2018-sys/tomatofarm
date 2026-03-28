@@ -99,10 +99,10 @@ function _gymRow(year, m, days) {
 
     if (gymHealth) {
       cell.classList.add('health-issue');
-      const ic = document.createElement('span'); ic.className='cell-icon health-cross'; ic.textContent='✚'; cell.appendChild(ic);
+      const ic = document.createElement('span'); ic.className='cell-icon health-cross'; ic.textContent='🏥'; cell.appendChild(ic);
     } else if (gymSkip) {
       cell.classList.add('skipped');
-      const ic = document.createElement('span'); ic.className='cell-icon'; ic.textContent='✗'; cell.appendChild(ic);
+      const ic = document.createElement('span'); ic.className='cell-icon'; ic.textContent='🚫'; cell.appendChild(ic);
     } else if (muscles.length) {
       cell.classList.add('gym-on');
       const ic = document.createElement('span'); ic.className='cell-icon'; ic.textContent='🏋️'; cell.appendChild(ic);
@@ -135,7 +135,7 @@ function _cfRow(year, m, days) {
       const ic = document.createElement('span'); ic.className='cell-icon health-cross'; ic.textContent='🏥'; cell.appendChild(ic);
     } else if (cfSkip) {
       cell.classList.add('skipped');
-      const ic = document.createElement('span'); ic.className='cell-icon'; ic.textContent='✗'; cell.appendChild(ic);
+      const ic = document.createElement('span'); ic.className='cell-icon'; ic.textContent='🚫'; cell.appendChild(ic);
     } else if (getCF(year, m, d)) {
       cell.classList.add('cf-on');
       const ic = document.createElement('span'); ic.className='cell-icon'; ic.textContent='🔥'; cell.appendChild(ic);
