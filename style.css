@@ -164,7 +164,9 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans KR',sans-seri
 .ex-block-header{display:flex;align-items:center;gap:6px;margin-bottom:4px;}
 .ex-block-muscle{font-size:10px;font-weight:700;flex-shrink:0;}
 .ex-block-name{font-size:13px;font-weight:500;color:var(--text);flex:1;}
-.ex-remove-btn{background:none;border:none;color:var(--muted);font-size:14px;cursor:pointer;padding:0 4px;-webkit-tap-highlight-color:transparent;}
+.ex-remove-btn{background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:4px 8px;margin-left:auto;-webkit-tap-highlight-color:transparent;border-radius:4px;transition:all .15s;flex-shrink:0;}
+.ex-remove-btn:hover{background:rgba(239,68,68,.1);color:#ef4444;}
+.ex-remove-btn:active{background:rgba(239,68,68,.2);transform:scale(.95);}
 .ex-last-hint{font-size:10px;color:var(--muted2);margin-bottom:8px;padding:5px 8px;background:rgba(245,158,11,.08);border-radius:4px;border-left:2px solid var(--accent);display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
 .ex-copy-btn{background:var(--surface3);border:1px solid var(--border);border-radius:4px;color:var(--muted2);font-size:10px;padding:2px 6px;cursor:pointer;-webkit-tap-highlight-color:transparent;margin-left:auto;}
 .ex-copy-btn:active{background:var(--border);}
