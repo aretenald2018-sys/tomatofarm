@@ -6,6 +6,7 @@ import { MONTHS, DAYS }                                          from './config.
 import { getMuscles, getCF, dietDayOk, getExList,
          daysInMonth, isToday, isFuture, isBeforeStart,
          getGymSkip, getGymHealth, getCFSkip, getCFHealth,
+         getBreakfastSkipped, getLunchSkipped, getDinnerSkipped,
          getEvents, dateKey }                                    from './data.js';
 import { MUSCLES }                                               from './config.js';
 
@@ -146,16 +147,51 @@ function _cfRow(year, m, days) {
 
 function _dietRow(year, m, days) {
   const row = document.createElement('tr');
-  const lbl = document.createElement('td'); lbl.className='row-label'; lbl.textContent='🥗 식단'; row.appendChild(lbl);
+  const lbl = document.createElement('td');
+  lbl.className='row-label';
+  lbl.textContent='🥗 식단';
+  row.appendChild(lbl);
+
   for (let d = 1; d <= days; d++) {
     const td = document.createElement('td');
-    if (isBeforeStart(year, m, d)) { td.style.display = 'none'; row.appendChild(td); continue; }
+    if (isBeforeStart(year, m, d)) {
+      td.style.display = 'none';
+      row.appendChild(td);
+      continue;
+    }
 
-    const dok  = dietDayOk(year, m, d);
+    const dok = dietDayOk(year, m, d);
     const cell = _makeCell(year, m, d);
-    if (dok === true)  { cell.classList.add('diet-ok');  const ic=document.createElement('span');ic.className='cell-icon';ic.textContent='✅';cell.appendChild(ic); }
-    if (dok === false) { cell.classList.add('diet-bad'); const ic=document.createElement('span');ic.className='cell-icon';ic.textContent='❌';cell.appendChild(ic); }
-    td.appendChild(cell); row.appendChild(td);
+
+    // 굶었음 상태 확인
+    const bSkipped = getBreakfastSkipped(year, m, d);
+    const lSkipped = getLunchSkipped(year, m, d);
+    const dSkipped = getDinnerSkipped(year, m, d);
+    const anySkipped = bSkipped || lSkipped || dSkipped;
+
+    // 표시 로직 (우선순위: 굶었음 -> 성공 -> 실패)
+    if (anySkipped) {
+      cell.classList.add('diet-skipped');
+      const ic = document.createElement('span');
+      ic.className='cell-icon';
+      ic.textContent='🚫';
+      cell.appendChild(ic);
+    } else if (dok === true) {
+      cell.classList.add('diet-ok');
+      const ic = document.createElement('span');
+      ic.className='cell-icon';
+      ic.textContent='✅';
+      cell.appendChild(ic);
+    } else if (dok === false) {
+      cell.classList.add('diet-bad');
+      const ic = document.createElement('span');
+      ic.className='cell-icon';
+      ic.textContent='❌';
+      cell.appendChild(ic);
+    }
+
+    td.appendChild(cell);
+    row.appendChild(td);
   }
   return row;
 }

@@ -432,14 +432,19 @@ export const getCF        = (y,m,d) => !!getDay(y,m,d).cf;
 export const getMemo      = (y,m,d) => getDay(y,m,d).memo || '';
 
 // ── 헬스/클핏 상태 (skip=의도적 안함, health=건강이슈) ─────────────
-export const getGymSkip   = (y,m,d) => !!getDay(y,m,d).gym_skip;
-export const getGymHealth = (y,m,d) => !!getDay(y,m,d).gym_health;
-export const getCFSkip    = (y,m,d) => !!getDay(y,m,d).cf_skip;
-export const getCFHealth  = (y,m,d) => !!getDay(y,m,d).cf_health;
+export const getGymSkip   = (y,m,d) => !!getDay(y,m,d)?.gym_skip;
+export const getGymHealth = (y,m,d) => !!getDay(y,m,d)?.gym_health;
+export const getCFSkip    = (y,m,d) => !!getDay(y,m,d)?.cf_skip;
+export const getCFHealth  = (y,m,d) => !!getDay(y,m,d)?.cf_health;
 
 // ── 스트레칭 / 와인프리데이 ───────────────────────────────────────
-export const getStretching = (y,m,d) => !!getDay(y,m,d).stretching;
-export const getWineFree   = (y,m,d) => !!getDay(y,m,d).wine_free;
+export const getStretching = (y,m,d) => !!getDay(y,m,d)?.stretching;
+export const getWineFree   = (y,m,d) => !!getDay(y,m,d)?.wine_free;
+
+// ── 식사 스킵(굶었음) 상태 ─────────────────────────────────────────
+export const getBreakfastSkipped = (y,m,d) => !!getDay(y,m,d)?.breakfast_skipped;
+export const getLunchSkipped     = (y,m,d) => !!getDay(y,m,d)?.lunch_skipped;
+export const getDinnerSkipped    = (y,m,d) => !!getDay(y,m,d)?.dinner_skipped;
 
 export const getDiet = (y,m,d) => {
   const r = getDay(y,m,d);
