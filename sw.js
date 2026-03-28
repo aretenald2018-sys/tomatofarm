@@ -2,7 +2,7 @@
 // Service Worker - PWA 오프라인 지원 및 캐싱
 // ================================================================
 
-const CACHE_VERSION = 'life-streak-v1';
+const CACHE_VERSION = 'life-streak-v2';
 const CACHE_URLS = [
   '/dashboard3/index.html',
   '/dashboard3/manifest.json',
