@@ -48,58 +48,24 @@ import {
   renderCooking, openCookingModal, closeCookingModal,
   saveCookingFromModal, deleteCookingFromModal, onCookingPhotoInput,
 } from './render-cooking.js';
+import { loadAndInjectModals } from './modal-manager.js';
 
-// ── 모달 HTML 동적 주입 ────────────────────────────────────────────
-import { MODAL_HTML as EX_PICKER_MODAL }     from './modals/ex-picker-modal.js';
-import { MODAL_HTML as EX_EDITOR_MODAL }     from './modals/ex-editor-modal.js';
-import { MODAL_HTML as GOAL_MODAL }          from './modals/goal-modal.js';
-import { MODAL_HTML as QUEST_MODAL }         from './modals/quest-modal.js';
-import { MODAL_HTML as QUEST_EDIT_MODAL }    from './modals/quest-edit-modal.js';
-import { MODAL_HTML as SECTION_TITLE_MODAL } from './modals/section-title-modal.js';
-import { MODAL_HTML as STOCK_PURCHASE_MODAL }from './modals/stock-purchase-modal.js';
-import { MODAL_HTML as EXPORT_MODAL }        from './modals/export-modal.js';
-import { MODAL_HTML as LOA_ADD_MODAL }       from './modals/loa-add-modal.js';
-import { MODAL_HTML as WINE_MODAL }          from './modals/wine-modal.js';
-import { MODAL_HTML as CAL_EVENT_MODAL }     from './modals/cal-event-modal.js';
-import { MODAL_HTML as COOKING_MODAL }       from './modals/cooking-modal.js';
-import { MODAL_HTML as SETTINGS_MODAL }      from './modals/settings-modal.js';
-import { MODAL_HTML as DIET_PLAN_MODAL }     from './modals/diet-plan-modal.js';
-import { MODAL_HTML as CHECKIN_MODAL }       from './modals/checkin-modal.js';
-import { MODAL_HTML as NUTRITION_SEARCH_MODAL }  from './modals/nutrition-search-modal.js';
-import { MODAL_HTML as NUTRITION_ITEM_MODAL }    from './modals/nutrition-item-modal.js';
-import { WEIGHT_MODAL_HTML as NUTRITION_WEIGHT_MODAL, openNutritionWeightModal, updateNutritionWeightPreview, closeNutritionWeightModal, confirmNutritionItemWithWeight } from './modals/nutrition-weight-modal.js';
-import { MODAL_HTML as FATSECRET_MODAL }     from './modals/fatsecret-modal.js';
+// ── 분리된 모달 핸들러 import ──────────────────────────────────
+import {
+  openGoalModal, closeGoalModal, toggleGoalCondition,
+  saveGoalFromModal, deleteGoalItem, analyzeGoalFeasibilityHandler
+} from './app-modal-goals.js';
+import {
+  openQuestModal, closeQuestModal, onQuestAutoChange,
+  saveQuestFromModal, openQuestEditModal, closeQuestEditModal,
+  saveQuestEdit, deleteQuestItem, toggleQuestCheck
+} from './app-modal-quests.js';
 
-// 모달 HTML을 DOM에 주입
-function injectModals() {
-  const container = document.getElementById('modals-container');
-  if (!container) return;
+// ── 모달 및 CSV 초기화 ───────────────────────────────────────────
+async function initializeApp() {
+  await loadAndInjectModals();
 
-  const modalsHTML = [
-    EX_PICKER_MODAL,
-    EX_EDITOR_MODAL,
-    GOAL_MODAL,
-    QUEST_MODAL,
-    QUEST_EDIT_MODAL,
-    SECTION_TITLE_MODAL,
-    STOCK_PURCHASE_MODAL,
-    EXPORT_MODAL,
-    LOA_ADD_MODAL,
-    WINE_MODAL,
-    CAL_EVENT_MODAL,
-    COOKING_MODAL,
-    SETTINGS_MODAL,
-    DIET_PLAN_MODAL,
-    CHECKIN_MODAL,
-    NUTRITION_SEARCH_MODAL,
-    NUTRITION_ITEM_MODAL,
-    NUTRITION_WEIGHT_MODAL,
-    FATSECRET_MODAL
-  ].join('\n');
-
-  container.innerHTML = modalsHTML;
-
-  // CSV 데이터 백그라운드 로드 (앱 시작 시)
+  // CSV 데이터 백그라운드 로드
   const isGithubPages = window.location.pathname.includes('/dashboard3/');
   const csvPath = isGithubPages
     ? '/dashboard3/public/data/foods.csv'
@@ -209,174 +175,7 @@ function _applyTabOrder(order) {
   });
 }
 
-// ── 목표 모달 ────────────────────────────────────────────────────
-function openGoalModal() {
-  document.getElementById('goal-label').value           = '';
-  document.getElementById('goal-dday').value            = '';
-  document.getElementById('goal-use-condition').checked = false;
-  document.getElementById('goal-condition-wrap').style.display = 'none';
-  document.getElementById('goal-workout-per-week').value = '';
-  document.getElementById('goal-diet-ok-pct').value     = '';
-  document.getElementById('goal-modal').classList.add('open');
-}
-
-function closeGoalModal(e) {
-  if (e && e.target !== document.getElementById('goal-modal')) return;
-  document.getElementById('goal-modal').classList.remove('open');
-}
-
-function toggleGoalCondition() {
-  const checked = document.getElementById('goal-use-condition').checked;
-  document.getElementById('goal-condition-wrap').style.display = checked ? 'block' : 'none';
-}
-
-async function saveGoalFromModal() {
-  const label = document.getElementById('goal-label').value.trim();
-  const dday  = document.getElementById('goal-dday').value;
-  if (!label) { alert('목표 이름을 입력해주세요.'); return; }
-
-  const useCondition = document.getElementById('goal-use-condition').checked;
-  const condition = useCondition ? {
-    workoutPerWeek: parseInt(document.getElementById('goal-workout-per-week').value) || null,
-    dietOkPct:      parseInt(document.getElementById('goal-diet-ok-pct').value)      || null,
-  } : null;
-
-  await saveGoal({ id:`goal_${Date.now()}`, label, dday:dday||null, condition, aiAnalysis:null });
-  document.getElementById('goal-modal').classList.remove('open');
-  renderAll();
-}
-
-async function deleteGoalItem(id) {
-  if (!confirm('목표를 삭제할까요?')) return;
-  await deleteGoal(id);
-  renderAll();
-}
-
-async function analyzeGoalFeasibilityHandler(id) {
-  const goal = getGoals().find(g => g.id === id);
-  if (!goal) return;
-  const btns = document.querySelectorAll(`[onclick="analyzeGoalFeasibility('${id}')"]`);
-  btns.forEach(b => { b.disabled=true; b.textContent='분석 중...'; });
-  try {
-    const result = await analyzeGoalFeasibility(goal);
-    await saveGoal({ ...goal, aiAnalysis: result });
-    renderAll();
-  } catch(e) {
-    alert('분석 실패: ' + e.message);
-    btns.forEach(b => { b.disabled=false; b.textContent='✨ AI 실현가능성 분석'; });
-  }
-}
-
-// ── 퀘스트 추가 모달 ─────────────────────────────────────────────
-// type: 'quarterly' | 'monthly' | 'weekly' | 'daily'
-function openQuestModal(type) {
-  const typeNames = { quarterly:'🌙 분기 퀘스트', monthly:'📆 월간 퀘스트', weekly:'📅 주간 퀘스트', daily:'☀️ 일간 퀘스트' };
-  document.getElementById('quest-modal-title').textContent = `📋 ${typeNames[type]||'퀘스트'} 추가`;
-  document.getElementById('quest-fixed-type').value = type;
-  document.getElementById('quest-title').value      = '';
-  document.getElementById('quest-target').value     = '1';
-  document.getElementById('quest-dday').value       = '';
-  document.getElementById('quest-auto').checked     = false;
-  document.getElementById('quest-auto-wrap').style.display    = 'none';
-  // 분기/월간만 D-day + 목표횟수 표시, 주간도 목표횟수 표시
-  const showDday   = type === 'quarterly' || type === 'monthly';
-  const showTarget = type !== 'daily';
-  document.getElementById('quest-dday-wrap').style.display   = showDday   ? 'block' : 'none';
-  document.getElementById('quest-target-wrap').style.display = showTarget ? 'block' : 'none';
-  document.getElementById('quest-modal').classList.add('open');
-}
-
-function closeQuestModal(e) {
-  if (e && e.target !== document.getElementById('quest-modal')) return;
-  document.getElementById('quest-modal').classList.remove('open');
-}
-
-function onQuestAutoChange() {
-  const checked = document.getElementById('quest-auto').checked;
-  document.getElementById('quest-auto-wrap').style.display = checked ? 'block' : 'none';
-}
-
-async function saveQuestFromModal() {
-  const title    = document.getElementById('quest-title').value.trim();
-  const type     = document.getElementById('quest-fixed-type').value;
-  const target   = type === 'daily' ? 1 : (parseInt(document.getElementById('quest-target').value) || 1);
-  const dday     = document.getElementById('quest-dday').value || null;
-  const isAuto   = document.getElementById('quest-auto').checked;
-  const autoType = document.getElementById('quest-auto-type')?.value || 'workout';
-
-  if (!title) { alert('퀘스트 이름을 입력해주세요.'); return; }
-
-  const today = new Date();
-  const registeredAt = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
-
-  await saveQuest({
-    id:           `quest_${Date.now()}`,
-    title, type, target,
-    dday:         dday,
-    registeredAt: registeredAt,
-    auto:         isAuto,
-    autoType:     isAuto ? autoType : null,
-    checks:       {},
-  });
-  document.getElementById('quest-modal').classList.remove('open');
-  renderAll();
-}
-
-// ── 퀘스트 편집 모달 ─────────────────────────────────────────────
-function openQuestEditModal(id) {
-  const quest = getQuests().find(q => q.id === id);
-  if (!quest) return;
-
-  document.getElementById('quest-edit-id').value      = id;
-  document.getElementById('quest-edit-title').value   = quest.title;
-  document.getElementById('quest-edit-target').value  = quest.target || 1;
-  document.getElementById('quest-edit-dday').value    = quest.dday || '';
-
-  const showDday   = quest.type === 'quarterly' || quest.type === 'monthly';
-  const showTarget = quest.type !== 'daily';
-  document.getElementById('quest-edit-dday-wrap').style.display   = showDday   ? 'block' : 'none';
-  document.getElementById('quest-edit-target-wrap').style.display = showTarget ? 'block' : 'none';
-
-  document.getElementById('quest-edit-modal').classList.add('open');
-}
-
-function closeQuestEditModal(e) {
-  if (e && e.target !== document.getElementById('quest-edit-modal')) return;
-  document.getElementById('quest-edit-modal').classList.remove('open');
-}
-
-async function saveQuestEdit() {
-  const id     = document.getElementById('quest-edit-id').value;
-  const title  = document.getElementById('quest-edit-title').value.trim();
-  const target = parseInt(document.getElementById('quest-edit-target').value) || 1;
-  const dday   = document.getElementById('quest-edit-dday').value || null;
-  if (!title) { alert('퀘스트 이름을 입력해주세요.'); return; }
-
-  const quest = getQuests().find(q => q.id === id);
-  if (!quest) return;
-
-  await saveQuest({ ...quest, title, target: quest.type === 'daily' ? 1 : target, dday });
-  document.getElementById('quest-edit-modal').classList.remove('open');
-  renderAll();
-}
-
-async function deleteQuestItem(id) {
-  if (!confirm('퀘스트를 삭제할까요?')) return;
-  await deleteQuest(id);
-  renderAll();
-}
-
-async function toggleQuestCheck(id) {
-  const quest = getQuests().find(q => q.id === id);
-  if (!quest || quest.auto) return;
-
-  const todayKey = dateKey(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
-  const checks   = { ...(quest.checks || {}) };
-  checks[todayKey] = !checks[todayKey];
-
-  await saveQuest({ ...quest, checks });
-  renderAll();
-}
+// ── 목표 및 퀨스트 모달 함수는 app-modal-*.js에서 import됨 ───────────────
 
 // ── 구역 제목 편집 ────────────────────────────────────────────────
 function editSectionTitle(key) {
@@ -606,12 +405,6 @@ async function _quickDeleteNutritionItem(id) {
   _renderNutritionDBList();
 }
 window._quickDeleteNutritionItem = _quickDeleteNutritionItem;
-
-// 중량 설정 모달 함수들을 window에 노출
-window.openNutritionWeightModal = openNutritionWeightModal;
-window.updateNutritionWeightPreview = updateNutritionWeightPreview;
-window.closeNutritionWeightModal = closeNutritionWeightModal;
-window.confirmNutritionItemWithWeight = confirmNutritionItemWithWeight;
 
 function closeSettingsModal(e) {
   if (e && e.target !== document.getElementById('settings-modal')) return;
@@ -1329,6 +1122,8 @@ init();
 _initDietInputButtons();
 
 // ── window 등록 ──────────────────────────────────────────────────
+window.renderAll                = renderAll;
+window.renderHome               = renderHome;
 window.switchTab                = switchTab;
 window.changeYear               = changeYear;
 window.changeMonthlyMonth       = changeMonthlyMonth;
@@ -1455,5 +1250,5 @@ window.fatsecretBackToSearch     = fatsecretBackToSearch;
 window.wtAddFoodItem            = wtAddFoodItem;
 window.wtRemoveFoodItem         = wtRemoveFoodItem;
 
-// ── 모달 HTML 주입 ────────────────────────────────────────────────
-window.addEventListener('load', injectModals);
+// ── 앱 초기화 ────────────────────────────────────────────────
+window.addEventListener('load', initializeApp);

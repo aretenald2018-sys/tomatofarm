@@ -55,6 +55,10 @@ let _settings = {
   weekly_memos:     {},
   tab_order:        DEFAULT_TAB_ORDER,
   diet_plan:        null,
+  streak_settings:  {
+    fontSizeMode: 'default',  // 'small' | 'default' | 'large'
+    cellWidthMode: 'default'  // 'small' | 'default' | 'large'
+  },
 };
 
 function _setSyncStatus(state) {
@@ -143,6 +147,7 @@ export async function loadAll() {
     _settings.weekly_memos   = fbMap.weekly_memos   ?? _migrateFromLS('weekly_memos',   {});
     _settings.tab_order      = fbMap.tab_order      ?? DEFAULT_TAB_ORDER;
     _settings.diet_plan      = fbMap.diet_plan      ?? null;
+    _settings.streak_settings= fbMap.streak_settings ?? { fontSizeMode: 'default', cellWidthMode: 'default' };
     if (_settings.diet_plan) Object.assign(_dietPlan, _settings.diet_plan);
 
     // localStorage 데이터를 Firebase로 마이그레이션 (최초 1회)
@@ -591,6 +596,23 @@ export const isBeforeStart = (y,m,d) => {
   return t.getTime() < start.getTime();
 };
 
+// ── Streak Settings ────────────────────────────────────────────────
+export const getStreakSettings = () => _settings.streak_settings || {
+  fontSizeMode: 'default',
+  cellWidthMode: 'default'
+};
+
+export async function saveStreakSettings(key, value) {
+  if (!_settings.streak_settings) {
+    _settings.streak_settings = {
+      fontSizeMode: 'default',
+      cellWidthMode: 'default'
+    };
+  }
+  _settings.streak_settings[key] = value;
+  await _saveSetting('streak_settings', _settings.streak_settings);
+}
+
 function _sortExList(list) {
   const mOrder = MUSCLES.map(m => m.id);
   return list.sort((a,b) => {
@@ -598,3 +620,7 @@ function _sortExList(list) {
     return mi !== 0 ? mi : (a.order||99) - (b.order||99);
   });
 }
+
+// ── Window 전역 노출 (UI에서 직접 접근 가능) ────────────────────────
+window.getStreakSettings = getStreakSettings;
+window.saveStreakSettings = saveStreakSettings;

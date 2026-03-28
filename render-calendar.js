@@ -7,7 +7,7 @@ import { getMuscles, getCF, dietDayOk, getExList,
          daysInMonth, isToday, isFuture, isBeforeStart,
          getGymSkip, getGymHealth, getCFSkip, getCFHealth,
          getBreakfastSkipped, getLunchSkipped, getDinnerSkipped,
-         getEvents, dateKey }                                    from './data.js';
+         getEvents, dateKey, getStreakSettings }                 from './data.js';
 import { MUSCLES }                                               from './config.js';
 
 let _currentYear = new Date().getFullYear();
@@ -52,6 +52,7 @@ export function renderCalendar() {
 
     sec.appendChild(wrap); cal.appendChild(sec);
   }
+  _applyStreakSettings();
 }
 
 // ── 내부 빌더 ─────────────────────────────────────────────────────
@@ -363,4 +364,52 @@ function _scheduleRow(year, m, days) {
   document.addEventListener('mouseup', onUp);
 
   return row;
+}
+
+// ── Streak 설정 적용 ──────────────────────────────────────────────
+function _applyStreakSettings() {
+  const settings = getStreakSettings();
+
+  // 폰트 사이즈 맵핑
+  const fontSizeMap = {
+    'small': '8px',
+    'default': '10px',
+    'large': '12px'
+  };
+
+  // 셀 너비 맵핑
+  const cellWidthMap = {
+    'small': '28px',
+    'default': '34px',
+    'large': '42px'
+  };
+
+  const fontSize = fontSizeMap[settings.fontSizeMode] || fontSizeMap['default'];
+  const cellWidth = cellWidthMap[settings.cellWidthMode] || cellWidthMap['default'];
+
+  // 이벤트 바 제목 폰트 사이즈 적용
+  const eventBarTitles = document.querySelectorAll('.event-bar-title');
+  eventBarTitles.forEach(el => {
+    el.style.fontSize = fontSize;
+  });
+
+  // 셀 너비 적용
+  const gridTables = document.querySelectorAll('.grid-table');
+  gridTables.forEach(table => {
+    // th 요소들의 너비 수정
+    const ths = table.querySelectorAll('th');
+    ths.forEach(th => {
+      th.style.minWidth = cellWidth;
+      th.style.width = cellWidth;
+    });
+
+    // td 셀들의 너비 수정
+    const cells = table.querySelectorAll('.cell');
+    cells.forEach(cell => {
+      cell.style.minWidth = cellWidth;
+      cell.style.width = cellWidth;
+      // 높이도 함께 조정하여 정사각형 유지
+      cell.style.height = cellWidth;
+    });
+  });
 }

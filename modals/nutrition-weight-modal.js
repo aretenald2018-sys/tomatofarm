@@ -164,3 +164,9 @@ export function confirmNutritionItemWithWeight() {
   // 검색 모달 닫기
   document.getElementById('nutrition-search-modal').classList.remove('open');
 }
+
+// ── 전역 window 등록 ──────────────────────────────────────────
+window.openNutritionWeightModal = openNutritionWeightModal;
+window.updateNutritionWeightPreview = updateNutritionWeightPreview;
+window.closeNutritionWeightModal = closeNutritionWeightModal;
+window.confirmNutritionItemWithWeight = confirmNutritionItemWithWeight;
