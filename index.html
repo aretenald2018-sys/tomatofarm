@@ -3,7 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="description" content="일일 운동, 식단, 건강을 추적하고 관리하는 개인 대시보드 앱">
+<meta name="theme-color" content="#1a1a1a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Life Streak">
 <title>Life Streak</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%231a1a1a' width='192' height='192'/><text x='50%' y='50%' font-size='80' font-weight='bold' fill='%23ffaa00' text-anchor='middle' dominant-baseline='central'>📊</text></svg>">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 </head>
@@ -483,6 +490,49 @@ async function saveStreakSettingsAndClose() {
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script type="module" src="app.js"></script>
+
+<!-- PWA Service Worker 등록 -->
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js')
+      .then(registration => {
+        console.log('[PWA] Service Worker 등록 성공:', registration);
+
+        // 업데이트 확인
+        registration.addEventListener('updatefound', () => {
+          const newWorker = registration.installing;
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              console.log('[PWA] 새로운 버전이 준비되었습니다. 페이지를 새로고침하세요.');
+              // 사용자에게 업데이트 알림 (선택)
+              // alert('앱이 업데이트되었습니다. 페이지를 새로고침하세요.');
+            }
+          });
+        });
+      })
+      .catch(error => {
+        console.error('[PWA] Service Worker 등록 실패:', error);
+      });
+  });
+}
+
+// 설치 프롬프트 처리 (PWA 설치 버튼)
+let deferredPrompt;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  console.log('[PWA] 설치 준비 완료');
+
+  // "앱 설치" 버튼을 UI에 표시하고 싶다면 여기서 처리
+  // showInstallButton();
+});
+
+window.addEventListener('appinstalled', () => {
+  console.log('[PWA] 앱이 설치되었습니다');
+  deferredPrompt = null;
+});
+</script>
 </body>
 </html>
 
