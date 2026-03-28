@@ -1,5 +1,5 @@
 export const MODAL_HTML = `
-<div class="modal-overlay" id="ex-editor-modal" onclick="closeExerciseEditor(event)">
+<div class="modal-overlay" id="ex-editor-modal" onclick="wtCloseExerciseEditor(event)">
 <div class="modal-sheet">
 <div class="sheet-handle"></div>
 <div class="modal-title" id="ex-editor-title">종목 추가 및 편집</div>
@@ -7,10 +7,10 @@ export const MODAL_HTML = `
 <div><div class="ex-editor-label">타겟 부위</div><select class="ex-editor-select" id="ex-editor-muscle"></select></div>
 <div><div class="ex-editor-label">종목 이름</div><input class="ex-editor-input" id="ex-editor-name" placeholder="예: 케이블 로우, 스쿼트"></div>
 <div class="ex-editor-actions">
-<button class="ex-editor-cancel" onclick="closeExerciseEditor()">취소</button>
-<button class="ex-editor-save"   onclick="saveExerciseFromEditor()">저장</button>
+<button class="ex-editor-cancel" onclick="wtCloseExerciseEditor()">취소</button>
+<button class="ex-editor-save"   onclick="wtSaveExerciseFromEditor()">저장</button>
 </div>
-<button class="ex-editor-delete" id="ex-editor-delete" onclick="deleteExerciseFromEditor()">🗑️ 종목 삭제</button>
+<button class="ex-editor-delete" id="ex-editor-delete" onclick="wtDeleteExerciseFromEditor()">🗑️ 종목 삭제</button>
 </div>
 </div>
 </div>
