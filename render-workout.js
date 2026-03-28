@@ -141,11 +141,13 @@ export function wtSetCFStatus(status) {
 export function wtToggleStretching() {
   _stretching = !_stretching;
   _renderStretchingToggle();
+  saveWorkoutDay().catch(e => console.error('Save error:', e));
 }
 
 export function wtToggleWineFree() {
   _wineFree = !_wineFree;
   _renderWineFreeToggle();
+  saveWorkoutDay().catch(e => console.error('Save error:', e));
 }
 
 export function wtToggleMealSkipped(meal) {
@@ -161,6 +163,7 @@ export function wtToggleMealSkipped(meal) {
   }
   _renderMealSkippedToggles();
   _renderDietResults();
+  _renderCalorieTracker();
   saveWorkoutDay().catch(e => console.error('Save error:', e));
 }
 
@@ -309,6 +312,17 @@ export async function saveWorkoutDay() {
   const btn = document.getElementById('wt-save-btn');
   if (btn) { btn.disabled = true; btn.textContent = '저장 중...'; }
 
+  // 🎯 [신규 추가] 오늘의 목표 칼로리 vs 실제 섭취 칼로리 비교
+  const plan = getDietPlan();
+  const metrics = calcDietMetrics(plan);
+  const dow = new Date(y, m, d).getDay();
+  const isRefeed = (plan.refeedDays || []).includes(dow);
+  const dayTarget = isRefeed ? metrics.refeed.kcal : metrics.deficit.kcal;
+  const totalKcal = (_diet.bKcal||0) + (_diet.lKcal||0) + (_diet.dKcal||0) + (_diet.sKcal||0);
+
+  // 총 칼로리가 0보다 크고, 목표 칼로리의 +50kcal 이내로 방어했다면 '식단 성공'으로 판정
+  const isDietSuccess = (totalKcal > 0) && (totalKcal <= dayTarget + 50);
+
   await saveDay(dateKey(y, m, d), {
     exercises:  cleanEx,
     cf:         _cfStatus === 'done',
@@ -326,7 +340,8 @@ export async function saveWorkoutDay() {
     lunch:      _diet.lunch,
     dinner:     _diet.dinner,
     snack:      _diet.snack,
-    bOk:_diet.bOk,   lOk:_diet.lOk,   dOk:_diet.dOk,   sOk:_diet.sOk,
+    // 🎯 [핵심] 클로드 결과를 칼로리 성공 여부(isDietSuccess)로 강제 덮어쓰기
+    bOk:isDietSuccess,   lOk:isDietSuccess,   dOk:isDietSuccess,   sOk:isDietSuccess,
     bKcal:_diet.bKcal, lKcal:_diet.lKcal, dKcal:_diet.dKcal, sKcal:_diet.sKcal,
     bReason:_diet.bReason, lReason:_diet.lReason, dReason:_diet.dReason, sReason:_diet.sReason,
     bProtein:_diet.bProtein, bCarbs:_diet.bCarbs, bFat:_diet.bFat,
@@ -386,51 +401,30 @@ function _renderMealSkippedToggles() {
   document.getElementById('wt-dinner-skipped')?.classList.toggle('active', _dinnerSkipped);
 }
 
+let _eventsBound = false;
 function _initButtonEventListeners() {
-  // 헬스장 상태 버튼 이벤트 리스너
-  ['done','skip','health'].forEach(s => {
-    const btn = document.getElementById(`wt-gym-btn-${s}`);
-    if (btn) {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        wtSetGymStatus(s);
-      });
-    }
-  });
+  if (_eventsBound) return; // 중복 바인딩 방지
+  _eventsBound = true;
 
-  // 크로스핏 상태 버튼 이벤트 리스너
-  ['done','skip','health'].forEach(s => {
-    const btn = document.getElementById(`wt-cf-btn-${s}`);
-    if (btn) {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        wtSetCFStatus(s);
-      });
-    }
-  });
+  // 이벤트 위임: 문서 전체에서 클릭을 감지하여 타겟을 찾아 실행
+  document.addEventListener('click', (e) => {
+    const target = e.target;
 
-  // 굶은 상태 토글 버튼 이벤트 리스너
-  const breakfastBtn = document.getElementById('wt-breakfast-skipped');
-  if (breakfastBtn) {
-    breakfastBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      wtToggleMealSkipped('breakfast');
-    });
-  }
-  const lunchBtn = document.getElementById('wt-lunch-skipped');
-  if (lunchBtn) {
-    lunchBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      wtToggleMealSkipped('lunch');
-    });
-  }
-  const dinnerBtn = document.getElementById('wt-dinner-skipped');
-  if (dinnerBtn) {
-    dinnerBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      wtToggleMealSkipped('dinner');
-    });
-  }
+    // 🏋️ 헬스장 상태 버튼
+    if (target.closest('#wt-gym-btn-done')) { e.stopPropagation(); wtSetGymStatus('done'); }
+    else if (target.closest('#wt-gym-btn-skip')) { e.stopPropagation(); wtSetGymStatus('skip'); }
+    else if (target.closest('#wt-gym-btn-health')) { e.stopPropagation(); wtSetGymStatus('health'); }
+
+    // 🔥 크로스핏 상태 버튼
+    else if (target.closest('#wt-cf-btn-done')) { e.stopPropagation(); wtSetCFStatus('done'); }
+    else if (target.closest('#wt-cf-btn-skip')) { e.stopPropagation(); wtSetCFStatus('skip'); }
+    else if (target.closest('#wt-cf-btn-health')) { e.stopPropagation(); wtSetCFStatus('health'); }
+
+    // 🚫 굶었음 상태 토글 버튼
+    else if (target.closest('#wt-breakfast-skipped')) { e.stopPropagation(); wtToggleMealSkipped('breakfast'); }
+    else if (target.closest('#wt-lunch-skipped')) { e.stopPropagation(); wtToggleMealSkipped('lunch'); }
+    else if (target.closest('#wt-dinner-skipped')) { e.stopPropagation(); wtToggleMealSkipped('dinner'); }
+  });
 }
 
 function _renderExerciseList() {
@@ -733,6 +727,17 @@ async function _autoSaveDiet() {
 
   console.log('[render-workout] 식단 자동 저장 시작:', { dateKey: dateKey(y, m, d), foods: { b: _diet.bFoods?.length || 0, l: _diet.lFoods?.length || 0, d: _diet.dFoods?.length || 0 } });
 
+  // 🎯 [신규 추가] 오늘의 목표 칼로리 vs 실제 섭취 칼로리 비교
+  const plan = getDietPlan();
+  const metrics = calcDietMetrics(plan);
+  const dow = new Date(y, m, d).getDay();
+  const isRefeed = (plan.refeedDays || []).includes(dow);
+  const dayTarget = isRefeed ? metrics.refeed.kcal : metrics.deficit.kcal;
+  const totalKcal = (_diet.bKcal||0) + (_diet.lKcal||0) + (_diet.dKcal||0) + (_diet.sKcal||0);
+
+  // 총 칼로리가 0보다 크고, 목표 칼로리의 +50kcal 이내로 방어했다면 '식단 성공'으로 판정
+  const isDietSuccess = (totalKcal > 0) && (totalKcal <= dayTarget + 50);
+
   try {
     await saveDay(dateKey(y, m, d), {
       exercises:  cleanEx,
@@ -751,7 +756,8 @@ async function _autoSaveDiet() {
       lunch:      _diet.lunch,
       dinner:     _diet.dinner,
       snack:      _diet.snack,
-      bOk:_diet.bOk,   lOk:_diet.lOk,   dOk:_diet.dOk,   sOk:_diet.sOk,
+      // 🎯 [핵심] 클로드 결과를 칼로리 성공 여부(isDietSuccess)로 강제 덮어쓰기
+      bOk:isDietSuccess,   lOk:isDietSuccess,   dOk:isDietSuccess,   sOk:isDietSuccess,
       bKcal:_diet.bKcal, lKcal:_diet.lKcal, dKcal:_diet.dKcal, sKcal:_diet.sKcal,
       bReason:_diet.bReason, lReason:_diet.lReason, dReason:_diet.dReason, sReason:_diet.sReason,
       bProtein:_diet.bProtein, bCarbs:_diet.bCarbs, bFat:_diet.bFat,
@@ -780,3 +786,9 @@ export function openNutritionPhotoUpload() {
     }, 100);
   }
 }
+
+// 전역(window) 객체에 함수 노출시켜 연결고리 복구
+window.wtSetGymStatus = wtSetGymStatus;
+window.wtSetCFStatus = wtSetCFStatus;
+window.wtToggleMealSkipped = wtToggleMealSkipped;
+window.saveWorkoutDay = saveWorkoutDay;
