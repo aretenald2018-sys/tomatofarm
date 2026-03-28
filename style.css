@@ -138,7 +138,7 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans KR',sans-seri
 .cell.today-cell{border-style:dashed;border-color:var(--accent);border-width:1.5px;}
 .cell.future{opacity:.2;pointer-events:none;}
 .cell-icon{font-size:14px;display:none;}
-.cell.gym-on .cell-icon,.cell.cf-on .cell-icon,.cell.diet-ok .cell-icon,.cell.diet-bad .cell-icon{display:block;}
+.cell.gym-on .cell-icon,.cell.cf-on .cell-icon,.cell.diet-ok .cell-icon,.cell.diet-bad .cell-icon,.cell.skipped .cell-icon,.cell.health-issue .cell-icon,.cell.diet-skipped .cell-icon{display:block;}
 .day-num{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);position:absolute;top:2px;left:3px;line-height:1;}
 .cell.gym-on .day-num{color:var(--gym);opacity:.7;}.cell.cf-on .day-num{color:var(--cf);opacity:.7;}
 .cell.diet-ok .day-num{color:var(--diet-ok);opacity:.7;}.cell.diet-bad .day-num{color:var(--diet-bad);opacity:.7;}
@@ -323,9 +323,9 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans KR',sans-seri
 .activity-status-btns{display:flex;gap:5px;}
 .act-btn{padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--muted2);font-family:'Noto Sans KR',sans-serif;font-size:11px;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:all .12s;}
 .act-btn:active{transform:scale(.95);}
-.act-btn#gym-btn-done.active,.act-btn#cf-btn-done.active{background:var(--gym-dim);border-color:var(--gym);color:var(--gym);}
-.act-btn#gym-btn-skip.active,.act-btn#cf-btn-skip.active{background:#1a1a1a;border-color:#4b5563;color:#6b7280;}
-.act-btn#gym-btn-health.active,.act-btn#cf-btn-health.active{background:#0a2010;border-color:#16a34a;color:#22c55e;}
+.act-btn#wt-gym-btn-done.active,.act-btn#wt-cf-btn-done.active{background:var(--gym-dim);border-color:var(--gym);color:var(--gym);}
+.act-btn#wt-gym-btn-skip.active,.act-btn#wt-cf-btn-skip.active{background:#1a1a1a;border-color:#4b5563;color:#6b7280;}
+.act-btn#wt-gym-btn-health.active,.act-btn#wt-cf-btn-health.active{background:#0a2010;border-color:#16a34a;color:#22c55e;}
 
 /* ── 스트레칭/와인프리 토글 ── */
 .extra-toggle-row{display:flex;gap:16px;padding:10px 0;border-top:1px solid var(--border);}
@@ -346,6 +346,8 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans KR',sans-seri
 .cell.health-issue .day-num{color:#22c55e;opacity:.7;}
 .cell.skipped{background:#1a1a1a;border-color:#374151;}
 .cell.skipped .day-num{color:#6b7280;opacity:.7;}
+.cell.diet-skipped{background:rgba(245,158,11,.08);border-color:var(--accent);}
+.cell.diet-skipped .day-num{color:var(--accent);opacity:.7;}
 .cell-icon.health-cross{color:#22c55e;font-size:14px;}
 .legend-health{width:10px;height:10px;border-radius:2px;background:#0a2010;border:1px solid #16a34a;flex-shrink:0;}
 

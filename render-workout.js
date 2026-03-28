@@ -94,8 +94,7 @@ export function loadWorkoutDate(y, m, d) {
 
   const analyzeBtn = document.getElementById('wt-analyze-btn');
   if (analyzeBtn) {
-    const hasResult = _diet.bOk !== null || _diet.lOk !== null || _diet.dOk !== null;
-    analyzeBtn.textContent = hasResult ? '🔄 재분석하기' : '🔍 Claude로 식단 분석하기 (선택)';
+    analyzeBtn.style.display = 'none';  // Claude 분석 버튼 숨김
   }
 
   // 미래 날짜면 입력 비활성화
@@ -152,12 +151,16 @@ export function wtToggleWineFree() {
 export function wtToggleMealSkipped(meal) {
   if (meal === 'breakfast') {
     _breakfastSkipped = !_breakfastSkipped;
+    if (_breakfastSkipped) { _diet.bKcal = 0; _diet.bOk = null; }
   } else if (meal === 'lunch') {
     _lunchSkipped = !_lunchSkipped;
+    if (_lunchSkipped) { _diet.lKcal = 0; _diet.lOk = null; }
   } else if (meal === 'dinner') {
     _dinnerSkipped = !_dinnerSkipped;
+    if (_dinnerSkipped) { _diet.dKcal = 0; _diet.dOk = null; }
   }
   _renderMealSkippedToggles();
+  _renderDietResults();
   saveWorkoutDay().catch(e => console.error('Save error:', e));
 }
 

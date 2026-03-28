@@ -174,7 +174,8 @@ export async function saveDay(key, data) {
     !data.breakfast && !data.lunch && !data.dinner &&
     !data.gym_skip && !data.gym_health &&
     !data.cf_skip  && !data.cf_health &&
-    !data.stretching && !data.wine_free
+    !data.stretching && !data.wine_free &&
+    !data.breakfast_skipped && !data.lunch_skipped && !data.dinner_skipped
   );
   try {
     if (isEmpty) { delete _cache[key]; await deleteDoc(doc(db, 'workouts', key)); }
@@ -458,8 +459,18 @@ export const getDiet = (y,m,d) => {
 
 export const dietDayOk = (y,m,d) => {
   const dt = getDiet(y,m,d);
-  if (!dt.breakfast && !dt.lunch && !dt.dinner) return null;
-  return dt.bOk !== false && dt.lOk !== false && dt.dOk !== false;
+  const bSkip = getBreakfastSkipped(y,m,d);
+  const lSkip = getLunchSkipped(y,m,d);
+  const dSkip = getDinnerSkipped(y,m,d);
+
+  // 아무 식사 기록 없으면 null
+  if (!dt.breakfast && !dt.lunch && !dt.dinner && !bSkip && !lSkip && !dSkip) return null;
+
+  // 칼로리 충족으로 판정 (각 식사마다 0 이상이면 입력된 것으로 간주)
+  const bOk = bSkip || dt.bKcal > 0;
+  const lOk = lSkip || dt.lKcal > 0;
+  const dOk = dSkip || dt.dKcal > 0;
+  return bOk && lOk && dOk;
 };
 
 export const calcVolume = (sets) =>

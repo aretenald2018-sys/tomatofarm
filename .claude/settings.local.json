@@ -22,7 +22,11 @@
       "Bash(gh repo:*)",
       "Bash(gh run:*)",
       "Bash(tail -50 \"/c/Users/USER/Desktop/dashboard3-main\\(backup\\)/index.html\")",
-      "Bash(wc -l \"/c/Users/USER/Desktop/dashboard3-main\\(backup\\)/render-calendar.js\")"
+      "Bash(wc -l \"/c/Users/USER/Desktop/dashboard3-main\\(backup\\)/render-calendar.js\")",
+      "Bash(cd /c/Users/USER/Desktop/dashboard3-main\\\\\\(backup\\\\\\))",
+      "Bash(grep -n \"openCalEventModal\" *.js)",
+      "WebFetch(domain:github.com)",
+      "Bash(wc -l \"C:\\\\Users\\\\USER\\\\Desktop\\\\dashboard3-main\\(backup\\)\\\\render-workout.js\")"
     ]
   }
 }
