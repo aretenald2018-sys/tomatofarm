@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Life Streak">
 <title>Life Streak</title>
-<link rel="manifest" href="/dashboard3/manifest.json">
+<link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%231a1a1a' width='192' height='192'/><text x='50%' y='50%' font-size='80' font-weight='bold' fill='%23ffaa00' text-anchor='middle' dominant-baseline='central'>📊</text></svg>">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
@@ -495,7 +495,7 @@ async function saveStreakSettingsAndClose() {
 <script>
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/dashboard3/sw.js')
+    navigator.serviceWorker.register('sw.js', { scope: '/dashboard3/' })
       .then(registration => {
         console.log('[PWA] Service Worker 등록 성공:', registration);
 
