@@ -523,8 +523,25 @@ function _renderPickerList() {
       const btn = document.createElement('button');
       btn.className = 'ex-picker-item' + (alreadyAdded ? ' already' : '');
       btn.innerHTML = `<span>${ex.name}${alreadyAdded?' ✓':''}</span>
-        <span class="ex-picker-edit" data-exid="${ex.id}">✏️</span>`;
-      btn.querySelector('.ex-picker-edit').addEventListener('click', e => { e.stopPropagation(); wtOpenExerciseEditor(ex.id, null); });
+        <div class="ex-picker-actions">
+          <span class="ex-picker-edit" data-exid="${ex.id}">✏️</span>
+          <span class="ex-picker-delete" data-exid="${ex.id}">✕</span>
+        </div>`;
+
+      // 편집 버튼
+      btn.querySelector('.ex-picker-edit').addEventListener('click', e => {
+        e.stopPropagation();
+        wtOpenExerciseEditor(ex.id, null);
+      });
+
+      // 삭제 버튼
+      btn.querySelector('.ex-picker-delete').addEventListener('click', e => {
+        e.stopPropagation();
+        if (confirm(`"${ex.name}"을 삭제하시겠어요?`)) {
+          deleteExercise(ex.id).then(() => _renderPickerList());
+        }
+      });
+
       if (!alreadyAdded) {
         btn.addEventListener('click', () => {
           _exercises.push({ muscleId:ex.muscleId, exerciseId:ex.id, sets:[{kg:0,reps:0,setType:'main',done:false}] });

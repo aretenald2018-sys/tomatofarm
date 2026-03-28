@@ -218,7 +218,11 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans KR',sans-seri
 .ex-picker-item{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:'Noto Sans KR',sans-serif;font-size:13px;cursor:pointer;text-align:left;margin-bottom:4px;display:flex;align-items:center;justify-content:space-between;-webkit-tap-highlight-color:transparent;transition:all .1s;}
 .ex-picker-item:active{background:var(--surface3);}
 .ex-picker-item.already{opacity:.5;cursor:default;}
-.ex-picker-edit{font-size:14px;padding:2px 4px;color:var(--muted);}
+.ex-picker-actions{display:flex;align-items:center;gap:6px;margin-left:8px;flex-shrink:0;}
+.ex-picker-edit{font-size:14px;padding:4px 6px;color:var(--muted);cursor:pointer;border-radius:4px;transition:all .1s;}
+.ex-picker-edit:hover{background:rgba(59,130,246,.1);color:#3b82f6;}
+.ex-picker-delete{font-size:16px;padding:4px 6px;color:var(--muted);cursor:pointer;border-radius:4px;transition:all .1s;}
+.ex-picker-delete:hover{background:rgba(239,68,68,.1);color:#ef4444;}
 .ex-picker-add{width:100%;background:none;border:1px dashed var(--border);border-radius:8px;padding:8px 12px;color:var(--muted);font-family:'Noto Sans KR',sans-serif;font-size:12px;cursor:pointer;text-align:left;margin-bottom:4px;-webkit-tap-highlight-color:transparent;transition:all .1s;}
 .ex-picker-add:active{background:var(--surface2);}
 .ex-editor-form{display:flex;flex-direction:column;gap:10px;margin-top:4px;}
