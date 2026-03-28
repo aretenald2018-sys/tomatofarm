@@ -15,6 +15,16 @@ const CACHE_URLS = [
   '/dashboard3/render-workout.js',
   '/dashboard3/render-home.js',
   '/dashboard3/render-stats.js',
+  '/dashboard3/render-cooking.js',
+  '/dashboard3/render-loa.js',
+  '/dashboard3/render-monthly-calendar.js',
+  '/dashboard3/render-wine.js',
+  '/dashboard3/render-stats.js',
+  '/dashboard3/ai.js',
+  '/dashboard3/sheet.js',
+  '/dashboard3/fatsecret-api.js',
+  '/dashboard3/wine-data.js',
+  '/dashboard3/stocks.js',
   '/dashboard3/manifest.json'
 ];
 
@@ -24,8 +34,13 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_VERSION).then((cache) => {
       console.log('[SW] Caching app shell');
-      return cache.addAll(CACHE_URLS).catch(err => {
-        console.warn('[SW] Some files failed to cache:', err);
+      // 각 파일을 개별적으로 캐시 - 일부 실패해도 진행
+      return Promise.allSettled(
+        CACHE_URLS.map(url => cache.add(url).catch(err => {
+          console.warn('[SW] Failed to cache:', url, err);
+        }))
+      ).then(() => {
+        console.log('[SW] Cache initialization complete');
       });
     })
   );
