@@ -125,18 +125,18 @@ export function goToTodayWorkout() {
 }
 
 // ── 상태 조작 ─────────────────────────────────────────────────────
-export async function wtSetGymStatus(status) {
+export function wtSetGymStatus(status) {
   _gymStatus = status;
   _renderGymStatusBtns();
   const list = document.getElementById('wt-exercise-list');
   if (list) list.style.opacity = (status === 'done' || status === 'none') ? '1' : '0.4';
-  await saveWorkoutDay();
+  saveWorkoutDay().catch(e => console.error('Save error:', e));
 }
 
-export async function wtSetCFStatus(status) {
+export function wtSetCFStatus(status) {
   _cfStatus = status;
   _renderCFStatusBtns();
-  await saveWorkoutDay();
+  saveWorkoutDay().catch(e => console.error('Save error:', e));
 }
 
 export function wtToggleStretching() {
@@ -149,7 +149,7 @@ export function wtToggleWineFree() {
   _renderWineFreeToggle();
 }
 
-export async function wtToggleMealSkipped(meal) {
+export function wtToggleMealSkipped(meal) {
   if (meal === 'breakfast') {
     _breakfastSkipped = !_breakfastSkipped;
   } else if (meal === 'lunch') {
@@ -158,7 +158,7 @@ export async function wtToggleMealSkipped(meal) {
     _dinnerSkipped = !_dinnerSkipped;
   }
   _renderMealSkippedToggles();
-  await saveWorkoutDay();
+  saveWorkoutDay().catch(e => console.error('Save error:', e));
 }
 
 // ── 세트 조작 ─────────────────────────────────────────────────────
