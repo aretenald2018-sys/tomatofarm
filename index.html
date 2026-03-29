@@ -32,6 +32,7 @@
   <button class="tab-btn"        data-tab="cooking"  draggable="true" onclick="switchTab('cooking')">🍳 요리</button>
   <button class="tab-btn"        data-tab="calendar" draggable="true" onclick="switchTab('calendar')">📆 Streak</button>
   <button class="tab-btn"        data-tab="wine"     draggable="true" onclick="switchTab('wine')">🍷 와인</button>
+  <button class="tab-btn"        data-tab="movie"    draggable="true" onclick="switchTab('movie')">🎬 영화</button>
   <button class="tab-btn"        data-tab="stats"    draggable="true" onclick="switchTab('stats')">📊 통계</button>
   <button class="tab-btn"        data-tab="loa"      draggable="true" onclick="switchTab('loa')">🗺️ 로아</button>
   <button class="tab-btn tab-btn-settings" onclick="openSettingsModal()">⚙️</button>
@@ -478,6 +479,17 @@ async function saveStreakSettingsAndClose() {
 <span class="loa-tab-title">⚔️ 로스트아크 숙제 체크</span>
 </div>
 <div id="loa-container" class="loa-container"></div>
+</div>
+
+<!-- ═══ 영화 탭 ═══ -->
+<div id="tab-movie" class="tab-panel">
+  <div class="movie-tab-header">
+    <button class="month-nav-btn" onclick="changeMovieMonth(-1)">◀</button>
+    <span class="movie-tab-title" id="movie-label">2026년 3월</span>
+    <button class="month-nav-btn" onclick="changeMovieMonth(1)">▶</button>
+    <button class="movie-refresh-btn" id="movie-refresh-btn" onclick="startMovieCrawl()" title="muko.kr에서 최신 영화 데이터 자동 크롤링">🔄 새로고침</button>
+  </div>
+  <div id="movie-calendar-content" class="movie-calendar-content"></div>
 </div>
 
 <div id="tab-wine" class="tab-panel">

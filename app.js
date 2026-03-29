@@ -14,7 +14,7 @@ import { loadAll, saveGoal, deleteGoal, getGoals,
          getDietPlan, saveDietPlan, calcDietMetrics,
          saveBodyCheckin, deleteBodyCheckin, getBodyCheckins,
          saveNutritionItem, deleteNutritionItem, getNutritionDB, searchNutritionDB, getRecentNutritionItems,
-         imageToBase64 } from './data.js';
+         imageToBase64, getMovieData, saveMovieData, getAllMovieMonths } from './data.js';
 import { loadCSVDatabase, searchCSVFood } from './fatsecret-api.js';
 import { loadStocks }                             from './stocks.js';
 import { getDietRec, getWorkoutRec,
@@ -24,6 +24,7 @@ import { renderStats, setPeriod, exportCSV }      from './render-stats.js';
 import { renderHome }                             from './render-home.js';
 import { renderMonthlyCalendar, renderMonthlyCalendarInModal,
          changeMonthlyMonth }                     from './render-monthly-calendar.js';
+import { renderMovie, changeMovieMonth }          from './render-movie.js';
 import { renderLoa, toggleLoaCheck, toggleLoaWeekly,
          setLoaActiveChar, deleteLoaChar,
          openLoaAddModal, closeLoaAddModal,
@@ -91,6 +92,7 @@ function switchTab(tab) {
   if (tab === 'wine')     renderWine();
   if (tab === 'loa')      renderLoa();
   if (tab === 'cooking')  renderCooking();
+  if (tab === 'movie')    renderMovie();
   if (tab === 'workout')  loadWorkoutDate(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
 }
 
@@ -99,6 +101,7 @@ function renderAll() {
   if (_currentTab === 'calendar') renderCalendar();
   if (_currentTab === 'stats')    renderStats();
   if (_currentTab === 'cooking')  renderCooking();
+  if (_currentTab === 'movie')    renderMovie();
 }
 
 document.addEventListener('sheet:saved',   renderAll);

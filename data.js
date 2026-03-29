@@ -34,9 +34,10 @@ let _events       = []; // 월간기록 캘린더 이벤트
 let _cooking      = []; // 요리 실험 기록
 let _bodyCheckins = []; // 주간 체크인 [{id, date, weight, bodyFatPct}]
 let _nutritionDB  = []; // 나만의 영양 DB [{id, name, unit, kcal, carbs, protein, fat, note}]
+let _movies       = {}; // 영화 데이터 {year-month: [{date, title, tags}]}
 
 // ── 설정 캐시 (Firebase settings 컬렉션) ────────────────────────
-const DEFAULT_TAB_ORDER = ['home','workout','cooking','monthly','calendar','wine','stats','loa'];
+const DEFAULT_TAB_ORDER = ['home','workout','cooking','monthly','calendar','wine','movie','stats','loa'];
 
 const DEFAULT_DIET_PLAN = {
   // 신체 정보
@@ -141,6 +142,14 @@ export async function loadAll() {
     const nutritionSnap = await getDocs(collection(db, 'nutrition_db'));
     _nutritionDB = [];
     nutritionSnap.forEach(d => _nutritionDB.push(d.data()));
+
+    // ── 영화 데이터 로드 ──
+    const movieSnap = await getDocs(collection(db, 'movies'));
+    _movies = {};
+    movieSnap.forEach(d => {
+      const data = d.data();
+      _movies[d.id] = data;
+    });
 
     // ── 설정 로드 (Firebase → localStorage 마이그레이션 포함) ──
     const settingsSnap = await getDocs(collection(db, 'settings'));
@@ -626,6 +635,29 @@ function _sortExList(list) {
     const mi = mOrder.indexOf(a.muscleId) - mOrder.indexOf(b.muscleId);
     return mi !== 0 ? mi : (a.order||99) - (b.order||99);
   });
+}
+
+// ── 영화 데이터 ────────────────────────────────────────────────────
+export function getMovieData(year, month) {
+  const key = `${year}-${String(month + 1).padStart(2, '0')}`;
+  return _movies[key] || {};
+}
+
+export async function saveMovieData(year, month, data) {
+  const key = `${year}-${String(month + 1).padStart(2, '0')}`;
+  _movies[key] = data;
+  _setSyncStatus('syncing');
+  try {
+    await setDoc(doc(db, 'movies', key), data);
+    _setSyncStatus('ok');
+  } catch(e) {
+    _setSyncStatus('err');
+    console.error('[data] saveMovieData:', e);
+  }
+}
+
+export function getAllMovieMonths() {
+  return Object.keys(_movies).sort();
 }
 
 // ── Window 전역 노출 (UI에서 직접 접근 가능) ────────────────────────

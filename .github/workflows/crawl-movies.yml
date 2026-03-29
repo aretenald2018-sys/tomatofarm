@@ -1,0 +1,41 @@
+name: Crawl Movies
+
+on:
+  # 매일 밤 11시 (한국 시간)
+  schedule:
+    - cron: '0 15 * * *'  # UTC 15:00 = KST 00:00
+
+  # 수동 실행
+  workflow_dispatch:
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: npm install node-fetch cheerio firebase
+
+      - name: Run crawler
+        env:
+          FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+        run: node crawl-movies.js
+
+      - name: Commit changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          if [ -n "$(git status --porcelain)" ]; then
+            git add .
+            git commit -m "chore: update crawled movie data"
+            git push
+          fi

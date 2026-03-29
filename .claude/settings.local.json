@@ -51,7 +51,25 @@
       "WebFetch(domain:aretenald2018-sys.github.io)",
       "Bash(tail -20 \"C:\\\\Users\\\\USER\\\\Desktop\\\\dashboard3-main\\(backup\\) - 복사본\\\\index.html\")",
       "Bash(curl -I https://aretenald2018-sys.github.io/dashboard3/sw.js)",
-      "Bash(ls -lh icon-*.png manifest.json)"
+      "Bash(ls -lh icon-*.png manifest.json)",
+      "Bash(grep -E \"\\(^./[^/]+$|data|api|config\\)\")",
+      "Bash(find \"C:\\\\Users\\\\USER\\\\Desktop\\\\dashboard3-main\\(backup\\) - 복사본\" -name \"index.html\" -o -name \"*.html\")",
+      "Bash(wc -l \"C:\\\\Users\\\\USER\\\\Desktop\\\\dashboard3-main\\(backup\\) - 복사본\\\\style.css\")",
+      "Bash(tail -5 \"C:\\\\Users\\\\USER\\\\Desktop\\\\dashboard3-main\\(backup\\) - 복사본\\\\style.css\")",
+      "Bash(npm install:*)",
+      "Bash(npm list:*)",
+      "Bash(node crawl-movies-advanced.js)",
+      "Bash(pip install:*)",
+      "Bash(python \"C:\\\\Users\\\\USER\\\\Desktop\\\\dashboard3-main\\(backup\\) - 복사본\\\\crawl_movies.py\")",
+      "Bash(python crawl_movies.py)",
+      "Bash(python \"C:\\\\Users\\\\USER\\\\Desktop\\\\dashboard3-main\\(backup\\) - 복사본\\\\init_firebase.py\")",
+      "Bash(python \"C:\\\\Users\\\\USER\\\\Desktop\\\\dashboard3-main\\(backup\\) - 복사본\\\\init_firebase_complete.py\")",
+      "Bash(python crawl_with_selenium.py)",
+      "Bash(ls -la \"C:\\\\Users\\\\USER\\\\Desktop\\\\dashboard3-main\\(backup\\) - 복사본\")",
+      "Bash(ls -la \"C:\\\\Users\\\\USER\\\\Desktop\\\\dashboard3-main\\(backup\\) - 복사본\"/*.js)",
+      "Bash(timeout 5 node api-server.js)",
+      "Bash(timeout 3 node api-server.js)",
+      "Bash(node verify-setup.js)"
     ]
   }
 }

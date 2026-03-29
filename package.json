@@ -1,16 +1,23 @@
 {
   "name": "dashboard",
   "version": "1.0.0",
+  "type": "module",
   "description": "Personal Dashboard with Fitness, Diet, Wine Tracking",
   "main": "app.js",
   "scripts": {
     "start": "python -m http.server 5500",
     "dev": "python -m http.server 5500",
-    "build": "echo 'No build needed for static site'"
+    "build": "echo 'No build needed for static site'",
+    "crawl": "node crawl-movies-advanced.js",
+    "server": "node api-server.js"
   },
-  "dependencies": {},
-  "devDependencies": {},
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.24.3",
+    "express": "^4.21.0",
+    "firebase": "^12.11.0",
+    "puppeteer": "^24.40.0"
+  },
   "engines": {
-    "node": "24.x"
+    "node": "18.x"
   }
 }
