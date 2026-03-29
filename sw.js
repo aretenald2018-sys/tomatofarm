@@ -1,161 +1,97 @@
-// ================================================================
-// Service Worker - PWA 오프라인 지원 및 캐싱
-// ================================================================
+// Service Worker for Dashboard3 (Life Streak)
+// 오프라인 캐싱 및 PWA 기능 제공
 
-const CACHE_VERSION = 'life-streak-v2';
-const CACHE_URLS = [
-  '/dashboard3/index.html',
-  '/dashboard3/manifest.json',
-  '/dashboard3/app.js',
-  '/dashboard3/data.js',
-  '/dashboard3/config.js',
-  '/dashboard3/style.css'
+const CACHE_VERSION = 'dashboard3-v1.0';
+const RUNTIME_CACHE = 'dashboard3-runtime';
+const STATIC_ASSETS = [
+  './',
+  './index.html',
+  './manifest.json',
+  './style.css',
+  './app.js',
+  './data.js',
+  './config.js'
 ];
 
-// 설치 이벤트 - 캐시 생성
 self.addEventListener('install', (event) => {
-  console.log('[SW] Installing...');
+  console.log('[SW] Install event fired');
   event.waitUntil(
     caches.open(CACHE_VERSION).then((cache) => {
-      console.log('[SW] Caching app shell');
-      // 각 파일을 개별적으로 캐시 - 일부 실패해도 진행
-      return Promise.allSettled(
-        CACHE_URLS.map(url => cache.add(url).catch(err => {
-          console.warn('[SW] Failed to cache:', url, err);
-        }))
-      ).then(() => {
-        console.log('[SW] Cache initialization complete');
+      console.log('[SW] Caching static assets');
+      return cache.addAll(STATIC_ASSETS).catch((err) => {
+        console.log('[SW] Some assets failed to cache');
       });
-    })
+    }).then(() => self.skipWaiting())
   );
-  self.skipWaiting();
 });
 
-// 활성화 이벤트 - 이전 캐시 정리
 self.addEventListener('activate', (event) => {
-  console.log('[SW] Activating...');
+  console.log('[SW] Activate event fired');
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames
-          .filter(name => name !== CACHE_VERSION)
-          .map(name => {
-            console.log('[SW] Deleting old cache:', name);
-            return caches.delete(name);
-          })
+          .filter((name) => name !== CACHE_VERSION && name !== RUNTIME_CACHE)
+          .map((name) => caches.delete(name))
       );
-    })
+    }).then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
 
-// Fetch 이벤트 - 캐시 우선 전략
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Firebase 요청은 항상 네트워크에서 가져오기
-  if (url.hostname.includes('firebase') || url.hostname.includes('firebaseio')) {
+  if (request.method !== 'GET') return;
+
+  // HTML, CSS, JS (네트워크 우선)
+  if (url.pathname.endsWith('.html') || url.pathname.endsWith('.css') || url.pathname.endsWith('.js') || url.pathname === '/' || url.pathname === '/dashboard3/') {
     event.respondWith(
       fetch(request)
-        .then(response => response)
-        .catch(() => {
-          console.log('[SW] Firebase offline');
-          // Firebase 요청이 실패하면 캐시된 페이지 반환
-          return caches.match('/dashboard3/index.html');
-        })
-    );
-    return;
-  }
-
-  // CSV 등 외부 리소스는 네트워크 우선
-  if (request.url.includes('.csv') || request.url.includes('gstatic')) {
-    event.respondWith(
-      fetch(request)
-        .then(response => {
-          // 성공한 요청은 캐시에 저장
-          if (response && response.status === 200) {
-            const clonedResponse = response.clone();
-            caches.open(CACHE_VERSION).then(cache => {
-              cache.put(request, clonedResponse);
-            });
-          }
-          return response;
-        })
-        .catch(() => {
-          // 네트워크 실패 시 캐시에서 가져오기
-          return caches.match(request).catch(() => {
-            // 캐시도 없으면 오프라인 페이지 반환
-            return caches.match('/dashboard3/index.html');
-          });
-        })
-    );
-    return;
-  }
-
-  // 일반적인 요청 - 캐시 우선
-  event.respondWith(
-    caches.match(request).then((response) => {
-      if (response) {
-        console.log('[SW] Serving from cache:', request.url);
-        return response;
-      }
-
-      return fetch(request)
         .then((response) => {
-          // 성공한 응답만 캐시에 저장
-          if (!response || response.status !== 200 || response.type === 'error') {
-            return response;
-          }
-
-          const clonedResponse = response.clone();
+          if (!response || response.status !== 200) return response;
+          const responseClone = response.clone();
           caches.open(CACHE_VERSION).then((cache) => {
-            cache.put(request, clonedResponse);
+            cache.put(request, responseClone);
           });
-
           return response;
         })
-        .catch((error) => {
-          console.log('[SW] Fetch failed:', request.url, error);
+        .catch(() => {
+          return caches.match(request).then((cached) => {
+            if (cached) return cached;
+            if (request.destination === 'document') {
+              return caches.match('./index.html');
+            }
+          });
+        })
+    );
+    return;
+  }
 
-          // 특정 파일 타입별 폴백
-          if (request.destination === 'image') {
-            return new Response(
-              '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect fill="#ccc"/></svg>',
-              { headers: { 'Content-Type': 'image/svg+xml' } }
-            );
-          }
+  // 이미지, 폰트 (캐시 우선)
+  if (url.pathname.includes('fonts.googleapis') || url.pathname.match(/\.(woff2|woff|png|jpg|jpeg|svg|gif|ico)$/)) {
+    event.respondWith(
+      caches.match(request).then((cached) => {
+        if (cached) return cached;
+        return fetch(request).then((response) => {
+          if (!response || response.status !== 200) return response;
+          const responseClone = response.clone();
+          caches.open(RUNTIME_CACHE).then((cache) => {
+            cache.put(request, responseClone);
+          });
+          return response;
+        }).catch(() => caches.match(request));
+      })
+    );
+    return;
+  }
 
-          // 기타 요청은 캐시된 인덱스 반환
-          return caches.match('/dashboard3/index.html');
-        });
+  // 기타 (네트워크 우선)
+  event.respondWith(
+    fetch(request).catch(() => {
+      return caches.match(request);
     })
   );
 });
 
-// 백그라운드 동기화 (선택)
-self.addEventListener('sync', (event) => {
-  if (event.tag === 'sync-data') {
-    event.waitUntil(syncData());
-  }
-});
-
-async function syncData() {
-  console.log('[SW] Syncing data...');
-  // Firebase와 동기화 로직 추가 가능
-}
-
-// 푸시 알림 (선택)
-self.addEventListener('push', (event) => {
-  const data = event.data ? event.data.json() : {};
-  const options = {
-    body: data.body || '새로운 알림이 있습니다',
-    icon: '/dashboard3/manifest.json',
-    badge: '/dashboard3/manifest.json',
-    tag: 'life-streak-notification'
-  };
-
-  event.waitUntil(
-    self.registration.showNotification(data.title || 'Life Streak', options)
-  );
-});
+console.log('[SW] Service Worker loaded');
