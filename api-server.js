@@ -183,63 +183,17 @@ app.post('/api/crawl-movies', async (req, res) => {
 
     const movieData = JSON.parse(jsonMatch[0]);
 
-    // 4. Firebase에 저장 (선택적 - API 키 설정 필요)
+    // 4. 데이터 준비 (Firebase 없이 메모리만 사용)
     const docKey = `${movieData.year}-${String(movieData.month).padStart(2, '0')}`;
     movieData.lastUpdated = new Date().toISOString();
     movieData.source = 'muko.kr/calender (auto)';
 
-    // Firebase API 키가 설정되어 있으면 실제 저장, 아니면 콘솔 로그만
-    if (FIREBASE_API_KEY && FIREBASE_API_KEY !== 'YOUR_API_KEY') {
-      try {
-        const firestoreUrl = `${FIRESTORE_API}/movies/${docKey}?key=${FIREBASE_API_KEY}`;
-        const firestoreData = {
-          fields: {
-            year: { integerValue: String(movieData.year) },
-            month: { integerValue: String(movieData.month) },
-            events: {
-              arrayValue: {
-                values: movieData.events.map(e => ({
-                  mapValue: {
-                    fields: {
-                      date: { integerValue: String(e.date) },
-                      title: { stringValue: e.title },
-                      tags: {
-                        arrayValue: {
-                          values: e.tags.map(t => ({ stringValue: t }))
-                        }
-                      }
-                    }
-                  }
-                }))
-              }
-            },
-            lastUpdated: { stringValue: movieData.lastUpdated },
-            source: { stringValue: movieData.source }
-          }
-        };
-
-        const saveResponse = await fetch(firestoreUrl, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(firestoreData)
-        });
-
-        if (!saveResponse.ok) {
-          console.warn(`[server] Firebase 저장 실패: ${saveResponse.status} - 메모리 캐시만 유지됨`);
-        } else {
-          console.log(`[server] Firebase 저장 완료: ${docKey} (${movieData.events.length}개 이벤트)`);
-        }
-      } catch (e) {
-        console.warn(`[server] Firebase 저장 오류: ${e.message} - 메모리 캐시만 유지됨`);
-      }
-    } else {
-      console.log(`[server] Firebase API 키 미설정 - 데이터를 메모리에만 캐시합니다`);
-      console.log(`[server] 추출된 데이터: ${docKey} (${movieData.events.length}개 이벤트)`);
-    }
-
-    // 메모리에 캐시
-    global.movieCache = global.movieCache || {};
+    // 메모리에 캐시 (앱 재시작 시까지만 유지)
+    if (!global.movieCache) global.movieCache = {};
     global.movieCache[docKey] = movieData;
+
+    console.log(`[server] 데이터 메모리 저장: ${docKey} (${movieData.events.length}개 이벤트)`);
+    console.log(`[server] 참고: Firebase 저장 제외 (클라이언트 localStorage 사용)`);
 
     // 5. 임시 파일 삭제
     fs.unlinkSync(screenshotPath);
