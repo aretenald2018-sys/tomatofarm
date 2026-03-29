@@ -730,6 +730,12 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans KR',sans-seri
 .movie-refresh-btn:active{transform:scale(0.95);}
 .movie-refresh-btn:disabled{opacity:0.5;cursor:not-allowed;}
 
+.movie-tag-filters{display:flex;gap:8px;flex-wrap:wrap;padding:12px 16px;background:var(--surface1);border-bottom:1px solid var(--border);justify-content:center;}
+.movie-tag-filter-row{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;width:100%;}
+.movie-tag-filter-btn{padding:6px 12px;border:1.5px solid;border-radius:16px;font-size:12px;font-weight:500;background:var(--surface2);color:var(--muted);cursor:pointer;transition:all .12s;white-space:nowrap;-webkit-tap-highlight-color:transparent;}
+.movie-tag-filter-btn:hover{background:var(--surface3);color:var(--text);}
+.movie-tag-filter-btn.active{background:var(--surface3);color:var(--text);border-color:currentColor;font-weight:600;}
+
 .movie-calendar-content{padding:16px;display:flex;flex-direction:column;gap:16px;}
 
 .movie-info-card{background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:12px;}

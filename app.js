@@ -24,7 +24,7 @@ import { renderStats, setPeriod, exportCSV }      from './render-stats.js';
 import { renderHome }                             from './render-home.js';
 import { renderMonthlyCalendar, renderMonthlyCalendarInModal,
          changeMonthlyMonth }                     from './render-monthly-calendar.js';
-import { renderMovie, changeMovieMonth, startMovieCrawl }  from './render-movie.js';
+import { renderMovie, changeMovieMonth, startMovieCrawl, toggleMovieTagFilter }  from './render-movie.js';
 import { renderLoa, toggleLoaCheck, toggleLoaWeekly,
          setLoaActiveChar, deleteLoaChar,
          openLoaAddModal, closeLoaAddModal,
@@ -1155,6 +1155,7 @@ window.wtRunAnalyzeDiet         = wtRunAnalyzeDiet;
 window.renderMovie              = renderMovie;
 window.changeMovieMonth         = changeMovieMonth;
 window.startMovieCrawl          = startMovieCrawl;
+window.toggleMovieTagFilter     = toggleMovieTagFilter;
 // 요리 탭
 window.openCookingModal         = openCookingModal;
 window.closeCookingModal        = closeCookingModal;

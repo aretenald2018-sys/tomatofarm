@@ -11,6 +11,7 @@ let _saveMovieData = saveMovieData;
 
 let _currentYear  = TODAY.getFullYear();
 let _currentMonth = TODAY.getMonth();
+let _activeTagFilters = new Set(); // 선택된 필터 태그
 
 const MOVIE_TAGS = [
   { id: 'premiere', label: '시사회', color: '#a78bfa' },
@@ -32,6 +33,12 @@ export function changeMovieMonth(delta) {
 export function renderMovie() {
   const label = document.getElementById('movie-label');
   if (label) label.textContent = `${_currentYear}년 ${MONTHS[_currentMonth]}`;
+
+  // 필터 UI 렌더링
+  const filterEl = document.getElementById('movie-tag-filters');
+  if (filterEl) {
+    _renderMovieTagFilters(filterEl);
+  }
 
   const el = document.getElementById('movie-calendar-content');
   if (!el) return;
@@ -176,24 +183,32 @@ setInterval(_checkCrawlStatus, 5000);
 
 function _renderMovieCalendar(el) {
   const data = getMovieData(_currentYear, _currentMonth);
-  const events = data.events || [];
+  let events = data.events || [];
 
-  // 월간 정보 카드
+  // ── 필터 적용 ──────────────────────────────────────
+  let filteredEvents = events;
+  if (_activeTagFilters.size > 0) {
+    filteredEvents = events.filter(e =>
+      (e.tags || []).some(t => _activeTagFilters.has(t))
+    );
+  }
+
+  // 월간 정보 카드 (필터된 이벤트 기준)
   const infoCard = document.createElement('div');
   infoCard.className = 'movie-info-card';
   infoCard.innerHTML = `
     <div class="movie-info-title">${_currentYear}년 ${MONTHS[_currentMonth]} 영화</div>
     <div class="movie-info-stats">
       <div class="movie-stat">
-        <span class="movie-stat-val">${events.length}</span>
+        <span class="movie-stat-val">${filteredEvents.length}</span>
         <span class="movie-stat-lbl">개봉작</span>
       </div>
       <div class="movie-stat">
-        <span class="movie-stat-val">${_countByTag(events, 'premiere')}</span>
+        <span class="movie-stat-val">${_countByTag(filteredEvents, 'premiere')}</span>
         <span class="movie-stat-lbl">시사회</span>
       </div>
       <div class="movie-stat">
-        <span class="movie-stat-val">${_countByTag(events, 'release')}</span>
+        <span class="movie-stat-val">${_countByTag(filteredEvents, 'release')}</span>
         <span class="movie-stat-lbl">개봉일</span>
       </div>
     </div>
@@ -236,7 +251,7 @@ function _renderMovieCalendar(el) {
     const cell = document.createElement('div');
     cell.className = 'movie-cell';
 
-    const dayEvents = events.filter(e => e.date === day);
+    const dayEvents = filteredEvents.filter(e => e.date === day);
     const dateStr = `${String(day).padStart(2, '0')}`;
 
     let html = `<div class="movie-cell-date">${dateStr}</div>`;
@@ -280,6 +295,42 @@ function _renderMovieCalendar(el) {
     legend.appendChild(item);
   });
   el.appendChild(legend);
+}
+
+// ── 필터 함수 ─────────────────────────────────────────
+function _renderMovieTagFilters(el) {
+  el.innerHTML = '';
+  const container = document.createElement('div');
+  container.className = 'movie-tag-filter-row';
+
+  MOVIE_TAGS.forEach(tag => {
+    const btn = document.createElement('button');
+    btn.className = 'movie-tag-filter-btn';
+    btn.style.borderColor = tag.color;
+    btn.textContent = tag.label;
+    btn.id = `filter-btn-${tag.id}`;
+
+    // 이미 선택된 태그면 active 클래스 추가
+    if (_activeTagFilters.has(tag.id)) {
+      btn.classList.add('active');
+    }
+
+    btn.onclick = () => toggleMovieTagFilter(tag.id, btn);
+    container.appendChild(btn);
+  });
+
+  el.appendChild(container);
+}
+
+export function toggleMovieTagFilter(tagId, btn) {
+  if (_activeTagFilters.has(tagId)) {
+    _activeTagFilters.delete(tagId);
+    btn.classList.remove('active');
+  } else {
+    _activeTagFilters.add(tagId);
+    btn.classList.add('active');
+  }
+  renderMovie();
 }
 
 function _countByTag(events, tagId) {
