@@ -301,10 +301,10 @@ export async function saveWorkoutDay() {
   if (!_date) return;
   const { y, m, d } = _date;
 
-  _diet.breakfast = document.getElementById('wt-meal-breakfast').value.trim();
-  _diet.lunch     = document.getElementById('wt-meal-lunch').value.trim();
-  _diet.dinner    = document.getElementById('wt-meal-dinner').value.trim();
-  _diet.snack     = document.getElementById('wt-meal-snack').value.trim();
+  _diet.breakfast = document.getElementById('wt-meal-breakfast')?.value.trim() || '';
+  _diet.lunch     = document.getElementById('wt-meal-lunch')?.value.trim() || '';
+  _diet.dinner    = document.getElementById('wt-meal-dinner')?.value.trim() || '';
+  _diet.snack     = document.getElementById('wt-meal-snack')?.value.trim() || '';
 
   const cleanEx = _exercises
     .map(e => ({ ...e, sets: e.sets.filter(s => s.kg > 0 || s.reps > 0) }))
@@ -336,7 +336,7 @@ export async function saveWorkoutDay() {
     breakfast_skipped: _breakfastSkipped,
     lunch_skipped: _lunchSkipped,
     dinner_skipped: _dinnerSkipped,
-    memo:       document.getElementById('wt-workout-memo').value.trim(),
+    memo:       document.getElementById('wt-workout-memo')?.value.trim() || '',
     breakfast:  _diet.breakfast,
     lunch:      _diet.lunch,
     dinner:     _diet.dinner,

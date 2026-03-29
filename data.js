@@ -196,7 +196,9 @@ export async function saveDay(key, data) {
     !data.gym_skip && !data.gym_health &&
     !data.cf_skip  && !data.cf_health &&
     !data.stretching && !data.wine_free &&
-    !data.breakfast_skipped && !data.lunch_skipped && !data.dinner_skipped
+    !data.breakfast_skipped && !data.lunch_skipped && !data.dinner_skipped &&
+    !data.bKcal && !data.lKcal && !data.dKcal && !data.sKcal &&
+    !data.bFoods?.length && !data.lFoods?.length && !data.dFoods?.length && !data.sFoods?.length
   );
   try {
     if (isEmpty) { delete _cache[key]; await deleteDoc(doc(db, 'workouts', key)); }
@@ -437,7 +439,7 @@ export function calcDietMetrics(plan) {
     deficit: {
       kcal: deficitDayKcal,
       proteinKcal: dProteinKcal, proteinG: Math.round(dProteinKcal / 4),
-      carbKcal: dCarbKcal,       carbG:    Math.round((deficitDayKcal - dProteinKcal - dFatKcal) / 4),
+      carbKcal: dCarbKcal,       carbG:    Math.round(dCarbKcal / 4),
       fatKcal: dFatKcal,         fatG:     Math.round(dFatKcal / 9),
     },
     refeed: {
@@ -567,8 +569,12 @@ export function calcStreaks() {
   cur = new Date(TODAY);
   while (true) {
     const y=cur.getFullYear(), m=cur.getMonth(), d=cur.getDate();
-    if (dietDayOk(y,m,d) !== true) break;
-    diet++; cur.setDate(cur.getDate()-1);
+    const dok = dietDayOk(y,m,d);
+    if (dok === false) break;          // 실패한 날 → streak 끊김
+    if (dok === true) diet++;          // 성공한 날 → streak 카운트
+    if (dok === null && cur < TODAY) break; // 과거 미기록 날 → streak 끊김
+    // dok === null && 오늘 → 아직 미입력, 건너뛰고 어제부터 계산
+    cur.setDate(cur.getDate()-1);
   }
   cur = new Date(TODAY);
   while (true) {
