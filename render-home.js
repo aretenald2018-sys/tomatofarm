@@ -167,6 +167,7 @@ function _renderQuests() {
             : ''}
           <span class="quest-item-title">${q.title}${ddayStr ? ` <span class="goal-dday" style="font-size:9px">${ddayStr}</span>` : ''}</span>
           <button class="quest-item-edit" onclick="openQuestEditModal('${q.id}')">✏️</button>
+          <button class="goal-del-btn" onclick="deleteQuestItem('${q.id}')">✕</button>
         </div>
         ${target > 1 ? `
           <div class="quest-progress-row">
