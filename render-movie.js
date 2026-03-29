@@ -259,18 +259,25 @@ function _renderMovieCalendar(el) {
     if (dayEvents.length > 0) {
       html += '<div class="movie-cell-events">';
       dayEvents.forEach(evt => {
-        html += `<div class="movie-cell-event">
-          <div class="movie-event-title">${evt.title}</div>
+        const eventContent = `<div class="movie-event-title">${evt.title}</div>
           <div class="movie-event-tags">`;
 
+        let tagsHtml = '';
         (evt.tags || []).forEach(tag => {
           const tagInfo = MOVIE_TAGS.find(t => t.id === tag);
           if (tagInfo) {
-            html += `<span class="movie-tag" style="background-color:${tagInfo.color}20;color:${tagInfo.color}">${tagInfo.label}</span>`;
+            tagsHtml += `<span class="movie-tag" style="background-color:${tagInfo.color}20;color:${tagInfo.color}">${tagInfo.label}</span>`;
           }
         });
 
-        html += '</div></div>';
+        // 링크가 있으면 클릭 가능하게, 없으면 그냥 표시
+        if (evt.href) {
+          html += `<a href="${evt.href}" target="_blank" rel="noopener noreferrer" class="movie-cell-event-link">
+            ${eventContent}${tagsHtml}</div></a>`;
+        } else {
+          html += `<div class="movie-cell-event">
+            ${eventContent}${tagsHtml}</div></div>`;
+        }
       });
       html += '</div>';
     }
