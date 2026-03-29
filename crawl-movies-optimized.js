@@ -9,6 +9,8 @@ import fetch from 'node-fetch';
 import * as cheerio from 'cheerio';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, doc, setDoc } from 'firebase/firestore';
+import fs from 'fs/promises';
+import path from 'path';
 
 // ── Firebase 설정 ──────────────────────────────────────────────
 const FIREBASE_CONFIG = {
@@ -169,6 +171,29 @@ async function saveToFirebase(data) {
   }
 }
 
+// ── JSON 파일 저장 함수 (GitHub Pages용) ─────────────────────────
+async function saveToJSON(data) {
+  if (!data) return false;
+
+  try {
+    const key = `${data.year}-${String(data.month).padStart(2, '0')}`;
+    const dir = './public/data/movies';
+    const filePath = path.join(dir, `${key}.json`);
+
+    // 디렉토리 생성
+    await fs.mkdir(dir, { recursive: true });
+
+    // JSON 파일 저장
+    await fs.writeFile(filePath, JSON.stringify(data, null, 2));
+
+    console.log(`[json] ✅ ${key}.json 저장 완료`);
+    return true;
+  } catch (e) {
+    console.error(`[json] ❌ JSON 저장 실패: ${e.message}`);
+    return false;
+  }
+}
+
 // ── 메인 실행 ──────────────────────────────────────────────────
 async function main() {
   const now = new Date();
@@ -194,8 +219,9 @@ async function main() {
 
     const data = await crawlMovies(year, month);
     if (data) {
-      const saved = await saveToFirebase(data);
-      if (saved) successCount++;
+      const fbSaved = await saveToFirebase(data);
+      const jsonSaved = await saveToJSON(data);
+      if (fbSaved && jsonSaved) successCount++;
     }
 
     // API 호출 제한 회피

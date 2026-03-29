@@ -23,14 +23,14 @@ const MOVIE_TAGS = [
   { id: 'festival', label: '영화제', color: '#f59e0b' },
 ];
 
-export function changeMovieMonth(delta) {
+export async function changeMovieMonth(delta) {
   _currentMonth += delta;
   if (_currentMonth < 0)  { _currentMonth = 11; _currentYear--; }
   if (_currentMonth > 11) { _currentMonth = 0;  _currentYear++; }
-  renderMovie();
+  await renderMovie();
 }
 
-export function renderMovie() {
+export async function renderMovie() {
   const label = document.getElementById('movie-label');
   if (label) label.textContent = `${_currentYear}년 ${MONTHS[_currentMonth]}`;
 
@@ -44,7 +44,7 @@ export function renderMovie() {
   if (!el) return;
   el.innerHTML = '';
 
-  _renderMovieCalendar(el);
+  await _renderMovieCalendar(el);
 }
 
 // API URL (로컬: localhost:3000, 배포: 같은 도메인)
@@ -181,8 +181,8 @@ export async function startMovieCrawl() {
 // 초기화: 버튼 상태 확인
 setInterval(_checkCrawlStatus, 5000);
 
-function _renderMovieCalendar(el) {
-  const data = getMovieData(_currentYear, _currentMonth);
+async function _renderMovieCalendar(el) {
+  const data = await getMovieData(_currentYear, _currentMonth);
   let events = data.events || [];
 
 
@@ -327,7 +327,7 @@ function _renderMovieTagFilters(el) {
   el.appendChild(container);
 }
 
-export function toggleMovieTagFilter(tagId, btn) {
+export async function toggleMovieTagFilter(tagId, btn) {
   if (_activeTagFilters.has(tagId)) {
     _activeTagFilters.delete(tagId);
     btn.classList.remove('active');
@@ -335,7 +335,7 @@ export function toggleMovieTagFilter(tagId, btn) {
     _activeTagFilters.add(tagId);
     btn.classList.add('active');
   }
-  renderMovie();
+  await renderMovie();
 }
 
 function _countByTag(events, tagId) {

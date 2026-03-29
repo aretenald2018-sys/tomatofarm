@@ -638,9 +638,27 @@ function _sortExList(list) {
 }
 
 // ── 영화 데이터 ────────────────────────────────────────────────────
-export function getMovieData(year, month) {
+export async function getMovieData(year, month) {
   const key = `${year}-${String(month + 1).padStart(2, '0')}`;
-  return _movies[key] || {};
+
+  // 캐시에 있으면 반환
+  if (_movies[key]) {
+    return _movies[key];
+  }
+
+  // JSON 파일에서 로드 시도 (GitHub Pages용)
+  try {
+    const response = await fetch(`./data/movies/${key}.json`);
+    if (response.ok) {
+      const data = await response.json();
+      _movies[key] = data;
+      return data;
+    }
+  } catch (e) {
+    console.warn(`[data] JSON 로드 실패: ${key}`, e.message);
+  }
+
+  return {};
 }
 
 export async function saveMovieData(year, month, data) {
