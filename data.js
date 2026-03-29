@@ -491,8 +491,8 @@ export const dietDayOk = (y,m,d) => {
   const plan = getDietPlan();
   const metrics = calcDietMetrics(plan);
 
-  // 3. 오늘이 리피드데이인지 판정
-  const dayOfWeek = new Date(y, m - 1, d).getDay();  // 0=일, 6=토
+  // 3. 오늘이 리피드데이인지 판정 (m은 0-indexed)
+  const dayOfWeek = new Date(y, m, d).getDay();  // 0=일, 6=토
   const isRefeed = plan.refeedDays.includes(dayOfWeek);
   const limitKcal = isRefeed ? metrics.refeed.kcal : metrics.deficit.kcal;
 
@@ -512,8 +512,8 @@ export const dietDayOk = (y,m,d) => {
   // 아무 기록도 없고 스킵도 안 했다면 null (빈 칸)
   if (!hasRecord && !bSkip && !lSkip && !dSkip) return null;
 
-  // 7. 핵심: 칼로리 제한 비교
-  const calorieSuccess = totalKcal <= limitKcal;
+  // 7. 핵심: 칼로리 제한 비교 (saveWorkoutDay와 동일한 +50kcal 허용)
+  const calorieSuccess = totalKcal <= limitKcal + 50;
 
   // 8. 각 끼니별 성공 여부
   const bOk = bSkip || (dt.bOk ?? false);
