@@ -24,11 +24,8 @@ jobs:
       - name: Install dependencies
         run: npm install node-fetch cheerio firebase
 
-      - name: Run crawler
-        env:
-          FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
-          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
-        run: node crawl-movies.js
+      - name: Run optimized crawler
+        run: node crawl-movies-optimized.js
 
       - name: Commit changes
         run: |
@@ -36,6 +33,6 @@ jobs:
           git config --local user.name "GitHub Action"
           if [ -n "$(git status --porcelain)" ]; then
             git add .
-            git commit -m "chore: update crawled movie data"
+            git commit -m "chore: update crawled movie data (optimized cheerio)"
             git push
           fi
