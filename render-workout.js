@@ -500,7 +500,8 @@ function _renderExerciseList() {
     if (copyBtn && last) {
       copyBtn.addEventListener('click', () => {
         _exercises[idx].sets = JSON.parse(JSON.stringify(last.sets));
-        _renderSets(idx);
+        // 저장 후 전체 리스트 재렌더 (스파크라인 갱신 포함)
+        saveWorkoutDay().then(() => _renderExerciseList()).catch(e => console.error('Save error:', e));
       });
     }
     container.appendChild(block);
