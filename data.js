@@ -241,68 +241,45 @@ export async function deleteExercise(id) {
   }, { sync: false });
 }
 
-export async function saveGoal(goal) {
-  return _fbOp('saveGoal', async () => {
-    await setDoc(doc(db, 'goals', goal.id), goal);
-    const idx = _goals.findIndex(g => g.id === goal.id);
-    if (idx >= 0) _goals[idx] = goal; else _goals.push(goal);
-  }, { sync: false });
+// ── CRUD 팩토리 — 반복 패턴 제거 ─────────────────────────────────
+function _createCRUD(collectionName, getArray, setArray) {
+  return {
+    save: (item) => _fbOp(`save:${collectionName}`, async () => {
+      await setDoc(doc(db, collectionName, item.id), item);
+      const arr = getArray();
+      const idx = arr.findIndex(x => x.id === item.id);
+      if (idx >= 0) arr[idx] = item; else arr.push(item);
+    }, { sync: false }),
+    delete: (id) => _fbOp(`delete:${collectionName}`, async () => {
+      await deleteDoc(doc(db, collectionName, id));
+      setArray(getArray().filter(x => x.id !== id));
+    }, { sync: false }),
+    get: () => getArray(),
+  };
 }
 
-export async function deleteGoal(id) {
-  return _fbOp('deleteGoal', async () => {
-    await deleteDoc(doc(db, 'goals', id));
-    _goals = _goals.filter(g => g.id !== id);
-  }, { sync: false });
-}
+const _goalsCRUD   = _createCRUD('goals',      () => _goals,   v => { _goals = v; });
+const _questsCRUD  = _createCRUD('quests',     () => _quests,  v => { _quests = v; });
+const _winesCRUD   = _createCRUD('wines',      () => _wines,   v => { _wines = v; });
+const _eventsCRUD  = _createCRUD('cal_events', () => _events,  v => { _events = v; });
+const _cookingCRUD = _createCRUD('cooking',    () => _cooking, v => { _cooking = v; });
 
-export const getGoals = () => _goals;
+export const saveGoal    = (goal)  => _goalsCRUD.save(goal);
+export const deleteGoal  = (id)    => _goalsCRUD.delete(id);
+export const getGoals    = ()      => _goals;
 
-export async function saveQuest(quest) {
-  return _fbOp('saveQuest', async () => {
-    await setDoc(doc(db, 'quests', quest.id), quest);
-    const idx = _quests.findIndex(q => q.id === quest.id);
-    if (idx >= 0) _quests[idx] = quest; else _quests.push(quest);
-  }, { sync: false });
-}
+export const saveQuest   = (quest) => _questsCRUD.save(quest);
+export const deleteQuest = (id)    => _questsCRUD.delete(id);
+export const getQuests   = ()      => _quests;
 
-export async function deleteQuest(id) {
-  return _fbOp('deleteQuest', async () => {
-    await deleteDoc(doc(db, 'quests', id));
-    _quests = _quests.filter(q => q.id !== id);
-  }, { sync: false });
-}
+export const saveWine    = (wine)  => _winesCRUD.save(wine);
+export const deleteWine  = (id)    => _winesCRUD.delete(id);
+export const getWines    = ()      => _wines;
 
-export const getQuests = () => _quests;
-
-export async function saveWine(wine) {
-  return _fbOp('saveWine', async () => {
-    await setDoc(doc(db, 'wines', wine.id), wine);
-    const idx = _wines.findIndex(w => w.id === wine.id);
-    if (idx >= 0) _wines[idx] = wine; else _wines.push(wine);
-  }, { sync: false });
-}
-
-export async function deleteWine(id) {
-  return _fbOp('deleteWine', async () => {
-    await deleteDoc(doc(db, 'wines', id));
-    _wines = _wines.filter(w => w.id !== id);
-  }, { sync: false });
-}
-
-export const getWines = () => _wines;
-
-export async function saveEvent(ev) {
-  return _fbOp('saveEvent', async () => {
-    await setDoc(doc(db, 'cal_events', ev.id), ev);
-    const idx = _events.findIndex(e => e.id === ev.id);
-    if (idx >= 0) _events[idx] = ev; else _events.push(ev);
-  }, { sync: false });
-}
-
+export const saveEvent   = (ev)    => _eventsCRUD.save(ev);
 export async function deleteEvent(id) {
   try {
-    await _fbOp('deleteEvent', async () => {
+    await _fbOp('delete:cal_events', async () => {
       await deleteDoc(doc(db, 'cal_events', id));
       _events = _events.filter(e => e.id !== id);
     }, { sync: false, rethrow: true });
@@ -311,23 +288,10 @@ export async function deleteEvent(id) {
     return { success: false, error: e.message };
   }
 }
+export const getEvents   = ()      => _events;
 
-export const getEvents = () => _events;
-
-export async function saveCooking(record) {
-  return _fbOp('saveCooking', async () => {
-    await setDoc(doc(db, 'cooking', record.id), record);
-    const idx = _cooking.findIndex(c => c.id === record.id);
-    if (idx >= 0) _cooking[idx] = record; else _cooking.push(record);
-  }, { sync: false });
-}
-
-export async function deleteCooking(id) {
-  return _fbOp('deleteCooking', async () => {
-    await deleteDoc(doc(db, 'cooking', id));
-    _cooking = _cooking.filter(c => c.id !== id);
-  }, { sync: false });
-}
+export const saveCooking   = (record) => _cookingCRUD.save(record);
+export const deleteCooking = (id)     => _cookingCRUD.delete(id);
 
 export const getCookingRecords  = () => _cooking;
 export const getCookingForDate  = (dateStr) => _cooking.filter(c => c.date === dateStr);
@@ -349,19 +313,9 @@ export function findDietEntriesByRecipeId(recipeId) {
 }
 
 // ── 체크인 (무제한) ───────────────────────────────────────────────
-export async function saveBodyCheckin(rec) {
-  return _fbOp('saveBodyCheckin', async () => {
-    await setDoc(doc(db, 'body_checkins', rec.id), rec);
-    const idx = _bodyCheckins.findIndex(c => c.id === rec.id);
-    if (idx >= 0) _bodyCheckins[idx] = rec; else _bodyCheckins.push(rec);
-  }, { sync: false });
-}
-export async function deleteBodyCheckin(id) {
-  return _fbOp('deleteBodyCheckin', async () => {
-    await deleteDoc(doc(db, 'body_checkins', id));
-    _bodyCheckins = _bodyCheckins.filter(c => c.id !== id);
-  }, { sync: false });
-}
+const _checkinCRUD = _createCRUD('body_checkins', () => _bodyCheckins, v => { _bodyCheckins = v; });
+export const saveBodyCheckin   = (rec) => _checkinCRUD.save(rec);
+export const deleteBodyCheckin = (id)  => _checkinCRUD.delete(id);
 export const getBodyCheckins = () => [..._bodyCheckins].sort((a,b) => (a.date||'').localeCompare(b.date||''));
 
 // ── 나만의 영양 DB ────────────────────────────────────────────────

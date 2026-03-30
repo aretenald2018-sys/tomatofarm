@@ -78,6 +78,15 @@ async function initializeApp() {
     .catch(e => console.warn('[app] CSV 로드 실패:', e));
 }
 
+// ── 모달 유틸리티 ────────────────────────────────────────────────
+function _openModal(id) {
+  document.getElementById(id)?.classList.add('open');
+}
+function _closeModal(id, e) {
+  if (e && e.target !== document.getElementById(id)) return;
+  document.getElementById(id)?.classList.remove('open');
+}
+
 // ── 탭 전환 ──────────────────────────────────────────────────────
 let _currentTab = 'home';
 
@@ -187,13 +196,10 @@ function _applyTabOrder(order) {
 function editSectionTitle(key) {
   document.getElementById('section-title-key').value   = key;
   document.getElementById('section-title-input').value = getSectionTitle(key);
-  document.getElementById('section-title-modal').classList.add('open');
+  _openModal('section-title-modal');
 }
 
-function closeSectionTitleModal(e) {
-  if (e && e.target !== document.getElementById('section-title-modal')) return;
-  document.getElementById('section-title-modal').classList.remove('open');
-}
+function closeSectionTitleModal(e) { _closeModal('section-title-modal', e); }
 
 async function saveSectionTitleFromModal() {
   const key   = document.getElementById('section-title-key').value;
@@ -246,10 +252,7 @@ function openStockPurchaseModal(sym) {
   document.getElementById('stock-purchase-modal').classList.add('open');
 }
 
-function closeStockPurchaseModal(e) {
-  if (e && e.target !== document.getElementById('stock-purchase-modal')) return;
-  document.getElementById('stock-purchase-modal').classList.remove('open');
-}
+function closeStockPurchaseModal(e) { _closeModal('stock-purchase-modal', e); }
 
 async function saveStockPurchaseFromModal() {
   const sym    = document.getElementById('sp-sym').value;
@@ -307,10 +310,7 @@ function openCalEventModal(startDate, endDate, eventId) {
   document.getElementById('cal-event-modal').classList.add('open');
 }
 
-function closeCalEventModal(e) {
-  if (e && e.target !== document.getElementById('cal-event-modal')) return;
-  document.getElementById('cal-event-modal').classList.remove('open');
-}
+function closeCalEventModal(e) { _closeModal('cal-event-modal', e); }
 
 function selectEventColor(color) {
   _calEventColor = color;
@@ -358,19 +358,13 @@ function openMonthlyCalendarModal(year, month) {
   document.getElementById('monthly-calendar-modal').classList.add('open');
 }
 
-function closeMonthlyCalendarModal(e) {
-  if (e && e.target !== document.getElementById('monthly-calendar-modal')) return;
-  document.getElementById('monthly-calendar-modal').classList.remove('open');
-}
+function closeMonthlyCalendarModal(e) { _closeModal('monthly-calendar-modal', e); }
 
 // CSV 내보내기 ─────────────────────────────────────────────────
 function openExportModal() {
   document.getElementById('export-modal').classList.add('open');
 }
-function closeExportModal(e) {
-  if (e && e.target !== document.getElementById('export-modal')) return;
-  document.getElementById('export-modal').classList.remove('open');
-}
+function closeExportModal(e) { _closeModal('export-modal', e); }
 function runExportCSV(period) {
   exportCSV(period);
   document.getElementById('export-modal').classList.remove('open');
@@ -412,10 +406,7 @@ async function _quickDeleteNutritionItem(id) {
 }
 window._quickDeleteNutritionItem = _quickDeleteNutritionItem;
 
-function closeSettingsModal(e) {
-  if (e && e.target !== document.getElementById('settings-modal')) return;
-  document.getElementById('settings-modal').classList.remove('open');
-}
+function closeSettingsModal(e) { _closeModal('settings-modal', e); }
 function saveSettings() {
   const anthropic    = document.getElementById('cfg-anthropic').value.trim();
   const alphavantage = document.getElementById('cfg-alphavantage').value.trim();
@@ -496,10 +487,7 @@ function _updateDietCalcPreview() {
   } catch(e) { preview.innerHTML = ''; }
 }
 
-function closeDietPlanModal(e) {
-  if (e && e.target !== document.getElementById('diet-plan-modal')) return;
-  document.getElementById('diet-plan-modal').classList.remove('open');
-}
+function closeDietPlanModal(e) { _closeModal('diet-plan-modal', e); }
 
 async function saveDietPlanFromModal() {
   const refeedDays = [...document.querySelectorAll('.refeed-day-btn.active')]
@@ -548,10 +536,7 @@ function openCheckinModal(id) {
   document.getElementById('checkin-modal').classList.add('open');
 }
 
-function closeCheckinModal(e) {
-  if (e && e.target !== document.getElementById('checkin-modal')) return;
-  document.getElementById('checkin-modal').classList.remove('open');
-}
+function closeCheckinModal(e) { _closeModal('checkin-modal', e); }
 
 async function saveCheckinFromModal() {
   const date   = document.getElementById('ci-date').value;
@@ -610,10 +595,7 @@ async function openNutritionSearch(mealId) {
   setTimeout(() => document.getElementById('nutrition-search-input').focus(), 100);
 }
 
-function closeNutritionSearch(e) {
-  if (e && e.target !== document.getElementById('nutrition-search-modal')) return;
-  document.getElementById('nutrition-search-modal').classList.remove('open');
-}
+function closeNutritionSearch(e) { _closeModal('nutrition-search-modal', e); }
 
 // ── 검색 입력 디바운싱 (실시간 추천 유지 + 렌더링 최적화) ────────────────────
 let _nutritionSearchTimer = null;
@@ -637,37 +619,45 @@ function debouncedNutritionSearch() {
   }, 300);
 }
 
+// ── 영양 항목 렌더링 헬퍼 ────────────────────────────────────────────
+function _renderNutritionRow(item, { icon = '🏠', removable = false, isCSV = false } = {}) {
+  const itemDataKey = `_nutritionItem_${item.id}`;
+  window[itemDataKey] = item;
+  const kcal = isCSV ? (item.energy || 0) : (item.nutrition?.kcal || item.kcal || 0);
+  const carbs = isCSV ? item.carbs : (item.nutrition?.carbs ?? item.carbs);
+  const protein = isCSV ? item.protein : (item.nutrition?.protein ?? item.protein);
+  const fat = isCSV ? item.fat : (item.nutrition?.fat ?? item.fat);
+  const removeBtn = removable
+    ? `<button onclick="event.stopPropagation(); removeFromFavorites('${item.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;padding:4px;flex-shrink:0" title="즐겨찾기에서 제거">✕</button>`
+    : '';
+  return `
+    <div class="nutrition-result-row"${removable ? ' style="display:flex;justify-content:space-between;align-items:center"' : ''}>
+      <div onclick="selectNutritionItemFromCache('${itemDataKey}')" style="cursor:pointer;flex:1">
+        <div class="nutrition-result-name">${icon} ${item.name}</div>
+        <div class="nutrition-result-meta">
+          ${(!isCSV && item.unit) ? `<span>${item.unit}</span>` : ''}
+          <span>${kcal}kcal</span>
+          ${carbs != null ? `<span>탄${carbs}g</span>` : ''}
+          ${protein != null ? `<span>단${protein}g</span>` : ''}
+          ${fat != null ? `<span>지${fat}g</span>` : ''}
+        </div>
+      </div>
+      ${removeBtn}
+    </div>`;
+}
+
+function _renderNutritionSection(title, items, options = {}) {
+  if (!items.length) return '';
+  return `<div style="font-size:12px;font-weight:600;color:${options.color || 'var(--text)'};padding:12px 8px;border-bottom:1px solid var(--border)${options.marginTop ? ';margin-top:8px' : ''}">${title}</div>`
+    + items.map(item => _renderNutritionRow(item, options)).join('');
+}
+
 // ── 초기 검색 결과 (최근 항목만 표시) ────────────────────────────────────
 function renderNutritionSearchInitial() {
   const container = document.getElementById('nutrition-search-results');
   const recentItems = getRecentNutritionItems(10);
 
-  let html = '';
-
-  if (recentItems.length > 0) {
-    html += `<div style="font-size:12px;font-weight:600;color:var(--text);padding:12px 8px;border-bottom:1px solid var(--border)">⭐ 최근 항목</div>`;
-    html += recentItems.map((item, idx) => {
-      const itemDataKey = `_nutritionItem_${item.id}`;
-      window[itemDataKey] = item;
-      return `
-        <div class="nutrition-result-row" style="display:flex;justify-content:space-between;align-items:center">
-          <div onclick="selectNutritionItemFromCache('${itemDataKey}')" style="cursor:pointer;flex:1">
-            <div class="nutrition-result-name">🏠 ${item.name}</div>
-            <div class="nutrition-result-meta">
-              ${item.unit ? `<span>${item.unit}</span>` : ''}
-              <span>${item.nutrition?.kcal || item.kcal || 0}kcal</span>
-              ${item.nutrition?.carbs != null ? `<span>탄${item.nutrition.carbs}g</span>` : item.carbs != null ? `<span>탄${item.carbs}g</span>` : ''}
-              ${item.nutrition?.protein != null ? `<span>단${item.nutrition.protein}g</span>` : item.protein != null ? `<span>단${item.protein}g</span>` : ''}
-              ${item.nutrition?.fat != null ? `<span>지${item.nutrition.fat}g</span>` : item.fat != null ? `<span>지${item.fat}g</span>` : ''}
-            </div>
-          </div>
-          <button onclick="event.stopPropagation(); removeFromFavorites('${item.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;padding:4px;flex-shrink:0" title="즐겨찾기에서 제거">✕</button>
-        </div>
-      `;
-    }).join('');
-  }
-
-  // 내 요리 섹션 (초기 화면)
+  let html = _renderNutritionSection('⭐ 최근 항목', recentItems, { removable: true });
   html += _buildRecipeResultsHtml('');
 
   if (!recentItems.length && !getCookingRecords().some(r => r.ingredients?.length)) {
@@ -684,136 +674,29 @@ function renderNutritionSearchResults() {
   let html = '';
 
   if (!q) {
-    // 검색어 없음: 즐겨찾기 + CSV 데이터 표시
     const recentItems = getRecentNutritionItems(10);
-    const csvResults = searchCSVFood(''); // CSV 상위 30개
-
-    // 캐시 저장
+    const csvResults = searchCSVFood('');
     _nutritionSearchCache = { db: [], csv: csvResults, recent: recentItems };
 
-    if (recentItems.length > 0) {
-      html += `<div style="font-size:12px;font-weight:600;color:var(--text);padding:12px 8px;border-bottom:1px solid var(--border)">⭐ 즐겨찾기 (최근 ${recentItems.length}개)</div>`;
-      html += recentItems.map((item, idx) => {
-        const itemDataKey = `_nutritionItem_${item.id}`;
-        window[itemDataKey] = item;  // 전역 변수로 저장
-        return `
-        <div class="nutrition-result-row" style="display:flex;justify-content:space-between;align-items:center">
-          <div onclick="selectNutritionItemFromCache('${itemDataKey}')" style="cursor:pointer;flex:1">
-            <div class="nutrition-result-name">🏠 ${item.name}</div>
-            <div class="nutrition-result-meta">
-              ${item.unit ? `<span>${item.unit}</span>` : ''}
-              <span>${item.nutrition?.kcal || item.kcal || 0}kcal</span>
-              ${item.nutrition?.carbs != null ? `<span>탄${item.nutrition.carbs}g</span>` : item.carbs != null ? `<span>탄${item.carbs}g</span>` : ''}
-              ${item.nutrition?.protein != null ? `<span>단${item.nutrition.protein}g</span>` : item.protein != null ? `<span>단${item.protein}g</span>` : ''}
-              ${item.nutrition?.fat != null ? `<span>지${item.nutrition.fat}g</span>` : item.fat != null ? `<span>지${item.fat}g</span>` : ''}
-            </div>
-          </div>
-          <button onclick="event.stopPropagation(); removeFromFavorites('${item.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;padding:4px;flex-shrink:0" title="즐겨찾기에서 제거">✕</button>
-        </div>
-      `;
-      }).join('');
-    }
-
-    if (csvResults.length > 0) {
-      html += `<div style="font-size:12px;font-weight:600;color:var(--text);padding:12px 8px;border-bottom:1px solid var(--border);margin-top:8px">📊 CSV 데이터</div>`;
-      html += csvResults.slice(0, 20).map((item, idx) => {
-        const itemDataKey = `_nutritionItem_${item.id}`;
-        window[itemDataKey] = item;  // 전역 변수로 저장
-        return `
-        <div class="nutrition-result-row" onclick="selectNutritionItemFromCache('${itemDataKey}')">
-          <div class="nutrition-result-name">📊 ${item.name}</div>
-          <div class="nutrition-result-meta">
-            <span>${item.energy || 0}kcal</span>
-            ${item.carbs != null ? `<span>탄${item.carbs}g</span>` : ''}
-            ${item.protein != null ? `<span>단${item.protein}g</span>` : ''}
-            ${item.fat != null ? `<span>지${item.fat}g</span>` : ''}
-          </div>
-        </div>
-      `;
-      }).join('');
-    }
+    html += _renderNutritionSection(`⭐ 즐겨찾기 (최근 ${recentItems.length}개)`, recentItems, { removable: true });
+    html += _renderNutritionSection('📊 CSV 데이터', csvResults.slice(0, 20), { icon: '📊', isCSV: true, marginTop: true });
 
     if (!recentItems.length && !csvResults.length) {
-      html = `<div style="font-size:12px;color:var(--muted);text-align:center;padding:16px">
-        DB가 비어 있어요. 아래에서 음식을 추가해보세요</div>`;
+      html = `<div style="font-size:12px;color:var(--muted);text-align:center;padding:16px">DB가 비어 있어요. 아래에서 음식을 추가해보세요</div>`;
     }
   } else {
-    // 검색어 있음: 즐겨찾기 + DB 결과 + CSV 결과 표시
     const recentFiltered = getRecentNutritionItems(10).filter(n => n.name?.toLowerCase().includes(q.toLowerCase()));
     const dbResults = searchNutritionDB(q);
     const csvResults = searchCSVFood(q);
-
-    // 캐시 저장
     _nutritionSearchCache = { db: dbResults, csv: csvResults, recent: recentFiltered };
 
-    // 즐겨찾기 (검색 결과 중)
-    if (recentFiltered.length > 0) {
-      html += `<div style="font-size:12px;font-weight:600;color:var(--accent);padding:12px 8px;border-bottom:1px solid var(--border)">⭐ 즐겨찾기</div>`;
-      html += recentFiltered.map((item, idx) => {
-        const itemDataKey = `_nutritionItem_${item.id}`;
-        window[itemDataKey] = item;  // 전역 변수로 저장
-        return `
-        <div class="nutrition-result-row" style="display:flex;justify-content:space-between;align-items:center">
-          <div onclick="selectNutritionItemFromCache('${itemDataKey}')" style="cursor:pointer;flex:1">
-            <div class="nutrition-result-name">🏠 ${item.name}</div>
-            <div class="nutrition-result-meta">
-              ${item.unit ? `<span>${item.unit}</span>` : ''}
-              <span>${item.nutrition?.kcal || item.kcal || 0}kcal</span>
-              ${item.nutrition?.carbs != null ? `<span>탄${item.nutrition.carbs}g</span>` : item.carbs != null ? `<span>탄${item.carbs}g</span>` : ''}
-              ${item.nutrition?.protein != null ? `<span>단${item.nutrition.protein}g</span>` : item.protein != null ? `<span>단${item.protein}g</span>` : ''}
-              ${item.nutrition?.fat != null ? `<span>지${item.nutrition.fat}g</span>` : item.fat != null ? `<span>지${item.fat}g</span>` : ''}
-            </div>
-          </div>
-          <button onclick="event.stopPropagation(); removeFromFavorites('${item.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;padding:4px;flex-shrink:0" title="즐겨찾기에서 제거">✕</button>
-        </div>
-      `;
-      }).join('');
-    }
+    html += _renderNutritionSection('⭐ 즐겨찾기', recentFiltered, { removable: true, color: 'var(--accent)' });
+    html += _renderNutritionSection('🏠 DB 검색 결과', dbResults.slice(0, 15), { marginTop: true });
 
-    // DB 결과
-    if (dbResults.length > 0) {
-      html += `<div style="font-size:12px;font-weight:600;color:var(--text);padding:12px 8px;border-bottom:1px solid var(--border);margin-top:8px">🏠 DB 검색 결과</div>`;
-      html += dbResults.slice(0, 15).map((item, idx) => {
-        const itemDataKey = `_nutritionItem_${item.id}`;
-        window[itemDataKey] = item;  // 전역 변수로 저장
-        return `
-        <div class="nutrition-result-row" onclick="selectNutritionItemFromCache('${itemDataKey}')">
-          <div class="nutrition-result-name">🏠 ${item.name}</div>
-          <div class="nutrition-result-meta">
-            ${item.unit ? `<span>${item.unit}</span>` : ''}
-            <span>${item.nutrition?.kcal || item.kcal || 0}kcal</span>
-            ${item.nutrition?.carbs != null ? `<span>탄${item.nutrition.carbs}g</span>` : item.carbs != null ? `<span>탄${item.carbs}g</span>` : ''}
-            ${item.nutrition?.protein != null ? `<span>단${item.nutrition.protein}g</span>` : item.protein != null ? `<span>단${item.protein}g</span>` : ''}
-            ${item.nutrition?.fat != null ? `<span>지${item.nutrition.fat}g</span>` : item.fat != null ? `<span>지${item.fat}g</span>` : ''}
-          </div>
-        </div>
-      `;
-      }).join('');
-    }
-
-    // CSV 결과 (DB에 이미 있는 이름은 제외)
     const dbNames = new Set([...dbResults, ...recentFiltered].map(r => r.name?.toLowerCase()));
     const dedupedCsv = csvResults.filter(c => !dbNames.has(c.name?.toLowerCase()));
-    if (dedupedCsv.length > 0) {
-      html += `<div style="font-size:12px;font-weight:600;color:var(--text);padding:12px 8px;border-bottom:1px solid var(--border);margin-top:8px">📊 CSV 검색 결과</div>`;
-      html += dedupedCsv.slice(0, 15).map((item, idx) => {
-        const itemDataKey = `_nutritionItem_${item.id}`;
-        window[itemDataKey] = item;  // 전역 변수로 저장
-        return `
-        <div class="nutrition-result-row" onclick="selectNutritionItemFromCache('${itemDataKey}')">
-          <div class="nutrition-result-name">📊 ${item.name}</div>
-          <div class="nutrition-result-meta">
-            <span>${item.energy || 0}kcal</span>
-            ${item.carbs != null ? `<span>탄${item.carbs}g</span>` : ''}
-            ${item.protein != null ? `<span>단${item.protein}g</span>` : ''}
-            ${item.fat != null ? `<span>지${item.fat}g</span>` : ''}
-          </div>
-        </div>
-      `;
-      }).join('');
-    }
+    html += _renderNutritionSection('📊 CSV 검색 결과', dedupedCsv.slice(0, 15), { icon: '📊', isCSV: true, marginTop: true });
 
-    // 내 요리 섹션
     html += _buildRecipeResultsHtml(q);
 
     if (!recentFiltered.length && !dbResults.length && !dedupedCsv.length && !html.includes('🍳 내 요리')) {
@@ -971,10 +854,7 @@ function openFatSecretSearch(meal) {
   setTimeout(() => input?.focus(), 100);
 }
 
-function closeFatSecretSearch(e) {
-  if (e && e.target !== document.getElementById('fatsecret-modal')) return;
-  document.getElementById('fatsecret-modal').classList.remove('open');
-}
+function closeFatSecretSearch(e) { _closeModal('fatsecret-modal', e); }
 
 async function fatsecretSearch() {
   const q = document.getElementById('fs-search-input').value.trim();

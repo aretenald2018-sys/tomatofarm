@@ -41,7 +41,7 @@ export async function loadAndInjectModals() {
     const htmlParts = [];
 
     for (const modalConfig of MODALS) {
-      const module = await import(modalConfig.path);
+      const module = await import(modalConfig.path + '?v=' + Date.now());
       const html = module[modalConfig.export];
       if (html) {
         htmlParts.push(html);
