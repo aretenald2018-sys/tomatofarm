@@ -611,6 +611,57 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans KR',sans-seri
 .workout-tab-content{padding:14px 16px 80px;}
 .workout-tab-content .sheet-actions{padding-bottom:0;}
 
+/* ── 세트 간 휴식 타이머 (플로팅 바) ── */
+.rest-timer-bar{
+  position:fixed;bottom:60px;left:50%;transform:translateX(-50%);
+  width:calc(100% - 24px);max-width:480px;
+  background:var(--surface2);border:1px solid var(--gym);border-radius:14px;
+  padding:12px 14px 10px;z-index:500;
+  box-shadow:0 -4px 24px rgba(249,115,22,.25), 0 0 0 1px rgba(249,115,22,.1);
+  animation:timer-slide-up .25s ease-out;
+}
+@keyframes timer-slide-up{from{transform:translateX(-50%) translateY(100%);opacity:0}to{transform:translateX(-50%) translateY(0);opacity:1}}
+.rest-timer-bar.done{border-color:var(--streak);box-shadow:0 -4px 24px rgba(16,185,129,.3);}
+.rest-timer-bar.expired{border-color:var(--diet-bad);box-shadow:0 -4px 24px rgba(239,68,68,.35);animation:timer-pulse .5s ease-in-out 3;}
+@keyframes timer-pulse{0%,100%{transform:translateX(-50%) scale(1)}50%{transform:translateX(-50%) scale(1.02)}}
+
+.rest-timer-main{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+
+.rest-timer-display{display:flex;align-items:center;gap:6px;flex-shrink:0;}
+.rest-timer-icon{font-size:18px;}
+.rest-timer-time{font-family:'JetBrains Mono',monospace;font-size:28px;font-weight:700;color:var(--text);min-width:60px;letter-spacing:1px;}
+.rest-timer-bar.expired .rest-timer-time{color:var(--diet-bad);}
+.rest-timer-bar.done .rest-timer-time{color:var(--streak);}
+
+.rest-timer-presets{display:flex;gap:4px;flex-shrink:0;}
+.rest-preset-btn{
+  padding:4px 10px;border-radius:6px;border:1px solid var(--border);
+  background:var(--surface3);color:var(--muted2);font-family:'JetBrains Mono',monospace;
+  font-size:11px;cursor:pointer;transition:all .12s;-webkit-tap-highlight-color:transparent;
+}
+.rest-preset-btn:active{transform:scale(.95);}
+.rest-preset-btn.active{background:var(--gym-dim);border-color:var(--gym);color:var(--gym);font-weight:700;}
+
+.rest-timer-controls{display:flex;align-items:center;gap:6px;flex:1;min-width:0;}
+.rest-timer-adj{
+  padding:4px 8px;border-radius:6px;border:1px solid var(--border);
+  background:var(--surface3);color:var(--muted2);font-family:'JetBrains Mono',monospace;
+  font-size:11px;font-weight:700;cursor:pointer;flex-shrink:0;transition:all .12s;
+  -webkit-tap-highlight-color:transparent;
+}
+.rest-timer-adj:active{transform:scale(.92);background:var(--surface2);}
+.rest-timer-progress{flex:1;height:4px;background:var(--surface3);border-radius:2px;overflow:hidden;min-width:40px;}
+.rest-timer-fill{height:100%;background:var(--gym);border-radius:2px;transition:width .3s linear;width:100%;}
+.rest-timer-bar.expired .rest-timer-fill{background:var(--diet-bad);}
+.rest-timer-bar.done .rest-timer-fill{background:var(--streak);}
+.rest-timer-skip{
+  padding:4px 10px;border-radius:6px;border:1px solid var(--border);
+  background:var(--surface3);color:var(--muted2);font-size:11px;font-weight:500;
+  cursor:pointer;flex-shrink:0;white-space:nowrap;transition:all .12s;
+  -webkit-tap-highlight-color:transparent;
+}
+.rest-timer-skip:active{transform:scale(.95);}
+
 /* ── 요리 탭 ── */
 .cooking-list{padding:12px 16px 80px;}
 .cooking-dashboard{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:16px;}

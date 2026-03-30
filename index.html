@@ -309,6 +309,30 @@
       <button class="sheet-btn confirm" id="wt-save-btn" onclick="saveWorkoutDay()">💾 저장</button>
     </div>
   </div>
+
+  <!-- ═══ 세트 간 휴식 타이머 (플로팅) ═══ -->
+  <div id="rest-timer-bar" class="rest-timer-bar" style="display:none">
+    <div class="rest-timer-main">
+      <div class="rest-timer-display">
+        <span class="rest-timer-icon">⏱️</span>
+        <span id="rest-timer-time" class="rest-timer-time">1:30</span>
+      </div>
+      <div class="rest-timer-presets">
+        <button class="rest-preset-btn" data-sec="60">1:00</button>
+        <button class="rest-preset-btn active" data-sec="90">1:30</button>
+        <button class="rest-preset-btn" data-sec="120">2:00</button>
+        <button class="rest-preset-btn" data-sec="180">3:00</button>
+      </div>
+      <div class="rest-timer-controls">
+        <button id="rest-timer-adj-down" class="rest-timer-adj" onclick="wtRestTimerAdjust(-15)">−15</button>
+        <div class="rest-timer-progress">
+          <div id="rest-timer-fill" class="rest-timer-fill"></div>
+        </div>
+        <button id="rest-timer-adj-up" class="rest-timer-adj" onclick="wtRestTimerAdjust(+15)">+15</button>
+        <button id="rest-timer-skip" class="rest-timer-skip" onclick="wtRestTimerSkip()">건너뛰기</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- ═══ 요리 탭 ═══ -->

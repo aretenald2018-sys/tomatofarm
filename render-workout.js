@@ -191,9 +191,12 @@ export function wtUpdateSet(entryIdx, si, field, val) {
 }
 
 export function wtToggleSetDone(entryIdx, si) {
-  _exercises[entryIdx].sets[si].done = !_exercises[entryIdx].sets[si].done;
+  const wasDone = _exercises[entryIdx].sets[si].done;
+  _exercises[entryIdx].sets[si].done = !wasDone;
   _renderSets(entryIdx);
   saveWorkoutDay().catch(e => console.error('Save error:', e));
+  // 세트 완료 시 휴식 타이머 자동 시작
+  if (!wasDone) wtRestTimerStart();
 }
 
 export function wtUpdateSetType(entryIdx, si, val) {
@@ -837,6 +840,91 @@ export function openNutritionPhotoUpload() {
   }
 }
 
+// ── 세트 간 휴식 타이머 ───────────────────────────────────────────
+let _restTimer = { interval: null, remaining: 0, total: 90, running: false };
+
+function _restTimerEl()  { return document.getElementById('rest-timer-bar'); }
+function _restTimeEl()   { return document.getElementById('rest-timer-time'); }
+function _restFillEl()   { return document.getElementById('rest-timer-fill'); }
+
+function _formatTime(sec) {
+  const m = Math.floor(Math.abs(sec) / 60);
+  const s = Math.abs(sec) % 60;
+  const sign = sec < 0 ? '+' : '';
+  return `${sign}${m}:${String(s).padStart(2, '0')}`;
+}
+
+export function wtRestTimerStart(seconds) {
+  const bar = _restTimerEl();
+  if (!bar) return;
+  if (seconds) _restTimer.total = seconds;
+  _restTimer.remaining = _restTimer.total;
+  _restTimer.running = true;
+
+  // UI 표시
+  bar.style.display = '';
+  bar.classList.remove('expired', 'done');
+  _restTimeEl().textContent = _formatTime(_restTimer.remaining);
+  _restFillEl().style.width = '100%';
+  _updatePresetActive();
+
+  // 기존 인터벌 정리
+  if (_restTimer.interval) clearInterval(_restTimer.interval);
+
+  _restTimer.interval = setInterval(() => {
+    _restTimer.remaining--;
+    _restTimeEl().textContent = _formatTime(_restTimer.remaining);
+
+    if (_restTimer.remaining > 0) {
+      _restFillEl().style.width = `${(_restTimer.remaining / _restTimer.total) * 100}%`;
+    } else if (_restTimer.remaining === 0) {
+      // 타이머 만료
+      _restFillEl().style.width = '0%';
+      bar.classList.add('expired');
+      // 진동 알림 (지원 시)
+      if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+    } else {
+      // 초과 시간 (카운트업) — 10분 지나면 자동 닫기
+      if (_restTimer.remaining < -600) wtRestTimerSkip();
+    }
+  }, 1000);
+}
+
+export function wtRestTimerSkip() {
+  const bar = _restTimerEl();
+  if (!bar) return;
+  if (_restTimer.interval) clearInterval(_restTimer.interval);
+  _restTimer.running = false;
+  bar.style.display = 'none';
+  bar.classList.remove('expired', 'done');
+}
+
+export function wtRestTimerAdjust(delta) {
+  if (!_restTimer.running) return;
+  _restTimer.remaining = Math.max(0, _restTimer.remaining + delta);
+  _restTimer.total = Math.max(_restTimer.total, _restTimer.remaining);
+  _restTimeEl().textContent = _formatTime(_restTimer.remaining);
+  _restFillEl().style.width = `${(_restTimer.remaining / _restTimer.total) * 100}%`;
+  _restTimerEl()?.classList.remove('expired');
+}
+
+function _updatePresetActive() {
+  document.querySelectorAll('.rest-preset-btn').forEach(btn => {
+    btn.classList.toggle('active', +btn.dataset.sec === _restTimer.total);
+  });
+}
+
+function _initRestTimerPresets() {
+  document.querySelectorAll('.rest-preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      wtRestTimerStart(+btn.dataset.sec);
+    });
+  });
+}
+
+// 운동 탭 초기화 시 프리셋 바인딩
+setTimeout(_initRestTimerPresets, 0);
+
 // 전역(window) 객체에 함수 노출시켜 연결고리 복구
 window.wtSetGymStatus = wtSetGymStatus;
 window.wtSetCFStatus = wtSetCFStatus;
@@ -848,3 +936,6 @@ window.wtOpenExerciseEditor = wtOpenExerciseEditor;
 window.wtCloseExerciseEditor = wtCloseExerciseEditor;
 window.wtSaveExerciseFromEditor = wtSaveExerciseFromEditor;
 window.wtDeleteExerciseFromEditor = wtDeleteExerciseFromEditor;
+window.wtRestTimerStart = wtRestTimerStart;
+window.wtRestTimerSkip = wtRestTimerSkip;
+window.wtRestTimerAdjust = wtRestTimerAdjust;
