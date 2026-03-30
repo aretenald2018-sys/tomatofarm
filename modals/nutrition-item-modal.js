@@ -327,6 +327,8 @@ export function clearNutritionPhoto() {
   document.getElementById('ni-photo-result').style.display = 'none';
 }
 
+let _niMultipleItems = null; // 복수 제품 감지 시 아이템 배열
+
 async function _analyzeNutritionPhoto() {
   if (!_niPhotoBase64) return;
 
@@ -335,21 +337,24 @@ async function _analyzeNutritionPhoto() {
 
   analyzing.style.display = 'block';
   result.style.display = 'none';
+  _niMultipleItems = null;
 
   try {
     const { parseNutritionFromImage } = await import('../ai.js');
-    _niParsedData = await parseNutritionFromImage(_niPhotoBase64, 'ko');
+    const parsed = await parseNutritionFromImage(_niPhotoBase64, 'ko');
 
-    // 결과 표시
-    _displayNutritionResult(_niParsedData);
-
-    // 폼에 자동 채우기
-    _populateNutritionForm(_niParsedData);
-
-    // OCR 분석 후 자동으로 수기입력 탭으로 전환 (사용자 수정 용이)
-    setTimeout(() => {
-      switchNutritionTab('manual');
-    }, 300);
+    if (parsed.multiple && Array.isArray(parsed.items) && parsed.items.length > 1) {
+      // ── 복수 제품 감지 ──
+      _niMultipleItems = parsed.items;
+      _niParsedData = parsed.items[0]; // 첫 번째를 기본 선택
+      _displayMultipleResults(parsed.items);
+    } else {
+      // ── 단일 제품 ──
+      _niParsedData = parsed.multiple ? parsed.items[0] : parsed;
+      _displayNutritionResult(_niParsedData);
+      _populateNutritionForm(_niParsedData);
+      setTimeout(() => { switchNutritionTab('manual'); }, 300);
+    }
   } catch (e) {
     console.error('OCR 분석 실패:', e);
     alert('사진 분석 실패: ' + e.message);
@@ -551,6 +556,125 @@ function _displayNutritionTextResult(data, langResult) {
       <div>지방: <strong>${data.nutrition?.fat || '?'} g</strong></div>
     </div>
   `;
+}
+
+// ═════════════════════════════════════════════════════════════
+// 복수 제품 처리
+// ═════════════════════════════════════════════════════════════
+
+function _displayMultipleResults(items) {
+  const result = document.getElementById('ni-photo-result');
+  const extracted = document.getElementById('ni-photo-extracted');
+
+  result.style.display = 'block';
+  document.getElementById('ni-photo-confidence').textContent =
+    items.map(it => Math.round((it.confidence || 0.8) * 100) + '%').join(' / ');
+
+  extracted.innerHTML = `
+    <div style="font-size:12px;font-weight:600;color:var(--accent);margin-bottom:8px">
+      📋 ${items.length}개 제품이 감지되었습니다
+    </div>
+    ${items.map((item, i) => `
+      <div class="ni-multi-item" data-idx="${i}" style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px;cursor:pointer;transition:all .15s${i === 0 ? ';border-color:var(--accent);background:rgba(99,102,241,.08)' : ''}">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <strong style="font-size:13px">${item.name || '제품 ' + (i + 1)}</strong>
+          <span style="font-size:10px;color:var(--muted)">${Math.round((item.confidence || 0.8) * 100)}%</span>
+        </div>
+        <div style="font-size:11px;display:grid;grid-template-columns:1fr 1fr;gap:2px;color:var(--muted2)">
+          <div>🔥 ${item.nutrition?.kcal || 0} kcal</div>
+          <div>🥩 단 ${item.nutrition?.protein || 0}g</div>
+          <div>🍚 탄 ${item.nutrition?.carbs || 0}g</div>
+          <div>🧈 지 ${item.nutrition?.fat || 0}g</div>
+        </div>
+      </div>
+    `).join('')}
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="diet-db-btn" id="ni-multi-select-btn" style="flex:1;padding:10px;font-size:12px">
+        ✏️ 선택한 제품 편집
+      </button>
+      <button class="diet-db-btn" id="ni-multi-save-all-btn" style="flex:1;padding:10px;font-size:12px;background:var(--gym-dim);border-color:var(--gym);color:var(--gym)">
+        💾 ${items.length}개 모두 저장
+      </button>
+    </div>
+  `;
+
+  // 아이템 선택 이벤트
+  let selectedIdx = 0;
+  extracted.querySelectorAll('.ni-multi-item').forEach(el => {
+    el.addEventListener('click', () => {
+      selectedIdx = parseInt(el.dataset.idx);
+      extracted.querySelectorAll('.ni-multi-item').forEach(e => {
+        e.style.borderColor = 'var(--border)';
+        e.style.background = 'transparent';
+      });
+      el.style.borderColor = 'var(--accent)';
+      el.style.background = 'rgba(99,102,241,.08)';
+      _niParsedData = items[selectedIdx];
+    });
+  });
+
+  // 선택한 제품 편집 버튼
+  document.getElementById('ni-multi-select-btn')?.addEventListener('click', () => {
+    _niParsedData = items[selectedIdx];
+    _populateNutritionForm(_niParsedData);
+    switchNutritionTab('manual');
+  });
+
+  // 모두 저장 버튼
+  document.getElementById('ni-multi-save-all-btn')?.addEventListener('click', () => {
+    _saveMultipleItems(items);
+  });
+}
+
+async function _saveMultipleItems(items) {
+  const btn = document.getElementById('ni-multi-save-all-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '저장 중...'; }
+
+  try {
+    const { saveNutritionItem } = await import('../data.js');
+    let savedCount = 0;
+
+    for (const item of items) {
+      const entry = {
+        id: null,
+        name: item.name || '미확인 제품',
+        unit: item.unit || '100g',
+        servingSize: item.servingSize || 100,
+        servingUnit: item.servingUnit || 'g',
+        nutrition: {
+          kcal: item.nutrition?.kcal || 0,
+          protein: item.nutrition?.protein || 0,
+          carbs: item.nutrition?.carbs || 0,
+          fat: item.nutrition?.fat || 0,
+          fiber: item.nutrition?.fiber || 0,
+          sugar: item.nutrition?.sugar || 0,
+          sodium: item.nutrition?.sodium || 0,
+        },
+        notes: `복수 인식 (${items.length}개 중 ${savedCount + 1}번째)`,
+        source: 'ocr',
+        language: item.language || 'ko',
+        confidence: item.confidence || 0.8,
+        photoUrl: null,
+        rawText: null,
+      };
+      await saveNutritionItem(entry);
+      savedCount++;
+    }
+
+    alert(`${savedCount}개 제품이 모두 저장되었습니다!`);
+    closeNutritionItemModal();
+
+    if (window.renderNutritionSearchResults) {
+      setTimeout(() => {
+        window.renderNutritionSearchResults();
+        if (window._renderNutritionDBList) window._renderNutritionDBList();
+      }, 100);
+    }
+  } catch (e) {
+    alert('저장 실패: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = `💾 ${items.length}개 모두 저장`; }
+  }
 }
 
 // ═════════════════════════════════════════════════════════════

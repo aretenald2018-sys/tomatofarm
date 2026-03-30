@@ -113,35 +113,56 @@ protein/carbs/fat 단위는 그램(g). 입력 없으면 ok:true, kcal:0, protein
 
 // ── 영양성분표 이미지 파싱 (Claude Vision API) ────────────────────
 // 사진에서 영양정보 추출 후 JSON으로 변환
+// 단일 제품 → { name, ... }, 복수 제품(표 등) → { multiple: true, items: [...] }
 export async function parseNutritionFromImage(imageBase64, language = 'ko') {
   const langMap = { ko:'한국어', ja:'일본어', en:'영어' };
-  const prompt = `다음 영양성분표 이미지에서 영양정보를 추출해주세요.
+  const prompt = `다음 이미지에서 영양정보를 추출해주세요.
 
-반드시 아래 JSON 형식으로만 응답 (다른 텍스트 없이):
+이미지에 제품이 **1개**이면 아래 JSON 형식으로 응답:
 {
   "name": "음식명",
   "unit": "100g",
   "servingSize": 100,
   "servingUnit": "g",
-  "nutrition": {
-    "kcal": 165,
-    "protein": 31,
-    "carbs": 0.4,
-    "fat": 3.6,
-    "fiber": 0,
-    "sugar": 0,
-    "sodium": 60
-  },
+  "nutrition": { "kcal": 165, "protein": 31, "carbs": 0.4, "fat": 3.6, "fiber": 0, "sugar": 0, "sodium": 60 },
   "brand": "브랜드명 (있으면)",
   "language": "${language}",
   "confidence": 0.95
 }
 
+이미지에 제품이 **2개 이상** (표, 비교표, 여러 라벨 등)이면 아래 JSON 형식으로 응답:
+{
+  "multiple": true,
+  "items": [
+    {
+      "name": "제품A",
+      "unit": "100g",
+      "servingSize": 100,
+      "servingUnit": "g",
+      "nutrition": { "kcal": 165, "protein": 31, "carbs": 0.4, "fat": 3.6, "fiber": 0, "sugar": 0, "sodium": 60 },
+      "brand": "브랜드명",
+      "language": "${language}",
+      "confidence": 0.90
+    },
+    {
+      "name": "제품B",
+      "unit": "1개",
+      "servingSize": 50,
+      "servingUnit": "g",
+      "nutrition": { "kcal": 200, "protein": 8, "carbs": 30, "fat": 7, "fiber": 1, "sugar": 12, "sodium": 150 },
+      "brand": "브랜드명",
+      "language": "${language}",
+      "confidence": 0.85
+    }
+  ]
+}
+
 주의사항:
+- 표(table)에 복수 제품이 나열된 경우 반드시 items 배열로 **각각** 추출
 - 정확히 보이는 값만 추출 (확실하지 않으면 confidence 낮추기)
 - 없는 필드는 0 또는 null (fiber, sugar, sodium은 선택)
 - 단위는 g로 통일 (mg는 /1000)
-- 신뢰도: 0.0 ~ 1.0 (1.0 = 100% 확실)`;
+- 반드시 JSON만 출력 (다른 텍스트 없이)`;
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -153,7 +174,7 @@ export async function parseNutritionFromImage(imageBase64, language = 'ko') {
     },
     body: JSON.stringify({
       model: CONFIG.CLAUDE_MODEL,
-      max_tokens: 500,
+      max_tokens: 2000,
       messages: [{
         role: 'user',
         content: [

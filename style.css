@@ -164,6 +164,9 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans KR',sans-seri
 .ex-block-header{display:flex;align-items:center;gap:6px;margin-bottom:4px;}
 .ex-block-muscle{font-size:10px;font-weight:700;flex-shrink:0;}
 .ex-block-name{font-size:13px;font-weight:500;color:var(--text);flex:1;}
+.ex-sparkline-wrap{display:flex;align-items:center;gap:4px;flex-shrink:0;}
+.ex-sparkline{display:block;flex-shrink:0;}
+.ex-sparkline-diff{font-size:9px;font-weight:600;white-space:nowrap;}
 .ex-remove-btn{background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:4px 8px;margin-left:auto;-webkit-tap-highlight-color:transparent;border-radius:4px;transition:all .15s;flex-shrink:0;}
 .ex-remove-btn:hover{background:rgba(239,68,68,.1);color:#ef4444;}
 .ex-remove-btn:active{background:rgba(239,68,68,.2);transform:scale(.95);}

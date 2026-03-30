@@ -6,7 +6,8 @@ import { MUSCLES, DAYS }                       from './config.js';
 import { saveDay, saveExercise, deleteExercise,
          getDay, getExList, dateKey,
          getLastSession, isFuture, TODAY,
-         getDietPlan, calcDietMetrics }         from './data.js';
+         getDietPlan, calcDietMetrics,
+         getVolumeHistory, calcVolume }         from './data.js';
 import { analyzeDiet }                          from './ai.js';
 
 let _date       = null;   // { y, m, d }
@@ -173,31 +174,37 @@ export function wtAddSet(entryIdx) {
   const prev = _exercises[entryIdx].sets.slice(-1)[0];
   _exercises[entryIdx].sets.push({ kg: prev?.kg||0, reps: prev?.reps||0, setType:'main', done:false });
   _renderSets(entryIdx);
+  saveWorkoutDay().catch(e => console.error('Save error:', e));
 }
 
 export function wtRemoveSet(entryIdx, si) {
   _exercises[entryIdx].sets.splice(si, 1);
   _renderSets(entryIdx);
+  saveWorkoutDay().catch(e => console.error('Save error:', e));
 }
 
 export function wtUpdateSet(entryIdx, si, field, val) {
   _exercises[entryIdx].sets[si][field] = field === 'setType' ? val : (parseFloat(val) || 0);
   _renderSets(entryIdx);
+  saveWorkoutDay().catch(e => console.error('Save error:', e));
 }
 
 export function wtToggleSetDone(entryIdx, si) {
   _exercises[entryIdx].sets[si].done = !_exercises[entryIdx].sets[si].done;
   _renderSets(entryIdx);
+  saveWorkoutDay().catch(e => console.error('Save error:', e));
 }
 
 export function wtUpdateSetType(entryIdx, si, val) {
   _exercises[entryIdx].sets[si].setType = val;
   _renderSets(entryIdx);
+  saveWorkoutDay().catch(e => console.error('Save error:', e));
 }
 
 export function wtRemoveExerciseEntry(entryIdx) {
   _exercises.splice(entryIdx, 1);
   _renderExerciseList();
+  saveWorkoutDay().catch(e => console.error('Save error:', e));
 }
 
 // ── 종목 선택/에디터 ──────────────────────────────────────────────
@@ -428,6 +435,33 @@ function _initButtonEventListeners() {
   });
 }
 
+function _buildSparkline(exerciseId, color) {
+  const history = getVolumeHistory(exerciseId);
+  if (history.length < 2) return '';
+  const recent = history.slice(-10);
+  const vals = recent.map(h => h.volume);
+  const min = Math.min(...vals), max = Math.max(...vals);
+  const range = max - min || 1;
+  const W = 80, H = 24, pad = 2;
+  const coords = vals.map((v, i) => ({
+    x: pad + (i / (vals.length - 1)) * (W - pad * 2),
+    y: pad + (1 - (v - min) / range) * (H - pad * 2),
+  }));
+  const points = coords.map(c => `${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(' ');
+  const lastPt = coords[coords.length - 1];
+  const lastVal = vals[vals.length - 1], prevVal = vals[vals.length - 2];
+  const diff = lastVal - prevVal;
+  const arrow = diff > 0 ? '↑' : diff < 0 ? '↓' : '→';
+  const arrowColor = diff > 0 ? 'var(--diet-ok)' : diff < 0 ? 'var(--diet-bad)' : 'var(--muted)';
+  return `<div class="ex-sparkline-wrap">
+    <svg width="${W}" height="${H}" class="ex-sparkline">
+      <polyline points="${points}" fill="none" stroke="${color||'var(--accent)'}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="${lastPt.x.toFixed(1)}" cy="${lastPt.y.toFixed(1)}" r="2" fill="${color||'var(--accent)'}"/>
+    </svg>
+    <span class="ex-sparkline-diff" style="color:${arrowColor}">${arrow}${Math.abs(diff).toLocaleString()}</span>
+  </div>`;
+}
+
 function _renderExerciseList() {
   const container = document.getElementById('wt-exercise-list');
   if (!container) return;
@@ -445,6 +479,7 @@ function _renderExerciseList() {
            <button class="ex-copy-btn" data-idx="${idx}">복사</button>
          </div>`
       : '';
+    const sparkline = _buildSparkline(entry.exerciseId, mc?.color);
 
     const block = document.createElement('div');
     block.className = 'ex-block';
@@ -452,6 +487,7 @@ function _renderExerciseList() {
       <div class="ex-block-header">
         <span class="ex-block-muscle" style="color:${mc?.color||'#888'}">${mc?.name||''}</span>
         <span class="ex-block-name">${ex?.name||entry.exerciseId}</span>
+        ${sparkline}
         <button class="ex-remove-btn" data-idx="${idx}">✕</button>
       </div>
       ${lastHint}
@@ -552,6 +588,7 @@ function _renderPickerList() {
           _exercises.push({ muscleId:ex.muscleId, exerciseId:ex.id, sets:[{kg:0,reps:0,setType:'main',done:false}] });
           _renderExerciseList();
           wtCloseExercisePicker();
+          saveWorkoutDay().catch(e => console.error('Save error:', e));
         });
       }
       group.appendChild(btn);
