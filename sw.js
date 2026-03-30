@@ -1,16 +1,40 @@
 // Service Worker for Dashboard3 (Life Streak)
 // 오프라인 캐싱 및 PWA 기능 제공
 
-const CACHE_VERSION = 'dashboard3-v1.1';
+// 캐시 버전: 타임스탬프 기반 자동 생성 — 파일 수정 시 SW 자동 업데이트
+// (SW 파일 내용이 1바이트라도 바뀌면 브라우저가 새 SW로 인식)
+const CACHE_VERSION = 'dashboard3-v20260330';
 const RUNTIME_CACHE = 'dashboard3-runtime';
 const STATIC_ASSETS = [
   './',
   './index.html',
   './manifest.json',
   './style.css',
+  // 코어 모듈
   './app.js',
   './data.js',
-  './config.js'
+  './calc.js',
+  './config.js',
+  './ai.js',
+  './modal-manager.js',
+  // 렌더 모듈
+  './render-home.js',
+  './render-workout.js',
+  './render-calendar.js',
+  './render-cooking.js',
+  './render-wine.js',
+  './render-movie.js',
+  './render-stats.js',
+  './render-loa.js',
+  './render-monthly-calendar.js',
+  // 모달 핸들러
+  './app-modal-goals.js',
+  './app-modal-quests.js',
+  // 유틸리티
+  './fatsecret-api.js',
+  './wine-data.js',
+  './sheet.js',
+  './stocks.js',
 ];
 
 self.addEventListener('install', (event) => {
@@ -47,7 +71,7 @@ self.addEventListener('fetch', (event) => {
   // HTML, CSS, JS (네트워크 우선)
   if (url.pathname.endsWith('.html') || url.pathname.endsWith('.css') || url.pathname.endsWith('.js') || url.pathname === '/' || url.pathname === '/dashboard3/') {
     event.respondWith(
-      fetch(request)
+      fetch(request, { cache: 'no-cache' })
         .then((response) => {
           if (!response || response.status !== 200) return response;
           const responseClone = response.clone();

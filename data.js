@@ -9,6 +9,17 @@ import {
 } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 import { CONFIG, MUSCLES } from './config.js';
 import { INITIAL_WINES }  from './wine-data.js';
+import {
+  calcDietMetrics  as _calcDietMetrics,
+  isDietDaySuccess as _isDietDaySuccess,
+  dietDayOk        as _dietDayOk,
+  calcStreaks       as _calcStreaks,
+  calcVolume       as _calcVolume,
+  calcVolumeAll    as _calcVolumeAll,
+  getVolumeHistory as _getVolumeHistory,
+  getLastSession   as _getLastSession,
+  getDayTargetKcal as _getDayTargetKcal,
+} from './calc.js';
 
 const app = initializeApp(CONFIG.FIREBASE);
 const db  = getFirestore(app);
@@ -78,17 +89,24 @@ function _setSyncStatus(state) {
   txt.textContent = { ok:'동기화됨', syncing:'저장 중...', err:'오프라인 — 로컬 저장 후 자동 재시도' }[state] || state;
 }
 
+// Firebase 작업 래퍼 — 에러 핸들링 + 싱크 상태 일관 관리
+async function _fbOp(label, fn, { sync = true, rethrow = false } = {}) {
+  if (sync) _setSyncStatus('syncing');
+  try {
+    const result = await fn();
+    if (sync) _setSyncStatus('ok');
+    return result;
+  } catch (e) {
+    if (sync) _setSyncStatus('err');
+    console.error(`[data] ${label}:`, e);
+    if (rethrow) throw e;
+  }
+}
+
 // ── 설정 Firebase 저장 헬퍼 ──────────────────────────────────────
 async function _saveSetting(key, value) {
   _settings[key] = value;
-  _setSyncStatus('syncing');
-  try {
-    await setDoc(doc(db, 'settings', key), { value });
-    _setSyncStatus('ok');
-  } catch(e) {
-    _setSyncStatus('err');
-    console.error('[data] _saveSetting:', e);
-  }
+  return _fbOp(`saveSetting(${key})`, () => setDoc(doc(db, 'settings', key), { value }));
 }
 
 // ── localStorage 마이그레이션 헬퍼 ───────────────────────────────
@@ -191,7 +209,6 @@ export async function loadAll() {
 }
 
 export async function saveDay(key, data) {
-  _setSyncStatus('syncing');
   const isEmpty = !data || (
     !data.exercises?.length && !data.cf && !data.memo &&
     !data.breakfast && !data.lunch && !data.dinner &&
@@ -202,87 +219,95 @@ export async function saveDay(key, data) {
     !data.bKcal && !data.lKcal && !data.dKcal && !data.sKcal &&
     !data.bFoods?.length && !data.lFoods?.length && !data.dFoods?.length && !data.sFoods?.length
   );
-  try {
+  return _fbOp('saveDay', async () => {
     if (isEmpty) { delete _cache[key]; await deleteDoc(doc(db, 'workouts', key)); }
     else { _cache[key] = data; await setDoc(doc(db, 'workouts', key), data); }
-    _setSyncStatus('ok');
-  } catch(e) { _setSyncStatus('err'); console.error('[data] saveDay:', e); }
+  });
 }
 
 export async function saveExercise(ex) {
-  try {
+  return _fbOp('saveExercise', async () => {
     await setDoc(doc(db, 'exercises', ex.id), ex);
     const idx = _exList.findIndex(e => e.id === ex.id);
     if (idx >= 0) _exList[idx] = ex; else _exList.push(ex);
     _exList = _sortExList(_exList);
-  } catch(e) { console.error('[data] saveExercise:', e); }
+  }, { sync: false });
 }
 
 export async function deleteExercise(id) {
-  try { await deleteDoc(doc(db, 'exercises', id)); _exList = _exList.filter(e => e.id !== id); }
-  catch(e) { console.error('[data] deleteExercise:', e); }
+  return _fbOp('deleteExercise', async () => {
+    await deleteDoc(doc(db, 'exercises', id));
+    _exList = _exList.filter(e => e.id !== id);
+  }, { sync: false });
 }
 
 export async function saveGoal(goal) {
-  try {
+  return _fbOp('saveGoal', async () => {
     await setDoc(doc(db, 'goals', goal.id), goal);
     const idx = _goals.findIndex(g => g.id === goal.id);
     if (idx >= 0) _goals[idx] = goal; else _goals.push(goal);
-  } catch(e) { console.error('[data] saveGoal:', e); }
+  }, { sync: false });
 }
 
 export async function deleteGoal(id) {
-  try { await deleteDoc(doc(db, 'goals', id)); _goals = _goals.filter(g => g.id !== id); }
-  catch(e) { console.error('[data] deleteGoal:', e); }
+  return _fbOp('deleteGoal', async () => {
+    await deleteDoc(doc(db, 'goals', id));
+    _goals = _goals.filter(g => g.id !== id);
+  }, { sync: false });
 }
 
 export const getGoals = () => _goals;
 
 export async function saveQuest(quest) {
-  try {
+  return _fbOp('saveQuest', async () => {
     await setDoc(doc(db, 'quests', quest.id), quest);
     const idx = _quests.findIndex(q => q.id === quest.id);
     if (idx >= 0) _quests[idx] = quest; else _quests.push(quest);
-  } catch(e) { console.error('[data] saveQuest:', e); }
+  }, { sync: false });
 }
 
 export async function deleteQuest(id) {
-  try { await deleteDoc(doc(db, 'quests', id)); _quests = _quests.filter(q => q.id !== id); }
-  catch(e) { console.error('[data] deleteQuest:', e); }
+  return _fbOp('deleteQuest', async () => {
+    await deleteDoc(doc(db, 'quests', id));
+    _quests = _quests.filter(q => q.id !== id);
+  }, { sync: false });
 }
 
 export const getQuests = () => _quests;
 
 export async function saveWine(wine) {
-  try {
+  return _fbOp('saveWine', async () => {
     await setDoc(doc(db, 'wines', wine.id), wine);
     const idx = _wines.findIndex(w => w.id === wine.id);
     if (idx >= 0) _wines[idx] = wine; else _wines.push(wine);
-  } catch(e) { console.error('[data] saveWine:', e); }
+  }, { sync: false });
 }
 
 export async function deleteWine(id) {
-  try { await deleteDoc(doc(db, 'wines', id)); _wines = _wines.filter(w => w.id !== id); }
-  catch(e) { console.error('[data] deleteWine:', e); }
+  return _fbOp('deleteWine', async () => {
+    await deleteDoc(doc(db, 'wines', id));
+    _wines = _wines.filter(w => w.id !== id);
+  }, { sync: false });
 }
 
 export const getWines = () => _wines;
 
 export async function saveEvent(ev) {
-  try {
+  return _fbOp('saveEvent', async () => {
     await setDoc(doc(db, 'cal_events', ev.id), ev);
     const idx = _events.findIndex(e => e.id === ev.id);
     if (idx >= 0) _events[idx] = ev; else _events.push(ev);
-  } catch(e) { console.error('[data] saveEvent:', e); }
+  }, { sync: false });
 }
 
 export async function deleteEvent(id) {
   try {
-    await deleteDoc(doc(db, 'cal_events', id));
-    _events = _events.filter(e => e.id !== id);
+    await _fbOp('deleteEvent', async () => {
+      await deleteDoc(doc(db, 'cal_events', id));
+      _events = _events.filter(e => e.id !== id);
+    }, { sync: false, rethrow: true });
     return { success: true };
   } catch(e) {
-    console.error('[data] deleteEvent:', e);
     return { success: false, error: e.message };
   }
 }
@@ -290,16 +315,18 @@ export async function deleteEvent(id) {
 export const getEvents = () => _events;
 
 export async function saveCooking(record) {
-  try {
+  return _fbOp('saveCooking', async () => {
     await setDoc(doc(db, 'cooking', record.id), record);
     const idx = _cooking.findIndex(c => c.id === record.id);
     if (idx >= 0) _cooking[idx] = record; else _cooking.push(record);
-  } catch(e) { console.error('[data] saveCooking:', e); }
+  }, { sync: false });
 }
 
 export async function deleteCooking(id) {
-  try { await deleteDoc(doc(db, 'cooking', id)); _cooking = _cooking.filter(c => c.id !== id); }
-  catch(e) { console.error('[data] deleteCooking:', e); }
+  return _fbOp('deleteCooking', async () => {
+    await deleteDoc(doc(db, 'cooking', id));
+    _cooking = _cooking.filter(c => c.id !== id);
+  }, { sync: false });
 }
 
 export const getCookingRecords  = () => _cooking;
@@ -323,15 +350,17 @@ export function findDietEntriesByRecipeId(recipeId) {
 
 // ── 체크인 (무제한) ───────────────────────────────────────────────
 export async function saveBodyCheckin(rec) {
-  try {
+  return _fbOp('saveBodyCheckin', async () => {
     await setDoc(doc(db, 'body_checkins', rec.id), rec);
     const idx = _bodyCheckins.findIndex(c => c.id === rec.id);
     if (idx >= 0) _bodyCheckins[idx] = rec; else _bodyCheckins.push(rec);
-  } catch(e) { console.error('[data] saveBodyCheckin:', e); }
+  }, { sync: false });
 }
 export async function deleteBodyCheckin(id) {
-  try { await deleteDoc(doc(db, 'body_checkins', id)); _bodyCheckins = _bodyCheckins.filter(c => c.id !== id); }
-  catch(e) { console.error('[data] deleteBodyCheckin:', e); }
+  return _fbOp('deleteBodyCheckin', async () => {
+    await deleteDoc(doc(db, 'body_checkins', id));
+    _bodyCheckins = _bodyCheckins.filter(c => c.id !== id);
+  }, { sync: false });
 }
 export const getBodyCheckins = () => [..._bodyCheckins].sort((a,b) => (a.date||'').localeCompare(b.date||''));
 
@@ -339,20 +368,22 @@ export const getBodyCheckins = () => [..._bodyCheckins].sort((a,b) => (a.date||'
 function _generateId() { return Date.now().toString(36) + Math.random().toString(36).substr(2); }
 
 export async function saveNutritionItem(item) {
-  try {
-    if (!item.id) item.id = _generateId();
-    item.createdAt = item.createdAt || new Date().toISOString();
-    item.updatedAt = new Date().toISOString();
+  if (!item.id) item.id = _generateId();
+  item.createdAt = item.createdAt || new Date().toISOString();
+  item.updatedAt = new Date().toISOString();
+  return _fbOp('saveNutritionItem', async () => {
     await setDoc(doc(db, 'nutrition_db', item.id), item);
     const idx = _nutritionDB.findIndex(n => n.id === item.id);
     if (idx >= 0) _nutritionDB[idx] = item; else _nutritionDB.push(item);
     return item;
-  } catch(e) { console.error('[data] saveNutritionItem:', e); throw e; }
+  }, { sync: false, rethrow: true });
 }
 
 export async function deleteNutritionItem(id) {
-  try { await deleteDoc(doc(db, 'nutrition_db', id)); _nutritionDB = _nutritionDB.filter(n => n.id !== id); }
-  catch(e) { console.error('[data] deleteNutritionItem:', e); }
+  return _fbOp('deleteNutritionItem', async () => {
+    await deleteDoc(doc(db, 'nutrition_db', id));
+    _nutritionDB = _nutritionDB.filter(n => n.id !== id);
+  }, { sync: false });
 }
 
 export const getNutritionDB       = () => [..._nutritionDB].sort((a,b) => (a.name||'').localeCompare(b.name||''));
@@ -436,52 +467,10 @@ export const saveDietPlan = async (plan) => {
   return _saveSetting('diet_plan', merged);
 };
 
-// 다이어트 계산 유틸
-export function calcDietMetrics(plan) {
-  const p = { ...DEFAULT_DIET_PLAN, ...plan };
-  const bmr      = Math.round(13.7 * p.weight + 5 * p.height - 6.8 * p.age + 66);
-  const tdeeCalc = Math.round(bmr * p.activityFactor);
-  const tdee     = Math.ceil(tdeeCalc / 100) * 100; // 100단위 올림
-  const lbm      = p.weight - (p.weight * p.bodyFatPct / 100); // 수정된 수식
-  const fatMass  = p.weight * p.bodyFatPct / 100;
-  const fatToLose = (p.weight * (p.bodyFatPct - p.targetBodyFatPct)) / 100;
-  const totalWeightLoss = fatToLose / 0.713;
-  const weeklyLossKg = p.weight * p.lossRatePerWeek;
-  const calPerKgPerDay = 7700 / 7 / p.activityFactor; // 847 상수의 일반화
-  const dailyDeficit = weeklyLossKg * calPerKgPerDay;
-  const dailyIntake  = tdee - dailyDeficit;
-  const weeksNeeded  = totalWeightLoss / weeklyLossKg;
-  const weeklyKcal   = Math.round(dailyIntake * 7);
-  const refeedTotal  = p.refeedKcal; // 이틀 합계
-  const deficitDayKcal = Math.round((weeklyKcal - refeedTotal) / 5);
-  const refeedDayKcal  = Math.round(refeedTotal / 2);
-  // 탄단지 — 데피싯 데이
-  const dProteinKcal = Math.round(deficitDayKcal * 0.41);
-  const dCarbKcal    = Math.round(deficitDayKcal * 0.50);
-  const dFatKcal     = Math.round(deficitDayKcal * 0.09);
-  // 탄단지 — 리피드 데이
-  const rProteinKcal = Math.round(refeedDayKcal * 0.29);
-  const rCarbKcal    = Math.round(refeedDayKcal * 0.60);
-  const rFatKcal     = Math.round(refeedDayKcal * 0.11);
-  return {
-    bmr, tdee, lbm, fatMass, fatToLose, totalWeightLoss,
-    weeklyLossKg, weeklyLossG: Math.round(weeklyLossKg * 1000),
-    dailyDeficit: Math.round(dailyDeficit), dailyIntake: Math.round(dailyIntake),
-    weeksNeeded,
-    deficit: {
-      kcal: deficitDayKcal,
-      proteinKcal: dProteinKcal, proteinG: Math.round(dProteinKcal / 4),
-      carbKcal: dCarbKcal,       carbG:    Math.round(dCarbKcal / 4),
-      fatKcal: dFatKcal,         fatG:     Math.round(dFatKcal / 9),
-    },
-    refeed: {
-      kcal: refeedDayKcal,
-      proteinKcal: rProteinKcal, proteinG: Math.round(rProteinKcal / 4),
-      carbKcal: rCarbKcal,       carbG:    Math.round(rCarbKcal / 4),
-      fatKcal: rFatKcal,         fatG:     Math.round(rFatKcal / 9),
-    },
-  };
-}
+// 다이어트 계산 유틸 — 실제 로직은 calc.js에서 관리
+export const calcDietMetrics = _calcDietMetrics;
+export const isDietDaySuccess = _isDietDaySuccess;
+export const getDayTargetKcal = (plan, y, m, d) => _getDayTargetKcal(plan, y, m, d);
 
 export const getExList    = ()      => _exList;
 export const getCache     = ()      => _cache;
@@ -517,111 +506,15 @@ export const getDiet = (y,m,d) => {
   };
 };
 
-export const dietDayOk = (y,m,d) => {
-  // 1. 날짜의 식단 데이터 로드
-  const dt = getDiet(y,m,d);
+export const dietDayOk = (y,m,d) => _dietDayOk(getDay(y,m,d), getDietPlan(), y, m, d);
 
-  // 2. 사용자 설정 로드
-  const plan = getDietPlan();
-  const metrics = calcDietMetrics(plan);
-
-  // 3. 오늘이 리피드데이인지 판정 (m은 0-indexed)
-  const dayOfWeek = new Date(y, m, d).getDay();  // 0=일, 6=토
-  const isRefeed = plan.refeedDays.includes(dayOfWeek);
-  const limitKcal = isRefeed ? metrics.refeed.kcal : metrics.deficit.kcal;
-
-  // 4. 오늘 섭취 총 칼로리 계산
-  const totalKcal = (dt.bKcal || 0) + (dt.lKcal || 0) + (dt.dKcal || 0) + (dt.sKcal || 0);
-
-  // 5. Skip 여부 확인
-  const bSkip = getBreakfastSkipped(y, m, d);
-  const lSkip = getLunchSkipped(y, m, d);
-  const dSkip = getDinnerSkipped(y, m, d);
-
-  // 6. 기록 유무 확인 (음식 또는 메모가 있는 경우)
-  const hasRecord = dt.breakfast || dt.lunch || dt.dinner ||
-                    (dt.bFoods?.length > 0) || (dt.lFoods?.length > 0) ||
-                    (dt.dFoods?.length > 0) || (dt.sFoods?.length > 0);
-
-  // 아무 기록도 없고 스킵도 안 했다면 null (빈 칸)
-  if (!hasRecord && !bSkip && !lSkip && !dSkip) return null;
-
-  // 7. 핵심: 칼로리 제한 비교 (saveWorkoutDay와 동일한 +50kcal 허용)
-  const calorieSuccess = totalKcal <= limitKcal + 50;
-
-  // 8. 각 끼니별 성공 여부
-  const bOk = bSkip || (dt.bOk ?? false);
-  const lOk = lSkip || (dt.lOk ?? false);
-  const dOk = dSkip || (dt.dOk ?? false);
-
-  // 9. 최종 결과 반환
-  // (모든 끼니가 기록/스킵됨) AND (총 칼로리가 제한선 이하)
-  return bOk && lOk && dOk && calorieSuccess;
-};
-
-export const calcVolume = (sets) =>
-  (sets||[]).reduce((sum, s) => {
-    if (s.setType === 'warmup') return sum;
-    if (!s.done && s.done !== undefined) return sum;
-    return sum + (s.kg||0) * (s.reps||0);
-  }, 0);
-
-export const calcVolumeAll = (sets) =>
-  (sets||[]).reduce((sum, s) => sum + (s.kg||0) * (s.reps||0), 0);
-
-export const getVolumeHistory = (exerciseId) =>
-  Object.entries(_cache)
-    .filter(([, day]) => (day.exercises||[]).some(e => e.exerciseId === exerciseId))
-    .map(([key, day]) => {
-      const entry = day.exercises.find(e => e.exerciseId === exerciseId);
-      return { date: key, volume: calcVolume(entry.sets) };
-    })
-    .filter(h => h.volume > 0)
-    .sort((a,b) => a.date.localeCompare(b.date));
-
-export const getLastSession = (exerciseId) => {
-  const entries = Object.entries(_cache)
-    .filter(([, day]) => (day.exercises||[]).some(e => e.exerciseId === exerciseId))
-    .sort(([a],[b]) => b.localeCompare(a));
-  if (!entries.length) return null;
-  const [date, day] = entries[0];
-  const entry = day.exercises.find(e => e.exerciseId === exerciseId);
-  return { date, sets: entry.sets };
-};
+export const calcVolume = _calcVolume;
+export const calcVolumeAll = _calcVolumeAll;
+export const getVolumeHistory = (exerciseId) => _getVolumeHistory(_cache, exerciseId);
+export const getLastSession = (exerciseId) => _getLastSession(_cache, exerciseId);
 
 export function calcStreaks() {
-  let workout=0, diet=0, stretching=0, wineFree=0;
-  let cur = new Date(TODAY);
-
-  while (true) {
-    const y=cur.getFullYear(), m=cur.getMonth(), d=cur.getDate();
-    if (!getMuscles(y,m,d).length && !getCF(y,m,d)) break;
-    workout++; cur.setDate(cur.getDate()-1);
-  }
-  cur = new Date(TODAY);
-  while (true) {
-    const y=cur.getFullYear(), m=cur.getMonth(), d=cur.getDate();
-    const dok = dietDayOk(y,m,d);
-    if (dok === false) break;          // 실패한 날 → streak 끊김
-    if (dok === true) diet++;          // 성공한 날 → streak 카운트
-    if (dok === null && cur < TODAY) break; // 과거 미기록 날 → streak 끊김
-    // dok === null && 오늘 → 아직 미입력, 건너뛰고 어제부터 계산
-    cur.setDate(cur.getDate()-1);
-  }
-  cur = new Date(TODAY);
-  while (true) {
-    const y=cur.getFullYear(), m=cur.getMonth(), d=cur.getDate();
-    if (!getStretching(y,m,d)) break;
-    stretching++; cur.setDate(cur.getDate()-1);
-  }
-  cur = new Date(TODAY);
-  while (true) {
-    const y=cur.getFullYear(), m=cur.getMonth(), d=cur.getDate();
-    if (!getWineFree(y,m,d)) break;
-    wineFree++; cur.setDate(cur.getDate()-1);
-  }
-
-  return { workout, diet, stretching, wineFree };
+  return _calcStreaks(_cache, TODAY, getDietPlan(), dateKey);
 }
 
 // ── 퀘스트 셀 순서 (Firebase) ─────────────────────────────────────
@@ -770,17 +663,9 @@ export async function refreshMovieData(year, month) {
 }
 
 export async function saveMovieData(year, month, data) {
-  // month는 0-indexed (JS Date 기준)
   const key = `${year}-${String(month + 1).padStart(2, '0')}`;
   _movies[key] = data;
-  _setSyncStatus('syncing');
-  try {
-    await setDoc(doc(db, 'movies', key), data);
-    _setSyncStatus('ok');
-  } catch(e) {
-    _setSyncStatus('err');
-    console.error('[data] saveMovieData:', e);
-  }
+  return _fbOp('saveMovieData', () => setDoc(doc(db, 'movies', key), data));
 }
 
 export function getAllMovieMonths() {
