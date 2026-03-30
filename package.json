@@ -8,7 +8,7 @@
     "start": "node api-server.js",
     "dev": "python -m http.server 5500",
     "build": "echo 'No build needed for static site'",
-    "crawl": "node crawl-movies-advanced.js",
+    "crawl": "node crawl-movies-optimized.js",
     "server": "node api-server.js"
   },
   "dependencies": {

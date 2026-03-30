@@ -43,9 +43,10 @@ async function crawlMovies(year, month) {
     const monthStr = String(month).padStart(2, '0');
     console.log(`\n[crawl] ${year}년 ${monthStr}월 크롤링 시작...`);
 
-    // 1. 페이지 가져오기
-    console.log(`[fetch] ${MUKO_URL} 요청 중...`);
-    const html = await fetch(MUKO_URL, {
+    // 1. 페이지 가져오기 (월별 URL 사용)
+    const url = `${MUKO_URL}/selected_month/${year}${monthStr}`;
+    console.log(`[fetch] ${url} 요청 중...`);
+    const html = await fetch(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
       }
@@ -57,20 +58,23 @@ async function crawlMovies(year, month) {
     // 2. 달력 그리드에서 영화 데이터 추출
     const events = [];
 
-    // 핵심 구조:
-    // .grid.grid-cols-7
-    //   > div.border-b.min-h-[100px]
-    //     > div (첫 번째: 날짜 헤더)
-    //       > span (실제 날짜 숫자)
-    //     > div.space-y-1 (이벤트 컨테이너)
-    //       > a[href*="/calender/"]
-
-    const dayElements = $('div.grid.grid-cols-7 > div.border-b');
+    // 여러 선택자 시도 (사이트 구조 변경 대비)
+    let dayElements = $('div.grid.grid-cols-7 > div.border-b');
+    if (dayElements.length === 0) {
+      dayElements = $('[class*="grid-cols-7"] > [class*="border"]');
+    }
+    if (dayElements.length === 0) {
+      // 테이블 구조 대비
+      dayElements = $('td');
+    }
     console.log(`[debug] 발견된 날짜 셀: ${dayElements.length}개`);
 
     dayElements.each((dayIdx, dayEl) => {
-      // 날짜 추출 (첫 번째 span 안의 숫자)
-      const dateText = $(dayEl).find('> div > span').first().text().trim();
+      // 날짜 추출: span 내 숫자 또는 셀 첫 텍스트
+      let dateText = $(dayEl).find('span').first().text().trim();
+      if (!dateText) {
+        dateText = $(dayEl).clone().children('a, div.space-y-1, [class*="space-y"]').remove().end().text().trim();
+      }
       const date = parseInt(dateText);
 
       if (!date || date < 1 || date > 31) return;
@@ -98,12 +102,18 @@ async function crawlMovies(year, month) {
         // 태그 추출
         const tags = _extractTags(eventTitle);
 
+        // href 정규화: 상대 경로 → 절대 경로
+        let fullHref = null;
+        if (href) {
+          fullHref = href.startsWith('http') ? href : `https://muko.kr${href}`;
+        }
+
         events.push({
           date,
           title: eventTitle,
-          tags: tags.length > 0 ? tags : ['release'], // 기본값: 개봉일
+          tags: tags.length > 0 ? tags : ['release'],
           time: timeRange,
-          href: href ? `https://muko.kr${href}` : null  // 무코 링크
+          href: fullHref
         });
       });
     });
@@ -152,13 +162,21 @@ function _extractTags(text) {
   return [...new Set(tags)]; // 중복 제거
 }
 
+// ── Firebase 초기화 (한 번만) ─────────────────────────────────
+let _firebaseApp = null;
+function getFirebaseDb() {
+  if (!_firebaseApp) {
+    _firebaseApp = initializeApp(FIREBASE_CONFIG);
+  }
+  return getFirestore(_firebaseApp);
+}
+
 // ── Firebase 저장 함수 ─────────────────────────────────────────
 async function saveToFirebase(data) {
   if (!data) return false;
 
   try {
-    const app = initializeApp(FIREBASE_CONFIG);
-    const db = getFirestore(app);
+    const db = getFirebaseDb();
 
     const key = `${data.year}-${String(data.month).padStart(2, '0')}`;
     await setDoc(doc(db, 'movies', key), data, { merge: true });
@@ -177,7 +195,7 @@ async function saveToJSON(data) {
 
   try {
     const key = `${data.year}-${String(data.month).padStart(2, '0')}`;
-    const dir = './public/data/movies';
+    const dir = './data/movies';
     const filePath = path.join(dir, `${key}.json`);
 
     // 디렉토리 생성

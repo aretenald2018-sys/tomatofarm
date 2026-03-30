@@ -4,7 +4,7 @@
 
 import { initializeApp }    from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
 import {
-  getFirestore, doc, setDoc, deleteDoc,
+  getFirestore, doc, setDoc, deleteDoc, getDoc,
   collection, getDocs, enableIndexedDbPersistence,
 } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 import { CONFIG, MUSCLES } from './config.js';
@@ -706,6 +706,18 @@ export async function getMovieData(year, month) {
     return _movies[key];
   }
 
+  // Firestore에서 로드 시도
+  try {
+    const snap = await getDoc(doc(db, 'movies', key));
+    if (snap.exists()) {
+      const data = snap.data();
+      _movies[key] = data;
+      return data;
+    }
+  } catch (e) {
+    console.warn(`[data] Firestore 로드 실패: ${key}`, e.message);
+  }
+
   // JSON 파일에서 로드 시도 (GitHub Pages용)
   try {
     const response = await fetch(`./data/movies/${key}.json`);
@@ -721,7 +733,28 @@ export async function getMovieData(year, month) {
   return {};
 }
 
+// Firestore에서 영화 데이터 강제 새로고침
+export async function refreshMovieData(year, month) {
+  const key = `${year}-${String(month + 1).padStart(2, '0')}`;
+  delete _movies[key]; // 캐시 삭제
+
+  try {
+    const snap = await getDoc(doc(db, 'movies', key));
+    if (snap.exists()) {
+      const data = snap.data();
+      _movies[key] = data;
+      return data;
+    }
+  } catch (e) {
+    console.warn(`[data] Firestore 새로고침 실패: ${key}`, e.message);
+  }
+
+  // Firestore 실패 시 JSON 파일 폴백
+  return getMovieData(year, month);
+}
+
 export async function saveMovieData(year, month, data) {
+  // month는 0-indexed (JS Date 기준)
   const key = `${year}-${String(month + 1).padStart(2, '0')}`;
   _movies[key] = data;
   _setSyncStatus('syncing');

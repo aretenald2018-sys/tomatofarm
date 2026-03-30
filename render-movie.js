@@ -4,10 +4,7 @@
 // ================================================================
 
 import { MONTHS } from './config.js';
-import { TODAY, daysInMonth, getMovieData, saveMovieData } from './data.js';
-
-// saveMovieData를 전역으로 노출 (크롤링 결과 저장용)
-let _saveMovieData = saveMovieData;
+import { TODAY, daysInMonth, getMovieData, refreshMovieData } from './data.js';
 
 let _currentYear  = TODAY.getFullYear();
 let _currentMonth = TODAY.getMonth();
@@ -47,139 +44,25 @@ export async function renderMovie() {
   await _renderMovieCalendar(el);
 }
 
-// API URL (로컬: localhost:3000, 배포: 같은 도메인)
-const API_BASE = typeof window !== 'undefined' && window.location.hostname === 'localhost'
-  ? 'http://localhost:3000'
-  : '';
-
-// 폴링 시도 카운터 (무한 루프 방지)
-let _pollAttempts = 0;
-const MAX_POLL_ATTEMPTS = 60; // 1분 = 60초
-
-// 크롤링 상태 확인 및 버튼 업데이트
-async function _checkCrawlStatus() {
-  try {
-    // API 서버가 없으면 중단
-    if (!API_BASE) {
-      console.warn('⚠️ API 서버 URL이 설정되지 않았습니다. npm run server를 실행하세요.');
-      return;
-    }
-
-    const response = await fetch(`${API_BASE}/api/status`, { timeout: 5000 });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-
-    const status = await response.json();
-    _pollAttempts = 0; // 성공 시 카운터 리셋
-
-    const btn = document.getElementById('movie-refresh-btn');
-    if (!btn) return;
-
-    if (status.status === 'crawling') {
-      btn.disabled = true;
-      btn.textContent = `🔄 크롤링 중 (${status.progress || 0}%)`;
-      btn.style.opacity = '0.5';
-
-      // 1초마다 상태 확인 (최대 1분)
-      if (_pollAttempts < MAX_POLL_ATTEMPTS) {
-        _pollAttempts++;
-        setTimeout(_checkCrawlStatus, 1000);
-      } else {
-        console.error('❌ 크롤링 타임아웃 - 너무 오래 걸리고 있습니다');
-        btn.disabled = false;
-        btn.textContent = '🔄 새로고침';
-        btn.style.opacity = '1';
-        alert('크롤링이 타임아웃되었습니다. 나중에 다시 시도해주세요.');
-      }
-    } else if (status.status === 'success') {
-      btn.disabled = false;
-      btn.textContent = '🔄 새로고침';
-      btn.style.opacity = '1';
-
-      // 크롤링 데이터 저장
-      if (status.data) {
-        const { year, month, events, lastUpdated, source } = status.data;
-        await _saveMovieData(year, month, {
-          year, month, events, lastUpdated, source
-        });
-        console.log('✅ 데이터 저장 완료');
-      }
-
-      // 데이터 새로고침
-      renderMovie();
-
-      // 알림
-      console.log('✅ 크롤링 완료:', status.message);
-    } else if (status.status === 'error') {
-      btn.disabled = false;
-      btn.textContent = '🔄 새로고침';
-      btn.style.opacity = '1';
-      console.error('❌ 크롤링 실패:', status.message);
-      alert(status.message);
-    }
-  } catch (e) {
-    _pollAttempts++;
-
-    // 너무 많은 오류는 로깅하지 않기
-    if (_pollAttempts === 1) {
-      console.warn('⚠️ API 서버에 연결할 수 없습니다. 다음을 확인하세요:');
-      console.warn('   1. npm run server 실행 여부');
-      console.warn('   2. 포트 3000이 사용 가능한지');
-      console.warn('   3. 또는 Railway 배포 완료 대기');
-    }
-
-    // 최대 시도 횟수에 도달하면 중단
-    if (_pollAttempts >= MAX_POLL_ATTEMPTS) {
-      const btn = document.getElementById('movie-refresh-btn');
-      if (btn) {
-        btn.disabled = false;
-        btn.textContent = '🔄 새로고침';
-        btn.style.opacity = '1';
-      }
-      console.error('❌ API 서버 연결 타임아웃');
-      return;
-    }
-
-    // 계속 재시도
-    setTimeout(_checkCrawlStatus, 1000);
-  }
-}
-
-// 크롤링 시작
+// Firestore에서 최신 데이터 새로고침
 export async function startMovieCrawl() {
   const btn = document.getElementById('movie-refresh-btn');
   if (!btn) return;
 
   btn.disabled = true;
-  btn.textContent = '🔄 크롤링 중...';
+  btn.textContent = '🔄 로딩 중...';
 
   try {
-    const response = await fetch(`${API_BASE}/api/crawl-movies`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
-    });
-
-    if (response.ok) {
-      console.log('✅ 크롤링 시작됨');
-      // 상태 확인 시작
-      setTimeout(_checkCrawlStatus, 1000);
-    } else {
-      throw new Error('API 응답 실패');
-    }
+    await refreshMovieData(_currentYear, _currentMonth);
+    await renderMovie();
+    console.log(`✅ ${_currentYear}년 ${_currentMonth + 1}월 데이터 새로고침 완료`);
   } catch (e) {
-    console.error('❌ 크롤링 오류:', e.message);
+    console.error('❌ 새로고침 오류:', e.message);
+  } finally {
     btn.disabled = false;
     btn.textContent = '🔄 새로고침';
-    const msg = window.location.hostname === 'localhost'
-      ? 'API 서버가 실행 중이어야 합니다\nnpm run server 를 먼저 실행해주세요'
-      : '크롤링 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
-    alert(msg);
   }
 }
-
-// 초기화: 버튼 상태 확인
-setInterval(_checkCrawlStatus, 5000);
 
 async function _renderMovieCalendar(el) {
   const data = await getMovieData(_currentYear, _currentMonth);
