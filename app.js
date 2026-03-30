@@ -14,7 +14,8 @@ import { loadAll, saveGoal, deleteGoal, getGoals,
          getDietPlan, saveDietPlan, calcDietMetrics,
          saveBodyCheckin, deleteBodyCheckin, getBodyCheckins,
          saveNutritionItem, deleteNutritionItem, getNutritionDB, searchNutritionDB, getRecentNutritionItems,
-         imageToBase64, getMovieData, saveMovieData, getAllMovieMonths } from './data.js';
+         imageToBase64, getMovieData, saveMovieData, getAllMovieMonths,
+         getCookingRecords } from './data.js';
 import { loadCSVDatabase, searchCSVFood } from './fatsecret-api.js';
 import { loadStocks }                             from './stocks.js';
 import { getDietRec, getWorkoutRec,
@@ -48,6 +49,7 @@ import {
 import {
   renderCooking, openCookingModal, closeCookingModal,
   saveCookingFromModal, deleteCookingFromModal, onCookingPhotoInput,
+  calcPerServing,
 } from './render-cooking.js';
 import { loadAndInjectModals } from './modal-manager.js';
 
@@ -663,7 +665,12 @@ function renderNutritionSearchInitial() {
         </div>
       `;
     }).join('');
-  } else {
+  }
+
+  // 내 요리 섹션 (초기 화면)
+  html += _buildRecipeResultsHtml('');
+
+  if (!recentItems.length && !getCookingRecords().some(r => r.ingredients?.length)) {
     html = `<div style="font-size:12px;color:var(--muted);text-align:center;padding:16px">검색어를 입력해주세요</div>`;
   }
 
@@ -784,10 +791,12 @@ function renderNutritionSearchResults() {
       }).join('');
     }
 
-    // CSV 결과
-    if (csvResults.length > 0) {
+    // CSV 결과 (DB에 이미 있는 이름은 제외)
+    const dbNames = new Set([...dbResults, ...recentFiltered].map(r => r.name?.toLowerCase()));
+    const dedupedCsv = csvResults.filter(c => !dbNames.has(c.name?.toLowerCase()));
+    if (dedupedCsv.length > 0) {
       html += `<div style="font-size:12px;font-weight:600;color:var(--text);padding:12px 8px;border-bottom:1px solid var(--border);margin-top:8px">📊 CSV 검색 결과</div>`;
-      html += csvResults.slice(0, 15).map((item, idx) => {
+      html += dedupedCsv.slice(0, 15).map((item, idx) => {
         const itemDataKey = `_nutritionItem_${item.id}`;
         window[itemDataKey] = item;  // 전역 변수로 저장
         return `
@@ -804,7 +813,10 @@ function renderNutritionSearchResults() {
       }).join('');
     }
 
-    if (!recentFiltered.length && !dbResults.length && !csvResults.length) {
+    // 내 요리 섹션
+    html += _buildRecipeResultsHtml(q);
+
+    if (!recentFiltered.length && !dbResults.length && !dedupedCsv.length && !html.includes('🍳 내 요리')) {
       html = `<div style="font-size:12px;color:var(--muted);text-align:center;padding:16px">검색 결과 없음</div>`;
     }
   }
@@ -821,6 +833,52 @@ async function removeFromFavorites(itemId) {
   } catch (e) {
     console.error('[영양검색] 삭제 실패:', e);
   }
+}
+
+// ── 내 요리 → 식단에 추가 ──────────────────────────────────────────
+function selectCookingRecipeForDiet(recipeId) {
+  const recipe = getCookingRecords().find(r => r.id === recipeId);
+  if (!recipe || !_nutritionSearchMeal) return;
+  const ps = calcPerServing(recipe);
+  if (!ps) return;
+
+  const foodItem = {
+    id: recipe.id,
+    name: recipe.name,
+    grams: ps.grams,
+    kcal: ps.kcal,
+    protein: ps.protein,
+    carbs: ps.carbs,
+    fat: ps.fat,
+    recipeId: recipe.id,
+  };
+
+  wtAddFoodItem(_nutritionSearchMeal, foodItem);
+  document.getElementById('nutrition-search-modal')?.classList.remove('open');
+}
+
+function _buildRecipeResultsHtml(q) {
+  const recipes = getCookingRecords()
+    .filter(r => r.ingredients?.length > 0)
+    .filter(r => !q || r.name.toLowerCase().includes(q.toLowerCase()));
+  if (!recipes.length) return '';
+
+  let html = `<div style="font-size:12px;font-weight:600;color:var(--text);padding:12px 8px;border-bottom:1px solid var(--border);margin-top:8px">🍳 내 요리</div>`;
+  html += recipes.slice(0, 10).map(r => {
+    const ps = calcPerServing(r);
+    if (!ps) return '';
+    return `
+      <div class="nutrition-result-row" onclick="selectCookingRecipeForDiet('${r.id}')" style="cursor:pointer">
+        <div class="nutrition-result-name">🍳 ${r.name} <span style="color:var(--muted);font-size:10px">${r.servings||1}인분</span></div>
+        <div class="nutrition-result-meta">
+          <span>${ps.kcal}kcal</span>
+          <span>탄${ps.carbs}g</span>
+          <span>단${ps.protein}g</span>
+          <span>지${ps.fat}g</span>
+        </div>
+      </div>`;
+  }).join('');
+  return html;
 }
 
 function selectNutritionItem(itemId) {
@@ -1246,6 +1304,7 @@ window.renderNutritionSearchResults = renderNutritionSearchResults;
 window.selectNutritionItem   = selectNutritionItem;
 window.selectNutritionItemFromCache = selectNutritionItemFromCache;
 window.removeFromFavorites   = removeFromFavorites;
+window.selectCookingRecipeForDiet = selectCookingRecipeForDiet;
 // 영양 DB 편집 (nutrition-item-modal.js에서 window에 이미 등록됨)
 // 추가로 필요한 식단 탭 함수
 window.openNutritionPhotoUpload = openNutritionPhotoUpload;

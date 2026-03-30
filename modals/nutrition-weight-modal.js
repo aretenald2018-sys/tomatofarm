@@ -56,8 +56,8 @@ export function openNutritionWeightModal(item) {
   document.getElementById('weight-item-nutrition').textContent =
     `${servingSize}g 기준: ${kcal}kcal | 탄${carbs}g 단${protein}g 지${fat}g`;
 
-  // 중량 입력 초기화
-  document.getElementById('nutrition-weight-input').value = '100';
+  // 중량 입력 초기화 (기존 저장된 servingSize가 있으면 그 값 사용)
+  document.getElementById('nutrition-weight-input').value = String(servingSize);
 
   // 미리보기 업데이트
   updateNutritionWeightPreview();
@@ -137,18 +137,18 @@ export function confirmNutritionItemWithWeight() {
     console.error('[nutrition-weight-modal] 음식 추가 실패:', e);
   }
 
-  // 음식을 최근 항목 DB에도 저장 (최근 목록에 표시되도록)
+  // 음식을 최근 항목 DB에도 저장 (사용자 입력 중량을 servingSize로 저장)
   try {
     const nutritionRecord = {
       id: item.id,
       name: item.name,
       nutrition: {
-        kcal: baseKcal,
-        carbs: baseCarbs,
-        protein: baseProtein,
-        fat: baseFat,
+        kcal: kcal,
+        carbs: carbs,
+        protein: protein,
+        fat: fat,
       },
-      servingSize: servingSize,
+      servingSize: weight,
       unit: item.unit || 'g',
     };
     saveNutritionItem(nutritionRecord)

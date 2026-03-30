@@ -305,6 +305,22 @@ export async function deleteCooking(id) {
 export const getCookingRecords  = () => _cooking;
 export const getCookingForDate  = (dateStr) => _cooking.filter(c => c.date === dateStr);
 
+// ── 레시피 참조 식단 검색 (소급 업데이트용) ──────────────────────────
+export function findDietEntriesByRecipeId(recipeId) {
+  const results = [];
+  for (const [key, day] of Object.entries(_cache)) {
+    for (const mealKey of ['bFoods', 'lFoods', 'dFoods', 'sFoods']) {
+      const foods = day[mealKey] || [];
+      foods.forEach((food, idx) => {
+        if (food.recipeId === recipeId) {
+          results.push({ dateKey: key, mealKey, foodIndex: idx, food, day });
+        }
+      });
+    }
+  }
+  return results;
+}
+
 // ── 체크인 (무제한) ───────────────────────────────────────────────
 export async function saveBodyCheckin(rec) {
   try {

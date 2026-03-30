@@ -718,7 +718,7 @@ function _renderMealFoodItems(meal) {
 
   container.innerHTML = foods.map((f, idx) => `
     <div class="meal-food-chip">
-      <span class="meal-food-chip-name">${f.name} <span style="color:var(--muted);font-size:10px">${f.grams}g</span></span>
+      <span class="meal-food-chip-name">${f.recipeId ? '🍳 ' : ''}${f.name} <span style="color:var(--muted);font-size:10px">${f.grams}g</span></span>
       <span class="meal-food-chip-kcal">${Math.round(f.kcal)}kcal</span>
       <button class="meal-food-chip-del" onclick="wtRemoveFoodItem('${meal}',${idx})">✕</button>
     </div>`).join('');

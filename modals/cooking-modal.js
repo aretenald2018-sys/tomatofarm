@@ -36,6 +36,34 @@ export const MODAL_HTML = `
           </div>
         </div>
       </div>
+
+      <!-- 재료 입력 섹션 -->
+      <div class="wine-form-section">
+        <div class="wine-form-section-title">🥬 재료</div>
+        <div style="display:flex;gap:4px;margin-bottom:8px">
+          <div class="wine-form-field" style="flex:1;margin-bottom:0">
+            <label class="wine-form-label">인분 수</label>
+            <input class="wine-form-input" id="cooking-servings" type="number" value="1" min="1" max="20" style="width:70px" oninput="window._updateCookingNutrition()">
+          </div>
+          <div id="cooking-nutrition-summary" style="flex:2;display:flex;align-items:flex-end;padding-bottom:4px;font-size:11px;color:var(--muted)"></div>
+        </div>
+        <div id="cooking-ingredients-list" style="margin-bottom:8px"></div>
+        <div style="position:relative">
+          <input class="wine-form-input" id="cooking-ingredient-search" placeholder="재료 검색 (예: 닭가슴살, 양파...)" oninput="window._searchCookingIngredient()" autocomplete="off">
+          <div id="cooking-ingredient-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;max-height:200px;overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:0 0 8px 8px;z-index:10"></div>
+        </div>
+        <!-- 인라인 중량 입력 (재료 선택 시 표시) -->
+        <div id="cooking-ingredient-weight-row" style="display:none;margin-top:8px;padding:8px;background:var(--bg2);border-radius:6px">
+          <div style="font-size:12px;font-weight:600;margin-bottom:4px" id="cooking-ing-selected-name"></div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input class="wine-form-input" id="cooking-ing-weight" type="number" placeholder="중량(g)" style="width:80px" oninput="window._previewIngredientNutrition()">
+            <span id="cooking-ing-preview" style="font-size:11px;color:var(--muted);flex:1"></span>
+            <button class="ex-editor-save" onclick="window._confirmIngredient()" style="padding:4px 12px;font-size:12px">추가</button>
+            <button class="ex-editor-cancel" onclick="window._cancelIngredient()" style="padding:4px 8px;font-size:12px">취소</button>
+          </div>
+        </div>
+      </div>
+
       <div class="wine-form-section">
         <div class="wine-form-section-title">🔗 레시피 출처</div>
         <div class="wine-form-field">

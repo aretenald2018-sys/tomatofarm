@@ -1,15 +1,20 @@
 // ================================================================
 // render-cooking.js — 요리 탭
-// 주 1회 새 요리 실험 기록
+// 주 1회 새 요리 실험 기록 + 재료 영양정보 + 식단 연동
 // ================================================================
 
-import { saveCooking, deleteCooking, getCookingRecords } from './data.js';
+import { saveCooking, deleteCooking, getCookingRecords,
+         findDietEntriesByRecipeId, saveDay } from './data.js';
+import { searchCSVFood }                      from './fatsecret-api.js';
+import { searchNutritionDB }                  from './data.js';
 
 const CATEGORIES   = ['한식','양식','일식','중식','기타'];
 const RESULT_LABEL = { success:'✓ 성공', partial:'△ 보통', fail:'✗ 아쉬움' };
 const RESULT_COLOR = { success:'var(--diet-ok)', partial:'var(--accent)', fail:'var(--diet-bad)' };
 
-let _editingId = null;
+let _editingId   = null;
+let _ingredients = [];        // 현재 편집 중인 재료 목록
+let _selectedIngredient = null; // 드롭다운에서 선택한 재료 (확정 전)
 
 // ── 공개 API ─────────────────────────────────────────────────────
 export function renderCooking() {
@@ -34,7 +39,10 @@ export function renderCooking() {
 
 export function openCookingModal(id) {
   _editingId = id || null;
-  const modal = document.getElementById('cooking-modal');
+  _ingredients = [];
+  _selectedIngredient = null;
+
+  const modal   = document.getElementById('cooking-modal');
   const titleEl = document.getElementById('cooking-modal-title');
 
   if (id) {
@@ -49,6 +57,8 @@ export function openCookingModal(id) {
     document.getElementById('cooking-result').value   = rec.result   || 'success';
     document.getElementById('cooking-result-notes').value = rec.result_notes || '';
     document.getElementById('cooking-photo-url').value    = rec.photo_url    || '';
+    document.getElementById('cooking-servings').value     = rec.servings || 1;
+    _ingredients = (rec.ingredients || []).map(i => ({...i}));
     _updatePhotoPreview(rec.photo_url || '');
     document.getElementById('cooking-delete-btn').style.display = 'block';
   } else {
@@ -61,9 +71,17 @@ export function openCookingModal(id) {
     document.getElementById('cooking-result').value   = 'success';
     document.getElementById('cooking-result-notes').value = '';
     document.getElementById('cooking-photo-url').value    = '';
+    document.getElementById('cooking-servings').value     = '1';
     _updatePhotoPreview('');
     document.getElementById('cooking-delete-btn').style.display = 'none';
   }
+
+  _renderIngredientsList();
+  _updateCookingNutrition();
+  _hideIngredientWeight();
+  document.getElementById('cooking-ingredient-search').value = '';
+  document.getElementById('cooking-ingredient-dropdown').style.display = 'none';
+
   modal.classList.add('open');
 }
 
@@ -78,6 +96,8 @@ export async function saveCookingFromModal() {
   if (!name) { alert('요리 이름을 입력해주세요.'); return; }
   if (!date) { alert('날짜를 입력해주세요.'); return; }
 
+  const servings = parseInt(document.getElementById('cooking-servings').value) || 1;
+
   const record = {
     id:           _editingId || `cooking_${Date.now()}`,
     name,
@@ -88,12 +108,20 @@ export async function saveCookingFromModal() {
     result:       document.getElementById('cooking-result').value,
     result_notes: document.getElementById('cooking-result-notes').value.trim(),
     photo_url:    document.getElementById('cooking-photo-url').value.trim(),
+    ingredients:  _ingredients,
+    servings:     servings,
     createdAt:    _editingId
       ? (getCookingRecords().find(r=>r.id===_editingId)?.createdAt || new Date().toISOString())
       : new Date().toISOString(),
   };
 
   await saveCooking(record);
+
+  // 소급 업데이트: 이 레시피를 참조하는 식단 항목 갱신
+  if (_editingId && _ingredients.length) {
+    await _retroactiveUpdate(record);
+  }
+
   document.getElementById('cooking-modal').classList.remove('open');
   renderCooking();
   document.dispatchEvent(new CustomEvent('cooking:saved'));
@@ -112,6 +140,260 @@ export function onCookingPhotoInput() {
   const url = document.getElementById('cooking-photo-url').value.trim();
   _updatePhotoPreview(url);
 }
+
+// ── 재료 검색 ─────────────────────────────────────────────────────
+let _ingSearchTimer = null;
+
+function _searchCookingIngredient() {
+  clearTimeout(_ingSearchTimer);
+  const q = document.getElementById('cooking-ingredient-search').value.trim();
+  const dropdown = document.getElementById('cooking-ingredient-dropdown');
+
+  if (!q) {
+    dropdown.style.display = 'none';
+    return;
+  }
+
+  _ingSearchTimer = setTimeout(() => {
+    const dbResults  = searchNutritionDB(q).slice(0, 8);
+    const csvResults = searchCSVFood(q).slice(0, 8);
+
+    // DB 이름 중복 제거
+    const dbNames = new Set(dbResults.map(r => r.name?.toLowerCase()));
+    const dedupedCsv = csvResults.filter(c => !dbNames.has(c.name?.toLowerCase()));
+
+    let html = '';
+
+    dbResults.forEach((item, i) => {
+      const kcal = item.nutrition?.kcal || 0;
+      const ss   = item.servingSize || 100;
+      html += `<div class="nutrition-result-row" style="padding:8px;cursor:pointer;font-size:12px;border-bottom:1px solid var(--border)"
+        onclick="window._selectCookingIngredient('db', ${i})">
+        <div style="font-weight:500">${item.name}</div>
+        <div style="color:var(--muted);font-size:11px">${ss}g 기준 ${kcal}kcal</div>
+      </div>`;
+      window[`_cookIngDB_${i}`] = item;
+    });
+
+    dedupedCsv.forEach((item, i) => {
+      html += `<div class="nutrition-result-row" style="padding:8px;cursor:pointer;font-size:12px;border-bottom:1px solid var(--border)"
+        onclick="window._selectCookingIngredient('csv', ${i})">
+        <div style="font-weight:500">📊 ${item.name}</div>
+        <div style="color:var(--muted);font-size:11px">100g 기준 ${item.energy||0}kcal</div>
+      </div>`;
+      window[`_cookIngCSV_${i}`] = item;
+    });
+
+    if (!html) html = `<div style="padding:12px;font-size:12px;color:var(--muted);text-align:center">검색 결과 없음</div>`;
+
+    dropdown.innerHTML = html;
+    dropdown.style.display = 'block';
+  }, 250);
+}
+
+function _selectCookingIngredient(source, idx) {
+  let item;
+  if (source === 'db') {
+    item = window[`_cookIngDB_${idx}`];
+    _selectedIngredient = {
+      id:   item.id,
+      name: item.name,
+      servingSize: item.servingSize || 100,
+      kcal:    item.nutrition?.kcal || 0,
+      protein: item.nutrition?.protein || 0,
+      carbs:   item.nutrition?.carbs || 0,
+      fat:     item.nutrition?.fat || 0,
+    };
+  } else {
+    item = window[`_cookIngCSV_${idx}`];
+    _selectedIngredient = {
+      id:   item.id,
+      name: item.name,
+      servingSize: 100,
+      kcal:    item.energy || 0,
+      protein: item.protein || 0,
+      carbs:   item.carbs || 0,
+      fat:     item.fat || 0,
+    };
+  }
+
+  // 드롭다운 닫고 인라인 중량 입력 표시
+  document.getElementById('cooking-ingredient-dropdown').style.display = 'none';
+  document.getElementById('cooking-ingredient-search').value = '';
+  document.getElementById('cooking-ing-selected-name').textContent = _selectedIngredient.name;
+  document.getElementById('cooking-ing-weight').value = String(_selectedIngredient.servingSize);
+  document.getElementById('cooking-ingredient-weight-row').style.display = 'block';
+  _previewIngredientNutrition();
+  setTimeout(() => document.getElementById('cooking-ing-weight').focus(), 50);
+}
+
+function _previewIngredientNutrition() {
+  if (!_selectedIngredient) return;
+  const w = parseFloat(document.getElementById('cooking-ing-weight').value) || 0;
+  const ss = _selectedIngredient.servingSize;
+  const ratio = w / ss;
+  const kcal = Math.round(_selectedIngredient.kcal * ratio);
+  const p = Math.round(_selectedIngredient.protein * ratio * 10) / 10;
+  const c = Math.round(_selectedIngredient.carbs * ratio * 10) / 10;
+  const f = Math.round(_selectedIngredient.fat * ratio * 10) / 10;
+  document.getElementById('cooking-ing-preview').textContent =
+    `${kcal}kcal | 단${p}g 탄${c}g 지${f}g`;
+}
+
+function _confirmIngredient() {
+  if (!_selectedIngredient) return;
+  const w = parseFloat(document.getElementById('cooking-ing-weight').value) || 0;
+  if (w <= 0) return;
+  const ss = _selectedIngredient.servingSize;
+  const ratio = w / ss;
+
+  _ingredients.push({
+    id:      _selectedIngredient.id,
+    name:    _selectedIngredient.name,
+    grams:   w,
+    kcal:    Math.round(_selectedIngredient.kcal * ratio),
+    protein: Math.round(_selectedIngredient.protein * ratio * 10) / 10,
+    carbs:   Math.round(_selectedIngredient.carbs * ratio * 10) / 10,
+    fat:     Math.round(_selectedIngredient.fat * ratio * 10) / 10,
+  });
+
+  _selectedIngredient = null;
+  _hideIngredientWeight();
+  _renderIngredientsList();
+  _updateCookingNutrition();
+}
+
+function _cancelIngredient() {
+  _selectedIngredient = null;
+  _hideIngredientWeight();
+}
+
+function _removeIngredient(idx) {
+  _ingredients.splice(idx, 1);
+  _renderIngredientsList();
+  _updateCookingNutrition();
+}
+
+function _hideIngredientWeight() {
+  document.getElementById('cooking-ingredient-weight-row').style.display = 'none';
+}
+
+function _renderIngredientsList() {
+  const el = document.getElementById('cooking-ingredients-list');
+  if (!el) return;
+  if (!_ingredients.length) {
+    el.innerHTML = '<div style="font-size:11px;color:var(--muted);padding:4px 0">재료를 추가해보세요</div>';
+    return;
+  }
+  el.innerHTML = _ingredients.map((ing, i) =>
+    `<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid var(--border);font-size:12px">
+      <span style="flex:1">${ing.name} <span style="color:var(--muted)">${ing.grams}g</span></span>
+      <span style="color:var(--muted);font-size:11px">${ing.kcal}kcal</span>
+      <button onclick="window._removeIngredient(${i})" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:0 4px">✕</button>
+    </div>`
+  ).join('');
+}
+
+function _updateCookingNutrition() {
+  const el = document.getElementById('cooking-nutrition-summary');
+  if (!el) return;
+  if (!_ingredients.length) {
+    el.textContent = '';
+    return;
+  }
+  const servings = parseInt(document.getElementById('cooking-servings')?.value) || 1;
+  const totals = _calcTotals();
+  const ps = {
+    kcal: Math.round(totals.kcal / servings),
+    protein: Math.round(totals.protein / servings * 10) / 10,
+    carbs: Math.round(totals.carbs / servings * 10) / 10,
+    fat: Math.round(totals.fat / servings * 10) / 10,
+  };
+  el.innerHTML = `<span style="color:var(--text);font-weight:600">1인분:</span> ${ps.kcal}kcal | 단${ps.protein}g 탄${ps.carbs}g 지${ps.fat}g`;
+}
+
+function _calcTotals() {
+  let kcal=0, protein=0, carbs=0, fat=0;
+  _ingredients.forEach(i => { kcal+=i.kcal; protein+=i.protein; carbs+=i.carbs; fat+=i.fat; });
+  return { kcal, protein, carbs, fat };
+}
+
+// ── 1인분 영양정보 계산 (외부에서도 사용) ──────────────────────────
+export function calcPerServing(recipe) {
+  const ings = recipe.ingredients || [];
+  if (!ings.length) return null;
+  const servings = recipe.servings || 1;
+  let kcal=0, protein=0, carbs=0, fat=0, totalGrams=0;
+  ings.forEach(i => { kcal+=i.kcal; protein+=i.protein; carbs+=i.carbs; fat+=i.fat; totalGrams+=i.grams; });
+  return {
+    kcal: Math.round(kcal / servings),
+    protein: Math.round(protein / servings * 10) / 10,
+    carbs: Math.round(carbs / servings * 10) / 10,
+    fat: Math.round(fat / servings * 10) / 10,
+    grams: Math.round(totalGrams / servings),
+  };
+}
+
+// ── 소급 업데이트 ─────────────────────────────────────────────────
+async function _retroactiveUpdate(recipe) {
+  const ps = calcPerServing(recipe);
+  if (!ps) return;
+  const entries = findDietEntriesByRecipeId(recipe.id);
+  if (!entries.length) return;
+
+  // 날짜별로 그룹핑
+  const byDate = {};
+  entries.forEach(e => {
+    if (!byDate[e.dateKey]) byDate[e.dateKey] = { day: {...e.day}, updates: [] };
+    byDate[e.dateKey].updates.push(e);
+  });
+
+  for (const [dateKey, { day, updates }] of Object.entries(byDate)) {
+    const updatedDay = {...day};
+    updates.forEach(u => {
+      const foods = [...(updatedDay[u.mealKey] || [])];
+      if (foods[u.foodIndex]) {
+        foods[u.foodIndex] = {
+          ...foods[u.foodIndex],
+          name: recipe.name,
+          grams: ps.grams,
+          kcal: ps.kcal,
+          protein: ps.protein,
+          carbs: ps.carbs,
+          fat: ps.fat,
+        };
+        updatedDay[u.mealKey] = foods;
+      }
+    });
+
+    // 식사별 합계 재계산
+    for (const mk of ['bFoods', 'lFoods', 'dFoods', 'sFoods']) {
+      const prefix = mk[0]; // b, l, d, s
+      const foods = updatedDay[mk] || [];
+      let tk=0, tp=0, tc=0, tf=0;
+      foods.forEach(f => { tk+=f.kcal||0; tp+=f.protein||0; tc+=f.carbs||0; tf+=f.fat||0; });
+      updatedDay[`${prefix}Kcal`] = Math.round(tk);
+      updatedDay[`${prefix}Protein`] = Math.round(tp * 10) / 10;
+      updatedDay[`${prefix}Carbs`] = Math.round(tc * 10) / 10;
+      updatedDay[`${prefix}Fat`] = Math.round(tf * 10) / 10;
+      if (foods.length) {
+        updatedDay[`${prefix}Reason`] = `DB: ${Math.round(tk)}kcal (단${Math.round(tp*10)/10}g 탄${Math.round(tc*10)/10}g 지${Math.round(tf*10)/10}g)`;
+      }
+    }
+
+    await saveDay(dateKey, updatedDay);
+  }
+  console.log(`[cooking] 소급 업데이트: ${entries.length}건 갱신`);
+}
+
+// ── window 등록 ──────────────────────────────────────────────────
+window._searchCookingIngredient  = _searchCookingIngredient;
+window._selectCookingIngredient  = _selectCookingIngredient;
+window._previewIngredientNutrition = _previewIngredientNutrition;
+window._confirmIngredient        = _confirmIngredient;
+window._cancelIngredient         = _cancelIngredient;
+window._removeIngredient         = _removeIngredient;
+window._updateCookingNutrition   = _updateCookingNutrition;
 
 // ── 내부 ─────────────────────────────────────────────────────────
 function _todayStr() {
@@ -180,6 +462,17 @@ function _buildCard(r) {
     ? `<img src="${r.photo_url}" class="cooking-card-img" alt="${r.name}" onerror="this.style.display='none'">`
     : '';
 
+  // 1인분 영양정보
+  let nutritionHtml = '';
+  if (r.ingredients?.length) {
+    const ps = calcPerServing(r);
+    if (ps) {
+      nutritionHtml = `<div style="font-size:11px;color:var(--muted);margin-top:4px">
+        1인분: ${ps.kcal}kcal | 단${ps.protein}g 탄${ps.carbs}g 지${ps.fat}g
+      </div>`;
+    }
+  }
+
   return `
   <div class="cooking-card" onclick="openCookingModal('${r.id}')">
     ${imgHtml}
@@ -192,6 +485,7 @@ function _buildCard(r) {
         <span class="cooking-card-date">${(r.date||'').replace(/-/g,'/')}</span>
         <span class="cooking-card-cat">${r.category||''}</span>
       </div>
+      ${nutritionHtml}
       ${r.result_notes ? `<div class="cooking-card-notes">${r.result_notes}</div>` : ''}
     </div>
   </div>`;
