@@ -201,12 +201,17 @@ function _renderUnitGoal() {
     const intake = (diet.bKcal || 0) + (diet.lKcal || 0) + (diet.dKcal || 0) + (diet.sKcal || 0);
     const target = getDayTargetKcal(plan, y, m, dd);
 
-    // 매크로 실제 섭취량 (foods 배열에서 합산)
-    const sumMacro = (prop) => ['bFoods','lFoods','dFoods','sFoods']
-      .reduce((s, key) => s + (diet[key] || []).reduce((a, f) => a + (f[prop] || 0), 0), 0);
-    const actProtein = Math.round(sumMacro('protein') * 10) / 10;
-    const actCarbs   = Math.round(sumMacro('carbs') * 10) / 10;
-    const actFat     = Math.round(sumMacro('fat') * 10) / 10;
+    // 매크로 실제 섭취량: 끼니별로 foods 배열 우선, 없으면 직접 필드(AI 분석 결과) 사용
+    const mealMacro = (prefix, prop) => {
+      const foods = diet[`${prefix}Foods`] || [];
+      if (foods.length > 0) return foods.reduce((s, f) => s + (f[prop] || 0), 0);
+      const fieldMap = { protein: 'Protein', carbs: 'Carbs', fat: 'Fat' };
+      return diet[`${prefix}${fieldMap[prop]}`] || 0;
+    };
+    const prefixes = ['b','l','d','s'];
+    const actProtein = Math.round(prefixes.reduce((s, p) => s + mealMacro(p, 'protein'), 0) * 10) / 10;
+    const actCarbs   = Math.round(prefixes.reduce((s, p) => s + mealMacro(p, 'carbs'), 0) * 10) / 10;
+    const actFat     = Math.round(prefixes.reduce((s, p) => s + mealMacro(p, 'fat'), 0) * 10) / 10;
 
     // 매크로 목표 (리피드/데피싯 판별)
     const dow = new Date(y, m, dd).getDay();

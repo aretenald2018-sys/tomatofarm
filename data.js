@@ -457,6 +457,9 @@ export const getDiet = (y,m,d) => {
     breakfast:r.breakfast||'', lunch:r.lunch||'', dinner:r.dinner||'',
     bOk:r.bOk??null, lOk:r.lOk??null, dOk:r.dOk??null,
     bKcal:r.bKcal||0, lKcal:r.lKcal||0, dKcal:r.dKcal||0, sKcal:r.sKcal||0,
+    bProtein:r.bProtein||0, lProtein:r.lProtein||0, dProtein:r.dProtein||0, sProtein:r.sProtein||0,
+    bCarbs:r.bCarbs||0, lCarbs:r.lCarbs||0, dCarbs:r.dCarbs||0, sCarbs:r.sCarbs||0,
+    bFat:r.bFat||0, lFat:r.lFat||0, dFat:r.dFat||0, sFat:r.sFat||0,
     bReason:r.bReason||'', lReason:r.lReason||'', dReason:r.dReason||'',
     bFoods:r.bFoods||[], lFoods:r.lFoods||[], dFoods:r.dFoods||[], sFoods:r.sFoods||[],
   };
