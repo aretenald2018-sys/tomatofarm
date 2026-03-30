@@ -704,7 +704,34 @@ function renderNutritionSearchResults() {
     }
   }
 
+  // 맨 아래에 "직접 추가" 항목
+  html += `<div style="padding:14px;text-align:center;border-top:1px solid var(--border);margin-top:8px">
+    <button onclick="openNutritionDirectAdd()" style="background:none;border:1px dashed var(--accent);border-radius:8px;color:var(--accent);font-size:12px;font-weight:600;padding:10px 20px;cursor:pointer;width:100%">
+      ➕ 직접 추가 (사진/텍스트 파싱)
+    </button>
+  </div>`;
+
   container.innerHTML = html;
+}
+
+// ── 식단 검색에서 직접 추가 → 저장 후 자동 weight 모달 ─────────────
+function openNutritionDirectAdd() {
+  window._onNutritionItemSaved = (savedItem) => {
+    window._onNutritionItemSaved = null;
+    if (!savedItem) return;
+    // 저장된 항목을 바로 weight 모달로 열기
+    const item = {
+      id: savedItem.id,
+      name: savedItem.name,
+      servingSize: savedItem.servingSize || parseFloat(savedItem.unit?.match(/[\d.]+/)?.[0] || 100),
+      unit: savedItem.unit || '100g',
+      nutrition: savedItem.nutrition || { kcal: 0, protein: 0, carbs: 0, fat: 0 },
+    };
+    if (window.openNutritionWeightModal) {
+      window.openNutritionWeightModal(item);
+    }
+  };
+  openNutritionItemEditor(null);
 }
 
 // 즐겨찾기에서만 제거 (DB는 건드리지 않음)
@@ -1178,6 +1205,7 @@ window.saveCheckinFromModal     = saveCheckinFromModal;
 window.deleteCheckinFromModal   = deleteCheckinFromModal;
 // 영양 DB 검색
 window.openNutritionSearch      = openNutritionSearch;
+window.openNutritionDirectAdd   = openNutritionDirectAdd;
 window.closeNutritionSearch     = closeNutritionSearch;
 window.debouncedNutritionSearch = debouncedNutritionSearch;
 window.renderNutritionSearchResults = renderNutritionSearchResults;

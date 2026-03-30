@@ -186,6 +186,12 @@ function _searchCookingIngredient() {
 
     if (!html) html = `<div style="padding:12px;font-size:12px;color:var(--muted);text-align:center">검색 결과 없음</div>`;
 
+    // 맨 아래에 "직접 추가" 항목
+    html += `<div class="nutrition-result-row" style="padding:10px;cursor:pointer;font-size:12px;text-align:center;color:var(--accent);font-weight:600;border-top:1px solid var(--border)"
+      onclick="window._openCookingDirectAdd()">
+      ➕ 직접 추가 (사진/텍스트 파싱)
+    </div>`;
+
     dropdown.innerHTML = html;
     dropdown.style.display = 'block';
   }, 250);
@@ -266,6 +272,31 @@ function _confirmIngredient() {
 function _cancelIngredient() {
   _selectedIngredient = null;
   _hideIngredientWeight();
+}
+
+// ── 직접 추가: 영양 정보 등록 후 자동으로 재료로 선택 ─────────────
+function _openCookingDirectAdd() {
+  document.getElementById('cooking-ingredient-dropdown').style.display = 'none';
+  // 콜백 등록: 저장 후 자동으로 해당 항목을 재료로 선택
+  window._onNutritionItemSaved = (savedItem) => {
+    window._onNutritionItemSaved = null; // 일회성
+    if (!savedItem) return;
+    _selectedIngredient = {
+      id:   savedItem.id,
+      name: savedItem.name,
+      servingSize: savedItem.servingSize || parseFloat(savedItem.unit?.match(/[\d.]+/)?.[0] || 100),
+      kcal:    savedItem.nutrition?.kcal || 0,
+      protein: savedItem.nutrition?.protein || 0,
+      carbs:   savedItem.nutrition?.carbs || 0,
+      fat:     savedItem.nutrition?.fat || 0,
+    };
+    document.getElementById('cooking-ing-selected-name').textContent = _selectedIngredient.name;
+    document.getElementById('cooking-ing-weight').value = String(_selectedIngredient.servingSize);
+    document.getElementById('cooking-ingredient-weight-row').style.display = 'block';
+    _previewIngredientNutrition();
+    setTimeout(() => document.getElementById('cooking-ing-weight').focus(), 50);
+  };
+  window.openNutritionItemEditor(null);
 }
 
 function _removeIngredient(idx) {
@@ -392,6 +423,7 @@ window._selectCookingIngredient  = _selectCookingIngredient;
 window._previewIngredientNutrition = _previewIngredientNutrition;
 window._confirmIngredient        = _confirmIngredient;
 window._cancelIngredient         = _cancelIngredient;
+window._openCookingDirectAdd     = _openCookingDirectAdd;
 window._removeIngredient         = _removeIngredient;
 window._updateCookingNutrition   = _updateCookingNutrition;
 
