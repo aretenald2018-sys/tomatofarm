@@ -12,12 +12,15 @@ import { TODAY, getMuscles, getCF, getDiet, dietDayOk,
          getHomeStreakDays, saveHomeStreakDays,
          getGymSkip, getGymHealth, getCFHealth,
          getBreakfastSkipped, getLunchSkipped, getDinnerSkipped,
-         isFuture, isToday }                         from './data.js';
+         isFuture, isToday,
+         getUnitGoalStart, saveUnitGoalStart,
+         getDayTargetKcal }                          from './data.js';
 import { openSheet }                                 from './sheet.js';
 
 export function renderHome() {
   _renderDashboard();
   _renderWeeklyStreak();
+  _renderUnitGoal();
   _renderMiniMemo();
   _applyAllSectionTitles();
   _renderGoals();
@@ -149,6 +152,158 @@ window.changeHomeStreakDays = async function(n) {
   const clamped = Math.max(0, Math.min(6, n));
   await saveHomeStreakDays(clamped);
   _renderWeeklyStreak();
+};
+
+// ── 단위 목표달성 정보 (4일 사이클) ──────────────────────────────
+function _renderUnitGoal() {
+  const container = document.getElementById('unit-goal-content');
+  if (!container) return;
+
+  const plan = getDietPlan();
+  const metrics = calcDietMetrics(plan);
+
+  // 시작일 결정: 저장된 값 → 없으면 오늘
+  let startStr = getUnitGoalStart();
+  if (!startStr) {
+    startStr = dateKey(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
+    saveUnitGoalStart(startStr);
+  }
+
+  // 4일 사이클 자동 진행: 현재 사이클의 시작일 계산
+  const startDate = new Date(startStr + 'T00:00:00');
+  const todayMs   = new Date(dateKey(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate()) + 'T00:00:00').getTime();
+  const diffDays  = Math.floor((todayMs - startDate.getTime()) / 86400000);
+
+  let cycleStart;
+  if (diffDays < 0) {
+    // 미래 시작일 → 그대로 사용
+    cycleStart = startDate;
+  } else {
+    // 4일 단위로 자동 진행
+    const cycleOffset = Math.floor(diffDays / 4) * 4;
+    cycleStart = new Date(startDate);
+    cycleStart.setDate(cycleStart.getDate() + cycleOffset);
+  }
+
+  // 4일 날짜 배열
+  const days = [];
+  for (let i = 0; i < 4; i++) {
+    const d = new Date(cycleStart);
+    d.setDate(cycleStart.getDate() + i);
+    days.push(d);
+  }
+
+  // 각 날의 데이터 수집
+  const dayData = days.map(d => {
+    const y = d.getFullYear(), m = d.getMonth(), dd = d.getDate();
+    const future = isFuture(y, m, dd);
+    const diet = getDiet(y, m, dd);
+    const intake = (diet.bKcal || 0) + (diet.lKcal || 0) + (diet.dKcal || 0) + (diet.sKcal || 0);
+    const target = getDayTargetKcal(plan, y, m, dd);
+    return { date: d, y, m, dd, intake, target, future };
+  });
+
+  // 합계 계산
+  const recordedDays = dayData.filter(d => !d.future && d.intake > 0);
+  const totalIntake  = dayData.reduce((s, d) => s + d.intake, 0);
+  const totalTarget  = dayData.reduce((s, d) => s + d.target, 0);
+
+  // 달성률 계산: intake ≤ target → 100%, 초과 → (target / intake) × 100
+  const calcSuccess = (intake, target) => {
+    if (intake <= 0) return null; // 기록 없음
+    if (intake <= target) return 100;
+    return Math.round((target / intake) * 100);
+  };
+
+  // 날짜 범위 문자열
+  const fmt = d => `${d.getMonth()+1}/${d.getDate()}`;
+  const DOW = ['일','월','화','수','목','금','토'];
+  const rangeStr = `${fmt(days[0])}(${DOW[days[0].getDay()]}) ~ ${fmt(days[3])}(${DOW[days[3].getDay()]})`;
+
+  // 전체 달성률
+  const totalSuccess = recordedDays.length > 0 ? calcSuccess(totalIntake, totalTarget) : null;
+
+  // HTML 렌더
+  let html = `<div class="unit-goal-range">${rangeStr}</div>`;
+  html += `<table class="unit-goal-table"><thead><tr><th></th>`;
+
+  // 헤더: D1~D4 + 합계
+  days.forEach((d, i) => {
+    const today = isToday(d.getFullYear(), d.getMonth(), d.getDate());
+    html += `<th class="${today ? 'ug-today' : ''}"><span class="ug-day-label">D${i+1}</span><span class="ug-date-label">${fmt(d)}</span></th>`;
+  });
+  html += `<th class="ug-total-col"><span class="ug-day-label">합계</span></th></tr></thead><tbody>`;
+
+  // 행 1: 섭취 칼로리
+  html += `<tr class="ug-row-intake"><td class="ug-row-label">섭취</td>`;
+  dayData.forEach(d => {
+    if (d.future) {
+      html += `<td class="ug-cell"><span class="ug-val muted">—</span></td>`;
+    } else if (d.intake <= 0) {
+      html += `<td class="ug-cell"><span class="ug-val muted">—</span></td>`;
+    } else {
+      const over = d.intake > d.target;
+      html += `<td class="ug-cell"><span class="ug-val ${over ? 'over' : 'ok'}">${d.intake.toLocaleString()}</span><span class="ug-sub">/ ${d.target.toLocaleString()}</span></td>`;
+    }
+  });
+  // 합계 열
+  if (recordedDays.length > 0) {
+    const over = totalIntake > totalTarget;
+    html += `<td class="ug-cell ug-total-col"><span class="ug-val ${over ? 'over' : 'ok'}">${totalIntake.toLocaleString()}</span><span class="ug-sub">/ ${totalTarget.toLocaleString()}</span></td>`;
+  } else {
+    html += `<td class="ug-cell ug-total-col"><span class="ug-val muted">—</span></td>`;
+  }
+  html += `</tr>`;
+
+  // 행 2: 달성률
+  html += `<tr class="ug-row-pct"><td class="ug-row-label">달성</td>`;
+  dayData.forEach(d => {
+    const pct = d.future ? null : calcSuccess(d.intake, d.target);
+    if (pct === null) {
+      html += `<td class="ug-cell"><span class="ug-pct muted">—</span></td>`;
+    } else {
+      const cls = pct >= 100 ? 'perfect' : pct >= 90 ? 'good' : pct >= 70 ? 'warn' : 'bad';
+      const icon = pct >= 100 ? '✅' : pct >= 90 ? '⚠️' : '❌';
+      html += `<td class="ug-cell"><span class="ug-pct ${cls}">${pct}%</span><span class="ug-icon">${icon}</span></td>`;
+    }
+  });
+  // 합계 달성률
+  if (totalSuccess !== null) {
+    const cls = totalSuccess >= 100 ? 'perfect' : totalSuccess >= 90 ? 'good' : totalSuccess >= 70 ? 'warn' : 'bad';
+    const icon = totalSuccess >= 100 ? '✅' : totalSuccess >= 90 ? '⚠️' : '❌';
+    html += `<td class="ug-cell ug-total-col"><span class="ug-pct ${cls}">${totalSuccess}%</span><span class="ug-icon">${icon}</span></td>`;
+  } else {
+    html += `<td class="ug-cell ug-total-col"><span class="ug-pct muted">—</span></td>`;
+  }
+  html += `</tr></tbody></table>`;
+
+  // 목표 칼로리 미설정 시 안내
+  if (!plan.weight || !plan.targetBodyFatPct) {
+    html += `<div style="font-size:11px;color:var(--muted);text-align:center;margin-top:8px">⚙️ 다이어트 플랜을 설정하면 목표 칼로리가 반영됩니다.</div>`;
+  }
+
+  container.innerHTML = html;
+}
+
+// ── 단위 목표 시작일 설정 ─────────────────────────────────────────
+window.openUnitGoalDatePicker = function() {
+  const current = getUnitGoalStart() || dateKey(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
+  const input = document.createElement('input');
+  input.type = 'date';
+  input.value = current;
+  input.style.cssText = 'position:fixed;top:-100px;left:-100px;opacity:0';
+  document.body.appendChild(input);
+  input.addEventListener('change', async () => {
+    if (input.value) {
+      await saveUnitGoalStart(input.value);
+      _renderUnitGoal();
+    }
+    document.body.removeChild(input);
+  });
+  input.addEventListener('blur', () => {
+    setTimeout(() => { if (document.body.contains(input)) document.body.removeChild(input); }, 200);
+  });
+  input.showPicker ? input.showPicker() : input.click();
 };
 
 // ── 미니 메모 (체크리스트) ────────────────────────────────────────

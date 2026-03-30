@@ -311,6 +311,32 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans KR',sans-seri
 .ws-today-col{position:relative;}
 .ws-today-col::after{content:'';position:absolute;bottom:-4px;left:50%;transform:translateX(-50%);width:4px;height:4px;border-radius:50%;background:var(--accent);}
 
+/* ── 단위 목표달성 테이블 ── */
+.unit-goal-range{font-size:11px;color:var(--muted2);text-align:center;margin-bottom:8px;letter-spacing:.3px;}
+.unit-goal-table{width:100%;border-collapse:collapse;table-layout:fixed;}
+.unit-goal-table th{padding:4px 2px;text-align:center;vertical-align:bottom;border-bottom:1px solid var(--border);}
+.unit-goal-table td{padding:6px 2px;text-align:center;vertical-align:middle;}
+.ug-day-label{display:block;font-size:11px;font-weight:700;color:var(--text);letter-spacing:.5px;}
+.ug-date-label{display:block;font-size:9px;color:var(--muted);margin-top:1px;}
+.ug-row-label{font-size:10px;font-weight:700;color:var(--muted2);width:36px;text-align:center;}
+.ug-today{position:relative;}
+.ug-today::after{content:'';position:absolute;bottom:-2px;left:50%;transform:translateX(-50%);width:4px;height:4px;border-radius:50%;background:var(--accent);}
+.ug-total-col{background:rgba(245,158,11,.04);border-left:1px solid var(--border);}
+.ug-cell{vertical-align:middle;}
+.ug-val{display:block;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;line-height:1.3;}
+.ug-val.ok{color:var(--diet-ok);}
+.ug-val.over{color:var(--diet-bad);}
+.ug-val.muted{color:var(--muted);font-weight:400;font-size:11px;}
+.ug-sub{display:block;font-size:9px;color:var(--muted);font-family:'JetBrains Mono',monospace;}
+.ug-pct{display:block;font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;line-height:1.3;}
+.ug-pct.perfect{color:var(--diet-ok);}
+.ug-pct.good{color:var(--accent);}
+.ug-pct.warn{color:#f97316;}
+.ug-pct.bad{color:var(--diet-bad);}
+.ug-pct.muted{color:var(--muted);font-weight:400;font-size:11px;}
+.ug-icon{display:block;font-size:12px;line-height:1;}
+.ug-row-intake td{border-bottom:1px dashed var(--border);}
+
 /* ── 오늘 운동 빠른기록 바 ── */
 .quick-workout-bar{padding:10px 16px;background:var(--surface);border-bottom:1px solid var(--border);}
 .quick-workout-btn{width:100%;padding:11px;background:var(--gym-dim);border:1px solid var(--gym);border-radius:10px;color:var(--gym);font-family:'Noto Sans KR',sans-serif;font-size:13px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:all .12s;}
