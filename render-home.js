@@ -10,7 +10,7 @@ import { TODAY, getMuscles, getCF, getDiet, dietDayOk,
          getSectionTitle, getQuestOrder, saveQuestOrder,
          getDietPlan, calcDietMetrics, getBodyCheckins,
          getHomeStreakDays, saveHomeStreakDays,
-         getGymSkip, getGymHealth, getCFSkip, getCFHealth,
+         getGymSkip, getGymHealth, getCFHealth,
          getBreakfastSkipped, getLunchSkipped, getDinnerSkipped,
          isFuture, isToday }                         from './data.js';
 import { openSheet }                                 from './sheet.js';
@@ -80,10 +80,7 @@ function _renderWeeklyStreak() {
     const dow = d.getDay();
     const col = dow === 0 ? '#f87171' : dow === 6 ? '#60a5fa' : 'var(--muted2)';
     const today = isToday(d.getFullYear(), d.getMonth(), d.getDate());
-    html += `<th class="${today ? 'ws-today-col' : ''}">
-      <span style="color:${col};font-size:9px;display:block">${DAYS[dow]}</span>
-      <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:${col}">${d.getDate()}</span>
-    </th>`;
+    html += `<th class="${today ? 'ws-today-col' : ''}"><span style="color:${col};font-size:9px;display:block">${DAYS[dow]}</span><span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:${col}">${d.getDate()}</span></th>`;
   });
   html += '</tr></thead><tbody>';
 
@@ -118,13 +115,10 @@ function _renderWeeklyStreak() {
         }
       } else if (r.key === 'cf') {
         const cfHealth = getCFHealth(y, m, dd);
-        const cfSkip   = getCFSkip(y, m, dd);
         if (cfHealth) {
           cls += ' health-issue'; icon = '✚';
         } else if (getCF(y, m, dd)) {
           cls += ' cf-on'; icon = '🔥';
-        } else if (cfSkip) {
-          cls += ' skip-disabled'; icon = '❌';
         }
       } else if (r.key === 'diet') {
         const dok = dietDayOk(y, m, dd);

@@ -5,7 +5,7 @@
 import { MONTHS, DAYS }                                          from './config.js';
 import { getMuscles, getCF, dietDayOk, getExList,
          daysInMonth, isToday, isFuture, isBeforeStart,
-         getGymSkip, getGymHealth, getCFSkip, getCFHealth,
+         getGymSkip, getGymHealth, getCFHealth,
          getBreakfastSkipped, getLunchSkipped, getDinnerSkipped,
          getEvents, dateKey, getStreakSettings }                 from './data.js';
 import { MUSCLES }                                               from './config.js';
@@ -127,7 +127,6 @@ function _cfRow(year, m, days) {
     const td = document.createElement('td');
     if (isBeforeStart(year, m, d)) { td.style.display = 'none'; row.appendChild(td); continue; }
 
-    const cfSkip   = getCFSkip(year, m, d);
     const cfHealth = getCFHealth(year, m, d);
     const cell     = _makeCell(year, m, d);
 
@@ -137,9 +136,6 @@ function _cfRow(year, m, days) {
     } else if (getCF(year, m, d)) {
       cell.classList.add('cf-on');
       const ic = document.createElement('span'); ic.className='cell-icon'; ic.textContent='🔥'; cell.appendChild(ic);
-    } else if (cfSkip) {
-      cell.classList.add('skip-disabled');
-      const ic = document.createElement('span'); ic.className='cell-icon'; ic.textContent='❌'; cell.appendChild(ic);
     }
     td.appendChild(cell); row.appendChild(td);
   }
