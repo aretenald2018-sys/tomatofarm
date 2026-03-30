@@ -193,14 +193,31 @@ function _renderUnitGoal() {
     days.push(d);
   }
 
-  // 각 날의 데이터 수집
+  // 각 날의 데이터 수집 (칼로리 + 매크로)
   const dayData = days.map(d => {
     const y = d.getFullYear(), m = d.getMonth(), dd = d.getDate();
     const future = isFuture(y, m, dd);
     const diet = getDiet(y, m, dd);
     const intake = (diet.bKcal || 0) + (diet.lKcal || 0) + (diet.dKcal || 0) + (diet.sKcal || 0);
     const target = getDayTargetKcal(plan, y, m, dd);
-    return { date: d, y, m, dd, intake, target, future };
+
+    // 매크로 실제 섭취량 (foods 배열에서 합산)
+    const sumMacro = (prop) => ['bFoods','lFoods','dFoods','sFoods']
+      .reduce((s, key) => s + (diet[key] || []).reduce((a, f) => a + (f[prop] || 0), 0), 0);
+    const actProtein = Math.round(sumMacro('protein') * 10) / 10;
+    const actCarbs   = Math.round(sumMacro('carbs') * 10) / 10;
+    const actFat     = Math.round(sumMacro('fat') * 10) / 10;
+
+    // 매크로 목표 (리피드/데피싯 판별)
+    const dow = new Date(y, m, dd).getDay();
+    const isRefeed = (plan.refeedDays || []).includes(dow);
+    const macroTarget = isRefeed ? metrics.refeed : metrics.deficit;
+
+    return {
+      date: d, y, m, dd, intake, target, future,
+      actProtein, actCarbs, actFat,
+      tgtProtein: macroTarget.proteinG, tgtCarbs: macroTarget.carbG, tgtFat: macroTarget.fatG,
+    };
   });
 
   // 합계 계산
@@ -275,7 +292,53 @@ function _renderUnitGoal() {
   } else {
     html += `<td class="ug-cell ug-total-col"><span class="ug-pct muted">—</span></td>`;
   }
-  html += `</tr></tbody></table>`;
+  html += `</tr>`;
+
+  // ── 매크로 행 (탄/단/지) ──
+  const macroRows = [
+    { label: '단', act: 'actProtein', tgt: 'tgtProtein' },
+    { label: '탄', act: 'actCarbs',   tgt: 'tgtCarbs' },
+    { label: '지', act: 'actFat',     tgt: 'tgtFat' },
+  ];
+  const fmtDelta = (actual, target) => {
+    if (actual <= 0) return { text: '—', cls: 'muted' };
+    const diff = Math.round(actual - target);
+    const pct  = target > 0 ? Math.round(((actual - target) / target) * 100) : 0;
+    if (diff > 0)      return { text: `+${diff}g (+${pct}%)`, cls: 'macro-over' };
+    else if (diff < 0) return { text: `${diff}g (${pct}%)`, cls: 'macro-under' };
+    else               return { text: `±0g`, cls: 'macro-ok' };
+  };
+
+  macroRows.forEach(mr => {
+    html += `<tr class="ug-row-macro"><td class="ug-row-label ug-macro-label">${mr.label}</td>`;
+    let totAct = 0, totTgt = 0;
+    dayData.forEach(d => {
+      if (d.future) {
+        html += `<td class="ug-cell"><span class="ug-macro muted">—</span></td>`;
+      } else {
+        const actual = d[mr.act], target = d[mr.tgt];
+        const hasData = d.intake > 0;
+        if (!hasData) {
+          html += `<td class="ug-cell"><span class="ug-macro muted">—</span></td>`;
+        } else {
+          const delta = fmtDelta(actual, target);
+          html += `<td class="ug-cell"><span class="ug-macro ${delta.cls}">${delta.text}</span></td>`;
+          totAct += actual;
+          totTgt += target;
+        }
+      }
+    });
+    // 합계 매크로
+    if (recordedDays.length > 0) {
+      const delta = fmtDelta(totAct, totTgt);
+      html += `<td class="ug-cell ug-total-col"><span class="ug-macro ${delta.cls}">${delta.text}</span></td>`;
+    } else {
+      html += `<td class="ug-cell ug-total-col"><span class="ug-macro muted">—</span></td>`;
+    }
+    html += `</tr>`;
+  });
+
+  html += `</tbody></table>`;
 
   // 목표 칼로리 미설정 시 안내
   if (!plan.weight || !plan.targetBodyFatPct) {
