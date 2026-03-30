@@ -379,6 +379,7 @@ export async function analyzeNutritionText() {
 
   analyzing.style.display = 'block';
   result.style.display = 'none';
+  _niMultipleItems = null;
 
   try {
     const { parseNutritionFromText, detectLanguage } = await import('../ai.js');
@@ -386,16 +387,30 @@ export async function analyzeNutritionText() {
     // 언어 감지
     const langResult = await detectLanguage(rawText);
 
-    // 텍스트 파싱
-    _niParsedData = await parseNutritionFromText(rawText);
-    _niParsedData.rawText = rawText;
-    if (langResult?.language) _niParsedData.language = langResult.language;
+    // 텍스트 파싱 (복수 항목 지원)
+    const parsed = await parseNutritionFromText(rawText);
 
-    // 결과 표시
-    _displayNutritionTextResult(_niParsedData, langResult);
+    if (parsed.multiple && Array.isArray(parsed.items) && parsed.items.length > 1) {
+      // ── 복수 항목 감지 ──
+      parsed.items.forEach(it => {
+        it.rawText = rawText;
+        if (langResult?.language) it.language = langResult.language;
+      });
+      _niMultipleItems = parsed.items;
+      _niParsedData = parsed.items[0];
+      _displayMultipleTextResults(parsed.items, langResult);
+    } else {
+      // ── 단일 항목 ──
+      _niParsedData = parsed.multiple ? parsed.items[0] : parsed;
+      _niParsedData.rawText = rawText;
+      if (langResult?.language) _niParsedData.language = langResult.language;
 
-    // 폼에 자동 채우기
-    _populateNutritionForm(_niParsedData);
+      // 결과 표시
+      _displayNutritionTextResult(_niParsedData, langResult);
+
+      // 폼에 자동 채우기
+      _populateNutritionForm(_niParsedData);
+    }
   } catch (e) {
     console.error('텍스트 분석 실패:', e);
     alert('텍스트 분석 실패: ' + e.message);
@@ -559,7 +574,79 @@ function _displayNutritionTextResult(data, langResult) {
 }
 
 // ═════════════════════════════════════════════════════════════
-// 복수 제품 처리
+// 복수 항목 텍스트 파싱 결과 표시
+// ═════════════════════════════════════════════════════════════
+
+function _displayMultipleTextResults(items, langResult) {
+  const result = document.getElementById('ni-text-result');
+  const extracted = document.getElementById('ni-text-extracted');
+
+  result.style.display = 'block';
+  document.getElementById('ni-text-confidence').textContent =
+    items.map(it => Math.round((it.confidence || 0.8) * 100) + '%').join(' / ');
+
+  const langMap = { ko: '한국어', ja: '일본어', en: '영어', other: '기타' };
+  document.getElementById('ni-text-language').textContent = langMap[langResult?.language] || '한국어';
+
+  extracted.innerHTML = `
+    <div style="font-size:12px;font-weight:600;color:var(--accent);margin-bottom:8px">
+      📋 ${items.length}개 항목이 감지되었습니다
+    </div>
+    ${items.map((item, i) => `
+      <div class="ni-multi-text-item" data-idx="${i}" style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px;cursor:pointer;transition:all .15s${i === 0 ? ';border-color:var(--accent);background:rgba(99,102,241,.08)' : ''}">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <strong style="font-size:13px">${item.name || '항목 ' + (i + 1)}</strong>
+          <span style="font-size:10px;color:var(--muted)">${item.unit || ''} · ${Math.round((item.confidence || 0.8) * 100)}%</span>
+        </div>
+        <div style="font-size:11px;display:grid;grid-template-columns:1fr 1fr;gap:2px;color:var(--muted2)">
+          <div>🔥 ${item.nutrition?.kcal || 0} kcal</div>
+          <div>🥩 단 ${item.nutrition?.protein || 0}g</div>
+          <div>🍚 탄 ${item.nutrition?.carbs || 0}g</div>
+          <div>🧈 지 ${item.nutrition?.fat || 0}g</div>
+        </div>
+      </div>
+    `).join('')}
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="diet-db-btn" id="ni-text-multi-select-btn" style="flex:1;padding:10px;font-size:12px">
+        ✏️ 선택한 항목 편집
+      </button>
+      <button class="diet-db-btn" id="ni-text-multi-save-all-btn" style="flex:1;padding:10px;font-size:12px;background:var(--gym-dim);border-color:var(--gym);color:var(--gym)">
+        💾 ${items.length}개 모두 저장
+      </button>
+    </div>
+  `;
+
+  // 아이템 선택 이벤트
+  let selectedIdx = 0;
+  extracted.querySelectorAll('.ni-multi-text-item').forEach(el => {
+    el.addEventListener('click', () => {
+      selectedIdx = parseInt(el.dataset.idx);
+      extracted.querySelectorAll('.ni-multi-text-item').forEach(e => {
+        e.style.borderColor = 'var(--border)';
+        e.style.background = 'transparent';
+      });
+      el.style.borderColor = 'var(--accent)';
+      el.style.background = 'rgba(99,102,241,.08)';
+      _niParsedData = items[selectedIdx];
+    });
+  });
+
+  // 선택한 항목 편집 버튼
+  document.getElementById('ni-text-multi-select-btn')?.addEventListener('click', () => {
+    _niParsedData = items[selectedIdx];
+    _populateNutritionForm(_niParsedData);
+    switchNutritionTab('manual');
+  });
+
+  // 모두 저장 버튼 — 소스를 'text'로 설정해서 기존 _saveMultipleItems 재활용
+  document.getElementById('ni-text-multi-save-all-btn')?.addEventListener('click', () => {
+    const textItems = items.map(it => ({ ...it, _source: 'text' }));
+    _saveMultipleItems(textItems);
+  });
+}
+
+// ═════════════════════════════════════════════════════════════
+// 복수 제품 처리 (OCR / 텍스트 공통)
 // ═════════════════════════════════════════════════════════════
 
 function _displayMultipleResults(items) {
@@ -650,8 +737,8 @@ async function _saveMultipleItems(items) {
           sugar: item.nutrition?.sugar || 0,
           sodium: item.nutrition?.sodium || 0,
         },
-        notes: `복수 인식 (${items.length}개 중 ${savedCount + 1}번째)`,
-        source: 'ocr',
+        notes: `복수 파싱 (${items.length}개 중 ${savedCount + 1}번째)`,
+        source: item._source || 'ocr',
         language: item.language || 'ko',
         confidence: item.confidence || 0.8,
         photoUrl: null,

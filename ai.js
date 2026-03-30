@@ -192,40 +192,48 @@ export async function parseNutritionFromImage(imageBase64, language = 'ko') {
 }
 
 // ── 영양성분 텍스트 파싱 ──────────────────────────────────────────
-// 복사한 텍스트에서 영양정보 추출
+// 복사한 텍스트에서 영양정보 추출 (복수 항목 + 범위값 평균 처리)
+// 단일 → { name, ... }, 복수 → { multiple: true, items: [...] }
 export async function parseNutritionFromText(rawText) {
-  const prompt = `다음 텍스트는 영양성분표 또는 영양정보입니다. 이를 구조화된 JSON으로 변환해주세요.
+  const prompt = `다음 텍스트에서 영양정보를 추출해주세요.
 
 텍스트:
 ${rawText}
 
-반드시 아래 JSON 형식으로만 응답 (다른 텍스트 없이):
+═══ 규칙 ═══
+1. **복수 항목**: 텍스트에 식재료/음식이 2개 이상이면 반드시 items 배열로 각각 추출
+2. **범위값 평균**: "3~4 kcal"이면 3.5, "0.5~1g"이면 0.75 — 항상 중간값 사용
+3. **"약" 제거**: "약 3.5kcal" → 3.5 (숫자만)
+4. **1개당 기준**: "1개(15~20g) 기준" → servingSize는 중간값(17.5), unit은 "1개(17.5g)"
+5. **단위 통일**: mg → g (÷1000), mcg → g (÷1000000)
+6. **없는 값**: 0으로 처리 (null 아님)
+
+═══ 응답 형식 ═══
+
+식재료/음식이 **1개**일 때:
 {
   "name": "음식명",
   "unit": "100g",
   "servingSize": 100,
   "servingUnit": "g",
-  "nutrition": {
-    "kcal": 165,
-    "protein": 31,
-    "carbs": 0.4,
-    "fat": 3.6,
-    "fiber": 0,
-    "sugar": 0,
-    "sodium": 60
-  },
-  "brand": "브랜드명 (있으면)",
-  "language": "ko|ja|en 중 하나",
+  "nutrition": { "kcal": 165, "protein": 31, "carbs": 0.4, "fat": 3.6, "fiber": 0, "sugar": 0, "sodium": 0.06 },
+  "brand": null,
+  "language": "ko",
   "confidence": 0.95
 }
 
-주의사항:
-- 음식명이 없으면 null 처리
-- 정확히 파싱되는 것만 입력 (확실하지 않으면 confidence 낮추기)
-- 단위는 항상 g로 통일
-- 신뢰도: 0.0 ~ 1.0`;
+식재료/음식이 **2개 이상**일 때:
+{
+  "multiple": true,
+  "items": [
+    { "name": "양송이버섯", "unit": "1개(17.5g)", "servingSize": 17.5, "servingUnit": "g", "nutrition": { "kcal": 3.5, "protein": 0.5, "carbs": 0.5, "fat": 0.05, "fiber": 0, "sugar": 0, "sodium": 0 }, "brand": null, "language": "ko", "confidence": 0.9 },
+    { "name": "방울토마토", "unit": "1개(17.5g)", "servingSize": 17.5, "servingUnit": "g", "nutrition": { "kcal": 3.5, "protein": 0.2, "carbs": 0.8, "fat": 0.03, "fiber": 0, "sugar": 0, "sodium": 0 }, "brand": null, "language": "ko", "confidence": 0.9 }
+  ]
+}
 
-  const text = await callClaude(prompt, 400);
+반드시 JSON만 출력 (다른 텍스트 없이)`;
+
+  const text = await callClaude(prompt, 2000);
   const clean = text.trim().replace(/```json|```/g, '');
   return JSON.parse(clean);
 }
