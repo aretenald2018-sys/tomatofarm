@@ -6,7 +6,7 @@ import { MUSCLES, DAYS }                       from './config.js';
 import { saveDay, saveExercise, deleteExercise,
          getDay, getExList, dateKey,
          getLastSession, calcVolume }           from './data.js';
-import { analyzeDiet }                          from './ai.js';
+
 
 let _date        = null;
 let _exercises   = [];
@@ -267,35 +267,6 @@ export async function deleteExerciseFromEditor() {
   await deleteExercise(editor.dataset.editingId);
   editor.classList.remove('open');
   openExercisePicker();
-}
-
-// ── 식단 분석 ────────────────────────────────────────────────────
-export async function runAnalyzeDiet() {
-  _diet.breakfast = document.getElementById('meal-breakfast').value.trim();
-  _diet.lunch     = document.getElementById('meal-lunch').value.trim();
-  _diet.dinner    = document.getElementById('meal-dinner').value.trim();
-
-  const btn = document.getElementById('analyze-btn');
-  btn.disabled = true; btn.textContent = '분석 중...';
-
-  try {
-    const result = await analyzeDiet(_diet.breakfast, _diet.lunch, _diet.dinner);
-    _diet.bOk    = _diet.breakfast ? result.breakfast.ok    : null;
-    _diet.lOk    = _diet.lunch     ? result.lunch.ok         : null;
-    _diet.dOk    = _diet.dinner    ? result.dinner.ok        : null;
-    _diet.bKcal  = result.breakfast.kcal  || 0;
-    _diet.lKcal  = result.lunch.kcal      || 0;
-    _diet.dKcal  = result.dinner.kcal     || 0;
-    _diet.bReason = result.breakfast.reason || '';
-    _diet.lReason = result.lunch.reason     || '';
-    _diet.dReason = result.dinner.reason    || '';
-    _renderDietResults();
-    btn.textContent = '🔄 재분석하기';
-  } catch(e) {
-    alert(e.message);
-    btn.textContent = '🔍 Claude로 식단 분석하기 (선택)';
-  }
-  btn.disabled = false;
 }
 
 // ── 내부 렌더 ─────────────────────────────────────────────────────

@@ -41,7 +41,6 @@ import {
   wtOpenExercisePicker, wtCloseExercisePicker,
   wtOpenExerciseEditor, wtCloseExerciseEditor,
   wtSaveExerciseFromEditor, wtDeleteExerciseFromEditor,
-  wtRunAnalyzeDiet,
   wtAddSet, wtRemoveSet, wtUpdateSet, wtToggleSetDone, wtUpdateSetType, wtRemoveExerciseEntry,
   wtAddFoodItem, wtRemoveFoodItem,
   openNutritionPhotoUpload,
@@ -374,8 +373,6 @@ function runExportCSV(period) {
 function openSettingsModal() {
   document.getElementById('cfg-anthropic').value    = localStorage.getItem('cfg_anthropic')    || '';
   document.getElementById('cfg-alphavantage').value = localStorage.getItem('cfg_alphavantage') || '';
-  document.getElementById('cfg-fatsecret-key').value    = localStorage.getItem('fs_consumer_key')    || '';
-  document.getElementById('cfg-fatsecret-secret').value = localStorage.getItem('fs_consumer_secret') || '';
   _renderNutritionDBList();
   document.getElementById('settings-modal').classList.add('open');
 }
@@ -410,13 +407,8 @@ function closeSettingsModal(e) { _closeModal('settings-modal', e); }
 function saveSettings() {
   const anthropic    = document.getElementById('cfg-anthropic').value.trim();
   const alphavantage = document.getElementById('cfg-alphavantage').value.trim();
-  const fsKey        = document.getElementById('cfg-fatsecret-key').value.trim();
-  const fsSecret     = document.getElementById('cfg-fatsecret-secret').value.trim();
-
   if (anthropic)    localStorage.setItem('cfg_anthropic',    anthropic);
   if (alphavantage) localStorage.setItem('cfg_alphavantage', alphavantage);
-  if (fsKey)        localStorage.setItem('fs_consumer_key',    fsKey);
-  if (fsSecret)     localStorage.setItem('fs_consumer_secret', fsSecret);
 
   document.getElementById('settings-modal').classList.remove('open');
   if (alphavantage) loadStocks();
@@ -1116,7 +1108,6 @@ window.wtOpenExerciseEditor     = wtOpenExerciseEditor;
 window.wtCloseExerciseEditor    = wtCloseExerciseEditor;
 window.wtSaveExerciseFromEditor = wtSaveExerciseFromEditor;
 window.wtDeleteExerciseFromEditor = wtDeleteExerciseFromEditor;
-window.wtRunAnalyzeDiet         = wtRunAnalyzeDiet;
 // 영화 탭
 window.renderMovie              = renderMovie;
 window.changeMovieMonth         = changeMovieMonth;

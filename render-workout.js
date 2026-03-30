@@ -9,7 +9,7 @@ import { saveDay, saveExercise, deleteExercise,
          getDietPlan, calcDietMetrics,
          getVolumeHistory, calcVolume,
          isDietDaySuccess, getDayTargetKcal }  from './data.js';
-import { analyzeDiet }                          from './ai.js';
+
 
 let _date       = null;   // { y, m, d }
 let _exercises  = [];
@@ -95,11 +95,6 @@ export function loadWorkoutDate(y, m, d) {
   if (dEl) dEl.value = _diet.dinner;
   if (sEl) sEl.value = _diet.snack;
 
-  const analyzeBtn = document.getElementById('wt-analyze-btn');
-  if (analyzeBtn) {
-    analyzeBtn.style.display = 'none';  // Claude 분석 버튼 숨김
-  }
-
   // 미래 날짜면 입력 비활성화
   const isFutureDay = isFuture(y, m, d);
   _setInputsDisabled(isFutureDay);
@@ -108,7 +103,7 @@ export function loadWorkoutDate(y, m, d) {
 function _setInputsDisabled(disabled) {
   const panel = document.getElementById('tab-workout');
   if (!panel) return;
-  panel.querySelectorAll('input, textarea, select, button.act-btn, button.ex-add-btn, button.ex-add-set-btn, button.wt-save-btn, #wt-analyze-btn').forEach(el => {
+  panel.querySelectorAll('input, textarea, select, button.act-btn, button.ex-add-btn, button.ex-add-set-btn, button.wt-save-btn').forEach(el => {
     if (el.classList.contains('wt-date-nav-btn')) return; // 날짜 탐색 버튼 제외
     el.disabled = disabled;
   });
@@ -274,37 +269,6 @@ export async function wtDeleteExerciseFromEditor() {
   await deleteExercise(editor.dataset.editingId);
   editor.classList.remove('open');
   wtOpenExercisePicker();
-}
-
-// ── 식단 분석 ─────────────────────────────────────────────────────
-export async function wtRunAnalyzeDiet() {
-  _diet.breakfast = document.getElementById('wt-meal-breakfast').value.trim();
-  _diet.lunch     = document.getElementById('wt-meal-lunch').value.trim();
-  _diet.dinner    = document.getElementById('wt-meal-dinner').value.trim();
-
-  const btn = document.getElementById('wt-analyze-btn');
-  btn.disabled = true; btn.textContent = '분석 중...';
-  try {
-    const result = await analyzeDiet(_diet.breakfast, _diet.lunch, _diet.dinner);
-    _diet.bOk    = _diet.breakfast ? result.breakfast.ok  : null;
-    _diet.lOk    = _diet.lunch     ? result.lunch.ok      : null;
-    _diet.dOk    = _diet.dinner    ? result.dinner.ok     : null;
-    _diet.bKcal  = result.breakfast.kcal  || 0;
-    _diet.lKcal  = result.lunch.kcal      || 0;
-    _diet.dKcal  = result.dinner.kcal     || 0;
-    _diet.bReason = result.breakfast.reason || '';
-    _diet.lReason = result.lunch.reason     || '';
-    _diet.dReason = result.dinner.reason    || '';
-    _diet.bProtein = result.breakfast.protein||0; _diet.bCarbs = result.breakfast.carbs||0; _diet.bFat = result.breakfast.fat||0;
-    _diet.lProtein = result.lunch.protein    ||0; _diet.lCarbs = result.lunch.carbs    ||0; _diet.lFat = result.lunch.fat    ||0;
-    _diet.dProtein = result.dinner.protein   ||0; _diet.dCarbs = result.dinner.carbs   ||0; _diet.dFat = result.dinner.fat   ||0;
-    _renderDietResults();
-    btn.textContent = '🔄 재분석하기';
-  } catch(e) {
-    alert(e.message);
-    btn.textContent = '🔍 Claude로 식단 분석하기 (선택)';
-  }
-  btn.disabled = false;
 }
 
 // ── 저장 ──────────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 // ================================================================
 // ai.js
 // 의존성: config.js, data.js
-// 역할: Claude API 호출 (식단 분석, 식단 추천, 운동 추천, 목표 실현가능성)
+// 역할: Claude API 호출 (식단 추천, 운동 추천, 목표 실현가능성, 영양정보 파싱)
 // ================================================================
 
 import { CONFIG, MUSCLES }                    from './config.js';
@@ -90,25 +90,6 @@ export async function getWorkoutRec() {
   } finally {
     bubble.classList.remove('loading');
   }
-}
-
-// ── 식단 분석 ────────────────────────────────────────────────────
-export async function analyzeDiet(breakfast, lunch, dinner) {
-  if (!breakfast && !lunch && !dinner) throw new Error('식단을 입력해주세요.');
-
-  const prompt = `다음 식단을 분석해주세요.
-아침: ${breakfast||'없음'}
-점심: ${lunch||'없음'}
-저녁: ${dinner||'없음'}
-
-반드시 아래 JSON 형식으로만 응답 (다른 텍스트 없이):
-{"breakfast":{"ok":true,"kcal":350,"protein":30,"carbs":45,"fat":8,"reason":"단백질 중심 적정 칼로리"},"lunch":{"ok":false,"kcal":900,"protein":35,"carbs":100,"fat":40,"reason":"삼겹살+소주 고지방 고칼로리"},"dinner":{"ok":true,"kcal":400,"protein":25,"carbs":55,"fat":10,"reason":"채소 위주 저칼로리"}}
-기준: 한 끼 ${CONFIG.DIET_KCAL_LIMIT}kcal 이하 + 튀김/패스트푸드/고지방 주식 아니면 OK.
-protein/carbs/fat 단위는 그램(g). 입력 없으면 ok:true, kcal:0, protein:0, carbs:0, fat:0, reason:"기록없음"`;
-
-  const text   = await callClaude(prompt, 300);
-  const clean  = text.trim().replace(/```json|```/g, '');
-  return JSON.parse(clean);
 }
 
 // ── 영양성분표 이미지 파싱 (Claude Vision API) ────────────────────

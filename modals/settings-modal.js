@@ -12,17 +12,8 @@ export const MODAL_HTML = `
         <div class="ex-editor-label">Alpha Vantage API 키 (주식 데이터)</div>
         <input class="ex-editor-input" id="cfg-alphavantage" type="password" placeholder="XXXXXXXXXXXXXXXX" autocomplete="off">
       </div>
-      <div>
-        <div class="ex-editor-label">FatSecret Consumer Key (음식 검색)</div>
-        <input class="ex-editor-input" id="cfg-fatsecret-key" type="password" placeholder="FatSecret Consumer Key" autocomplete="off">
-      </div>
-      <div>
-        <div class="ex-editor-label">FatSecret Consumer Secret</div>
-        <input class="ex-editor-input" id="cfg-fatsecret-secret" type="password" placeholder="FatSecret Consumer Secret" autocomplete="off">
-      </div>
       <div style="font-size:11px;color:var(--muted);line-height:1.6;padding:8px;background:var(--surface2);border-radius:8px;border:1px solid var(--border)">
-        키 정보는 현재 기기의 브라우저에만 암호화되어 저장됩니다.<br>서버나 외부로 노출되지 않으니 안심하세요.<br>
-        <span style="font-size:10px;color:var(--muted2);margin-top:4px;display:block">FatSecret API: https://www.fatsecret.com/api/ 에서 앱을 등록하면 Consumer Key와 Secret을 발급받을 수 있습니다.</span>
+        키 정보는 현재 기기의 브라우저에만 암호화되어 저장됩니다.<br>서버나 외부로 노출되지 않으니 안심하세요.
       </div>
       <div class="ex-editor-actions">
         <button class="ex-editor-cancel" onclick="closeSettingsModal()">취소</button>
