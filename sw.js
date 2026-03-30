@@ -1,7 +1,7 @@
 // Service Worker for Dashboard3 (Life Streak)
 // 오프라인 캐싱 및 PWA 기능 제공
 
-const CACHE_VERSION = 'dashboard3-v1.0';
+const CACHE_VERSION = 'dashboard3-v1.1';
 const RUNTIME_CACHE = 'dashboard3-runtime';
 const STATIC_ASSETS = [
   './',
