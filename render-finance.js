@@ -94,7 +94,7 @@ function _buildHTML() {
 
       <!-- Inflow/Outflow 그래프 (토글, 디폴트 숨김) -->
       <div style="margin-top:12px">
-        <button class="fin-toggle-btn" id="fin-flow-toggle" onclick="toggleFlowChart()">📈 Inflow / Outflow 추이 보기</button>
+        <button class="fin-toggle-btn" id="fin-flow-toggle" onclick="toggleFlowChart()">📈 현금흐름 추이 보기</button>
         <div id="fin-flow-section" style="display:none">
           <div class="fin-chart-wrap" style="max-height:280px;margin-top:8px"><canvas id="fin-flow-chart"></canvas></div>
           <div id="fin-flow-table"></div>
@@ -175,7 +175,7 @@ export function toggleFlowChart() {
   if (!sec) return;
   const visible = sec.style.display !== 'none';
   sec.style.display = visible ? 'none' : '';
-  btn.textContent = visible ? '📈 Inflow / Outflow 추이 보기' : '📈 Inflow / Outflow 추이 숨기기';
+  btn.textContent = visible ? '📈 현금흐름 추이 보기' : '📈 현금흐름 추이 숨기기';
   if (!visible) _renderFlowChart();
 }
 
@@ -348,11 +348,11 @@ function _renderActuals() {
       <div style="display:none">
         <div style="overflow-x:auto">
         <table class="fin-table" style="margin-top:6px">
-          <thead><tr><th>연도</th><th>나이</th><th>누적 저축/투자</th><th>순자산</th><th>비상금</th><th>Inflow</th><th>fOutflow</th><th>Outflow</th><th>월환산</th><th></th></tr></thead>
+          <thead><tr><th>연도</th><th>나이</th><th>누적 저축/투자</th><th>순자산</th><th>비상금</th><th>Inflow</th><th>고정지출</th><th>가처분여력</th><th>월환산</th><th></th></tr></thead>
           <tbody>${actuals.map(a => {
             const em = calcEmergencyMonths(a.emergencyFund, a.monthlyExpense);
-            const outflow = (a.inflow || 0) - (a.fOutflow || 0);
-            const monthlyOut = outflow > 0 ? Math.round(outflow / 12) : null;
+            const discretionary = (a.inflow || 0) - (a.fOutflow || 0);
+            const monthlyDisc = discretionary > 0 ? Math.round(discretionary / 12) : null;
             const hasFlow = a.inflow || a.fOutflow;
             return `<tr>
               <td>${a.year}</td>
@@ -362,8 +362,8 @@ function _renderActuals() {
               <td class="num">${a.emergencyFund ? formatManwon(a.emergencyFund) + (em != null ? ` (${em}개월)` : '') : '-'}</td>
               <td class="num">${a.inflow ? formatManwon(a.inflow) : '-'}</td>
               <td class="num">${a.fOutflow ? formatManwon(a.fOutflow) : '-'}</td>
-              <td class="num ${hasFlow ? (outflow < 0 ? 'neg' : '') : ''}">${hasFlow ? formatManwon(outflow) : '-'}</td>
-              <td class="num">${monthlyOut != null ? formatManwon(monthlyOut) + '/월' : '-'}</td>
+              <td class="num ${hasFlow ? (discretionary < 0 ? 'neg' : '') : ''}">${hasFlow ? formatManwon(discretionary) : '-'}</td>
+              <td class="num">${monthlyDisc != null ? formatManwon(monthlyDisc) + '/월' : '-'}</td>
               <td class="action-cell"><button class="edit-btn" onclick="openFinActualModal('${a.id}')">✏️</button></td>
             </tr>`;
           }).join('')}</tbody>
@@ -689,7 +689,7 @@ function _renderMainChart() {
 }
 
 // ================================================================
-// Inflow / Outflow 추이 차트
+// 현금흐름 추이 차트
 // ================================================================
 function _renderFlowChart() {
   const canvas = document.getElementById('fin-flow-chart');
@@ -699,17 +699,17 @@ function _renderFlowChart() {
   const actuals = getFinActuals().filter(a => a.inflow || a.fOutflow);
   if (actuals.length === 0) {
     const tableEl = document.getElementById('fin-flow-table');
-    if (tableEl) tableEl.innerHTML = `<div style="color:var(--muted);font-size:11px;text-align:center;padding:8px">Inflow/fOutflow 데이터가 없습니다. 연간실적에서 입력하세요.</div>`;
+    if (tableEl) tableEl.innerHTML = `<div style="color:var(--muted);font-size:11px;text-align:center;padding:8px">현금흐름 데이터가 없습니다. 연간실적에서 Inflow/고정지출을 입력하세요.</div>`;
     return;
   }
 
   const labels = actuals.map(a => `${a.year} (${getAge(a.year)}살)`);
   const inflowData = actuals.map(a => a.inflow || 0);
-  const fOutflowData = actuals.map(a => a.fOutflow || 0);
-  const outflowData = actuals.map(a => (a.inflow || 0) - (a.fOutflow || 0));
-  const monthlyOutData = actuals.map(a => {
-    const out = (a.inflow || 0) - (a.fOutflow || 0);
-    return out > 0 ? Math.round(out / 12) : 0;
+  const fixedData = actuals.map(a => a.fOutflow || 0);
+  const discretionaryData = actuals.map(a => (a.inflow || 0) - (a.fOutflow || 0));
+  const monthlyDiscData = actuals.map(a => {
+    const d = (a.inflow || 0) - (a.fOutflow || 0);
+    return d > 0 ? Math.round(d / 12) : 0;
   });
 
   _flowChartInstance = new Chart(canvas, {
@@ -726,24 +726,24 @@ function _renderFlowChart() {
           barPercentage: 0.6,
         },
         {
-          label: 'fOutflow (고정지출)',
-          data: fOutflowData,
+          label: '고정지출',
+          data: fixedData,
           backgroundColor: 'rgba(148, 163, 184, 0.7)',
           borderColor: '#94a3b8',
           borderWidth: 1,
           barPercentage: 0.6,
         },
         {
-          label: 'Outflow (변동지출)',
-          data: outflowData,
-          backgroundColor: 'rgba(239, 68, 68, 0.5)',
-          borderColor: '#ef4444',
+          label: '가처분여력',
+          data: discretionaryData,
+          backgroundColor: 'rgba(59, 130, 246, 0.5)',
+          borderColor: '#3b82f6',
           borderWidth: 1,
           barPercentage: 0.6,
         },
         {
-          label: '월환산 Outflow',
-          data: monthlyOutData,
+          label: '월환산 가처분',
+          data: monthlyDiscData,
           type: 'line',
           borderColor: '#f59e0b',
           borderWidth: 2,
@@ -768,21 +768,21 @@ function _renderFlowChart() {
     },
   });
 
-  // Inflow/Outflow 테이블
+  // 현금흐름 테이블
   const tableEl = document.getElementById('fin-flow-table');
   if (tableEl) {
     tableEl.innerHTML = `<table class="fin-table" style="margin-top:8px">
-      <thead><tr><th>연도</th><th>나이</th><th>Inflow</th><th>fOutflow</th><th>Outflow</th><th>월환산</th></tr></thead>
+      <thead><tr><th>연도</th><th>나이</th><th>Inflow</th><th>고정지출</th><th>가처분여력</th><th>월환산</th></tr></thead>
       <tbody>${actuals.map(a => {
-        const outflow = (a.inflow || 0) - (a.fOutflow || 0);
-        const monthly = outflow > 0 ? Math.round(outflow / 12) : null;
-        const cls = outflow >= 0 ? '' : 'neg';
+        const disc = (a.inflow || 0) - (a.fOutflow || 0);
+        const monthly = disc > 0 ? Math.round(disc / 12) : null;
+        const cls = disc >= 0 ? '' : 'neg';
         return `<tr>
           <td>${a.year}</td>
           <td>${getAge(a.year)}살</td>
           <td class="num">${a.inflow ? formatManwon(a.inflow) : '-'}</td>
           <td class="num">${a.fOutflow ? formatManwon(a.fOutflow) : '-'}</td>
-          <td class="num ${cls}">${formatManwon(outflow)}</td>
+          <td class="num ${cls}">${formatManwon(disc)}</td>
           <td class="num">${monthly != null ? formatManwon(monthly) + '/월' : '-'}</td>
         </tr>`;
       }).join('')}</tbody>

@@ -39,7 +39,7 @@ export const MODAL_HTML = `
       <input id="fin-actual-foutflow" type="number" value="0" placeholder="연간 고정지출">
     </div>
     <div style="font-size:10px;color:var(--muted);margin:-4px 0 8px;padding:0 2px">
-      ※ Outflow(변동지출) = Inflow − fOutflow 로 자동 계산됩니다
+      ※ 가처분여력 = Inflow − 고정지출 로 자동 계산됩니다
     </div>
 
     <input type="hidden" id="fin-actual-id">
