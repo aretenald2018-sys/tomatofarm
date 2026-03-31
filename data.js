@@ -52,6 +52,7 @@ let _finBenchmarks = [];
 let _finActuals    = [];
 let _finLoans      = [];
 let _finPositions  = [];
+let _finPlans      = []; // 계획실적 [{id, name, entries: [{year, target}]}]
 
 // ── 설정 캐시 (Firebase settings 컬렉션) ────────────────────────
 const DEFAULT_TAB_ORDER = ['home','workout','cooking','monthly','calendar','wine','movie','stats','finance','loa'];
@@ -185,6 +186,10 @@ export async function loadAll() {
     const finPosSnap = await getDocs(collection(db, 'finance_positions'));
     _finPositions = [];
     finPosSnap.forEach(d => _finPositions.push(d.data()));
+
+    const finPlanSnap = await getDocs(collection(db, 'finance_plans'));
+    _finPlans = [];
+    finPlanSnap.forEach(d => _finPlans.push(d.data()));
 
     // ── 영화 데이터 로드 ──
     const movieSnap = await getDocs(collection(db, 'movies'));
@@ -359,6 +364,11 @@ export const getFinLoans   = () => _finLoans;
 export const saveFinPosition   = (p) => _finPosCRUD.save(p);
 export const deleteFinPosition = (id) => _finPosCRUD.delete(id);
 export const getFinPositions   = () => _finPositions;
+
+const _finPlanCRUD = _createCRUD('finance_plans', () => _finPlans, v => { _finPlans = v; });
+export const saveFinPlan   = (p) => _finPlanCRUD.save(p);
+export const deleteFinPlan = (id) => _finPlanCRUD.delete(id);
+export const getFinPlans   = () => _finPlans;
 
 // ── 환율 (Frankfurter API, 키 불필요) ─────────────────────────────
 const FX_CACHE_KEY = 'fx_usd_krw';

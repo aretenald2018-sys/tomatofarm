@@ -9,6 +9,7 @@ import {
   getFinActuals, saveFinActual, deleteFinActual,
   getFinLoans, saveFinLoan, deleteFinLoan,
   getFinPositions, saveFinPosition, deleteFinPosition,
+  getFinPlans, saveFinPlan, deleteFinPlan,
   fetchExchangeRate, fetchFearGreed,
 } from './data.js';
 // Alpha Vantage 직접 호출
@@ -35,6 +36,7 @@ let _quotesMap = {};
 let _fxRate = 1450;
 let _fngData = null;
 let _mainChartInstance = null;
+let _flowChartInstance = null;
 
 const _collapsed = { benchmark: false, reality: false, invest: false };
 
@@ -47,7 +49,8 @@ export async function renderFinance() {
 
   fetchExchangeRate().then(r => {
     _fxRate = r;
-    document.getElementById('fin-fx-rate').textContent = `USD/KRW: ${r.toLocaleString()}`;
+    const fxEl = document.getElementById('fin-fx-rate');
+    if (fxEl) fxEl.textContent = `USD/KRW: ${r.toLocaleString()}`;
   });
 
   el.innerHTML = _buildHTML();
@@ -62,7 +65,9 @@ export async function renderFinance() {
 
   _renderBenchmarks();
   _renderActuals();
+  _renderPlans();
   _renderMainChart();
+  _renderFlowChart();
 }
 
 // ================================================================
@@ -70,20 +75,31 @@ export async function renderFinance() {
 // ================================================================
 function _buildHTML() {
   return `
-  <!-- Section 1: 벤치마크 + 현실 통합 -->
+  <!-- Section 1: 벤치마크 + 현실 + 계획실적 통합 -->
   <div class="fin-section" id="fin-sec-benchmark">
     <div class="fin-section-hdr" data-sec="benchmark">
-      <h3>📊 벤치마크 vs 현실</h3>
-      <div style="display:flex;gap:6px">
+      <h3>📊 자산 추이 그래프</h3>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
         <button class="fin-add-btn" onclick="openFinBenchmarkModal()">+ 벤치마크</button>
         <button class="fin-add-btn" onclick="openFinActualModal()">+ 연간실적</button>
+        <button class="fin-add-btn" onclick="openFinPlanModal()">+ 계획실적</button>
       </div>
     </div>
     <div class="fin-section-body${_collapsed.benchmark?' collapsed':''}">
-      <div class="fin-chart-wrap" style="max-height:300px"><canvas id="fin-main-chart"></canvas></div>
+      <div class="fin-chart-wrap" style="max-height:340px"><canvas id="fin-main-chart"></canvas></div>
       <div id="fin-bench-list"></div>
+      <div id="fin-plan-list"></div>
       <div id="fin-actual-list"></div>
       <div id="fin-cagr-display"></div>
+
+      <!-- Inflow/Outflow 그래프 (토글, 디폴트 숨김) -->
+      <div style="margin-top:12px">
+        <button class="fin-toggle-btn" id="fin-flow-toggle" onclick="toggleFlowChart()">📈 Inflow / Outflow 추이 보기</button>
+        <div id="fin-flow-section" style="display:none">
+          <div class="fin-chart-wrap" style="max-height:280px;margin-top:8px"><canvas id="fin-flow-chart"></canvas></div>
+          <div id="fin-flow-table"></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -148,6 +164,19 @@ function _bindToggle() {
       hdr.nextElementSibling.classList.toggle('collapsed', _collapsed[sec]);
     });
   });
+}
+
+// ================================================================
+// Inflow/Outflow 토글
+// ================================================================
+export function toggleFlowChart() {
+  const sec = document.getElementById('fin-flow-section');
+  const btn = document.getElementById('fin-flow-toggle');
+  if (!sec) return;
+  const visible = sec.style.display !== 'none';
+  sec.style.display = visible ? 'none' : '';
+  btn.textContent = visible ? '📈 Inflow / Outflow 추이 보기' : '📈 Inflow / Outflow 추이 숨기기';
+  if (!visible) _renderFlowChart();
 }
 
 // ================================================================
@@ -255,6 +284,48 @@ function _renderBenchmarks() {
 }
 
 // ================================================================
+// 계획실적 렌더
+// ================================================================
+function _renderPlans() {
+  const plans = getFinPlans();
+  const listEl = document.getElementById('fin-plan-list');
+  if (!listEl) return;
+
+  if (plans.length === 0) {
+    listEl.innerHTML = '';
+    return;
+  }
+
+  listEl.innerHTML = plans.map(p => {
+    const entries = (p.entries || []).sort((a, b) => a.year - b.year);
+    const last = entries[entries.length - 1];
+    return `
+    <div class="fin-bench-card" style="border-left-color:#8b5cf6">
+      <div class="fin-bench-summary" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'':'none'">
+        <span class="fin-bench-name">🎯 ${p.name || '계획실적'}</span>
+        <span class="fin-bench-meta">${entries.length}개 연도 ${last ? '→ ' + last.year + '년 ' + formatManwon(last.target) : ''}</span>
+      </div>
+      <div class="fin-bench-detail" style="display:none">
+        <div style="overflow-x:auto">
+        <table class="fin-proj-table">
+          <thead><tr><th>연도</th><th>나이</th><th>목표 기말잔액</th></tr></thead>
+          <tbody>${entries.map(e => `<tr>
+            <td>${e.year}년</td>
+            <td>${getAge(e.year)}살</td>
+            <td style="font-weight:600">${formatManwon(e.target)}</td>
+          </tr>`).join('')}</tbody>
+        </table>
+        </div>
+      </div>
+      <div class="fin-bench-actions">
+        <button onclick="openFinPlanModal('${p.id}')">수정</button>
+        <button class="fin-del-btn" onclick="deleteFinPlanDirect('${p.id}')">삭제</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ================================================================
 // 현실 섹션
 // ================================================================
 function _renderActuals() {
@@ -266,7 +337,7 @@ function _renderActuals() {
     listEl.innerHTML = `<div style="color:var(--muted);font-size:12px;padding:12px;text-align:center">연간 실적을 추가하세요</div>`;
   } else {
     listEl.innerHTML = `<table class="fin-table">
-      <thead><tr><th>연도</th><th>나이</th><th>누적 저축/투자</th><th>순자산</th><th>비상금</th><th></th></tr></thead>
+      <thead><tr><th>연도</th><th>나이</th><th>누적 저축/투자</th><th>순자산</th><th>비상금</th><th>Inflow</th><th>Outflow</th><th></th></tr></thead>
       <tbody>${actuals.map(a => {
         const em = calcEmergencyMonths(a.emergencyFund, a.monthlyExpense);
         return `<tr>
@@ -275,6 +346,8 @@ function _renderActuals() {
           <td class="num">${formatManwon(a.cumulativeSaved)}</td>
           <td class="num">${a.netWorth ? formatManwon(a.netWorth) : '-'}</td>
           <td class="num">${a.emergencyFund ? formatManwon(a.emergencyFund) + (em != null ? ` (${em}개월)` : '') : '-'}</td>
+          <td class="num">${a.inflow ? formatManwon(a.inflow) : '-'}</td>
+          <td class="num">${a.outflow ? formatManwon(a.outflow) : '-'}</td>
           <td class="action-cell"><button class="edit-btn" onclick="openFinActualModal('${a.id}')">✏️</button></td>
         </tr>`;
       }).join('')}</tbody>
@@ -323,7 +396,49 @@ function _renderNetWorthCards() {
 }
 
 // ================================================================
-// 통합 차트 (벤치마크 점선 + 현실 실선)
+// X축 레이블 생성 (2030까지 매년 + 2035 + 2045, 생략구간 표시)
+// ================================================================
+function _buildXAxisLabels(allYears) {
+  if (allYears.length === 0) return [];
+  const minYear = Math.min(...allYears);
+  const maxYear = Math.max(...allYears);
+  const labels = [];
+
+  // 데이터 시작연도부터 2030까지 매년
+  const cutoff = 2030;
+  for (let y = minYear; y <= Math.min(maxYear, cutoff); y++) {
+    labels.push(y);
+  }
+
+  // 2030 이후에는 2035, 2045만 포함 (데이터에 있을 경우)
+  if (maxYear > cutoff) {
+    if (allYears.includes(2035) || maxYear >= 2035) labels.push(2035);
+    if (allYears.includes(2045) || maxYear >= 2045) labels.push(2045);
+  }
+
+  return labels;
+}
+
+// 연도를 X축 인덱스로 매핑 (생략구간 고려)
+function _yearToXIndex(year, xLabels) {
+  const idx = xLabels.indexOf(year);
+  if (idx >= 0) return idx;
+  // 정확한 레이블에 없으면 비례 보간
+  // 2030과 2035 사이, 2035와 2045 사이 등
+  for (let i = 0; i < xLabels.length - 1; i++) {
+    if (year > xLabels[i] && year < xLabels[i + 1]) {
+      const ratio = (year - xLabels[i]) / (xLabels[i + 1] - xLabels[i]);
+      return i + ratio;
+    }
+  }
+  // 범위 밖
+  if (year < xLabels[0]) return -1;
+  return xLabels.length;
+}
+
+// ================================================================
+// 통합 차트 (벤치마크 점선 + 현실 실선 + 계획실적 파선)
+// X축: 2030까지 매년, 이후 2035·2045만 (생략구간 표시)
 // ================================================================
 function _renderMainChart() {
   const canvas = document.getElementById('fin-main-chart');
@@ -332,17 +447,48 @@ function _renderMainChart() {
 
   const benchmarks = getFinBenchmarks();
   const actuals = getFinActuals();
-  if (benchmarks.length === 0 && actuals.length === 0) return;
+  const plans = getFinPlans();
+  if (benchmarks.length === 0 && actuals.length === 0 && plans.length === 0) return;
 
-  const colors = ['#f59e0b', '#3b82f6', '#a855f7', '#ec4899', '#06b6d4'];
+  // 모든 연도 수집
+  const allYears = new Set();
+  benchmarks.forEach(b => {
+    const proj = compoundProjection(b);
+    proj.forEach(r => allYears.add(r.year));
+  });
+  actuals.forEach(a => allYears.add(a.year));
+  plans.forEach(p => (p.entries || []).forEach(e => allYears.add(e.year)));
+
+  const xLabels = _buildXAxisLabels([...allYears]);
+  if (xLabels.length === 0) return;
+
+  const benchColors = ['#f59e0b', '#3b82f6', '#a855f7', '#ec4899', '#06b6d4'];
+  const planColors = ['#8b5cf6', '#d946ef', '#14b8a6', '#f97316', '#64748b'];
   const datasets = [];
 
+  // 벤치마크 (점선)
   benchmarks.forEach((b, i) => {
     const proj = compoundProjection(b);
+    const data = [];
+    for (const label of xLabels) {
+      const row = proj.find(r => r.year === label);
+      if (row) data.push({ x: xLabels.indexOf(label), y: row.closeBalance });
+    }
+    // 2035, 2045 등 비표시 연도에도 데이터가 있으면 보간 위치에 추가
+    proj.forEach(r => {
+      if (!xLabels.includes(r.year)) {
+        const xi = _yearToXIndex(r.year, xLabels);
+        if (xi >= 0 && xi <= xLabels.length) {
+          data.push({ x: xi, y: r.closeBalance });
+        }
+      }
+    });
+    data.sort((a, b) => a.x - b.x);
+
     datasets.push({
       label: b.name || `벤치마크 ${i + 1}`,
-      data: proj.map(r => ({ x: r.year, y: r.closeBalance })),
-      borderColor: colors[i % colors.length],
+      data,
+      borderColor: benchColors[i % benchColors.length],
       borderDash: [5, 3],
       borderWidth: 2,
       pointRadius: 0,
@@ -351,10 +497,41 @@ function _renderMainChart() {
     });
   });
 
+  // 계획실적 (긴 대시)
+  plans.forEach((p, i) => {
+    const entries = (p.entries || []).sort((a, b) => a.year - b.year);
+    const data = [];
+    entries.forEach(e => {
+      const xi = xLabels.includes(e.year) ? xLabels.indexOf(e.year) : _yearToXIndex(e.year, xLabels);
+      if (xi >= 0) data.push({ x: xi, y: e.target });
+    });
+    data.sort((a, b) => a.x - b.x);
+
+    datasets.push({
+      label: '🎯 ' + (p.name || `계획 ${i + 1}`),
+      data,
+      borderColor: planColors[i % planColors.length],
+      borderDash: [10, 4],
+      borderWidth: 2.5,
+      pointRadius: 3,
+      pointBackgroundColor: planColors[i % planColors.length],
+      fill: false,
+      tension: 0.3,
+    });
+  });
+
+  // 현실 (실선)
   if (actuals.length > 0) {
+    const data = [];
+    actuals.forEach(a => {
+      const xi = xLabels.includes(a.year) ? xLabels.indexOf(a.year) : _yearToXIndex(a.year, xLabels);
+      if (xi >= 0) data.push({ x: xi, y: a.cumulativeSaved });
+    });
+    data.sort((a, b) => a.x - b.x);
+
     datasets.push({
       label: '현실 (누적 저축/투자)',
-      data: actuals.map(a => ({ x: a.year, y: a.cumulativeSaved })),
+      data,
       borderColor: '#10b981',
       borderWidth: 3,
       pointRadius: 4,
@@ -364,13 +541,159 @@ function _renderMainChart() {
     });
   }
 
+  // 생략 구간 annotation용 (2030과 2035 사이에 물결 표시)
+  const gapAnnotations = [];
+  for (let i = 0; i < xLabels.length - 1; i++) {
+    if (xLabels[i + 1] - xLabels[i] > 1) {
+      gapAnnotations.push({
+        gapStart: i,
+        gapEnd: i + 1,
+        label: `${xLabels[i]}~${xLabels[i + 1]}`,
+      });
+    }
+  }
+
   _mainChartInstance = new Chart(canvas, {
     type: 'line',
     data: { datasets },
     options: {
       responsive: true, maintainAspectRatio: false,
       scales: {
-        x: { type: 'linear', title: { display: true, text: '연도', color: '#5c6478', font: { size: 10 } }, ticks: { color: '#5c6478', font: { size: 10 } }, grid: { color: '#2c3040' } },
+        x: {
+          type: 'linear',
+          min: 0, max: xLabels.length - 1,
+          ticks: {
+            color: '#5c6478', font: { size: 10 },
+            stepSize: 1,
+            callback: function(value) {
+              const idx = Math.round(value);
+              if (idx >= 0 && idx < xLabels.length) return xLabels[idx];
+              return '';
+            },
+          },
+          grid: { color: '#2c3040' },
+          afterDraw: function(chart) {
+            // 생략 구간에 물결선 그리기 (plugin에서 처리)
+          },
+        },
+        y: {
+          ticks: { color: '#5c6478', font: { size: 10 }, callback: v => formatManwon(v) },
+          grid: { color: '#2c3040' },
+        },
+      },
+      plugins: {
+        legend: { labels: { color: '#e2e4ea', font: { size: 10 } } },
+        tooltip: {
+          callbacks: {
+            title: ctx => {
+              const idx = Math.round(ctx[0].parsed.x);
+              if (idx >= 0 && idx < xLabels.length) return `${xLabels[idx]}년 (${getAge(xLabels[idx])}살)`;
+              return '';
+            },
+            label: ctx => `${ctx.dataset.label}: ${formatManwon(ctx.parsed.y)}`,
+          },
+        },
+      },
+    },
+    plugins: [{
+      id: 'gapIndicator',
+      afterDraw(chart) {
+        const ctx = chart.ctx;
+        const xScale = chart.scales.x;
+        const yScale = chart.scales.y;
+        gapAnnotations.forEach(gap => {
+          const x1 = xScale.getPixelForValue(gap.gapStart + 0.3);
+          const x2 = xScale.getPixelForValue(gap.gapEnd - 0.3);
+          const yMid = (yScale.top + yScale.bottom) / 2;
+          // 물결선 그리기
+          ctx.save();
+          ctx.strokeStyle = '#5c6478';
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([3, 3]);
+          ctx.beginPath();
+          const xMid = (x1 + x2) / 2;
+          ctx.moveTo(x1, yScale.top);
+          ctx.lineTo(x1, yScale.bottom);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(x2, yScale.top);
+          ctx.lineTo(x2, yScale.bottom);
+          ctx.stroke();
+          // 물결 기호
+          ctx.setLineDash([]);
+          ctx.fillStyle = '#1e2030';
+          ctx.fillRect(xMid - 12, yMid - 10, 24, 20);
+          ctx.fillStyle = '#5c6478';
+          ctx.font = '12px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('⋯', xMid, yMid);
+          ctx.restore();
+        });
+      },
+    }],
+  });
+}
+
+// ================================================================
+// Inflow / Outflow 추이 차트
+// ================================================================
+function _renderFlowChart() {
+  const canvas = document.getElementById('fin-flow-chart');
+  if (!canvas || !window.Chart) return;
+  if (_flowChartInstance) _flowChartInstance.destroy();
+
+  const actuals = getFinActuals().filter(a => a.inflow || a.outflow);
+  if (actuals.length === 0) {
+    const tableEl = document.getElementById('fin-flow-table');
+    if (tableEl) tableEl.innerHTML = `<div style="color:var(--muted);font-size:11px;text-align:center;padding:8px">Inflow/Outflow 데이터가 없습니다. 연간실적에서 입력하세요.</div>`;
+    return;
+  }
+
+  const labels = actuals.map(a => `${a.year} (${getAge(a.year)}살)`);
+  const inflowData = actuals.map(a => a.inflow || 0);
+  const outflowData = actuals.map(a => a.outflow || 0);
+  const netData = actuals.map(a => (a.inflow || 0) - (a.outflow || 0));
+
+  _flowChartInstance = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Inflow (제세순수익)',
+          data: inflowData,
+          backgroundColor: 'rgba(16, 185, 129, 0.7)',
+          borderColor: '#10b981',
+          borderWidth: 1,
+          barPercentage: 0.7,
+        },
+        {
+          label: 'Outflow (총지출)',
+          data: outflowData,
+          backgroundColor: 'rgba(239, 68, 68, 0.7)',
+          borderColor: '#ef4444',
+          borderWidth: 1,
+          barPercentage: 0.7,
+        },
+        {
+          label: 'Net (순저축)',
+          data: netData,
+          type: 'line',
+          borderColor: '#f59e0b',
+          borderWidth: 2,
+          pointRadius: 3,
+          pointBackgroundColor: '#f59e0b',
+          fill: false,
+          tension: 0.3,
+          yAxisID: 'y',
+        },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: {
+        x: { ticks: { color: '#5c6478', font: { size: 10 } }, grid: { color: '#2c3040' } },
         y: { ticks: { color: '#5c6478', font: { size: 10 }, callback: v => formatManwon(v) }, grid: { color: '#2c3040' } },
       },
       plugins: {
@@ -379,6 +702,25 @@ function _renderMainChart() {
       },
     },
   });
+
+  // Inflow/Outflow 테이블
+  const tableEl = document.getElementById('fin-flow-table');
+  if (tableEl) {
+    tableEl.innerHTML = `<table class="fin-table" style="margin-top:8px">
+      <thead><tr><th>연도</th><th>나이</th><th>Inflow</th><th>Outflow</th><th>Net</th></tr></thead>
+      <tbody>${actuals.map(a => {
+        const net = (a.inflow || 0) - (a.outflow || 0);
+        const cls = net >= 0 ? 'pos' : 'neg';
+        return `<tr>
+          <td>${a.year}</td>
+          <td>${getAge(a.year)}살</td>
+          <td class="num">${a.inflow ? formatManwon(a.inflow) : '-'}</td>
+          <td class="num">${a.outflow ? formatManwon(a.outflow) : '-'}</td>
+          <td class="num ${cls}">${formatManwon(net)}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>`;
+  }
 }
 
 // ================================================================
@@ -623,6 +965,8 @@ export function openFinActualModal(id) {
     document.getElementById('fin-actual-networth').value = a.netWorth || 0;
     document.getElementById('fin-actual-emergency').value = a.emergencyFund || 0;
     document.getElementById('fin-actual-expense').value = a.monthlyExpense || 0;
+    document.getElementById('fin-actual-inflow').value = a.inflow || 0;
+    document.getElementById('fin-actual-outflow').value = a.outflow || 0;
   } else {
     titleEl.textContent = '연간 실적 추가';
     delBtn.style.display = 'none';
@@ -632,6 +976,8 @@ export function openFinActualModal(id) {
     document.getElementById('fin-actual-networth').value = 0;
     document.getElementById('fin-actual-emergency').value = 0;
     document.getElementById('fin-actual-expense').value = 0;
+    document.getElementById('fin-actual-inflow').value = 0;
+    document.getElementById('fin-actual-outflow').value = 0;
   }
   modal.classList.add('open');
 }
@@ -650,6 +996,8 @@ export async function saveFinActualFromModal() {
     netWorth: parseFloat(document.getElementById('fin-actual-networth').value) || 0,
     emergencyFund: parseFloat(document.getElementById('fin-actual-emergency').value) || 0,
     monthlyExpense: parseFloat(document.getElementById('fin-actual-expense').value) || 0,
+    inflow: parseFloat(document.getElementById('fin-actual-inflow').value) || 0,
+    outflow: parseFloat(document.getElementById('fin-actual-outflow').value) || 0,
     createdAt: new Date().toISOString(),
   });
   closeFinActualModal();
@@ -661,6 +1009,106 @@ export async function deleteFinActualFromModal() {
   if (!id || !confirm('삭제할까요?')) return;
   await deleteFinActual(id);
   closeFinActualModal();
+  renderFinance();
+}
+
+// ── 계획실적 ──
+export function openFinPlanModal(id) {
+  const modal = document.getElementById('fin-plan-modal');
+  if (!modal) return;
+  const titleEl = document.getElementById('fin-plan-modal-title');
+  const delBtn = document.getElementById('fin-plan-del-btn');
+  const entriesEl = document.getElementById('fin-plan-entries');
+
+  if (id) {
+    const p = getFinPlans().find(x => x.id === id);
+    if (!p) return;
+    titleEl.textContent = '계획실적 수정';
+    delBtn.style.display = '';
+    document.getElementById('fin-plan-id').value = p.id;
+    document.getElementById('fin-plan-name').value = p.name || '';
+    // 기존 entries 렌더
+    entriesEl.innerHTML = '';
+    (p.entries || []).sort((a, b) => a.year - b.year).forEach(e => {
+      _addPlanEntryRow(entriesEl, e.year, e.target);
+    });
+  } else {
+    titleEl.textContent = '계획실적 추가';
+    delBtn.style.display = 'none';
+    document.getElementById('fin-plan-id').value = '';
+    document.getElementById('fin-plan-name').value = '';
+    entriesEl.innerHTML = '';
+    // 기본 1개 행
+    _addPlanEntryRow(entriesEl, new Date().getFullYear(), 0);
+  }
+  modal.classList.add('open');
+}
+
+function _addPlanEntryRow(container, year, target) {
+  const row = document.createElement('div');
+  row.className = 'fin-modal-row fin-plan-entry';
+  row.style.alignItems = 'center';
+  row.innerHTML = `
+    <div class="fin-modal-field" style="flex:1">
+      <label>연도</label>
+      <input type="number" class="fin-plan-year" value="${year}">
+    </div>
+    <div class="fin-modal-field" style="flex:1">
+      <label>목표 기말잔액 (만원)</label>
+      <input type="number" class="fin-plan-target" value="${target}" placeholder="5000 = 5천만원">
+    </div>
+    <button class="fin-del-btn" onclick="this.parentElement.remove()" style="margin-top:18px;padding:4px 8px;font-size:12px">✕</button>
+  `;
+  container.appendChild(row);
+}
+
+export function addFinPlanEntry() {
+  const container = document.getElementById('fin-plan-entries');
+  if (!container) return;
+  const rows = container.querySelectorAll('.fin-plan-entry');
+  const lastYear = rows.length > 0
+    ? parseInt(rows[rows.length - 1].querySelector('.fin-plan-year').value) + 1
+    : new Date().getFullYear();
+  _addPlanEntryRow(container, lastYear, 0);
+}
+
+export function closeFinPlanModal(e) {
+  if (e && e.target !== document.getElementById('fin-plan-modal')) return;
+  document.getElementById('fin-plan-modal')?.classList.remove('open');
+}
+
+export async function saveFinPlanFromModal() {
+  const id = document.getElementById('fin-plan-id').value || _id();
+  const name = document.getElementById('fin-plan-name').value;
+  const rows = document.querySelectorAll('#fin-plan-entries .fin-plan-entry');
+  const entries = [];
+  rows.forEach(row => {
+    const year = parseInt(row.querySelector('.fin-plan-year').value);
+    const target = parseFloat(row.querySelector('.fin-plan-target').value) || 0;
+    if (year && target) entries.push({ year, target });
+  });
+
+  await saveFinPlan({
+    id,
+    name,
+    entries,
+    createdAt: new Date().toISOString(),
+  });
+  closeFinPlanModal();
+  renderFinance();
+}
+
+export async function deleteFinPlanDirect(id) {
+  if (!confirm('이 계획실적을 삭제할까요?')) return;
+  await deleteFinPlan(id);
+  renderFinance();
+}
+
+export async function deleteFinPlanFromModal() {
+  const id = document.getElementById('fin-plan-id').value;
+  if (!id || !confirm('삭제할까요?')) return;
+  await deleteFinPlan(id);
+  closeFinPlanModal();
   renderFinance();
 }
 

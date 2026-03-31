@@ -27,6 +27,7 @@ const MODALS = [
   { id: 'fin-actual-modal',      path: './modals/finance-actual-modal.js',    export: 'MODAL_HTML' },
   { id: 'fin-loan-modal',        path: './modals/finance-loan-modal.js',      export: 'MODAL_HTML' },
   { id: 'fin-position-modal',    path: './modals/finance-position-modal.js',  export: 'MODAL_HTML' },
+  { id: 'fin-plan-modal',        path: './modals/finance-plan-modal.js',     export: 'MODAL_HTML' },
 ];
 
 // 모달들이 로드되었는지 추적

@@ -51,12 +51,14 @@ import {
   calcPerServing,
 } from './render-cooking.js';
 import {
-  renderFinance, refreshFinMarketData, runFinAIAnalysis,
+  renderFinance, refreshFinMarketData, runFinAIAnalysis, toggleFlowChart,
   openFinBenchmarkModal, closeFinBenchmarkModal, saveFinBenchmarkFromModal,
   deleteFinBenchmarkFromModal, deleteFinBenchmarkDirect,
   openFinActualModal, closeFinActualModal, saveFinActualFromModal, deleteFinActualFromModal,
   openFinLoanModal, closeFinLoanModal, saveFinLoanFromModal, deleteFinLoanFromModal,
   openFinPositionModal, closeFinPositionModal, saveFinPositionFromModal, deleteFinPositionFromModal,
+  openFinPlanModal, closeFinPlanModal, saveFinPlanFromModal, deleteFinPlanFromModal,
+  deleteFinPlanDirect, addFinPlanEntry,
 } from './render-finance.js';
 import { loadAndInjectModals } from './modal-manager.js';
 
@@ -1211,6 +1213,13 @@ window.openFinPositionModal         = openFinPositionModal;
 window.closeFinPositionModal        = closeFinPositionModal;
 window.saveFinPositionFromModal     = saveFinPositionFromModal;
 window.deleteFinPositionFromModal   = deleteFinPositionFromModal;
+window.toggleFlowChart              = toggleFlowChart;
+window.openFinPlanModal             = openFinPlanModal;
+window.closeFinPlanModal            = closeFinPlanModal;
+window.saveFinPlanFromModal         = saveFinPlanFromModal;
+window.deleteFinPlanFromModal       = deleteFinPlanFromModal;
+window.deleteFinPlanDirect          = deleteFinPlanDirect;
+window.addFinPlanEntry              = addFinPlanEntry;
 // 설정
 window.openSettingsModal        = openSettingsModal;
 window.closeSettingsModal       = closeSettingsModal;

@@ -26,6 +26,16 @@ export const MODAL_HTML = `
         <input id="fin-actual-expense" type="number" value="0">
       </div>
     </div>
+    <div class="fin-modal-row">
+      <div class="fin-modal-field">
+        <label>Inflow (만원) — 제세순수익</label>
+        <input id="fin-actual-inflow" type="number" value="0" placeholder="연간 제세순수익">
+      </div>
+      <div class="fin-modal-field">
+        <label>Outflow (만원) — 총지출액</label>
+        <input id="fin-actual-outflow" type="number" value="0" placeholder="연간 총지출액">
+      </div>
+    </div>
 
     <input type="hidden" id="fin-actual-id">
 
