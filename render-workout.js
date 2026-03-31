@@ -189,7 +189,8 @@ export function wtToggleSetDone(entryIdx, si) {
   const wasDone = _exercises[entryIdx].sets[si].done;
   _exercises[entryIdx].sets[si].done = !wasDone;
   _renderSets(entryIdx);
-  saveWorkoutDay().catch(e => console.error('Save error:', e));
+  // 저장 후 스파크라인 갱신을 위해 전체 운동 목록 재렌더
+  saveWorkoutDay().then(() => _renderExerciseList()).catch(e => console.error('Save error:', e));
   // 세트 완료 시 휴식 타이머 자동 시작
   if (!wasDone) wtRestTimerStart();
 }

@@ -68,7 +68,6 @@ async function _renderMovieCalendar(el) {
   const data = await getMovieData(_currentYear, _currentMonth);
   let events = data.events || [];
 
-
   // ── 필터 적용 ──────────────────────────────────────
   let filteredEvents = events;
   if (_activeTagFilters.size > 0) {
@@ -99,49 +98,30 @@ async function _renderMovieCalendar(el) {
   `;
   el.appendChild(infoCard);
 
-  // 캘린더 그리드
-  const calWrap = document.createElement('div');
-  calWrap.className = 'movie-cal-wrap';
-
-  // 요일 헤더
-  const hdr = document.createElement('div');
-  hdr.className = 'movie-cal-header';
-  ['월','화','수','목','금','토','일'].forEach((lbl, i) => {
-    const d = document.createElement('div');
-    d.className = 'movie-cal-dow' + (i===5?' sat':i===6?' sun':'');
-    d.textContent = lbl;
-    hdr.appendChild(d);
-  });
-  calWrap.appendChild(hdr);
-
-  // 날짜 셀
-  const cellsRow = document.createElement('div');
-  cellsRow.className = 'movie-cells-row';
-
-  // 월 시작 요일
-  const firstDay = new Date(_currentYear, _currentMonth, 1).getDay();
-  const startMonday = firstDay === 0 ? 6 : firstDay - 1; // 월요일 기준
+  // ── 일별 리스트 뷰 ──────────────────────────────────
+  const DOWS = ['일','월','화','수','목','금','토'];
   const daysCount = daysInMonth(_currentYear, _currentMonth);
+  const listWrap = document.createElement('div');
+  listWrap.className = 'movie-list-wrap';
 
-  // 이전 달 패딩
-  for (let i = 0; i < startMonday; i++) {
-    const cell = document.createElement('div');
-    cell.className = 'movie-cell empty';
-    cellsRow.appendChild(cell);
-  }
-
-  // 현재 달 날짜
   for (let day = 1; day <= daysCount; day++) {
-    const cell = document.createElement('div');
-    cell.className = 'movie-cell';
-
     const dayEvents = filteredEvents.filter(e => e.date === day);
-    const dateStr = `${String(day).padStart(2, '0')}`;
+    const dow = new Date(_currentYear, _currentMonth, day).getDay();
+    const dowClass = dow === 0 ? ' sun' : dow === 6 ? ' sat' : '';
+    const isToday = _currentYear === TODAY.getFullYear() && _currentMonth === TODAY.getMonth() && day === TODAY.getDate();
 
-    let html = `<div class="movie-cell-date">${dateStr}</div>`;
+    const row = document.createElement('div');
+    row.className = 'movie-day-row' + (dayEvents.length ? '' : ' empty') + (isToday ? ' today' : '');
 
+    // 날짜 열
+    let dateHtml = `<div class="movie-day-date${dowClass}">
+      <span class="movie-day-num">${day}</span>
+      <span class="movie-day-dow">${DOWS[dow]}</span>
+    </div>`;
+
+    // 이벤트 열
+    let eventsHtml = '<div class="movie-day-events">';
     if (dayEvents.length > 0) {
-      html += '<div class="movie-cell-events">';
       dayEvents.forEach(evt => {
         let tagsHtml = '';
         (evt.tags || []).forEach(tag => {
@@ -150,39 +130,23 @@ async function _renderMovieCalendar(el) {
             tagsHtml += `<span class="movie-tag" style="background-color:${tagInfo.color}20;color:${tagInfo.color}">${tagInfo.label}</span>`;
           }
         });
+        const timeHtml = evt.time ? `<span class="movie-event-time">${evt.time}</span>` : '';
+        const eventInner = `${timeHtml}<span class="movie-event-title">${evt.title}</span><span class="movie-event-tags">${tagsHtml}</span>`;
 
-        const eventInner = `<div class="movie-event-title">${evt.title}</div><div class="movie-event-tags">${tagsHtml}</div>`;
-
-        // 링크가 있으면 클릭 가능하게, 없으면 그냥 표시
         if (evt.href) {
-          html += `<a href="${evt.href}" target="_blank" rel="noopener noreferrer" class="movie-cell-event-link">${eventInner}</a>`;
+          eventsHtml += `<a href="${evt.href}" target="_blank" rel="noopener noreferrer" class="movie-day-event-link">${eventInner}</a>`;
         } else {
-          html += `<div class="movie-cell-event">${eventInner}</div>`;
+          eventsHtml += `<div class="movie-day-event">${eventInner}</div>`;
         }
       });
-      html += '</div>';
     }
+    eventsHtml += '</div>';
 
-    cell.innerHTML = html;
-    cellsRow.appendChild(cell);
+    row.innerHTML = dateHtml + eventsHtml;
+    listWrap.appendChild(row);
   }
 
-  calWrap.appendChild(cellsRow);
-  el.appendChild(calWrap);
-
-  // 태그 범례
-  const legend = document.createElement('div');
-  legend.className = 'movie-legend';
-  MOVIE_TAGS.forEach(tag => {
-    const item = document.createElement('div');
-    item.className = 'movie-legend-item';
-    item.innerHTML = `
-      <span class="movie-legend-color" style="background-color:${tag.color}"></span>
-      <span class="movie-legend-label">${tag.label}</span>
-    `;
-    legend.appendChild(item);
-  });
-  el.appendChild(legend);
+  el.appendChild(listWrap);
 }
 
 // ── 필터 함수 ─────────────────────────────────────────

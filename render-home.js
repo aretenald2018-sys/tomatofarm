@@ -360,19 +360,36 @@ window.openUnitGoalDatePicker = function() {
   const input = document.createElement('input');
   input.type = 'date';
   input.value = current;
-  input.style.cssText = 'position:fixed;top:-100px;left:-100px;opacity:0';
+  // 모바일에서도 동작하도록 화면 안에 보이지 않게 배치 (off-screen은 모바일에서 picker가 안 열림)
+  input.style.cssText = 'position:fixed;top:50%;left:50%;width:1px;height:1px;opacity:0;pointer-events:none;z-index:9999';
   document.body.appendChild(input);
+
+  let changed = false;
   input.addEventListener('change', async () => {
+    changed = true;
     if (input.value) {
       await saveUnitGoalStart(input.value);
       _renderUnitGoal();
     }
-    document.body.removeChild(input);
+    if (document.body.contains(input)) document.body.removeChild(input);
   });
+
+  // blur 후 충분한 시간 대기 (모바일 picker가 닫힌 뒤에 정리)
   input.addEventListener('blur', () => {
-    setTimeout(() => { if (document.body.contains(input)) document.body.removeChild(input); }, 200);
+    setTimeout(() => {
+      if (!changed && document.body.contains(input)) document.body.removeChild(input);
+    }, 600);
   });
-  input.showPicker ? input.showPicker() : input.click();
+
+  // focus 후 약간의 딜레이를 주고 showPicker 호출 (모바일 호환)
+  input.focus();
+  setTimeout(() => {
+    if (input.showPicker) {
+      try { input.showPicker(); } catch(e) { input.click(); }
+    } else {
+      input.click();
+    }
+  }, 50);
 };
 
 // ── 미니 메모 (체크리스트) ────────────────────────────────────────
