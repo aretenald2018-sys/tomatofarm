@@ -86,7 +86,7 @@ function _buildHTML() {
       </div>
     </div>
     <div class="fin-section-body${_collapsed.benchmark?' collapsed':''}">
-      <div class="fin-chart-wrap" id="fin-main-chart-wrap"><canvas id="fin-main-chart"></canvas></div>
+      <div class="fin-chart-wrap" id="fin-main-chart-wrap" style="height:280px"><canvas id="fin-main-chart"></canvas></div>
       <div id="fin-bench-list"></div>
       <div id="fin-plan-list"></div>
       <div id="fin-actual-list"></div>
@@ -594,26 +594,11 @@ function _renderMainChart() {
     }
   }
 
-  // 차트 영역을 넓혀서 연도 간격을 촘촘하게 (최소 55px/tick)
-  const minPxPerTick = 55;
-  const chartWrap = document.getElementById('fin-main-chart-wrap');
-  const chartHeight = 320;
-  canvas.height = chartHeight;
-  canvas.style.height = chartHeight + 'px';
-  if (chartWrap) {
-    chartWrap.style.maxHeight = (chartHeight + 20) + 'px';
-    const minWidth = Math.max(xLabels.length * minPxPerTick, chartWrap.clientWidth);
-    chartWrap.style.overflowX = 'auto';
-    canvas.style.width = minWidth + 'px';
-    canvas.style.minWidth = minWidth + 'px';
-    canvas.width = minWidth;
-  }
-
   _mainChartInstance = new Chart(canvas, {
     type: 'line',
     data: { datasets },
     options: {
-      responsive: false, maintainAspectRatio: false,
+      responsive: true, maintainAspectRatio: false,
       scales: {
         x: {
           type: 'linear',
