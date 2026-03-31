@@ -15,11 +15,13 @@ export function getAge(year) {
 /**
  * 복리 프로젝션 (연도별 step-by-step)
  * 매 연도: 기초잔액 → +이자 → +기말납입 → 기말잔액
+ * 명목(nominal) + 실질(real, 물가상승률 반영) 둘 다 계산
  * 모든 금액 단위: 만원
  */
 export function compoundProjection(benchmark) {
-  const { initialPrincipal = 0, annualRate, annualContribution, periodYears, startYear } = benchmark;
+  const { initialPrincipal = 0, annualRate, annualContribution, periodYears, startYear, inflationRate = 0 } = benchmark;
   const r = annualRate / 100;
+  const inf = inflationRate / 100;
   const rows = [];
   let balance = initialPrincipal; // 만원
 
@@ -31,14 +33,19 @@ export function compoundProjection(benchmark) {
     const closeBalance = openBalance + interest + contribution;
     balance = closeBalance;
 
+    // 실질가치: 현재 시점 구매력 기준 (물가상승률로 할인)
+    const deflator = Math.pow(1 + inf, n);
+    const realCloseBalance = Math.round(closeBalance / deflator);
+
     rows.push({
       year,
       age: getAge(year),
       n,
-      openBalance,    // 기초잔액 (만원)
-      interest,       // 연간이자 (만원)
-      contribution,   // 기말납입금 (만원)
-      closeBalance,   // 기말잔액 (만원)
+      openBalance,        // 기초잔액 (만원, 명목)
+      interest,           // 연간이자 (만원, 명목)
+      contribution,       // 기말납입금 (만원)
+      closeBalance,       // 기말잔액 (만원, 명목)
+      realCloseBalance,   // 기말잔액 (만원, 실질)
     });
   }
   return rows;

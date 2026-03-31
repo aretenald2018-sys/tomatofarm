@@ -86,7 +86,7 @@ function _buildHTML() {
       </div>
     </div>
     <div class="fin-section-body${_collapsed.benchmark?' collapsed':''}">
-      <div class="fin-chart-wrap" style="max-height:340px"><canvas id="fin-main-chart"></canvas></div>
+      <div class="fin-chart-wrap" id="fin-main-chart-wrap"><canvas id="fin-main-chart"></canvas></div>
       <div id="fin-bench-list"></div>
       <div id="fin-plan-list"></div>
       <div id="fin-actual-list"></div>
@@ -253,17 +253,18 @@ function _renderBenchmarks() {
   listEl.innerHTML = benchmarks.map(b => {
     const proj = compoundProjection(b);
     const last = proj[proj.length - 1];
+    const hasInflation = (b.inflationRate || 0) > 0;
     return `
     <div class="fin-bench-card">
       <div class="fin-bench-summary" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'':'none'">
         <span class="fin-bench-name">${b.name || '벤치마크'}</span>
-        <span class="fin-bench-meta">초기 ${formatManwon(b.initialPrincipal)} · ${b.annualRate}% · ${formatManwon(b.annualContribution)}/yr → ${formatManwon(last.closeBalance)}</span>
+        <span class="fin-bench-meta">초기 ${formatManwon(b.initialPrincipal)} · ${b.annualRate}% · ${formatManwon(b.annualContribution)}/yr → ${formatManwon(last.closeBalance)}${hasInflation ? ` (실질 ${formatManwon(last.realCloseBalance)})` : ''}</span>
       </div>
       <div class="fin-bench-detail" style="display:none">
-        <div style="font-size:10px;color:var(--muted);margin:6px 0">초기 ${formatManwon(b.initialPrincipal)}에 연 ${b.annualRate}% 복리, 매년 연말 ${formatManwon(b.annualContribution)} 납입 가정</div>
+        <div style="font-size:10px;color:var(--muted);margin:6px 0">초기 ${formatManwon(b.initialPrincipal)}에 연 ${b.annualRate}% 복리, 매년 연말 ${formatManwon(b.annualContribution)} 납입${hasInflation ? `, 물가상승률 ${b.inflationRate}%` : ''} 가정</div>
         <div style="overflow-x:auto">
         <table class="fin-proj-table">
-          <thead><tr><th>연차</th><th>나이</th><th>기초 잔액</th><th>연간 이자 (${b.annualRate}%)</th><th>기말 납입금</th><th>기말 잔액</th></tr></thead>
+          <thead><tr><th>연차</th><th>나이</th><th>기초 잔액</th><th>연간 이자 (${b.annualRate}%)</th><th>기말 납입금</th><th>기말 잔액 (명목)</th>${hasInflation ? `<th>기말 잔액 (실질)</th>` : ''}</tr></thead>
           <tbody>${proj.map(r => `<tr>
             <td>${r.year}년 말</td>
             <td>${r.age}살</td>
@@ -271,6 +272,7 @@ function _renderBenchmarks() {
             <td>${formatManwon(r.interest)}</td>
             <td>${formatManwon(r.contribution)}</td>
             <td style="font-weight:600">${formatManwon(r.closeBalance)}</td>
+            ${hasInflation ? `<td style="font-weight:600;color:var(--muted2)">${formatManwon(r.realCloseBalance)}</td>` : ''}
           </tr>`).join('')}</tbody>
         </table>
         </div>
@@ -336,22 +338,32 @@ function _renderActuals() {
   if (actuals.length === 0) {
     listEl.innerHTML = `<div style="color:var(--muted);font-size:12px;padding:12px;text-align:center">연간 실적을 추가하세요</div>`;
   } else {
-    listEl.innerHTML = `<table class="fin-table">
-      <thead><tr><th>연도</th><th>나이</th><th>누적 저축/투자</th><th>순자산</th><th>비상금</th><th>Inflow</th><th>Outflow</th><th></th></tr></thead>
-      <tbody>${actuals.map(a => {
-        const em = calcEmergencyMonths(a.emergencyFund, a.monthlyExpense);
-        return `<tr>
-          <td>${a.year}</td>
-          <td>${getAge(a.year)}살</td>
-          <td class="num">${formatManwon(a.cumulativeSaved)}</td>
-          <td class="num">${a.netWorth ? formatManwon(a.netWorth) : '-'}</td>
-          <td class="num">${a.emergencyFund ? formatManwon(a.emergencyFund) + (em != null ? ` (${em}개월)` : '') : '-'}</td>
-          <td class="num">${a.inflow ? formatManwon(a.inflow) : '-'}</td>
-          <td class="num">${a.outflow ? formatManwon(a.outflow) : '-'}</td>
-          <td class="action-cell"><button class="edit-btn" onclick="openFinActualModal('${a.id}')">✏️</button></td>
-        </tr>`;
-      }).join('')}</tbody>
-    </table>`;
+    const latest = actuals[actuals.length - 1];
+    listEl.innerHTML = `
+    <div class="fin-bench-card" style="border-left-color:#10b981">
+      <div class="fin-bench-summary" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'':'none'">
+        <span class="fin-bench-name">📋 연간 실적</span>
+        <span class="fin-bench-meta">${actuals.length}건 · 최근 ${latest.year}년 (${getAge(latest.year)}살) ${formatManwon(latest.cumulativeSaved)}</span>
+      </div>
+      <div style="display:none">
+        <table class="fin-table" style="margin-top:6px">
+          <thead><tr><th>연도</th><th>나이</th><th>누적 저축/투자</th><th>순자산</th><th>비상금</th><th>Inflow</th><th>Outflow</th><th></th></tr></thead>
+          <tbody>${actuals.map(a => {
+            const em = calcEmergencyMonths(a.emergencyFund, a.monthlyExpense);
+            return `<tr>
+              <td>${a.year}</td>
+              <td>${getAge(a.year)}살</td>
+              <td class="num">${formatManwon(a.cumulativeSaved)}</td>
+              <td class="num">${a.netWorth ? formatManwon(a.netWorth) : '-'}</td>
+              <td class="num">${a.emergencyFund ? formatManwon(a.emergencyFund) + (em != null ? ` (${em}개월)` : '') : '-'}</td>
+              <td class="num">${a.inflow ? formatManwon(a.inflow) : '-'}</td>
+              <td class="num">${a.outflow ? formatManwon(a.outflow) : '-'}</td>
+              <td class="action-cell"><button class="edit-btn" onclick="openFinActualModal('${a.id}')">✏️</button></td>
+            </tr>`;
+          }).join('')}</tbody>
+        </table>
+      </div>
+    </div>`;
   }
 
   const cagrEl = document.getElementById('fin-cagr-display');
@@ -379,8 +391,10 @@ function _renderNetWorthCards() {
   const emMonths = latest ? calcEmergencyMonths(latest.emergencyFund, latest.monthlyExpense) : null;
   const emClass = emMonths == null ? '' : emMonths < 3 ? 'negative' : emMonths < 6 ? 'warn' : 'positive';
 
+  // 총 자산을 원화로 환산 (USD 포지션 합계 × 환율 → 만원)
+  const totalAssetsKRW = Math.round(totalAssets * _fxRate / 10000);
   el.innerHTML = `<div class="fin-networth-row">
-    <div class="fin-nw-card"><div class="fin-nw-label">총 자산</div><div class="fin-nw-val">${formatUSD(totalAssets)}</div></div>
+    <div class="fin-nw-card"><div class="fin-nw-label">총 자산</div><div class="fin-nw-val">${formatManwon(totalAssetsKRW)}</div><div style="font-size:9px;color:var(--muted)">${formatUSD(totalAssets)}</div></div>
     <div class="fin-nw-card"><div class="fin-nw-label">총 부채</div><div class="fin-nw-val negative">${formatManwon(totalDebt)}</div></div>
     <div class="fin-nw-card"><div class="fin-nw-label">부채비율</div><div class="fin-nw-val ${debtRatio > 0.5 ? 'negative' : debtRatio > 0.3 ? 'warn' : 'positive'}">${(debtRatio * 100).toFixed(1)}%</div></div>
     ${emMonths != null ? `<div class="fin-nw-card"><div class="fin-nw-label">비상금</div><div class="fin-nw-val ${emClass}">${emMonths}개월</div></div>` : ''}
@@ -466,35 +480,55 @@ function _renderMainChart() {
   const planColors = ['#8b5cf6', '#d946ef', '#14b8a6', '#f97316', '#64748b'];
   const datasets = [];
 
-  // 벤치마크 (점선)
+  // 벤치마크 (명목: 점선, 실질: 점선+얇은)
   benchmarks.forEach((b, i) => {
     const proj = compoundProjection(b);
-    const data = [];
+    const hasInflation = (b.inflationRate || 0) > 0;
+    const nomData = [];
+    const realData = [];
     for (const label of xLabels) {
       const row = proj.find(r => r.year === label);
-      if (row) data.push({ x: xLabels.indexOf(label), y: row.closeBalance });
+      if (row) {
+        nomData.push({ x: xLabels.indexOf(label), y: row.closeBalance });
+        if (hasInflation) realData.push({ x: xLabels.indexOf(label), y: row.realCloseBalance });
+      }
     }
-    // 2035, 2045 등 비표시 연도에도 데이터가 있으면 보간 위치에 추가
     proj.forEach(r => {
       if (!xLabels.includes(r.year)) {
         const xi = _yearToXIndex(r.year, xLabels);
         if (xi >= 0 && xi <= xLabels.length) {
-          data.push({ x: xi, y: r.closeBalance });
+          nomData.push({ x: xi, y: r.closeBalance });
+          if (hasInflation) realData.push({ x: xi, y: r.realCloseBalance });
         }
       }
     });
-    data.sort((a, b) => a.x - b.x);
+    nomData.sort((a, b) => a.x - b.x);
 
+    const color = benchColors[i % benchColors.length];
     datasets.push({
-      label: b.name || `벤치마크 ${i + 1}`,
-      data,
-      borderColor: benchColors[i % benchColors.length],
+      label: (b.name || `벤치마크 ${i + 1}`) + (hasInflation ? ' (명목)' : ''),
+      data: nomData,
+      borderColor: color,
       borderDash: [5, 3],
       borderWidth: 2,
       pointRadius: 0,
       fill: false,
       tension: 0.3,
     });
+
+    if (hasInflation) {
+      realData.sort((a, b) => a.x - b.x);
+      datasets.push({
+        label: (b.name || `벤치마크 ${i + 1}`) + ' (실질)',
+        data: realData,
+        borderColor: color,
+        borderDash: [2, 4],
+        borderWidth: 1.5,
+        pointRadius: 0,
+        fill: false,
+        tension: 0.3,
+      });
+    }
   });
 
   // 계획실적 (긴 대시)
@@ -553,11 +587,26 @@ function _renderMainChart() {
     }
   }
 
+  // 차트 영역을 넓혀서 연도 간격을 촘촘하게 (최소 55px/tick)
+  const minPxPerTick = 55;
+  const chartWrap = document.getElementById('fin-main-chart-wrap');
+  const chartHeight = 320;
+  canvas.height = chartHeight;
+  canvas.style.height = chartHeight + 'px';
+  if (chartWrap) {
+    chartWrap.style.maxHeight = (chartHeight + 20) + 'px';
+    const minWidth = Math.max(xLabels.length * minPxPerTick, chartWrap.clientWidth);
+    chartWrap.style.overflowX = 'auto';
+    canvas.style.width = minWidth + 'px';
+    canvas.style.minWidth = minWidth + 'px';
+    canvas.width = minWidth;
+  }
+
   _mainChartInstance = new Chart(canvas, {
     type: 'line',
     data: { datasets },
     options: {
-      responsive: true, maintainAspectRatio: false,
+      responsive: false, maintainAspectRatio: false,
       scales: {
         x: {
           type: 'linear',
@@ -572,9 +621,6 @@ function _renderMainChart() {
             },
           },
           grid: { color: '#2c3040' },
-          afterDraw: function(chart) {
-            // 생략 구간에 물결선 그리기 (plugin에서 처리)
-          },
         },
         y: {
           ticks: { color: '#5c6478', font: { size: 10 }, callback: v => formatManwon(v) },
