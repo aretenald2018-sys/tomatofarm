@@ -301,16 +301,16 @@ function _renderUnitGoal() {
 
   // ── 매크로 행 (탄/단/지) ──
   const macroRows = [
-    { label: '단', act: 'actProtein', tgt: 'tgtProtein' },
-    { label: '탄', act: 'actCarbs',   tgt: 'tgtCarbs' },
-    { label: '지', act: 'actFat',     tgt: 'tgtFat' },
+    { label: '단', act: 'actProtein', tgt: 'tgtProtein', lessIsGood: false },
+    { label: '탄', act: 'actCarbs',   tgt: 'tgtCarbs',   lessIsGood: true },
+    { label: '지', act: 'actFat',     tgt: 'tgtFat',     lessIsGood: true },
   ];
-  const fmtDelta = (actual, target) => {
+  const fmtDelta = (actual, target, lessIsGood) => {
     if (actual <= 0) return { text: '—', cls: 'muted' };
     const diff = Math.round(actual - target);
     const pct  = target > 0 ? Math.round(((actual - target) / target) * 100) : 0;
     if (diff > 0)      return { text: `+${diff}g (+${pct}%)`, cls: 'macro-over' };
-    else if (diff < 0) return { text: `${diff}g (${pct}%)`, cls: 'macro-under' };
+    else if (diff < 0) return { text: `${diff}g (${pct}%)`, cls: lessIsGood ? 'macro-ok' : 'macro-under' };
     else               return { text: `±0g`, cls: 'macro-ok' };
   };
 
@@ -318,6 +318,7 @@ function _renderUnitGoal() {
     html += `<tr class="ug-row-macro"><td class="ug-row-label ug-macro-label">${mr.label}</td>`;
     let totAct = 0, totTgt = 0;
     dayData.forEach(d => {
+      totTgt += d[mr.tgt];         // 칼로리와 동일하게 전체 4일 목표 합산 (미래일 포함)
       if (d.future) {
         html += `<td class="ug-cell"><span class="ug-macro muted">—</span></td>`;
       } else {
@@ -326,16 +327,15 @@ function _renderUnitGoal() {
         if (!hasData) {
           html += `<td class="ug-cell"><span class="ug-macro muted">—</span></td>`;
         } else {
-          const delta = fmtDelta(actual, target);
+          const delta = fmtDelta(actual, target, mr.lessIsGood);
           html += `<td class="ug-cell"><span class="ug-macro ${delta.cls}">${delta.text}</span></td>`;
           totAct += actual;
-          totTgt += target;
         }
       }
     });
-    // 합계 매크로
+    // 합계 매크로 (전체 4일 목표 대비 실제 섭취량)
     if (recordedDays.length > 0) {
-      const delta = fmtDelta(totAct, totTgt);
+      const delta = fmtDelta(totAct, totTgt, mr.lessIsGood);
       html += `<td class="ug-cell ug-total-col"><span class="ug-macro ${delta.cls}">${delta.text}</span></td>`;
     } else {
       html += `<td class="ug-cell ug-total-col"><span class="ug-macro muted">—</span></td>`;
