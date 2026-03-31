@@ -51,6 +51,20 @@ app.use((req, res, next) => {
 
 app.use(express.json());
 
+// ── Fear & Greed Index 프록시 ──
+app.get('/api/fear-greed', async (req, res) => {
+  try {
+    const response = await fetch('https://production.dataviz.cnn.io/index/fearandgreed/graphdata');
+    if (!response.ok) throw new Error(`CNN API ${response.status}`);
+    const data = await response.json();
+    const score = Math.round(data?.fear_and_greed?.score ?? 0);
+    const rating = data?.fear_and_greed?.rating ?? '';
+    res.json({ score, rating, source: 'cnn-proxy' });
+  } catch (e) {
+    res.status(502).json({ error: e.message, score: null, rating: '', source: 'error' });
+  }
+});
+
 // 상태 추적용
 let crawlStatus = { status: 'idle', message: '', progress: 0 };
 

@@ -883,3 +883,103 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans KR',sans-seri
 .movie-event-title{font-size:12px;font-weight:600;color:var(--text);line-height:1.3;word-break:break-word;}
 .movie-event-tags{display:flex;gap:3px;flex-wrap:wrap;}
 .movie-tag{display:inline-block;font-size:9px;padding:2px 5px;border-radius:3px;white-space:nowrap;font-weight:500;}
+
+/* ═══ 재무 탭 ═══ */
+.fin-header{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid var(--border);}
+.fin-title{font-size:15px;font-weight:700;}
+.fin-fx{font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;}
+.fin-section{margin:10px 0;border:1px solid var(--border);border-radius:10px;background:var(--surface);overflow:hidden;}
+.fin-section-hdr{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;cursor:pointer;user-select:none;}
+.fin-section-hdr:hover{background:var(--surface2);}
+.fin-section-hdr h3{font-size:14px;font-weight:700;margin:0;}
+.fin-section-body{padding:0 12px 12px;}
+.fin-section-body.collapsed{display:none;}
+
+.fin-add-btn{font-size:11px;padding:4px 10px;background:none;color:var(--accent);border:1px solid var(--accent);border-radius:6px;cursor:pointer;}
+.fin-add-btn:hover{background:var(--accent);color:var(--bg);}
+
+/* 벤치마크 카드 */
+.fin-bench-card{background:var(--surface2);border:1px solid var(--border);border-radius:8px;margin-bottom:8px;overflow:hidden;}
+.fin-bench-summary{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;cursor:pointer;}
+.fin-bench-summary:hover{background:var(--surface3);}
+.fin-bench-name{font-size:13px;font-weight:600;}
+.fin-bench-meta{font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;}
+.fin-bench-detail{padding:0 10px 10px;border-top:1px solid var(--border);}
+.fin-bench-actions{display:flex;gap:6px;padding:6px 10px;border-top:1px solid var(--border);}
+.fin-bench-actions button{font-size:11px;padding:3px 8px;border-radius:4px;cursor:pointer;border:1px solid var(--border);background:var(--surface);color:var(--text);}
+.fin-bench-actions button:hover{background:var(--surface3);}
+.fin-bench-actions .fin-del-btn{color:var(--diet-bad);border-color:var(--diet-bad);}
+
+/* 프로젝션 테이블 */
+.fin-proj-table{width:100%;border-collapse:collapse;font-size:11px;font-family:'JetBrains Mono',monospace;margin:6px 0;}
+.fin-proj-table th{text-align:right;padding:4px 6px;color:var(--muted);font-weight:500;border-bottom:1px solid var(--border);font-size:10px;}
+.fin-proj-table td{text-align:right;padding:4px 6px;border-bottom:1px solid var(--surface3);}
+.fin-proj-table th:first-child,.fin-proj-table td:first-child{text-align:center;}
+
+/* 순자산 요약 */
+.fin-networth-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;margin-bottom:10px;}
+.fin-nw-card{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center;}
+.fin-nw-label{font-size:10px;color:var(--muted);margin-bottom:4px;}
+.fin-nw-val{font-size:16px;font-weight:700;font-family:'JetBrains Mono',monospace;}
+.fin-nw-val.positive{color:var(--diet-ok);}
+.fin-nw-val.negative{color:var(--diet-bad);}
+.fin-nw-val.warn{color:var(--accent);}
+
+/* 시황 카드 */
+.fin-market-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;}
+.fin-market-chip{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;min-width:100px;flex:1;}
+.fin-market-chip .label{font-size:10px;color:var(--muted);}
+.fin-market-chip .value{font-size:14px;font-weight:700;font-family:'JetBrains Mono',monospace;margin-top:2px;}
+.fin-market-chip .change{font-size:11px;font-family:'JetBrains Mono',monospace;}
+.fin-market-chip .change.up{color:var(--diet-ok);}
+.fin-market-chip .change.down{color:var(--diet-bad);}
+
+/* F&G 게이지 */
+.fin-fng{display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;margin-bottom:10px;}
+.fin-fng-score{font-size:24px;font-weight:700;font-family:'JetBrains Mono',monospace;min-width:40px;text-align:center;}
+.fin-fng-bar{flex:1;height:8px;background:var(--surface3);border-radius:4px;overflow:hidden;position:relative;}
+.fin-fng-fill{height:100%;border-radius:4px;transition:width .3s;}
+.fin-fng-label{font-size:11px;color:var(--muted);min-width:80px;text-align:right;}
+
+/* 포지션/대출 테이블 */
+.fin-table{width:100%;border-collapse:collapse;font-size:11px;margin:6px 0;}
+.fin-table th{text-align:left;padding:6px 8px;color:var(--muted);font-weight:500;border-bottom:1px solid var(--border);font-size:10px;}
+.fin-table td{padding:6px 8px;border-bottom:1px solid var(--surface3);}
+.fin-table .num{text-align:right;font-family:'JetBrains Mono',monospace;}
+.fin-table .pos{color:var(--diet-ok);}
+.fin-table .neg{color:var(--diet-bad);}
+.fin-table .action-cell{text-align:center;}
+.fin-table .edit-btn{background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;padding:2px 4px;}
+.fin-table .edit-btn:hover{color:var(--text);}
+
+/* 리밸런싱 경고 */
+.fin-rebal-alert{background:var(--diet-bad-dim);border:1px solid var(--diet-bad);border-radius:8px;padding:8px 12px;font-size:11px;color:var(--diet-bad);margin-bottom:10px;}
+
+/* AI 분석 */
+.fin-ai-box{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-top:10px;}
+.fin-ai-box .ai-title{font-size:12px;font-weight:600;margin-bottom:6px;}
+.fin-ai-box .ai-content{font-size:12px;line-height:1.6;white-space:pre-wrap;}
+.fin-ai-btn{display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:6px 12px;background:none;color:var(--accent);border:1px solid var(--accent);border-radius:6px;cursor:pointer;margin-top:8px;}
+.fin-ai-btn:hover{background:var(--accent);color:var(--bg);}
+
+/* 차트 컨테이너 */
+.fin-chart-wrap{position:relative;width:100%;max-height:260px;margin:10px 0;}
+
+/* 레버리지 vs 현금 요약 */
+.fin-leverage-summary{display:flex;gap:8px;margin:10px 0;}
+.fin-leverage-bar{flex:1;height:24px;border-radius:6px;overflow:hidden;display:flex;background:var(--surface3);}
+.fin-leverage-bar .lev{background:var(--diet-bad);transition:width .3s;}
+.fin-leverage-bar .cash{background:var(--diet-ok);transition:width .3s;}
+.fin-leverage-labels{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:4px;}
+
+/* 모달 공통 스타일은 기존 것 재활용 */
+.fin-modal-field{margin-bottom:10px;}
+.fin-modal-field label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px;}
+.fin-modal-field input,.fin-modal-field select{width:100%;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;}
+.fin-modal-field select{cursor:pointer;}
+.fin-modal-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.fin-modal-actions{display:flex;gap:8px;margin-top:12px;}
+.fin-modal-actions button{flex:1;padding:8px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid var(--border);}
+.fin-modal-actions .fin-save-btn{background:var(--accent);color:var(--bg);border-color:var(--accent);}
+.fin-modal-actions .fin-cancel-btn{background:var(--surface2);color:var(--text);}
+.fin-modal-actions .fin-delete-btn{background:var(--diet-bad-dim);color:var(--diet-bad);border-color:var(--diet-bad);}

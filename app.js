@@ -50,6 +50,14 @@ import {
   saveCookingFromModal, deleteCookingFromModal, onCookingPhotoInput,
   calcPerServing,
 } from './render-cooking.js';
+import {
+  renderFinance, refreshFinMarketData, runFinAIAnalysis,
+  openFinBenchmarkModal, closeFinBenchmarkModal, saveFinBenchmarkFromModal,
+  deleteFinBenchmarkFromModal, deleteFinBenchmarkDirect,
+  openFinActualModal, closeFinActualModal, saveFinActualFromModal, deleteFinActualFromModal,
+  openFinLoanModal, closeFinLoanModal, saveFinLoanFromModal, deleteFinLoanFromModal,
+  openFinPositionModal, closeFinPositionModal, saveFinPositionFromModal, deleteFinPositionFromModal,
+} from './render-finance.js';
 import { loadAndInjectModals } from './modal-manager.js';
 
 // ── 분리된 모달 핸들러 import ──────────────────────────────────
@@ -104,6 +112,7 @@ function switchTab(tab) {
   if (tab === 'loa')      renderLoa();
   if (tab === 'cooking')  renderCooking();
   if (tab === 'movie')    renderMovie();
+  if (tab === 'finance')  renderFinance();
   if (tab === 'workout')  loadWorkoutDate(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
 }
 
@@ -1181,6 +1190,27 @@ window.searchWineImage          = searchWineImage;
 window.searchCriticRatings      = searchCriticRatings;
 window.analyzeWinePreference    = analyzeWinePreference;
 window.bulkSearchVivino         = bulkSearchVivino;
+// 재무
+window.renderFinance                = renderFinance;
+window.refreshFinMarketData         = refreshFinMarketData;
+window.runFinAIAnalysis             = runFinAIAnalysis;
+window.openFinBenchmarkModal        = openFinBenchmarkModal;
+window.closeFinBenchmarkModal       = closeFinBenchmarkModal;
+window.saveFinBenchmarkFromModal    = saveFinBenchmarkFromModal;
+window.deleteFinBenchmarkFromModal  = deleteFinBenchmarkFromModal;
+window.deleteFinBenchmarkDirect     = deleteFinBenchmarkDirect;
+window.openFinActualModal           = openFinActualModal;
+window.closeFinActualModal          = closeFinActualModal;
+window.saveFinActualFromModal       = saveFinActualFromModal;
+window.deleteFinActualFromModal     = deleteFinActualFromModal;
+window.openFinLoanModal             = openFinLoanModal;
+window.closeFinLoanModal            = closeFinLoanModal;
+window.saveFinLoanFromModal         = saveFinLoanFromModal;
+window.deleteFinLoanFromModal       = deleteFinLoanFromModal;
+window.openFinPositionModal         = openFinPositionModal;
+window.closeFinPositionModal        = closeFinPositionModal;
+window.saveFinPositionFromModal     = saveFinPositionFromModal;
+window.deleteFinPositionFromModal   = deleteFinPositionFromModal;
 // 설정
 window.openSettingsModal        = openSettingsModal;
 window.closeSettingsModal       = closeSettingsModal;

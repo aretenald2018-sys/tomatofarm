@@ -47,8 +47,14 @@ let _bodyCheckins = []; // 주간 체크인 [{id, date, weight, bodyFatPct}]
 let _nutritionDB  = []; // 나만의 영양 DB [{id, name, unit, kcal, carbs, protein, fat, note}]
 let _movies       = {}; // 영화 데이터 {year-month: [{date, title, tags}]}
 
+// ── 재무 데이터 ──
+let _finBenchmarks = [];
+let _finActuals    = [];
+let _finLoans      = [];
+let _finPositions  = [];
+
 // ── 설정 캐시 (Firebase settings 컬렉션) ────────────────────────
-const DEFAULT_TAB_ORDER = ['home','workout','cooking','monthly','calendar','wine','movie','stats','loa'];
+const DEFAULT_TAB_ORDER = ['home','workout','cooking','monthly','calendar','wine','movie','stats','finance','loa'];
 
 const DEFAULT_DIET_PLAN = {
   // 신체 정보
@@ -162,6 +168,23 @@ export async function loadAll() {
     const nutritionSnap = await getDocs(collection(db, 'nutrition_db'));
     _nutritionDB = [];
     nutritionSnap.forEach(d => _nutritionDB.push(d.data()));
+
+    // ── 재무 데이터 로드 ──
+    const finBenchSnap = await getDocs(collection(db, 'finance_benchmarks'));
+    _finBenchmarks = [];
+    finBenchSnap.forEach(d => _finBenchmarks.push(d.data()));
+
+    const finActSnap = await getDocs(collection(db, 'finance_actuals'));
+    _finActuals = [];
+    finActSnap.forEach(d => _finActuals.push(d.data()));
+
+    const finLoanSnap = await getDocs(collection(db, 'finance_loans'));
+    _finLoans = [];
+    finLoanSnap.forEach(d => _finLoans.push(d.data()));
+
+    const finPosSnap = await getDocs(collection(db, 'finance_positions'));
+    _finPositions = [];
+    finPosSnap.forEach(d => _finPositions.push(d.data()));
 
     // ── 영화 데이터 로드 ──
     const movieSnap = await getDocs(collection(db, 'movies'));
@@ -315,6 +338,95 @@ export function findDietEntriesByRecipeId(recipeId) {
 }
 
 // ── 체크인 (무제한) ───────────────────────────────────────────────
+// ── 재무 CRUD ────────────────────────────────────────────────────
+const _finBenchCRUD = _createCRUD('finance_benchmarks', () => _finBenchmarks, v => { _finBenchmarks = v; });
+const _finActCRUD   = _createCRUD('finance_actuals',    () => _finActuals,    v => { _finActuals = v; });
+const _finLoanCRUD  = _createCRUD('finance_loans',      () => _finLoans,      v => { _finLoans = v; });
+const _finPosCRUD   = _createCRUD('finance_positions',  () => _finPositions,  v => { _finPositions = v; });
+
+export const saveFinBenchmark   = (b) => _finBenchCRUD.save(b);
+export const deleteFinBenchmark = (id) => _finBenchCRUD.delete(id);
+export const getFinBenchmarks   = () => _finBenchmarks;
+
+export const saveFinActual   = (a) => _finActCRUD.save(a);
+export const deleteFinActual = (id) => _finActCRUD.delete(id);
+export const getFinActuals   = () => [..._finActuals].sort((a, b) => a.year - b.year);
+
+export const saveFinLoan   = (l) => _finLoanCRUD.save(l);
+export const deleteFinLoan = (id) => _finLoanCRUD.delete(id);
+export const getFinLoans   = () => _finLoans;
+
+export const saveFinPosition   = (p) => _finPosCRUD.save(p);
+export const deleteFinPosition = (id) => _finPosCRUD.delete(id);
+export const getFinPositions   = () => _finPositions;
+
+// ── 환율 (Frankfurter API, 키 불필요) ─────────────────────────────
+const FX_CACHE_KEY = 'fx_usd_krw';
+const FX_TIME_KEY  = 'fx_usd_krw_time';
+const FX_CACHE_HOURS = 8;
+
+export async function fetchExchangeRate() {
+  const now = Date.now();
+  const last = parseInt(localStorage.getItem(FX_TIME_KEY) || '0');
+  if ((now - last) < FX_CACHE_HOURS * 3600000) {
+    const cached = localStorage.getItem(FX_CACHE_KEY);
+    if (cached) return parseFloat(cached);
+  }
+  try {
+    const res = await fetch('https://api.frankfurter.dev/v1/latest?from=USD&to=KRW');
+    const data = await res.json();
+    const rate = data.rates?.KRW;
+    if (rate) {
+      localStorage.setItem(FX_CACHE_KEY, String(rate));
+      localStorage.setItem(FX_TIME_KEY, String(now));
+      return rate;
+    }
+  } catch (e) {
+    console.warn('[data] 환율 fetch 실패:', e.message);
+  }
+  const cached = localStorage.getItem(FX_CACHE_KEY);
+  return cached ? parseFloat(cached) : 1450; // fallback
+}
+
+// ── Fear & Greed Index ────────────────────────────────────────────
+const FNG_CACHE_KEY  = 'fng_data';
+const FNG_TIME_KEY   = 'fng_time';
+const FNG_CACHE_HOURS = 4;
+
+export async function fetchFearGreed() {
+  const now = Date.now();
+  const last = parseInt(localStorage.getItem(FNG_TIME_KEY) || '0');
+  if ((now - last) < FNG_CACHE_HOURS * 3600000) {
+    const cached = localStorage.getItem(FNG_CACHE_KEY);
+    if (cached) return JSON.parse(cached);
+  }
+  // 1차: CNN 직접 (CORS 실패 가능)
+  try {
+    const res = await fetch('https://production.dataviz.cnn.io/index/fearandgreed/graphdata');
+    if (res.ok) {
+      const data = await res.json();
+      const score = Math.round(data?.fear_and_greed?.score ?? 0);
+      const rating = data?.fear_and_greed?.rating ?? '';
+      const result = { score, rating, source: 'cnn' };
+      localStorage.setItem(FNG_CACHE_KEY, JSON.stringify(result));
+      localStorage.setItem(FNG_TIME_KEY, String(now));
+      return result;
+    }
+  } catch {}
+  // 2차: api-server 프록시
+  try {
+    const res = await fetch('/api/fear-greed');
+    if (res.ok) {
+      const data = await res.json();
+      localStorage.setItem(FNG_CACHE_KEY, JSON.stringify(data));
+      localStorage.setItem(FNG_TIME_KEY, String(now));
+      return data;
+    }
+  } catch {}
+  const cached = localStorage.getItem(FNG_CACHE_KEY);
+  return cached ? JSON.parse(cached) : { score: null, rating: '', source: 'none' };
+}
+
 const _checkinCRUD = _createCRUD('body_checkins', () => _bodyCheckins, v => { _bodyCheckins = v; });
 export const saveBodyCheckin   = (rec) => _checkinCRUD.save(rec);
 export const deleteBodyCheckin = (id)  => _checkinCRUD.delete(id);

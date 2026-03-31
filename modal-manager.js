@@ -23,6 +23,10 @@ const MODALS = [
   { id: 'nutrition-item-modal',   path: './modals/nutrition-item-modal.js',   export: 'MODAL_HTML' },
   { id: 'nutrition-weight-modal', path: './modals/nutrition-weight-modal.js', export: 'WEIGHT_MODAL_HTML' },
   { id: 'fatsecret-modal',        path: './modals/fatsecret-modal.js',        export: 'MODAL_HTML' },
+  { id: 'fin-benchmark-modal',   path: './modals/finance-benchmark-modal.js', export: 'MODAL_HTML' },
+  { id: 'fin-actual-modal',      path: './modals/finance-actual-modal.js',    export: 'MODAL_HTML' },
+  { id: 'fin-loan-modal',        path: './modals/finance-loan-modal.js',      export: 'MODAL_HTML' },
+  { id: 'fin-position-modal',    path: './modals/finance-position-modal.js',  export: 'MODAL_HTML' },
 ];
 
 // 모달들이 로드되었는지 추적

@@ -34,6 +34,7 @@
   <button class="tab-btn"        data-tab="wine"     draggable="true" onclick="switchTab('wine')">🍷 와인</button>
   <button class="tab-btn"        data-tab="movie"    draggable="true" onclick="switchTab('movie')">🎬 영화</button>
   <button class="tab-btn"        data-tab="stats"    draggable="true" onclick="switchTab('stats')">📊 통계</button>
+  <button class="tab-btn"        data-tab="finance"  draggable="true" onclick="switchTab('finance')">💰 재무</button>
   <button class="tab-btn"        data-tab="loa"      draggable="true" onclick="switchTab('loa')">🗺️ 로아</button>
   <button class="tab-btn tab-btn-settings" onclick="openSettingsModal()">⚙️</button>
 </nav>
@@ -537,6 +538,15 @@ async function saveStreakSettingsAndClose() {
   </div>
   <div id="movie-tag-filters" class="movie-tag-filters"></div>
   <div id="movie-calendar-content" class="movie-calendar-content"></div>
+</div>
+
+<!-- ═══ 재무 탭 ═══ -->
+<div id="tab-finance" class="tab-panel">
+  <div class="fin-header">
+    <span class="fin-title">💰 재무 대시보드</span>
+    <span class="fin-fx" id="fin-fx-rate">USD/KRW: -</span>
+  </div>
+  <div id="fin-content"></div>
 </div>
 
 <div id="tab-wine" class="tab-panel">

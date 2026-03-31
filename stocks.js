@@ -31,7 +31,7 @@ function calcRSI(closes, period = 14) {
   return parseFloat((100 - 100 / (1 + rs)).toFixed(1));
 }
 
-async function fetchQuote(sym) {
+export async function fetchQuote(sym) {
   const res  = await fetch(`${BASE}?function=GLOBAL_QUOTE&symbol=${sym}&apikey=${CONFIG.ALPHAVANTAGE_KEY}`);
   const data = await res.json();
   if (data['Information']) throw new Error('rate limit');
