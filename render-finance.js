@@ -86,7 +86,7 @@ function _buildHTML() {
       </div>
     </div>
     <div class="fin-section-body${_collapsed.benchmark?' collapsed':''}">
-      <div class="fin-chart-wrap" id="fin-main-chart-wrap" style="height:280px"><canvas id="fin-main-chart"></canvas></div>
+      <div class="fin-chart-wrap" id="fin-main-chart-wrap" style="height:220px"><canvas id="fin-main-chart"></canvas></div>
       <div id="fin-bench-list"></div>
       <div id="fin-plan-list"></div>
       <div id="fin-actual-list"></div>
@@ -599,13 +599,15 @@ function _renderMainChart() {
     data: { datasets },
     options: {
       responsive: true, maintainAspectRatio: false,
+      layout: { padding: { left: 0, right: 4, top: 4, bottom: 0 } },
       scales: {
         x: {
           type: 'linear',
           min: 0, max: xLabels.length - 1,
           ticks: {
-            color: '#5c6478', font: { size: 10 },
+            color: '#5c6478', font: { size: 9 },
             stepSize: 1,
+            maxRotation: 45, minRotation: 0,
             callback: function(value) {
               const idx = Math.round(value);
               if (idx >= 0 && idx < xLabels.length) return xLabels[idx];
@@ -615,12 +617,12 @@ function _renderMainChart() {
           grid: { color: '#2c3040' },
         },
         y: {
-          ticks: { color: '#5c6478', font: { size: 10 }, callback: v => formatManwon(v) },
+          ticks: { color: '#5c6478', font: { size: 9 }, callback: v => formatManwon(v), maxTicksLimit: 6 },
           grid: { color: '#2c3040' },
         },
       },
       plugins: {
-        legend: { labels: { color: '#e2e4ea', font: { size: 10 } } },
+        legend: { labels: { color: '#e2e4ea', font: { size: 9 }, boxWidth: 12, padding: 8 } },
         tooltip: {
           callbacks: {
             title: ctx => {
