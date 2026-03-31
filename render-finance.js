@@ -346,10 +346,14 @@ function _renderActuals() {
         <span class="fin-bench-meta">${actuals.length}건 · 최근 ${latest.year}년 (${getAge(latest.year)}살) ${formatManwon(latest.cumulativeSaved)}</span>
       </div>
       <div style="display:none">
+        <div style="overflow-x:auto">
         <table class="fin-table" style="margin-top:6px">
-          <thead><tr><th>연도</th><th>나이</th><th>누적 저축/투자</th><th>순자산</th><th>비상금</th><th>Inflow</th><th>Outflow</th><th></th></tr></thead>
+          <thead><tr><th>연도</th><th>나이</th><th>누적 저축/투자</th><th>순자산</th><th>비상금</th><th>Inflow</th><th>fOutflow</th><th>Outflow</th><th>월환산</th><th></th></tr></thead>
           <tbody>${actuals.map(a => {
             const em = calcEmergencyMonths(a.emergencyFund, a.monthlyExpense);
+            const outflow = (a.inflow || 0) - (a.fOutflow || 0);
+            const monthlyOut = outflow > 0 ? Math.round(outflow / 12) : null;
+            const hasFlow = a.inflow || a.fOutflow;
             return `<tr>
               <td>${a.year}</td>
               <td>${getAge(a.year)}살</td>
@@ -357,11 +361,14 @@ function _renderActuals() {
               <td class="num">${a.netWorth ? formatManwon(a.netWorth) : '-'}</td>
               <td class="num">${a.emergencyFund ? formatManwon(a.emergencyFund) + (em != null ? ` (${em}개월)` : '') : '-'}</td>
               <td class="num">${a.inflow ? formatManwon(a.inflow) : '-'}</td>
-              <td class="num">${a.outflow ? formatManwon(a.outflow) : '-'}</td>
+              <td class="num">${a.fOutflow ? formatManwon(a.fOutflow) : '-'}</td>
+              <td class="num ${hasFlow ? (outflow < 0 ? 'neg' : '') : ''}">${hasFlow ? formatManwon(outflow) : '-'}</td>
+              <td class="num">${monthlyOut != null ? formatManwon(monthlyOut) + '/월' : '-'}</td>
               <td class="action-cell"><button class="edit-btn" onclick="openFinActualModal('${a.id}')">✏️</button></td>
             </tr>`;
           }).join('')}</tbody>
         </table>
+        </div>
       </div>
     </div>`;
   }
@@ -689,17 +696,21 @@ function _renderFlowChart() {
   if (!canvas || !window.Chart) return;
   if (_flowChartInstance) _flowChartInstance.destroy();
 
-  const actuals = getFinActuals().filter(a => a.inflow || a.outflow);
+  const actuals = getFinActuals().filter(a => a.inflow || a.fOutflow);
   if (actuals.length === 0) {
     const tableEl = document.getElementById('fin-flow-table');
-    if (tableEl) tableEl.innerHTML = `<div style="color:var(--muted);font-size:11px;text-align:center;padding:8px">Inflow/Outflow 데이터가 없습니다. 연간실적에서 입력하세요.</div>`;
+    if (tableEl) tableEl.innerHTML = `<div style="color:var(--muted);font-size:11px;text-align:center;padding:8px">Inflow/fOutflow 데이터가 없습니다. 연간실적에서 입력하세요.</div>`;
     return;
   }
 
   const labels = actuals.map(a => `${a.year} (${getAge(a.year)}살)`);
   const inflowData = actuals.map(a => a.inflow || 0);
-  const outflowData = actuals.map(a => a.outflow || 0);
-  const netData = actuals.map(a => (a.inflow || 0) - (a.outflow || 0));
+  const fOutflowData = actuals.map(a => a.fOutflow || 0);
+  const outflowData = actuals.map(a => (a.inflow || 0) - (a.fOutflow || 0));
+  const monthlyOutData = actuals.map(a => {
+    const out = (a.inflow || 0) - (a.fOutflow || 0);
+    return out > 0 ? Math.round(out / 12) : 0;
+  });
 
   _flowChartInstance = new Chart(canvas, {
     type: 'bar',
@@ -712,19 +723,27 @@ function _renderFlowChart() {
           backgroundColor: 'rgba(16, 185, 129, 0.7)',
           borderColor: '#10b981',
           borderWidth: 1,
-          barPercentage: 0.7,
+          barPercentage: 0.6,
         },
         {
-          label: 'Outflow (총지출)',
+          label: 'fOutflow (고정지출)',
+          data: fOutflowData,
+          backgroundColor: 'rgba(148, 163, 184, 0.7)',
+          borderColor: '#94a3b8',
+          borderWidth: 1,
+          barPercentage: 0.6,
+        },
+        {
+          label: 'Outflow (변동지출)',
           data: outflowData,
-          backgroundColor: 'rgba(239, 68, 68, 0.7)',
+          backgroundColor: 'rgba(239, 68, 68, 0.5)',
           borderColor: '#ef4444',
           borderWidth: 1,
-          barPercentage: 0.7,
+          barPercentage: 0.6,
         },
         {
-          label: 'Net (순저축)',
-          data: netData,
+          label: '월환산 Outflow',
+          data: monthlyOutData,
           type: 'line',
           borderColor: '#f59e0b',
           borderWidth: 2,
@@ -753,16 +772,18 @@ function _renderFlowChart() {
   const tableEl = document.getElementById('fin-flow-table');
   if (tableEl) {
     tableEl.innerHTML = `<table class="fin-table" style="margin-top:8px">
-      <thead><tr><th>연도</th><th>나이</th><th>Inflow</th><th>Outflow</th><th>Net</th></tr></thead>
+      <thead><tr><th>연도</th><th>나이</th><th>Inflow</th><th>fOutflow</th><th>Outflow</th><th>월환산</th></tr></thead>
       <tbody>${actuals.map(a => {
-        const net = (a.inflow || 0) - (a.outflow || 0);
-        const cls = net >= 0 ? 'pos' : 'neg';
+        const outflow = (a.inflow || 0) - (a.fOutflow || 0);
+        const monthly = outflow > 0 ? Math.round(outflow / 12) : null;
+        const cls = outflow >= 0 ? '' : 'neg';
         return `<tr>
           <td>${a.year}</td>
           <td>${getAge(a.year)}살</td>
           <td class="num">${a.inflow ? formatManwon(a.inflow) : '-'}</td>
-          <td class="num">${a.outflow ? formatManwon(a.outflow) : '-'}</td>
-          <td class="num ${cls}">${formatManwon(net)}</td>
+          <td class="num">${a.fOutflow ? formatManwon(a.fOutflow) : '-'}</td>
+          <td class="num ${cls}">${formatManwon(outflow)}</td>
+          <td class="num">${monthly != null ? formatManwon(monthly) + '/월' : '-'}</td>
         </tr>`;
       }).join('')}</tbody>
     </table>`;
@@ -1012,7 +1033,7 @@ export function openFinActualModal(id) {
     document.getElementById('fin-actual-emergency').value = a.emergencyFund || 0;
     document.getElementById('fin-actual-expense').value = a.monthlyExpense || 0;
     document.getElementById('fin-actual-inflow').value = a.inflow || 0;
-    document.getElementById('fin-actual-outflow').value = a.outflow || 0;
+    document.getElementById('fin-actual-foutflow').value = a.fOutflow || 0;
   } else {
     titleEl.textContent = '연간 실적 추가';
     delBtn.style.display = 'none';
@@ -1023,7 +1044,7 @@ export function openFinActualModal(id) {
     document.getElementById('fin-actual-emergency').value = 0;
     document.getElementById('fin-actual-expense').value = 0;
     document.getElementById('fin-actual-inflow').value = 0;
-    document.getElementById('fin-actual-outflow').value = 0;
+    document.getElementById('fin-actual-foutflow').value = 0;
   }
   modal.classList.add('open');
 }
@@ -1043,7 +1064,7 @@ export async function saveFinActualFromModal() {
     emergencyFund: parseFloat(document.getElementById('fin-actual-emergency').value) || 0,
     monthlyExpense: parseFloat(document.getElementById('fin-actual-expense').value) || 0,
     inflow: parseFloat(document.getElementById('fin-actual-inflow').value) || 0,
-    outflow: parseFloat(document.getElementById('fin-actual-outflow').value) || 0,
+    fOutflow: parseFloat(document.getElementById('fin-actual-foutflow').value) || 0,
     createdAt: new Date().toISOString(),
   });
   closeFinActualModal();
