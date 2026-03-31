@@ -309,9 +309,10 @@ function _renderUnitGoal() {
     if (actual <= 0) return { text: '—', cls: 'muted' };
     const diff = Math.round(actual - target);
     const pct  = target > 0 ? Math.round(((actual - target) / target) * 100) : 0;
-    if (diff > 0)      return { text: `+${diff}g (+${pct}%)`, cls: 'macro-over' };
-    else if (diff < 0) return { text: `${diff}g (${pct}%)`, cls: lessIsGood ? 'macro-ok' : 'macro-under' };
-    else               return { text: `±0g`, cls: 'macro-ok' };
+    const sign = diff > 0 ? '+' : '';
+    const cls  = diff > 0 ? 'macro-over' : diff < 0 ? (lessIsGood ? 'macro-ok' : 'macro-under') : 'macro-ok';
+    const text = diff === 0 ? '±0g' : `${sign}${diff}g<span class="ug-macro-pct">${sign}${pct}%</span>`;
+    return { text, cls };
   };
 
   macroRows.forEach(mr => {

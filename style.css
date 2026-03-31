@@ -339,7 +339,8 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans KR',sans-seri
 .ug-row-macro td{padding:2px 2px;border:none;}
 .ug-row-pct+.ug-row-macro td{border-top:1px dashed var(--border);}
 .ug-macro-label{font-size:9px!important;font-weight:700;color:var(--muted)!important;}
-.ug-macro{display:block;font-family:'JetBrains Mono',monospace;font-size:9px;line-height:1.3;white-space:nowrap;}
+.ug-macro{display:block;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;line-height:1.2;}
+.ug-macro-pct{display:block;font-size:8px;font-weight:400;opacity:.7;margin-top:1px;}
 .ug-macro.macro-over{color:var(--diet-bad);}
 .ug-macro.macro-under{color:var(--gym);}
 .ug-macro.macro-ok{color:var(--diet-ok);}
