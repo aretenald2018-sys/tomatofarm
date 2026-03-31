@@ -1,8 +1,8 @@
 // 포지션(주식/ETF/금/TDF 등) CRUD 모달
 export const MODAL_HTML = `
-<div class="modal" id="fin-position-modal" onclick="closeFinPositionModal(event)">
-  <div class="modal-content" onclick="event.stopPropagation()" style="max-width:400px">
-    <h3 style="font-size:14px;margin-bottom:12px" id="fin-pos-modal-title">포지션 추가</h3>
+<div class="modal-overlay" id="fin-position-modal" onclick="closeFinPositionModal(event)">
+  <div class="modal-sheet" onclick="event.stopPropagation()">
+    <div class="modal-title" id="fin-pos-modal-title">포지션 추가</div>
 
     <div class="fin-modal-row">
       <div class="fin-modal-field">

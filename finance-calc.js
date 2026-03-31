@@ -1,39 +1,44 @@
 // ================================================================
 // finance-calc.js — 재무 계산 엔진
+// 모든 금액 단위: 만원 (입력/저장/표시 모두 만원)
 // ================================================================
 
+const BIRTH_YEAR = 1994;
+
 /**
- * 복리 프로젝션 (연도별)
- * FV = P*(1+r)^n + C*[((1+r)^n - 1)/r]
+ * 나이 계산 (한국 나이 아닌 만 나이)
+ */
+export function getAge(year) {
+  return year - BIRTH_YEAR;
+}
+
+/**
+ * 복리 프로젝션 (연도별 step-by-step)
+ * 매 연도: 기초잔액 → +이자 → +기말납입 → 기말잔액
+ * 모든 금액 단위: 만원
  */
 export function compoundProjection(benchmark) {
-  const { initialPrincipal = 0, annualRate, annualContribution, periodYears, inflationRate = 0, startYear } = benchmark;
+  const { initialPrincipal = 0, annualRate, annualContribution, periodYears, startYear } = benchmark;
   const r = annualRate / 100;
-  const i = inflationRate / 100;
-  const realR = i > 0 ? ((1 + r) / (1 + i)) - 1 : r;
   const rows = [];
-  let totalContrib = initialPrincipal;
+  let balance = initialPrincipal; // 만원
 
-  for (let n = 0; n <= periodYears; n++) {
-    const year = startYear + n;
-    const nominalFV = n === 0
-      ? initialPrincipal
-      : initialPrincipal * Math.pow(1 + r, n) + (r > 0 ? annualContribution * ((Math.pow(1 + r, n) - 1) / r) : annualContribution * n);
-
-    const realFV = n === 0
-      ? initialPrincipal
-      : initialPrincipal * Math.pow(1 + realR, n) + (realR > 0 ? annualContribution * ((Math.pow(1 + realR, n) - 1) / realR) : annualContribution * n);
-
-    if (n > 0) totalContrib += annualContribution;
+  for (let n = 1; n <= periodYears; n++) {
+    const year = startYear + n - 1;
+    const openBalance = balance;
+    const interest = Math.round(openBalance * r);
+    const contribution = annualContribution;
+    const closeBalance = openBalance + interest + contribution;
+    balance = closeBalance;
 
     rows.push({
       year,
+      age: getAge(year),
       n,
-      totalContribution: totalContrib,
-      nominalValue: Math.round(nominalFV),
-      realValue: Math.round(realFV),
-      nominalGain: Math.round(nominalFV - totalContrib),
-      realGain: Math.round(realFV - totalContrib),
+      openBalance,    // 기초잔액 (만원)
+      interest,       // 연간이자 (만원)
+      contribution,   // 기말납입금 (만원)
+      closeBalance,   // 기말잔액 (만원)
     });
   }
   return rows;
@@ -48,7 +53,7 @@ export function calcCAGR(startValue, endValue, years) {
 }
 
 /**
- * 순자산 계산
+ * 순자산 계산 (positions는 USD, loans는 만원)
  */
 export function calcNetWorth(positions, loans, quotesMap) {
   let totalAssets = 0;
@@ -58,7 +63,7 @@ export function calcNetWorth(positions, loans, quotesMap) {
   }
   let totalDebt = 0;
   for (const l of loans) {
-    totalDebt += l.amount || 0;
+    totalDebt += l.amount || 0; // 만원
   }
   return { totalAssets, totalDebt, netWorth: totalAssets - totalDebt };
 }
@@ -100,7 +105,7 @@ export function checkRebalanceAlerts(positions, quotesMap, threshold = 0.3) {
 }
 
 /**
- * 비상금 개월수
+ * 비상금 개월수 (만원 단위)
  */
 export function calcEmergencyMonths(emergencyFund, monthlyExpense) {
   if (!monthlyExpense || monthlyExpense <= 0) return null;
@@ -108,16 +113,28 @@ export function calcEmergencyMonths(emergencyFund, monthlyExpense) {
 }
 
 /**
- * 금액 포맷
+ * 만원 포맷 (재무탭 기본 단위)
+ */
+export function formatManwon(amount) {
+  if (amount == null || isNaN(amount)) return '-';
+  if (Math.abs(amount) >= 10000) return (amount / 10000).toFixed(1) + '억';
+  return amount.toLocaleString() + '만';
+}
+
+/**
+ * USD 포맷
+ */
+export function formatUSD(amount) {
+  if (amount == null || isNaN(amount)) return '-';
+  return '$' + amount.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
+
+/**
+ * 금액 포맷 (통화별)
  */
 export function formatMoney(amount, currency = 'KRW') {
-  if (amount == null || isNaN(amount)) return '-';
-  if (currency === 'KRW') {
-    if (Math.abs(amount) >= 100000000) return (amount / 100000000).toFixed(1) + '억';
-    if (Math.abs(amount) >= 10000) return (amount / 10000).toFixed(0) + '만';
-    return amount.toLocaleString() + '원';
-  }
-  return '$' + amount.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  if (currency === 'KRW') return formatManwon(amount);
+  return formatUSD(amount);
 }
 
 /**
@@ -125,6 +142,6 @@ export function formatMoney(amount, currency = 'KRW') {
  */
 export function formatMoneyDetail(amount, currency = 'KRW') {
   if (amount == null || isNaN(amount)) return '-';
-  if (currency === 'KRW') return amount.toLocaleString() + '원';
+  if (currency === 'KRW') return amount.toLocaleString() + '만원';
   return '$' + amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }

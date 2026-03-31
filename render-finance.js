@@ -1,5 +1,6 @@
 // ================================================================
 // render-finance.js — 재무 탭 렌더링
+// 금액 단위: 만원 (입력/저장/표시)
 // ================================================================
 
 import { CONFIG } from './config.js';
@@ -10,7 +11,7 @@ import {
   getFinPositions, saveFinPosition, deleteFinPosition,
   fetchExchangeRate, fetchFearGreed,
 } from './data.js';
-// Alpha Vantage 직접 호출 (stocks.js 모듈 캐시 문제 회피)
+// Alpha Vantage 직접 호출
 const _AV_BASE = 'https://www.alphavantage.co/query';
 async function fetchQuote(sym) {
   if (!CONFIG.ALPHAVANTAGE_KEY) throw new Error('no key');
@@ -19,28 +20,22 @@ async function fetchQuote(sym) {
   if (data['Information']) throw new Error('rate limit');
   const q = data['Global Quote'];
   if (!q?.['05. price']) throw new Error('invalid');
-  return {
-    price: parseFloat(q['05. price']),
-    change: parseFloat(q['10. change percent']?.replace('%', '') || '0'),
-  };
+  return { price: parseFloat(q['05. price']), change: parseFloat(q['10. change percent']?.replace('%', '') || '0') };
 }
 import {
   compoundProjection, calcCAGR, calcNetWorth, calcDebtRatio,
   calcPositionPnL, checkRebalanceAlerts, calcEmergencyMonths,
-  formatMoney, formatMoneyDetail,
+  formatMoney, formatManwon, formatUSD, formatMoneyDetail, getAge,
 } from './finance-calc.js';
 import { callClaude } from './ai.js';
 
 const _id = () => Date.now().toString(36) + Math.random().toString(36).substr(2);
 
-// 시세 캐시 (탭 열릴 때 한번 fetch)
-let _quotesMap = {};   // { TSLA: {price, change}, ... }
-let _fxRate = 1450;    // USD→KRW
-let _fngData = null;   // {score, rating}
-let _benchChartInstance = null;
-let _compareChartInstance = null;
+let _quotesMap = {};
+let _fxRate = 1450;
+let _fngData = null;
+let _mainChartInstance = null;
 
-// ── 섹션 접기/펼치기 상태 ──
 const _collapsed = { benchmark: false, reality: false, invest: false };
 
 // ================================================================
@@ -50,7 +45,6 @@ export async function renderFinance() {
   const el = document.getElementById('fin-content');
   if (!el) return;
 
-  // 환율 + F&G 비동기 로드
   fetchExchangeRate().then(r => {
     _fxRate = r;
     document.getElementById('fin-fx-rate').textContent = `USD/KRW: ${r.toLocaleString()}`;
@@ -59,17 +53,16 @@ export async function renderFinance() {
   el.innerHTML = _buildHTML();
   _bindToggle();
 
-  // 시세 + F&G 병렬 로드 후 리렌더
   _loadMarketData().then(() => {
     _renderMarketSection();
     _renderPositionTables();
     _renderNetWorthCards();
-    _renderCompareChart();
+    _renderMainChart();
   });
 
   _renderBenchmarks();
   _renderActuals();
-  _renderCompareChart();
+  _renderMainChart();
 }
 
 // ================================================================
@@ -77,30 +70,31 @@ export async function renderFinance() {
 // ================================================================
 function _buildHTML() {
   return `
-  <!-- Section 1: 벤치마크 -->
+  <!-- Section 1: 벤치마크 + 현실 통합 -->
   <div class="fin-section" id="fin-sec-benchmark">
     <div class="fin-section-hdr" data-sec="benchmark">
-      <h3>📊 벤치마크</h3>
-      <button class="fin-add-btn" onclick="openFinBenchmarkModal()">+ 추가</button>
+      <h3>📊 벤치마크 vs 현실</h3>
+      <div style="display:flex;gap:6px">
+        <button class="fin-add-btn" onclick="openFinBenchmarkModal()">+ 벤치마크</button>
+        <button class="fin-add-btn" onclick="openFinActualModal()">+ 연간실적</button>
+      </div>
     </div>
     <div class="fin-section-body${_collapsed.benchmark?' collapsed':''}">
+      <div class="fin-chart-wrap" style="max-height:300px"><canvas id="fin-main-chart"></canvas></div>
       <div id="fin-bench-list"></div>
-      <div class="fin-chart-wrap"><canvas id="fin-bench-chart"></canvas></div>
+      <div id="fin-actual-list"></div>
+      <div id="fin-cagr-display"></div>
     </div>
   </div>
 
-  <!-- Section 2: 현실 -->
+  <!-- Section 2: 현실 요약 -->
   <div class="fin-section" id="fin-sec-reality">
     <div class="fin-section-hdr" data-sec="reality">
-      <h3>💰 현실</h3>
-      <button class="fin-add-btn" onclick="openFinActualModal()">+ 연도 추가</button>
+      <h3>💰 자산 현황</h3>
     </div>
     <div class="fin-section-body${_collapsed.reality?' collapsed':''}">
       <div id="fin-networth-cards"></div>
       <div id="fin-rebal-alerts"></div>
-      <div id="fin-actual-list"></div>
-      <div id="fin-cagr-display"></div>
-      <div class="fin-chart-wrap"><canvas id="fin-compare-chart"></canvas></div>
     </div>
   </div>
 
@@ -111,13 +105,11 @@ function _buildHTML() {
       <button class="fin-add-btn" onclick="refreshFinMarketData()" style="border-color:var(--muted);color:var(--muted)">↻ 새로고침</button>
     </div>
     <div class="fin-section-body${_collapsed.invest?' collapsed':''}">
-      <!-- 시황 -->
       <div style="font-size:12px;font-weight:600;margin-bottom:6px;color:var(--muted2)">시황</div>
       <div id="fin-market-data"></div>
       <div id="fin-fng-display"></div>
       <div id="fin-stock-chips"></div>
 
-      <!-- 내 상황 -->
       <div style="font-size:12px;font-weight:600;margin:12px 0 6px;color:var(--muted2)">내 상황</div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
         <span style="font-size:11px;color:var(--muted)">대출/레버리지</span>
@@ -147,7 +139,6 @@ function _buildHTML() {
   `;
 }
 
-// ── 섹션 접기/펼치기 ──
 function _bindToggle() {
   document.querySelectorAll('.fin-section-hdr[data-sec]').forEach(hdr => {
     hdr.addEventListener('click', e => {
@@ -160,23 +151,17 @@ function _bindToggle() {
 }
 
 // ================================================================
-// 시장 데이터 로드
+// 시장 데이터
 // ================================================================
 async function _loadMarketData() {
   const tickers = ['SPY', 'QQQ', ...CONFIG.TICKERS.map(t => t.sym)];
   for (const sym of tickers) {
-    try {
-      const q = await fetchQuote(sym);
-      _quotesMap[sym] = q;
-    } catch (e) {
-      console.warn(`[finance] ${sym} quote 실패:`, e.message);
-    }
+    try { _quotesMap[sym] = await fetchQuote(sym); } catch {}
   }
   try { _fngData = await fetchFearGreed(); } catch {}
 }
 
 export async function refreshFinMarketData() {
-  // 캐시 무효화
   localStorage.removeItem('stock_data');
   localStorage.removeItem('stock_time');
   localStorage.removeItem('fng_data');
@@ -187,15 +172,10 @@ export async function refreshFinMarketData() {
   _renderMarketSection();
   _renderPositionTables();
   _renderNetWorthCards();
-  _renderCompareChart();
 }
 
 function _renderMarketSection() {
-  // SPY / QQQ 카드
-  const indices = [
-    { sym: 'SPY', label: 'S&P 500 (SPY)' },
-    { sym: 'QQQ', label: 'NASDAQ (QQQ)' },
-  ];
+  const indices = [{ sym: 'SPY', label: 'S&P 500 (SPY)' }, { sym: 'QQQ', label: 'NASDAQ (QQQ)' }];
   const mktEl = document.getElementById('fin-market-data');
   if (mktEl) {
     mktEl.innerHTML = `<div class="fin-market-row">${indices.map(idx => {
@@ -203,35 +183,19 @@ function _renderMarketSection() {
       const price = q ? q.price.toFixed(2) : '-';
       const chg = q ? q.change : 0;
       const cls = chg > 0 ? 'up' : chg < 0 ? 'down' : '';
-      const sign = chg > 0 ? '+' : '';
-      return `<div class="fin-market-chip">
-        <div class="label">${idx.label}</div>
-        <div class="value">$${price}</div>
-        <div class="change ${cls}">${sign}${chg.toFixed(2)}%</div>
-      </div>`;
+      return `<div class="fin-market-chip"><div class="label">${idx.label}</div><div class="value">$${price}</div><div class="change ${cls}">${chg > 0 ? '+' : ''}${chg.toFixed(2)}%</div></div>`;
     }).join('')}</div>`;
   }
 
-  // F&G
   const fngEl = document.getElementById('fin-fng-display');
-  if (fngEl && _fngData && _fngData.score != null) {
+  if (fngEl && _fngData?.score != null) {
     const s = _fngData.score;
     const color = s <= 25 ? 'var(--diet-bad)' : s <= 45 ? '#f97316' : s <= 55 ? 'var(--accent)' : s <= 75 ? '#84cc16' : 'var(--diet-ok)';
-    fngEl.innerHTML = `<div class="fin-fng">
-      <div class="fin-fng-score" style="color:${color}">${s}</div>
-      <div style="flex:1">
-        <div class="fin-fng-bar"><div class="fin-fng-fill" style="width:${s}%;background:${color}"></div></div>
-        <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--muted);margin-top:2px">
-          <span>Extreme Fear</span><span>Extreme Greed</span>
-        </div>
-      </div>
-      <div class="fin-fng-label">${_fngData.rating || ''}</div>
-    </div>`;
+    fngEl.innerHTML = `<div class="fin-fng"><div class="fin-fng-score" style="color:${color}">${s}</div><div style="flex:1"><div class="fin-fng-bar"><div class="fin-fng-fill" style="width:${s}%;background:${color}"></div></div><div style="display:flex;justify-content:space-between;font-size:9px;color:var(--muted);margin-top:2px"><span>Extreme Fear</span><span>Extreme Greed</span></div></div><div class="fin-fng-label">${_fngData.rating || ''}</div></div>`;
   } else if (fngEl) {
     fngEl.innerHTML = `<div class="fin-fng"><div style="color:var(--muted);font-size:11px">Fear & Greed: 데이터 없음</div></div>`;
   }
 
-  // 개별 종목 칩
   const chipEl = document.getElementById('fin-stock-chips');
   if (chipEl) {
     chipEl.innerHTML = `<div class="fin-market-row">${CONFIG.TICKERS.map(t => {
@@ -239,18 +203,13 @@ function _renderMarketSection() {
       const price = q ? q.price.toFixed(2) : '-';
       const chg = q ? q.change : 0;
       const cls = chg > 0 ? 'up' : chg < 0 ? 'down' : '';
-      const sign = chg > 0 ? '+' : '';
-      return `<div class="fin-market-chip" style="min-width:80px">
-        <div class="label">${t.sym}</div>
-        <div class="value" style="font-size:12px">$${price}</div>
-        <div class="change ${cls}" style="font-size:10px">${sign}${chg.toFixed(2)}%</div>
-      </div>`;
+      return `<div class="fin-market-chip" style="min-width:80px"><div class="label">${t.sym}</div><div class="value" style="font-size:12px">$${price}</div><div class="change ${cls}" style="font-size:10px">${chg > 0 ? '+' : ''}${chg.toFixed(2)}%</div></div>`;
     }).join('')}</div>`;
   }
 }
 
 // ================================================================
-// 벤치마크 렌더
+// 벤치마크 렌더 (새 테이블 형식)
 // ================================================================
 function _renderBenchmarks() {
   const benchmarks = getFinBenchmarks();
@@ -269,19 +228,23 @@ function _renderBenchmarks() {
     <div class="fin-bench-card">
       <div class="fin-bench-summary" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'':'none'">
         <span class="fin-bench-name">${b.name || '벤치마크'}</span>
-        <span class="fin-bench-meta">${b.annualRate}% · ${formatMoney(b.annualContribution, b.currency)}/yr · ${b.periodYears}년 → ${formatMoney(last.nominalValue, b.currency)}</span>
+        <span class="fin-bench-meta">초기 ${formatManwon(b.initialPrincipal)} · ${b.annualRate}% · ${formatManwon(b.annualContribution)}/yr → ${formatManwon(last.closeBalance)}</span>
       </div>
       <div class="fin-bench-detail" style="display:none">
+        <div style="font-size:10px;color:var(--muted);margin:6px 0">초기 ${formatManwon(b.initialPrincipal)}에 연 ${b.annualRate}% 복리, 매년 연말 ${formatManwon(b.annualContribution)} 납입 가정</div>
+        <div style="overflow-x:auto">
         <table class="fin-proj-table">
-          <thead><tr><th>연도</th><th>불입누계</th><th>명목수익</th>${b.inflationRate > 0 ? '<th>실질수익</th>' : ''}<th>총자산</th></tr></thead>
+          <thead><tr><th>연차</th><th>나이</th><th>기초 잔액</th><th>연간 이자 (${b.annualRate}%)</th><th>기말 납입금</th><th>기말 잔액</th></tr></thead>
           <tbody>${proj.map(r => `<tr>
-            <td>${r.year}</td>
-            <td>${formatMoney(r.totalContribution, b.currency)}</td>
-            <td>${formatMoney(r.nominalGain, b.currency)}</td>
-            ${b.inflationRate > 0 ? `<td>${formatMoney(r.realGain, b.currency)}</td>` : ''}
-            <td style="font-weight:600">${formatMoney(r.nominalValue, b.currency)}</td>
+            <td>${r.year}년 말</td>
+            <td>${r.age}살</td>
+            <td>${formatManwon(r.openBalance)}</td>
+            <td>${formatManwon(r.interest)}</td>
+            <td>${formatManwon(r.contribution)}</td>
+            <td style="font-weight:600">${formatManwon(r.closeBalance)}</td>
           </tr>`).join('')}</tbody>
         </table>
+        </div>
       </div>
       <div class="fin-bench-actions">
         <button onclick="openFinBenchmarkModal('${b.id}')">수정</button>
@@ -289,46 +252,6 @@ function _renderBenchmarks() {
       </div>
     </div>`;
   }).join('');
-
-  _renderBenchChart(benchmarks);
-}
-
-function _renderBenchChart(benchmarks) {
-  const canvas = document.getElementById('fin-bench-chart');
-  if (!canvas || !window.Chart || benchmarks.length === 0) return;
-
-  if (_benchChartInstance) _benchChartInstance.destroy();
-
-  const colors = ['#f59e0b', '#3b82f6', '#10b981', '#ec4899', '#a855f7', '#06b6d4'];
-  const datasets = benchmarks.map((b, i) => {
-    const proj = compoundProjection(b);
-    return {
-      label: b.name || `벤치마크 ${i + 1}`,
-      data: proj.map(r => ({ x: r.year, y: r.nominalValue })),
-      borderColor: colors[i % colors.length],
-      borderDash: [5, 3],
-      borderWidth: 2,
-      pointRadius: 0,
-      fill: false,
-      tension: 0.3,
-    };
-  });
-
-  _benchChartInstance = new Chart(canvas, {
-    type: 'line',
-    data: { datasets },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      scales: {
-        x: { type: 'linear', title: { display: true, text: '연도', color: '#5c6478', font: { size: 10 } }, ticks: { color: '#5c6478', font: { size: 10 } }, grid: { color: '#2c3040' } },
-        y: { title: { display: false }, ticks: { color: '#5c6478', font: { size: 10 }, callback: v => formatMoney(v, benchmarks[0]?.currency || 'KRW') }, grid: { color: '#2c3040' } },
-      },
-      plugins: {
-        legend: { labels: { color: '#e2e4ea', font: { size: 10 } } },
-        tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${formatMoney(ctx.parsed.y, benchmarks[0]?.currency || 'KRW')}` } },
-      },
-    },
-  });
 }
 
 // ================================================================
@@ -343,29 +266,28 @@ function _renderActuals() {
     listEl.innerHTML = `<div style="color:var(--muted);font-size:12px;padding:12px;text-align:center">연간 실적을 추가하세요</div>`;
   } else {
     listEl.innerHTML = `<table class="fin-table">
-      <thead><tr><th>연도</th><th>누적 저축/투자</th><th>순자산</th><th>비상금</th><th></th></tr></thead>
+      <thead><tr><th>연도</th><th>나이</th><th>누적 저축/투자</th><th>순자산</th><th>비상금</th><th></th></tr></thead>
       <tbody>${actuals.map(a => {
         const em = calcEmergencyMonths(a.emergencyFund, a.monthlyExpense);
         return `<tr>
           <td>${a.year}</td>
-          <td class="num">${formatMoney(a.cumulativeSaved, a.currency)}</td>
-          <td class="num">${a.netWorth ? formatMoney(a.netWorth, a.currency) : '-'}</td>
-          <td class="num">${a.emergencyFund ? formatMoney(a.emergencyFund, a.currency) + (em != null ? ` (${em}개월)` : '') : '-'}</td>
+          <td>${getAge(a.year)}살</td>
+          <td class="num">${formatManwon(a.cumulativeSaved)}</td>
+          <td class="num">${a.netWorth ? formatManwon(a.netWorth) : '-'}</td>
+          <td class="num">${a.emergencyFund ? formatManwon(a.emergencyFund) + (em != null ? ` (${em}개월)` : '') : '-'}</td>
           <td class="action-cell"><button class="edit-btn" onclick="openFinActualModal('${a.id}')">✏️</button></td>
         </tr>`;
       }).join('')}</tbody>
     </table>`;
   }
 
-  // CAGR
   const cagrEl = document.getElementById('fin-cagr-display');
   if (cagrEl && actuals.length >= 2) {
-    const first = actuals[0];
-    const last = actuals[actuals.length - 1];
+    const first = actuals[0], last = actuals[actuals.length - 1];
     const years = last.year - first.year;
     if (years > 0 && first.cumulativeSaved > 0) {
       const cagr = calcCAGR(first.cumulativeSaved, last.cumulativeSaved, years);
-      cagrEl.innerHTML = `<div style="font-size:11px;color:var(--muted);margin:6px 0">CAGR (누적저축 기준): <span style="color:var(--diet-ok);font-weight:700;font-family:'JetBrains Mono',monospace">${(cagr * 100).toFixed(1)}%</span></div>`;
+      cagrEl.innerHTML = `<div style="font-size:11px;color:var(--muted);margin:6px 0">CAGR: <span style="color:var(--diet-ok);font-weight:700;font-family:'JetBrains Mono',monospace">${(cagr * 100).toFixed(1)}%</span></div>`;
     }
   }
 }
@@ -379,21 +301,18 @@ function _renderNetWorthCards() {
   const { totalAssets, totalDebt, netWorth } = calcNetWorth(positions, loans, _quotesMap);
   const debtRatio = calcDebtRatio(totalDebt, totalAssets);
 
-  // 비상금 (최신 actual에서)
   const actuals = getFinActuals();
   const latest = actuals[actuals.length - 1];
   const emMonths = latest ? calcEmergencyMonths(latest.emergencyFund, latest.monthlyExpense) : null;
   const emClass = emMonths == null ? '' : emMonths < 3 ? 'negative' : emMonths < 6 ? 'warn' : 'positive';
 
   el.innerHTML = `<div class="fin-networth-row">
-    <div class="fin-nw-card"><div class="fin-nw-label">총 자산</div><div class="fin-nw-val">${formatMoney(totalAssets, 'USD')}</div></div>
-    <div class="fin-nw-card"><div class="fin-nw-label">총 부채</div><div class="fin-nw-val negative">${formatMoney(totalDebt, 'KRW')}</div></div>
-    <div class="fin-nw-card"><div class="fin-nw-label">순자산</div><div class="fin-nw-val ${netWorth >= 0 ? 'positive' : 'negative'}">${formatMoney(netWorth, 'USD')}</div></div>
+    <div class="fin-nw-card"><div class="fin-nw-label">총 자산</div><div class="fin-nw-val">${formatUSD(totalAssets)}</div></div>
+    <div class="fin-nw-card"><div class="fin-nw-label">총 부채</div><div class="fin-nw-val negative">${formatManwon(totalDebt)}</div></div>
     <div class="fin-nw-card"><div class="fin-nw-label">부채비율</div><div class="fin-nw-val ${debtRatio > 0.5 ? 'negative' : debtRatio > 0.3 ? 'warn' : 'positive'}">${(debtRatio * 100).toFixed(1)}%</div></div>
     ${emMonths != null ? `<div class="fin-nw-card"><div class="fin-nw-label">비상금</div><div class="fin-nw-val ${emClass}">${emMonths}개월</div></div>` : ''}
   </div>`;
 
-  // 리밸런싱 경고
   const alerts = checkRebalanceAlerts(positions, _quotesMap);
   const alertEl = document.getElementById('fin-rebal-alerts');
   if (alertEl) {
@@ -401,6 +320,65 @@ function _renderNetWorthCards() {
       ? `<div class="fin-rebal-alert">⚠️ 리밸런싱 필요: ${alerts.map(a => `${a.name || a.ticker} (${a.pct}%)`).join(', ')} — 단일 종목 30% 초과</div>`
       : '';
   }
+}
+
+// ================================================================
+// 통합 차트 (벤치마크 점선 + 현실 실선)
+// ================================================================
+function _renderMainChart() {
+  const canvas = document.getElementById('fin-main-chart');
+  if (!canvas || !window.Chart) return;
+  if (_mainChartInstance) _mainChartInstance.destroy();
+
+  const benchmarks = getFinBenchmarks();
+  const actuals = getFinActuals();
+  if (benchmarks.length === 0 && actuals.length === 0) return;
+
+  const colors = ['#f59e0b', '#3b82f6', '#a855f7', '#ec4899', '#06b6d4'];
+  const datasets = [];
+
+  benchmarks.forEach((b, i) => {
+    const proj = compoundProjection(b);
+    datasets.push({
+      label: b.name || `벤치마크 ${i + 1}`,
+      data: proj.map(r => ({ x: r.year, y: r.closeBalance })),
+      borderColor: colors[i % colors.length],
+      borderDash: [5, 3],
+      borderWidth: 2,
+      pointRadius: 0,
+      fill: false,
+      tension: 0.3,
+    });
+  });
+
+  if (actuals.length > 0) {
+    datasets.push({
+      label: '현실 (누적 저축/투자)',
+      data: actuals.map(a => ({ x: a.year, y: a.cumulativeSaved })),
+      borderColor: '#10b981',
+      borderWidth: 3,
+      pointRadius: 4,
+      pointBackgroundColor: '#10b981',
+      fill: false,
+      tension: 0.3,
+    });
+  }
+
+  _mainChartInstance = new Chart(canvas, {
+    type: 'line',
+    data: { datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: {
+        x: { type: 'linear', title: { display: true, text: '연도', color: '#5c6478', font: { size: 10 } }, ticks: { color: '#5c6478', font: { size: 10 } }, grid: { color: '#2c3040' } },
+        y: { ticks: { color: '#5c6478', font: { size: 10 }, callback: v => formatManwon(v) }, grid: { color: '#2c3040' } },
+      },
+      plugins: {
+        legend: { labels: { color: '#e2e4ea', font: { size: 10 } } },
+        tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${formatManwon(ctx.parsed.y)}` } },
+      },
+    },
+  });
 }
 
 // ================================================================
@@ -423,9 +401,9 @@ function _renderLoanTable() {
     <thead><tr><th>대출명</th><th>잔액</th><th>금리</th><th>월상환</th><th>만기일</th><th></th></tr></thead>
     <tbody>${loans.map(l => `<tr>
       <td>${l.name}</td>
-      <td class="num">${formatMoney(l.amount, l.currency)}</td>
+      <td class="num">${formatManwon(l.amount)}</td>
       <td class="num">${l.interestRate}%</td>
-      <td class="num">${formatMoney(l.monthlyPayment, l.currency)}</td>
+      <td class="num">${formatManwon(l.monthlyPayment)}</td>
       <td>${l.endDate || '-'}</td>
       <td class="action-cell"><button class="edit-btn" onclick="openFinLoanModal('${l.id}')">✏️</button></td>
     </tr>`).join('')}</tbody>
@@ -450,7 +428,7 @@ function _renderPosTable(type) {
         <td class="num">${formatMoneyDetail(curPrice, p.currency)}</td>
         <td class="num">${p.shares}</td>
         <td class="num">${formatMoney(value, p.currency)}</td>
-        <td class="num ${cls}">${sign}${pnlPct.toFixed(1)}%<br><span style="font-size:10px">${sign}${formatMoney(pnl, p.currency)}</span></td>
+        <td class="num ${cls}">${sign}${pnlPct.toFixed(1)}%</td>
         <td class="action-cell"><button class="edit-btn" onclick="openFinPositionModal(null,'${p.id}')">✏️</button></td>
       </tr>`;
     }).join('')}</tbody>
@@ -465,24 +443,16 @@ function _renderLeverageSummary() {
   positions.forEach(p => {
     const price = p.autoPrice ? (_quotesMap[p.ticker]?.price || p.manualPrice || p.avgCost) : (p.manualPrice || p.avgCost);
     const val = price * (p.shares || 0);
-    if (p.type === 'leveraged') levTotal += val;
-    else cashTotal += val;
+    if (p.type === 'leveraged') levTotal += val; else cashTotal += val;
   });
   const total = levTotal + cashTotal;
   if (total <= 0) { el.innerHTML = ''; return; }
   const levPct = (levTotal / total * 100).toFixed(1);
   const cashPct = (cashTotal / total * 100).toFixed(1);
-  el.innerHTML = `
-    <div class="fin-leverage-summary" style="flex-direction:column">
-      <div class="fin-leverage-bar">
-        <div class="lev" style="width:${levPct}%"></div>
-        <div class="cash" style="width:${cashPct}%"></div>
-      </div>
-      <div class="fin-leverage-labels">
-        <span>레버리지 ${levPct}% (${formatMoney(levTotal, 'USD')})</span>
-        <span>현금 ${cashPct}% (${formatMoney(cashTotal, 'USD')})</span>
-      </div>
-    </div>`;
+  el.innerHTML = `<div class="fin-leverage-summary" style="flex-direction:column">
+    <div class="fin-leverage-bar"><div class="lev" style="width:${levPct}%"></div><div class="cash" style="width:${cashPct}%"></div></div>
+    <div class="fin-leverage-labels"><span>레버리지 ${levPct}% (${formatUSD(levTotal)})</span><span>현금 ${cashPct}% (${formatUSD(cashTotal)})</span></div>
+  </div>`;
 }
 
 function _renderTotalSummary() {
@@ -500,70 +470,10 @@ function _renderTotalSummary() {
   const cls = pnl >= 0 ? 'positive' : 'negative';
   const sign = pnl >= 0 ? '+' : '';
   el.innerHTML = `<div class="fin-networth-row" style="margin-top:10px">
-    <div class="fin-nw-card"><div class="fin-nw-label">총 투자원금</div><div class="fin-nw-val">${formatMoney(totalCost, 'USD')}</div></div>
-    <div class="fin-nw-card"><div class="fin-nw-label">현재 가치</div><div class="fin-nw-val">${formatMoney(totalValue, 'USD')}</div></div>
-    <div class="fin-nw-card"><div class="fin-nw-label">전체 손익</div><div class="fin-nw-val ${cls}">${sign}${formatMoney(pnl, 'USD')} (${sign}${pnlPct.toFixed(1)}%)</div></div>
+    <div class="fin-nw-card"><div class="fin-nw-label">총 투자원금</div><div class="fin-nw-val">${formatUSD(totalCost)}</div></div>
+    <div class="fin-nw-card"><div class="fin-nw-label">현재 가치</div><div class="fin-nw-val">${formatUSD(totalValue)}</div></div>
+    <div class="fin-nw-card"><div class="fin-nw-label">전체 손익</div><div class="fin-nw-val ${cls}">${sign}${formatUSD(pnl)} (${sign}${pnlPct.toFixed(1)}%)</div></div>
   </div>`;
-}
-
-// ================================================================
-// 벤치마크 vs 현실 비교 차트
-// ================================================================
-function _renderCompareChart() {
-  const canvas = document.getElementById('fin-compare-chart');
-  if (!canvas || !window.Chart) return;
-
-  if (_compareChartInstance) _compareChartInstance.destroy();
-
-  const benchmarks = getFinBenchmarks();
-  const actuals = getFinActuals();
-  if (benchmarks.length === 0 && actuals.length === 0) return;
-
-  const colors = ['#f59e0b', '#3b82f6', '#10b981', '#ec4899', '#a855f7'];
-  const datasets = [];
-
-  benchmarks.forEach((b, i) => {
-    const proj = compoundProjection(b);
-    datasets.push({
-      label: b.name || `벤치마크 ${i + 1}`,
-      data: proj.map(r => ({ x: r.year, y: r.nominalValue })),
-      borderColor: colors[i % colors.length],
-      borderDash: [5, 3],
-      borderWidth: 2,
-      pointRadius: 0,
-      fill: false,
-      tension: 0.3,
-    });
-  });
-
-  if (actuals.length > 0) {
-    datasets.push({
-      label: '현실 (누적 저축/투자)',
-      data: actuals.map(a => ({ x: a.year, y: a.cumulativeSaved })),
-      borderColor: '#10b981',
-      borderWidth: 3,
-      pointRadius: 4,
-      pointBackgroundColor: '#10b981',
-      fill: false,
-      tension: 0.3,
-    });
-  }
-
-  _compareChartInstance = new Chart(canvas, {
-    type: 'line',
-    data: { datasets },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      scales: {
-        x: { type: 'linear', title: { display: true, text: '연도', color: '#5c6478', font: { size: 10 } }, ticks: { color: '#5c6478', font: { size: 10 } }, grid: { color: '#2c3040' } },
-        y: { ticks: { color: '#5c6478', font: { size: 10 }, callback: v => formatMoney(v, 'KRW') }, grid: { color: '#2c3040' } },
-      },
-      plugins: {
-        legend: { labels: { color: '#e2e4ea', font: { size: 10 } } },
-        tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${formatMoney(ctx.parsed.y, 'KRW')}` } },
-      },
-    },
-  });
 }
 
 // ================================================================
@@ -584,11 +494,11 @@ export async function runFinAIAnalysis() {
     return `${p.name||p.ticker}(${p.type}): ${p.shares}주 @${price}, 수익률 ${pnlPct.toFixed(1)}%`;
   }).join('\n');
 
-  const loanSummary = loans.map(l => `${l.name}: ${l.amount}(${l.currency}) @${l.interestRate}%`).join('\n');
+  const loanSummary = loans.map(l => `${l.name}: ${l.amount}만원 @${l.interestRate}%`).join('\n');
 
   const marketSummary = [
-    _quotesMap.SPY ? `SPY: $${_quotesMap.SPY.price.toFixed(2)} (${_quotesMap.SPY.change > 0 ? '+' : ''}${_quotesMap.SPY.change.toFixed(2)}%)` : '',
-    _quotesMap.QQQ ? `QQQ: $${_quotesMap.QQQ.price.toFixed(2)} (${_quotesMap.QQQ.change > 0 ? '+' : ''}${_quotesMap.QQQ.change.toFixed(2)}%)` : '',
+    _quotesMap.SPY ? `SPY: $${_quotesMap.SPY.price.toFixed(2)} (${_quotesMap.SPY.change > 0?'+':''}${_quotesMap.SPY.change.toFixed(2)}%)` : '',
+    _quotesMap.QQQ ? `QQQ: $${_quotesMap.QQQ.price.toFixed(2)} (${_quotesMap.QQQ.change > 0?'+':''}${_quotesMap.QQQ.change.toFixed(2)}%)` : '',
     _fngData?.score != null ? `Fear & Greed: ${_fngData.score} (${_fngData.rating})` : '',
   ].filter(Boolean).join('\n');
 
@@ -601,9 +511,7 @@ ${positionSummary || '없음'}
 ${loanSummary || '없음'}
 
 [요약]
-총자산: $${totalAssets.toFixed(0)}, 총부채: ${totalDebt.toLocaleString()}, 순자산: $${netWorth.toFixed(0)}
-부채비율: ${(calcDebtRatio(totalDebt, totalAssets) * 100).toFixed(1)}%
-환율: ${_fxRate} KRW/USD
+총자산: $${totalAssets.toFixed(0)}, 총부채: ${totalDebt.toLocaleString()}만원, 환율: ${_fxRate} KRW/USD
 
 [시장 상황]
 ${marketSummary || '데이터 없음'}
@@ -623,7 +531,7 @@ ${marketSummary || '데이터 없음'}
 }
 
 // ================================================================
-// 모달 핸들러
+// 모달 핸들러 (모든 금액 만원 단위)
 // ================================================================
 
 // ── 벤치마크 ──
@@ -646,7 +554,6 @@ export function openFinBenchmarkModal(id) {
     document.getElementById('fin-bench-inflation').value = b.inflationRate || 0;
     document.getElementById('fin-bench-principal').value = b.initialPrincipal || 0;
     document.getElementById('fin-bench-contribution').value = b.annualContribution || 0;
-    document.getElementById('fin-bench-currency').value = b.currency || 'KRW';
   } else {
     titleEl.textContent = '벤치마크 추가';
     delBtn.style.display = 'none';
@@ -656,9 +563,8 @@ export function openFinBenchmarkModal(id) {
     document.getElementById('fin-bench-period').value = 20;
     document.getElementById('fin-bench-rate').value = 7;
     document.getElementById('fin-bench-inflation').value = 2.5;
-    document.getElementById('fin-bench-principal').value = 0;
-    document.getElementById('fin-bench-contribution').value = 20000000;
-    document.getElementById('fin-bench-currency').value = 'KRW';
+    document.getElementById('fin-bench-principal').value = 5000;
+    document.getElementById('fin-bench-contribution').value = 2000;
   }
   modal.classList.add('open');
 }
@@ -679,7 +585,6 @@ export async function saveFinBenchmarkFromModal() {
     inflationRate: parseFloat(document.getElementById('fin-bench-inflation').value) || 0,
     initialPrincipal: parseFloat(document.getElementById('fin-bench-principal').value) || 0,
     annualContribution: parseFloat(document.getElementById('fin-bench-contribution').value) || 0,
-    currency: document.getElementById('fin-bench-currency').value,
     createdAt: new Date().toISOString(),
   });
   closeFinBenchmarkModal();
@@ -718,7 +623,6 @@ export function openFinActualModal(id) {
     document.getElementById('fin-actual-networth').value = a.netWorth || 0;
     document.getElementById('fin-actual-emergency').value = a.emergencyFund || 0;
     document.getElementById('fin-actual-expense').value = a.monthlyExpense || 0;
-    document.getElementById('fin-actual-currency').value = a.currency || 'KRW';
   } else {
     titleEl.textContent = '연간 실적 추가';
     delBtn.style.display = 'none';
@@ -728,7 +632,6 @@ export function openFinActualModal(id) {
     document.getElementById('fin-actual-networth').value = 0;
     document.getElementById('fin-actual-emergency').value = 0;
     document.getElementById('fin-actual-expense').value = 0;
-    document.getElementById('fin-actual-currency').value = 'KRW';
   }
   modal.classList.add('open');
 }
@@ -747,7 +650,6 @@ export async function saveFinActualFromModal() {
     netWorth: parseFloat(document.getElementById('fin-actual-networth').value) || 0,
     emergencyFund: parseFloat(document.getElementById('fin-actual-emergency').value) || 0,
     monthlyExpense: parseFloat(document.getElementById('fin-actual-expense').value) || 0,
-    currency: document.getElementById('fin-actual-currency').value,
     createdAt: new Date().toISOString(),
   });
   closeFinActualModal();
@@ -782,7 +684,6 @@ export function openFinLoanModal(id) {
     document.getElementById('fin-loan-type').value = l.type || 'margin';
     document.getElementById('fin-loan-start').value = l.startDate || '';
     document.getElementById('fin-loan-end').value = l.endDate || '';
-    document.getElementById('fin-loan-currency').value = l.currency || 'KRW';
   } else {
     titleEl.textContent = '대출 추가';
     delBtn.style.display = 'none';
@@ -794,7 +695,6 @@ export function openFinLoanModal(id) {
     document.getElementById('fin-loan-type').value = 'margin';
     document.getElementById('fin-loan-start').value = '';
     document.getElementById('fin-loan-end').value = '';
-    document.getElementById('fin-loan-currency').value = 'KRW';
   }
   modal.classList.add('open');
 }
@@ -815,7 +715,6 @@ export async function saveFinLoanFromModal() {
     type: document.getElementById('fin-loan-type').value,
     startDate: document.getElementById('fin-loan-start').value,
     endDate: document.getElementById('fin-loan-end').value,
-    currency: document.getElementById('fin-loan-currency').value,
     createdAt: new Date().toISOString(),
   });
   closeFinLoanModal();

@@ -1,8 +1,8 @@
 // 벤치마크 CRUD 모달
 export const MODAL_HTML = `
-<div class="modal" id="fin-benchmark-modal" onclick="closeFinBenchmarkModal(event)">
-  <div class="modal-content" onclick="event.stopPropagation()" style="max-width:400px">
-    <h3 style="font-size:14px;margin-bottom:12px" id="fin-bench-modal-title">벤치마크 추가</h3>
+<div class="modal-overlay" id="fin-benchmark-modal" onclick="closeFinBenchmarkModal(event)">
+  <div class="modal-sheet" onclick="event.stopPropagation()">
+    <div class="modal-title" id="fin-bench-modal-title">벤치마크 추가</div>
 
     <div class="fin-modal-field">
       <label>벤치마크 이름</label>
@@ -30,20 +30,13 @@ export const MODAL_HTML = `
     </div>
     <div class="fin-modal-row">
       <div class="fin-modal-field">
-        <label>초기 원금 (시드머니)</label>
-        <input id="fin-bench-principal" type="number" value="0">
+        <label>초기 원금 (만원)</label>
+        <input id="fin-bench-principal" type="number" value="0" placeholder="5000 = 5천만원">
       </div>
       <div class="fin-modal-field">
-        <label>연간 불입금</label>
-        <input id="fin-bench-contribution" type="number" value="20000000">
+        <label>연간 불입금 (만원)</label>
+        <input id="fin-bench-contribution" type="number" value="2000" placeholder="2000 = 2천만원">
       </div>
-    </div>
-    <div class="fin-modal-field">
-      <label>통화</label>
-      <select id="fin-bench-currency">
-        <option value="KRW">KRW (원)</option>
-        <option value="USD">USD ($)</option>
-      </select>
     </div>
 
     <input type="hidden" id="fin-bench-id">
