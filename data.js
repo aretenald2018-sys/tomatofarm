@@ -53,6 +53,7 @@ let _finActuals    = [];
 let _finLoans      = [];
 let _finPositions  = [];
 let _finPlans      = []; // 계획실적 [{id, name, entries: [{year, target}]}]
+let _finBudgets    = []; // 가계부 [{id, year, groups: [{name, items: [{name, target, qGoals:{1:n,...}, months:{1:n,...}}]}]}]
 
 // ── 설정 캐시 (Firebase settings 컬렉션) ────────────────────────
 const DEFAULT_TAB_ORDER = ['home','workout','cooking','monthly','calendar','wine','movie','stats','finance','loa'];
@@ -190,6 +191,10 @@ export async function loadAll() {
     const finPlanSnap = await getDocs(collection(db, 'finance_plans'));
     _finPlans = [];
     finPlanSnap.forEach(d => _finPlans.push(d.data()));
+
+    const finBudgetSnap = await getDocs(collection(db, 'finance_budgets'));
+    _finBudgets = [];
+    finBudgetSnap.forEach(d => _finBudgets.push(d.data()));
 
     // ── 영화 데이터 로드 ──
     const movieSnap = await getDocs(collection(db, 'movies'));
@@ -369,6 +374,11 @@ const _finPlanCRUD = _createCRUD('finance_plans', () => _finPlans, v => { _finPl
 export const saveFinPlan   = (p) => _finPlanCRUD.save(p);
 export const deleteFinPlan = (id) => _finPlanCRUD.delete(id);
 export const getFinPlans   = () => _finPlans;
+
+const _finBudgetCRUD = _createCRUD('finance_budgets', () => _finBudgets, v => { _finBudgets = v; });
+export const saveFinBudget   = (b) => _finBudgetCRUD.save(b);
+export const deleteFinBudget = (id) => _finBudgetCRUD.delete(id);
+export const getFinBudgets   = () => _finBudgets;
 
 // ── 환율 (Frankfurter API, 키 불필요) ─────────────────────────────
 const FX_CACHE_KEY = 'fx_usd_krw';
