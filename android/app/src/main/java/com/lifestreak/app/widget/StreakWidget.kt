@@ -32,7 +32,6 @@ class StreakWidget : AppWidgetProvider() {
             val pendingOpen = WidgetUtils.openAppIntent(ctx, widgetId)
             views.setOnClickPendingIntent(R.id.widget_root, pendingOpen)
 
-            // Show loading state
             views.setTextViewText(R.id.streak_gym, "\uD83C\uDFCB\uFE0F ...")
             views.setTextViewText(R.id.streak_cf, "\uD83D\uDD25 ...")
             views.setTextViewText(R.id.streak_diet, "\uD83E\uDD57 ...")
@@ -44,12 +43,22 @@ class StreakWidget : AppWidgetProvider() {
                     val workouts = WidgetUtils.fetchWorkouts()
                     val now = Calendar.getInstance()
 
-                    val gymStreak = WidgetUtils.calcStreak(workouts, now) { WidgetUtils.hasExercises(it) }
-                    val cfStreak = WidgetUtils.calcStreak(workouts, now) { WidgetUtils.getBool(it, "cf") }
-                    val dietStreak = WidgetUtils.calcStreak(workouts, now) {
-                        WidgetUtils.getBool(it, "diet_ok") || WidgetUtils.getBool(it, "dietOk")
+                    // 운동: exercises OR cf (웹 앱과 동일)
+                    val gymStreak = WidgetUtils.calcStreak(workouts, now) {
+                        WidgetUtils.hasExercises(it) || WidgetUtils.getBool(it, "cf")
                     }
-                    val wineStreak = WidgetUtils.calcStreak(workouts, now) { !WidgetUtils.getBool(it, "wine") }
+                    // CF: cf만 단독
+                    val cfStreak = WidgetUtils.calcStreak(workouts, now) {
+                        WidgetUtils.getBool(it, "cf")
+                    }
+                    // 식단: diet_ok
+                    val dietStreak = WidgetUtils.calcStreak(workouts, now) {
+                        WidgetUtils.getBool(it, "diet_ok")
+                    }
+                    // 금주: wine_free 필드 (웹 앱과 동일)
+                    val wineStreak = WidgetUtils.calcStreak(workouts, now) {
+                        WidgetUtils.getBool(it, "wine_free")
+                    }
 
                     Handler(Looper.getMainLooper()).post {
                         try {
@@ -67,7 +76,8 @@ class StreakWidget : AppWidgetProvider() {
                                 if (cfStreak.todayDone) WidgetUtils.COLOR_GREEN else WidgetUtils.COLOR_GRAY)
                             v.setTextColor(R.id.streak_diet,
                                 if (dietStreak.todayDone) WidgetUtils.COLOR_GREEN else WidgetUtils.COLOR_GRAY)
-                            v.setTextColor(R.id.streak_wine, WidgetUtils.COLOR_WHITE)
+                            v.setTextColor(R.id.streak_wine,
+                                if (wineStreak.todayDone) WidgetUtils.COLOR_GREEN else WidgetUtils.COLOR_GRAY)
 
                             mgr.updateAppWidget(widgetId, v)
                         } catch (e: Exception) {

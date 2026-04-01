@@ -48,7 +48,7 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans KR',sans-seri
 @keyframes dots{0%{content:'.'}33%{content:'..'}66%{content:'...'}}
 .stock-panel{padding:10px 16px;background:var(--surface);border-bottom:1px solid var(--border);overflow-x:auto;-webkit-overflow-scrolling:touch;}
 .stock-row{display:flex;gap:8px;min-width:max-content;}
-.stock-chip{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;min-width:100px;}
+.stock-chip{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;min-width:90px;max-width:160px;overflow:hidden;}
 .stock-chip .s-ticker{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted2);margin-bottom:2px;}
 .stock-chip .s-name{font-size:9px;color:var(--muted);}
 .stock-chip .s-price{font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:700;color:var(--text);margin-top:2px;}
@@ -434,7 +434,8 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans KR',sans-seri
 .legend-health{width:10px;height:10px;border-radius:2px;background:#0a2010;border:1px solid #16a34a;flex-shrink:0;}
 
 /* ── 주가 매입 정보 ── */
-.s-purchase{font-size:9px;margin-top:4px;padding-top:4px;border-top:1px solid var(--border);}
+.s-purchase{font-size:9px;margin-top:4px;padding-top:4px;border-top:1px solid var(--border);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}
+.s-purchase .s-buy-info{display:inline;overflow:hidden;text-overflow:ellipsis;}
 .s-buy-info{color:var(--muted);display:block;margin-bottom:2px;font-family:'JetBrains Mono',monospace;}
 .s-profit{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:10px;}
 .s-edit-btn{background:none;border:none;color:var(--muted);font-size:10px;cursor:pointer;padding:0 2px;-webkit-tap-highlight-color:transparent;margin-left:4px;}

@@ -37,7 +37,6 @@ class MonthWidget : AppWidgetProvider() {
             val month = now.get(Calendar.MONTH)
             views.setTextViewText(R.id.month_label, "${year}년 ${month + 1}월")
 
-            // Show loading with empty cells
             mgr.updateAppWidget(widgetId, views)
 
             thread {
@@ -51,12 +50,12 @@ class MonthWidget : AppWidgetProvider() {
                             v.setOnClickPendingIntent(R.id.widget_root, pendingOpen)
                             v.setTextViewText(R.id.month_label, "${year}년 ${month + 1}월")
 
-                            val firstDay = Calendar.getInstance().apply { set(year, month, 1) }
+                            // Use GregorianCalendar for precise first-day-of-week
+                            val firstDay = GregorianCalendar(year, month, 1)
                             val startDow = firstDay.get(Calendar.DAY_OF_WEEK) - 1 // 0=Sun
                             val daysInMonth = firstDay.getActualMaximum(Calendar.DAY_OF_MONTH)
                             val todayDom = now.get(Calendar.DAY_OF_MONTH)
 
-                            // All 42 cells: cal_d0 through cal_d41
                             for (i in 0..41) {
                                 val dayNum = i - startDow + 1
                                 val cellId = ctx.resources.getIdentifier("cal_d$i", "id", ctx.packageName)
@@ -70,21 +69,29 @@ class MonthWidget : AppWidgetProvider() {
                                     val active = WidgetUtils.hasActivity(dayData)
                                     val isToday = dayNum == todayDom
 
+                                    // Check calendar events
+                                    val dayCal = GregorianCalendar(year, month, dayNum)
+                                    val hasEvent = WidgetUtils.hasEventOnDate(events, dayCal)
+
                                     val col = i % 7 // 0=Sun, 6=Sat
 
                                     // Background
                                     if (isToday) {
                                         v.setInt(cellId, "setBackgroundResource", R.drawable.cal_today_bg)
+                                    } else if (hasEvent) {
+                                        v.setInt(cellId, "setBackgroundResource", R.drawable.cal_day_bg)
                                     } else {
                                         v.setInt(cellId, "setBackgroundResource", 0)
                                     }
 
-                                    // Text color
+                                    // Text color: activity > event > day-of-week default
                                     val textColor = when {
                                         isToday -> WidgetUtils.COLOR_YELLOW
+                                        active && hasEvent -> 0xFF80FFB0.toInt() // green+event
                                         active -> WidgetUtils.COLOR_GREEN
-                                        col == 0 -> WidgetUtils.COLOR_RED    // Sunday
-                                        col == 6 -> WidgetUtils.COLOR_BLUE   // Saturday
+                                        hasEvent -> WidgetUtils.COLOR_BLUE
+                                        col == 0 -> WidgetUtils.COLOR_RED
+                                        col == 6 -> WidgetUtils.COLOR_BLUE
                                         else -> WidgetUtils.COLOR_GRAY
                                     }
                                     v.setTextColor(cellId, textColor)

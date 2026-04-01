@@ -12,8 +12,7 @@ import {
   getFinPlans, saveFinPlan, deleteFinPlan,
   fetchExchangeRate, fetchFearGreed,
 } from './data.js';
-// Yahoo Finance Spark API (corsproxy.io CORS 프록시, 키 불필요)
-const _YAHOO_SPARK = 'https://query1.finance.yahoo.com/v7/finance/spark';
+// Yahoo Finance Chart API (corsproxy.io CORS 프록시, 키 불필요)
 const _CORS_PROXIES = [
   url => 'https://corsproxy.io/?' + encodeURIComponent(url),
   url => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url),
@@ -22,8 +21,35 @@ const _QUOTE_CACHE_KEY = 'fin_quotes';
 const _QUOTE_CACHE_TIME = 'fin_quotes_time';
 const _QUOTE_CACHE_MIN = 10; // 10분 캐시
 
+function _calcRSI(closes, period = 14) {
+  if (closes.length < period + 1) return null;
+  let gains = 0, losses = 0;
+  for (let i = 1; i <= period; i++) {
+    const diff = closes[i] - closes[i - 1];
+    if (diff >= 0) gains += diff; else losses -= diff;
+  }
+  let avgGain = gains / period, avgLoss = losses / period;
+  for (let i = period + 1; i < closes.length; i++) {
+    const diff = closes[i] - closes[i - 1];
+    avgGain = (avgGain * (period - 1) + Math.max(diff, 0)) / period;
+    avgLoss = (avgLoss * (period - 1) + Math.max(-diff, 0)) / period;
+  }
+  if (avgLoss === 0) return 100;
+  return parseFloat((100 - 100 / (1 + avgGain / avgLoss)).toFixed(1));
+}
+
+async function _proxyFetch(url) {
+  for (const proxy of _CORS_PROXIES) {
+    try {
+      const res = await fetch(proxy(url));
+      if (!res.ok) continue;
+      return await res.json();
+    } catch { continue; }
+  }
+  throw new Error('all proxies failed');
+}
+
 async function _fetchAllQuotes(symbols) {
-  // 캐시 확인
   const now = Date.now();
   const lastTime = parseInt(localStorage.getItem(_QUOTE_CACHE_TIME) || '0');
   if ((now - lastTime) < _QUOTE_CACHE_MIN * 60000) {
@@ -33,34 +59,28 @@ async function _fetchAllQuotes(symbols) {
     } catch {}
   }
 
-  const yahooUrl = `${_YAHOO_SPARK}?symbols=${symbols.join(',')}&range=2d&interval=1d`;
-
-  // 여러 프록시 순차 시도 (fallback)
-  let data = null;
-  for (const proxy of _CORS_PROXIES) {
-    try {
-      const res = await fetch(proxy(yahooUrl));
-      if (!res.ok) continue;
-      data = await res.json();
-      if (data?.spark?.result) break;
-    } catch { continue; }
-  }
-  if (!data?.spark?.result) throw new Error('all proxies failed');
-
   const result = {};
-  for (const item of data.spark.result) {
-    const sym = item.symbol;
-    const meta = item.response?.[0]?.meta;
-    if (!meta?.regularMarketPrice) continue;
+  // 개별 chart API 호출 (시세 + RSI 동시 획득)
+  for (const sym of symbols) {
+    try {
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${sym}?range=1mo&interval=1d`;
+      const data = await _proxyFetch(url);
+      const item = data?.chart?.result?.[0];
+      if (!item?.meta?.regularMarketPrice) continue;
 
-    const price = meta.regularMarketPrice;
-    const prevClose = meta.chartPreviousClose || meta.previousClose || price;
-    const change = prevClose > 0 ? ((price - prevClose) / prevClose * 100) : 0;
+      const meta = item.meta;
+      const price = meta.regularMarketPrice;
+      const prevClose = meta.chartPreviousClose || meta.previousClose || price;
+      const change = prevClose > 0 ? ((price - prevClose) / prevClose * 100) : 0;
+      const closes = item.indicators?.quote?.[0]?.close?.filter(c => c != null) || [];
+      const rsi = _calcRSI(closes);
 
-    result[sym] = { price, change: parseFloat(change.toFixed(2)) };
+      result[sym] = { price, change: parseFloat(change.toFixed(2)), rsi };
+    } catch (e) {
+      console.warn(`[finance] ${sym} fetch failed:`, e.message);
+    }
   }
 
-  // 캐시 저장
   localStorage.setItem(_QUOTE_CACHE_KEY, JSON.stringify(result));
   localStorage.setItem(_QUOTE_CACHE_TIME, String(now));
   return result;
@@ -278,8 +298,11 @@ function _renderMarketSection() {
       const price = q ? q.price.toFixed(2) : '-';
       const chg = q ? q.change : 0;
       const cls = chg > 0 ? 'up' : chg < 0 ? 'down' : '';
-      return `<div class="fin-market-chip" style="min-width:80px"><div class="label">${t.sym}</div><div class="value" style="font-size:12px">$${price}</div><div class="change ${cls}" style="font-size:10px">${chg > 0 ? '+' : ''}${chg.toFixed(2)}%</div></div>`;
-    }).join('')}</div>`;
+      const rsi = q?.rsi;
+      const rsiColor = rsi != null ? (rsi >= 70 ? '#ef4444' : rsi <= 30 ? '#10b981' : 'var(--muted2)') : 'var(--muted)';
+      return `<div class="fin-market-chip" style="min-width:80px"><div class="label">${t.sym}</div><div class="value" style="font-size:12px">$${price}</div><div class="change ${cls}" style="font-size:10px">${chg > 0 ? '+' : ''}${chg.toFixed(2)}%</div><div style="font-size:9px;margin-top:2px;color:${rsiColor}">RSI ${rsi != null ? rsi : '--'}</div></div>`;
+    }).join('')}</div>
+    <div style="font-size:9px;color:var(--muted);text-align:right;margin-top:4px">Yahoo Finance · ${new Date().toLocaleString('ko-KR', { month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' })}</div>`;
   }
 }
 

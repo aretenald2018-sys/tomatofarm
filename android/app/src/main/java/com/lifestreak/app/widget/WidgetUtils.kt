@@ -14,6 +14,7 @@ import java.util.*
 object WidgetUtils {
 
     const val PROJECT_ID = "exercise-management"
+    const val API_KEY = "AIzaSyCk2czvJ8DRautrUput8TLjdrArpQm7BBk"
     const val BASE_URL =
         "https://firestore.googleapis.com/v1/projects/$PROJECT_ID/databases/(default)/documents"
 
@@ -66,7 +67,7 @@ object WidgetUtils {
     fun fetchWorkouts(): Map<String, JSONObject> {
         val result = mutableMapOf<String, JSONObject>()
         try {
-            val url = URL("$BASE_URL/workouts?pageSize=400")
+            val url = URL("$BASE_URL/workouts?pageSize=400&key=$API_KEY")
             val conn = url.openConnection() as HttpURLConnection
             conn.requestMethod = "GET"
             conn.connectTimeout = 10000
@@ -94,7 +95,7 @@ object WidgetUtils {
     fun fetchCalEvents(): List<JSONObject> {
         val result = mutableListOf<JSONObject>()
         try {
-            val url = URL("$BASE_URL/cal_events?pageSize=200")
+            val url = URL("$BASE_URL/cal_events?pageSize=200&key=$API_KEY")
             val conn = url.openConnection() as HttpURLConnection
             conn.requestMethod = "GET"
             conn.connectTimeout = 10000
@@ -136,18 +137,17 @@ object WidgetUtils {
     // If today also meets condition, add 1.
     data class StreakResult(val count: Int, val todayDone: Boolean)
 
+    // 웹 앱과 동일한 스트릭 계산: 오늘부터 역순으로 연속 일수
     fun calcStreak(
         workouts: Map<String, JSONObject>,
         now: Calendar,
         condition: (JSONObject) -> Boolean
     ): StreakResult {
         val todayKey = dateKey(now)
-        val todayData = workouts[todayKey]
-        val todayDone = todayData?.let { condition(it) } ?: false
+        val todayDone = workouts[todayKey]?.let { condition(it) } ?: false
 
         var streak = 0
         val cal = now.clone() as Calendar
-        cal.add(Calendar.DAY_OF_MONTH, -1) // start from yesterday
 
         for (i in 0..365) {
             val key = dateKey(cal)
@@ -161,8 +161,7 @@ object WidgetUtils {
             cal.add(Calendar.DAY_OF_MONTH, -1)
         }
 
-        val total = if (todayDone) streak + 1 else streak
-        return StreakResult(total, todayDone)
+        return StreakResult(streak, todayDone)
     }
 
     // ── Open-app PendingIntent ──
