@@ -8,12 +8,8 @@ export const MODAL_HTML = `
         <div class="ex-editor-label">Anthropic API 키 (Claude AI)</div>
         <input class="ex-editor-input" id="cfg-anthropic" type="password" placeholder="sk-ant-api03-..." autocomplete="off">
       </div>
-      <div>
-        <div class="ex-editor-label">Alpha Vantage API 키 (주식 데이터)</div>
-        <input class="ex-editor-input" id="cfg-alphavantage" type="password" placeholder="XXXXXXXXXXXXXXXX" autocomplete="off">
-      </div>
       <div style="font-size:11px;color:var(--muted);line-height:1.6;padding:8px;background:var(--surface2);border-radius:8px;border:1px solid var(--border)">
-        키 정보는 현재 기기의 브라우저에만 암호화되어 저장됩니다.<br>서버나 외부로 노출되지 않으니 안심하세요.
+        키 정보는 현재 기기의 브라우저에만 저장됩니다.<br>주식 데이터는 Yahoo Finance에서 자동 제공 (키 불필요).
       </div>
       <div class="ex-editor-actions">
         <button class="ex-editor-cancel" onclick="closeSettingsModal()">취소</button>

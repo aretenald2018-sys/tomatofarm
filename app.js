@@ -190,6 +190,141 @@ function _initTabDrag() {
   // Touch 드래그 (간단한 long-press 재배치는 생략, 마우스 기반으로 충분)
 }
 
+// ── 모바일 스와이프 탭 전환 (슬라이드 애니메이션) ─────────────────
+function _initSwipeNavigation() {
+  let startX = 0, startY = 0, startTime = 0;
+  let tracking = false, swiping = false;
+  let curPanel = null, nextPanel = null, swipeDir = 0;
+  const W = () => window.innerWidth;
+
+  function getSwipeableTabs() {
+    return [...document.querySelectorAll('#tab-nav .tab-btn[data-tab]')]
+      .map(b => b.dataset.tab)
+      .filter(t => document.getElementById('tab-' + t));
+  }
+
+  function getNextTab(dir) {
+    const tabs = getSwipeableTabs();
+    const idx = tabs.indexOf(_currentTab);
+    if (idx === -1) return null;
+    const ni = idx + dir;
+    return (ni >= 0 && ni < tabs.length) ? tabs[ni] : null;
+  }
+
+  document.body.addEventListener('touchstart', e => {
+    if (document.querySelector('.modal.open')) return;
+    const t = e.target;
+    if (t.closest('.tab-nav') || t.closest('input[type="range"]') ||
+        t.closest('canvas') || t.closest('textarea') ||
+        t.closest('.dash-board') || t.closest('.stock-panel') ||
+        t.closest('.grid-wrap') || t.closest('.loa-header') ||
+        t.closest('.loa-matrix-wrap')) return;
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    startTime = Date.now();
+    tracking = true;
+    swiping = false;
+    curPanel = null;
+    nextPanel = null;
+    swipeDir = 0;
+  }, { passive: true });
+
+  document.body.addEventListener('touchmove', e => {
+    if (!tracking) return;
+    const cx = e.touches[0].clientX;
+    const cy = e.touches[0].clientY;
+    const dx = cx - startX;
+    const dy = cy - startY;
+
+    // 아직 방향 미결정
+    if (!swiping) {
+      if (Math.abs(dy) > Math.abs(dx) * 0.8 && Math.abs(dy) > 15) {
+        tracking = false; return; // 수직 스크롤 → 포기
+      }
+      if (Math.abs(dx) > 20 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+        swiping = true;
+        swipeDir = dx < 0 ? 1 : -1; // 1=다음, -1=이전
+        const nextTab = getNextTab(swipeDir);
+        if (!nextTab) { tracking = false; return; } // 끝이면 포기
+
+        curPanel = document.getElementById('tab-' + _currentTab);
+        nextPanel = document.getElementById('tab-' + nextTab);
+
+        // 다음 패널을 화면 밖에 준비
+        nextPanel.style.transition = 'none';
+        nextPanel.style.transform = `translateX(${swipeDir * 100}%)`;
+        nextPanel.style.display = 'block';
+        nextPanel.style.position = 'absolute';
+        nextPanel.style.top = curPanel.offsetTop + 'px';
+        nextPanel.style.left = '0';
+        nextPanel.style.right = '0';
+        curPanel.style.transition = 'none';
+      }
+      return;
+    }
+
+    if (!curPanel || !nextPanel) return;
+
+    // 손가락 따라 패널 이동
+    const pct = (dx / W()) * 100;
+    curPanel.style.transform = `translateX(${pct}%)`;
+    nextPanel.style.transform = `translateX(${swipeDir * 100 + pct}%)`;
+  }, { passive: true });
+
+  document.body.addEventListener('touchend', e => {
+    if (!tracking) return;
+    tracking = false;
+    if (!swiping || !curPanel || !nextPanel) {
+      _cleanupSwipe();
+      return;
+    }
+
+    const endX = e.changedTouches[0].clientX;
+    const dx = endX - startX;
+    const elapsed = Math.max(Date.now() - startTime, 1);
+    const velocity = Math.abs(dx) / elapsed;
+    const ratio = Math.abs(dx) / W();
+
+    // 전환 판정: 30% 이상 이동 또는 빠른 플릭
+    const doSwitch = (ratio > 0.3 || (velocity > 0.4 && Math.abs(dx) > 40))
+                     && (dx < 0 ? swipeDir === 1 : swipeDir === -1);
+
+    const duration = Math.max(120, Math.min(300, (1 - ratio) * 300));
+
+    if (doSwitch) {
+      // 전환 완료 애니메이션
+      curPanel.style.transition = `transform ${duration}ms ease-out`;
+      nextPanel.style.transition = `transform ${duration}ms ease-out`;
+      curPanel.style.transform = `translateX(${-swipeDir * 100}%)`;
+      nextPanel.style.transform = 'translateX(0)';
+
+      setTimeout(() => {
+        const nextTab = getNextTab(swipeDir);
+        // 깨끗하게 정리 후 switchTab
+        curPanel.style.cssText = '';
+        nextPanel.style.cssText = '';
+        if (nextTab) switchTab(nextTab);
+      }, duration + 10);
+    } else {
+      // 원위치 복귀 애니메이션
+      curPanel.style.transition = `transform ${duration}ms ease-out`;
+      nextPanel.style.transition = `transform ${duration}ms ease-out`;
+      curPanel.style.transform = 'translateX(0)';
+      nextPanel.style.transform = `translateX(${swipeDir * 100}%)`;
+
+      setTimeout(() => _cleanupSwipe(), duration + 10);
+    }
+  }, { passive: true });
+
+  function _cleanupSwipe() {
+    if (curPanel) curPanel.style.cssText = '';
+    if (nextPanel) { nextPanel.style.cssText = ''; nextPanel.classList.remove('active'); }
+    curPanel = null;
+    nextPanel = null;
+    swiping = false;
+  }
+}
+
 function _applyTabOrder(order) {
   const nav = document.getElementById('tab-nav');
   if (!nav || !order?.length) return;
@@ -382,8 +517,7 @@ function runExportCSV(period) {
 
 // ── 설정 모달 ────────────────────────────────────────────────────
 function openSettingsModal() {
-  document.getElementById('cfg-anthropic').value    = localStorage.getItem('cfg_anthropic')    || '';
-  document.getElementById('cfg-alphavantage').value = localStorage.getItem('cfg_alphavantage') || '';
+  document.getElementById('cfg-anthropic').value = localStorage.getItem('cfg_anthropic') || '';
   _renderNutritionDBList();
   document.getElementById('settings-modal').classList.add('open');
 }
@@ -416,13 +550,11 @@ window._quickDeleteNutritionItem = _quickDeleteNutritionItem;
 
 function closeSettingsModal(e) { _closeModal('settings-modal', e); }
 function saveSettings() {
-  const anthropic    = document.getElementById('cfg-anthropic').value.trim();
-  const alphavantage = document.getElementById('cfg-alphavantage').value.trim();
-  if (anthropic)    localStorage.setItem('cfg_anthropic',    anthropic);
-  if (alphavantage) localStorage.setItem('cfg_alphavantage', alphavantage);
+  const anthropic = document.getElementById('cfg-anthropic').value.trim();
+  if (anthropic) localStorage.setItem('cfg_anthropic', anthropic);
 
   document.getElementById('settings-modal').classList.remove('open');
-  if (alphavantage) loadStocks();
+  loadStocks();
 }
 
 // ── 다이어트 플랜 모달 ────────────────────────────────────────────
@@ -1054,6 +1186,7 @@ async function init() {
     await loadAll();
     _applyTabOrder(getTabOrder());
     _initTabDrag();
+    _initSwipeNavigation();
     renderHome();
     renderCalendar();
     loadWorkoutDate(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());

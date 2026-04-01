@@ -12,16 +12,58 @@ import {
   getFinPlans, saveFinPlan, deleteFinPlan,
   fetchExchangeRate, fetchFearGreed,
 } from './data.js';
-// Alpha Vantage 직접 호출
-const _AV_BASE = 'https://www.alphavantage.co/query';
-async function fetchQuote(sym) {
-  if (!CONFIG.ALPHAVANTAGE_KEY) throw new Error('no key');
-  const res = await fetch(`${_AV_BASE}?function=GLOBAL_QUOTE&symbol=${sym}&apikey=${CONFIG.ALPHAVANTAGE_KEY}`);
-  const data = await res.json();
-  if (data['Information']) throw new Error('rate limit');
-  const q = data['Global Quote'];
-  if (!q?.['05. price']) throw new Error('invalid');
-  return { price: parseFloat(q['05. price']), change: parseFloat(q['10. change percent']?.replace('%', '') || '0') };
+// Yahoo Finance Spark API (corsproxy.io CORS 프록시, 키 불필요)
+const _YAHOO_SPARK = 'https://query1.finance.yahoo.com/v7/finance/spark';
+const _CORS_PROXIES = [
+  url => 'https://corsproxy.io/?' + encodeURIComponent(url),
+  url => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url),
+];
+const _QUOTE_CACHE_KEY = 'fin_quotes';
+const _QUOTE_CACHE_TIME = 'fin_quotes_time';
+const _QUOTE_CACHE_MIN = 10; // 10분 캐시
+
+async function _fetchAllQuotes(symbols) {
+  // 캐시 확인
+  const now = Date.now();
+  const lastTime = parseInt(localStorage.getItem(_QUOTE_CACHE_TIME) || '0');
+  if ((now - lastTime) < _QUOTE_CACHE_MIN * 60000) {
+    try {
+      const cached = JSON.parse(localStorage.getItem(_QUOTE_CACHE_KEY));
+      if (cached && Object.keys(cached).length > 0) return cached;
+    } catch {}
+  }
+
+  const yahooUrl = `${_YAHOO_SPARK}?symbols=${symbols.join(',')}&range=2d&interval=1d`;
+
+  // 여러 프록시 순차 시도 (fallback)
+  let data = null;
+  for (const proxy of _CORS_PROXIES) {
+    try {
+      const res = await fetch(proxy(yahooUrl));
+      if (!res.ok) continue;
+      data = await res.json();
+      if (data?.spark?.result) break;
+    } catch { continue; }
+  }
+  if (!data?.spark?.result) throw new Error('all proxies failed');
+
+  const result = {};
+  for (const item of data.spark.result) {
+    const sym = item.symbol;
+    const meta = item.response?.[0]?.meta;
+    if (!meta?.regularMarketPrice) continue;
+
+    const price = meta.regularMarketPrice;
+    const prevClose = meta.chartPreviousClose || meta.previousClose || price;
+    const change = prevClose > 0 ? ((price - prevClose) / prevClose * 100) : 0;
+
+    result[sym] = { price, change: parseFloat(change.toFixed(2)) };
+  }
+
+  // 캐시 저장
+  localStorage.setItem(_QUOTE_CACHE_KEY, JSON.stringify(result));
+  localStorage.setItem(_QUOTE_CACHE_TIME, String(now));
+  return result;
 }
 import {
   compoundProjection, calcCAGR, calcNetWorth, calcDebtRatio,
@@ -183,16 +225,20 @@ export function toggleFlowChart() {
 // 시장 데이터
 // ================================================================
 async function _loadMarketData() {
-  const tickers = ['SPY', 'QQQ', ...CONFIG.TICKERS.map(t => t.sym)];
-  for (const sym of tickers) {
-    try { _quotesMap[sym] = await fetchQuote(sym); } catch {}
+  const symbols = ['SPY', 'QQQ', ...CONFIG.TICKERS.map(t => t.sym)];
+  try {
+    const quotes = await _fetchAllQuotes(symbols);
+    Object.assign(_quotesMap, quotes);
+    console.log(`[finance] ${Object.keys(quotes).length}개 시세 로드 완료`);
+  } catch (e) {
+    console.warn('[finance] 시세 로드 실패:', e.message);
   }
   try { _fngData = await fetchFearGreed(); } catch {}
 }
 
 export async function refreshFinMarketData() {
-  localStorage.removeItem('stock_data');
-  localStorage.removeItem('stock_time');
+  localStorage.removeItem(_QUOTE_CACHE_KEY);
+  localStorage.removeItem(_QUOTE_CACHE_TIME);
   localStorage.removeItem('fng_data');
   localStorage.removeItem('fng_time');
   _quotesMap = {};

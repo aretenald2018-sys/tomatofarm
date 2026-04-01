@@ -1,5 +1,5 @@
 // ================================================================
-// stocks.js — Alpha Vantage + RSI + 매입 정보
+// stocks.js — Yahoo Finance + RSI (API 키 불필요)
 // ================================================================
 
 import { CONFIG } from './config.js';
@@ -7,7 +7,11 @@ import { getStockPurchases } from './data.js';
 
 const CACHE_KEY      = 'stock_data';
 const CACHE_TIME_KEY = 'stock_time';
-const BASE           = 'https://www.alphavantage.co/query';
+
+const _CORS_PROXIES = [
+  url => 'https://corsproxy.io/?' + encodeURIComponent(url),
+  url => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url),
+];
 
 const delay = ms => new Promise(r => setTimeout(r, ms));
 
@@ -31,29 +35,39 @@ function calcRSI(closes, period = 14) {
   return parseFloat((100 - 100 / (1 + rs)).toFixed(1));
 }
 
-export async function fetchQuote(sym) {
-  const res  = await fetch(`${BASE}?function=GLOBAL_QUOTE&symbol=${sym}&apikey=${CONFIG.ALPHAVANTAGE_KEY}`);
-  const data = await res.json();
-  if (data['Information']) throw new Error('rate limit');
-  const q = data['Global Quote'];
-  if (!q?.['05. price']) throw new Error('invalid');
-  return {
-    price:  parseFloat(q['05. price']),
-    change: parseFloat(q['10. change percent']?.replace('%', '') || '0'),
-  };
+async function _proxyFetch(url) {
+  for (const proxy of _CORS_PROXIES) {
+    try {
+      const res = await fetch(proxy(url));
+      if (!res.ok) continue;
+      return await res.json();
+    } catch { continue; }
+  }
+  throw new Error('all proxies failed');
 }
 
-async function fetchRSI(sym, period = 14) {
-  const res  = await fetch(`${BASE}?function=TIME_SERIES_DAILY&symbol=${sym}&outputsize=compact&apikey=${CONFIG.ALPHAVANTAGE_KEY}`);
-  const data = await res.json();
-  if (data['Information']) throw new Error('rate limit');
-  const series = data['Time Series (Daily)'];
-  if (!series) return null;
-  const closes = Object.keys(series)
-    .sort()
-    .slice(-30)
-    .map(d => parseFloat(series[d]['4. close']));
-  return calcRSI(closes, period);
+/**
+ * Yahoo Finance chart API — 시세 + 일별종가(RSI용) 동시 조회
+ */
+export async function fetchQuote(sym) {
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${sym}?range=1mo&interval=1d`;
+  const data = await _proxyFetch(url);
+  const result = data?.chart?.result?.[0];
+  if (!result) throw new Error('invalid');
+
+  const meta = result.meta;
+  const price = meta.regularMarketPrice;
+  const prevClose = meta.chartPreviousClose || meta.previousClose || price;
+  const change = prevClose > 0 ? ((price - prevClose) / prevClose * 100) : 0;
+
+  const closes = result.indicators?.quote?.[0]?.close?.filter(c => c != null) || [];
+  const rsi = calcRSI(closes);
+
+  return {
+    price,
+    change: parseFloat(change.toFixed(2)),
+    rsi,
+  };
 }
 
 export async function loadStocks() {
@@ -65,8 +79,6 @@ export async function loadStocks() {
     if (cached) { renderStocks(JSON.parse(cached)); return; }
   }
 
-  if (!CONFIG.ALPHAVANTAGE_KEY) { _renderPlaceholder(); return; }
-
   _renderLoading();
 
   const results = CONFIG.TICKERS.map(t => ({ ...t, price:null, change:null, rsi:null }));
@@ -77,14 +89,10 @@ export async function loadStocks() {
       const quote = await fetchQuote(sym);
       results[i]  = { ...results[i], ...quote };
       renderStocks(results, true);
-      await delay(1000);
-      const rsi  = await fetchRSI(sym);
-      results[i] = { ...results[i], rsi };
-      renderStocks(results, true);
     } catch(e) {
       console.warn(`[stocks] ${sym}:`, e.message);
     }
-    if (i < CONFIG.TICKERS.length - 1) await delay(1000);
+    if (i < CONFIG.TICKERS.length - 1) await delay(300);
   }
 
   localStorage.setItem(CACHE_KEY, JSON.stringify(results));
@@ -102,32 +110,12 @@ function _renderLoading() {
     </div>`).join('');
 }
 
-function _renderPlaceholder() {
-  const purchases = getStockPurchases();
-  document.getElementById('stock-row').innerHTML = CONFIG.TICKERS.map(t => {
-    const p = purchases[t.sym];
-    const qtyStr = p?.qty ? `${p.qty}주 · ` : '';
-    const purchaseHtml = p
-      ? `<div class="s-purchase">${qtyStr}매입 $${p.price} / $${p.amount.toLocaleString()}<button class="s-edit-btn" onclick="openStockPurchaseModal('${t.sym}')">✏️</button></div>`
-      : `<button class="s-add-purchase-btn" onclick="openStockPurchaseModal('${t.sym}')">+ 매입 정보</button>`;
-    return `
-      <div class="stock-chip">
-        <div class="s-ticker">${t.sym}</div><div class="s-name">${t.name}</div>
-        <div class="s-price" style="color:var(--muted)">--.--</div>
-        <div class="s-change change-flat">⚙️ 키 설정 필요</div>
-        <div class="s-rsi">RSI <span class="rsi-val">--</span></div>
-        ${purchaseHtml}
-      </div>`;
-  }).join('');
-}
-
 export function renderStocks(data, partial = false) {
   const purchases = getStockPurchases();
   document.getElementById('stock-row').innerHTML = data.map(s => {
     const p = purchases[s.sym];
     let purchaseHtml = '';
     if (p) {
-      // 주 수: qty 직접 입력 우선, 없으면 금액/가격으로 계산
       const shares     = p.qty ? p.qty : (p.amount / p.price);
       const currentVal = s.price ? shares * s.price : null;
       const profit     = currentVal ? currentVal - p.amount : null;
@@ -168,6 +156,6 @@ export function renderStocks(data, partial = false) {
 
   if (!partial) {
     document.getElementById('stock-updated').textContent =
-      '업데이트: ' + new Date().toLocaleString('ko-KR', { month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' });
+      'Yahoo Finance · ' + new Date().toLocaleString('ko-KR', { month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' });
   }
 }

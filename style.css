@@ -20,7 +20,7 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans KR',sans-seri
 .tab-nav{position:sticky;top:0;z-index:200;background:var(--surface);border-bottom:1px solid var(--border);display:flex;}
 .tab-btn{flex:1;padding:13px 4px;background:none;border:none;border-bottom:2px solid transparent;color:var(--muted);font-family:'Noto Sans KR',sans-serif;font-size:12px;font-weight:500;cursor:pointer;transition:all .15s;-webkit-tap-highlight-color:transparent;}
 .tab-btn.active{color:var(--text);border-bottom-color:var(--accent);}
-.tab-panel{display:none;}.tab-panel.active{display:block;}
+.tab-panel{display:none;position:relative;will-change:transform;overflow-x:hidden;}.tab-panel.active{display:block;}
 
 /* ── 통합 대시보드 (한 행) ── */
 .dash-board{display:flex;gap:8px;padding:10px 16px;background:var(--bg);border-bottom:1px solid var(--border);overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;}

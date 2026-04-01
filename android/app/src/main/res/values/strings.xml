@@ -1,0 +1,11 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Life Streak</string>
+    <string name="title_activity_main">Life Streak</string>
+    <string name="package_name">com.lifestreak.app</string>
+    <string name="custom_url_scheme">com.lifestreak.app</string>
+    <string name="widget_description">오늘의 스트릭, 주간/월간 캘린더</string>
+    <string name="streak_widget_desc">스트릭 요약 (운동/CF/식단/금주)</string>
+    <string name="week_widget_desc">이번 주 캘린더 (7일 활동)</string>
+    <string name="month_widget_desc">월간 캘린더 (활동 표시)</string>
+</resources>
