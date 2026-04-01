@@ -17,7 +17,7 @@ import { loadAll, saveGoal, deleteGoal, getGoals,
          imageToBase64, getMovieData, saveMovieData, getAllMovieMonths,
          getCookingRecords } from './data.js';
 import { loadCSVDatabase, searchCSVFood } from './fatsecret-api.js';
-import { loadStocks }                             from './stocks.js';
+import { loadStocks }                             from './stocks.js?v=20260401';
 import { getDietRec, getWorkoutRec,
          analyzeGoalFeasibility }                 from './ai.js';
 import { renderCalendar, changeYear }             from './render-calendar.js';
