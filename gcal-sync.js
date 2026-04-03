@@ -170,14 +170,31 @@ export function isGCalConnected() {
  * 앱 이벤트 → Google Calendar 이벤트 변환
  */
 function toGCalEvent(ev) {
+  const time = parseTimeFromTitle(ev.title);
   const gcalEvent = {
     summary: ev.title,
-    start: { date: ev.start },
-    end: { date: _addOneDay(ev.end) }, // Google Calendar end date is exclusive
     extendedProperties: {
       private: { appEventId: ev.id }
     }
   };
+
+  if (time) {
+    // 시간이 있는 이벤트 → dateTime 형식 + 알림
+    const hh = String(time.hour).padStart(2, '0');
+    const mm = String(time.minute).padStart(2, '0');
+    const endHour = time.hour + 1; // 기본 1시간 일정
+    const ehh = String(endHour).padStart(2, '0');
+    gcalEvent.start = { dateTime: `${ev.start}T${hh}:${mm}:00`, timeZone: 'Asia/Seoul' };
+    gcalEvent.end   = { dateTime: `${ev.end}T${ehh}:${mm}:00`, timeZone: 'Asia/Seoul' };
+    gcalEvent.reminders = {
+      useDefault: false,
+      overrides: _calcReminders(ev.start, time.hour, time.minute),
+    };
+  } else {
+    // 종일 이벤트
+    gcalEvent.start = { date: ev.start };
+    gcalEvent.end   = { date: _addOneDay(ev.end) };
+  }
 
   const colorId = COLOR_TO_GCAL[ev.color];
   if (colorId) gcalEvent.colorId = colorId;
@@ -192,12 +209,12 @@ function fromGCalEvent(gcalEv) {
   const start = gcalEv.start?.date || gcalEv.start?.dateTime?.substring(0, 10);
   let end = gcalEv.end?.date || gcalEv.end?.dateTime?.substring(0, 10);
 
-  // Google Calendar end date is exclusive, subtract one day
+  // Google Calendar end date is exclusive for all-day events, subtract one day
   if (gcalEv.end?.date) {
     end = _subtractOneDay(end);
   }
 
-  return {
+  const ev = {
     id: gcalEv.extendedProperties?.private?.appEventId || `gcal_${gcalEv.id}`,
     gcalId: gcalEv.id,
     title: gcalEv.summary || '(제목 없음)',
@@ -205,6 +222,16 @@ function fromGCalEvent(gcalEv) {
     end,
     color: GCAL_TO_COLOR[gcalEv.colorId] || '#3b82f6',
   };
+
+  // 시간 정보 보존
+  if (gcalEv.start?.dateTime) {
+    ev.startTime = gcalEv.start.dateTime.substring(11, 16); // "HH:MM"
+  }
+  if (gcalEv.end?.dateTime) {
+    ev.endTime = gcalEv.end.dateTime.substring(11, 16);
+  }
+
+  return ev;
 }
 
 /**
@@ -277,6 +304,88 @@ export async function fetchGCalEvents(timeMin, timeMax) {
     console.warn('[GCal] 이벤트 가져오기 실패:', e);
     return [];
   }
+}
+
+// ── 시간 파싱 (한글/숫자 → 24시간) ─────────────────────────────
+
+const KR_NUM = { '한':1,'두':2,'세':3,'네':4,'다섯':5,'여섯':6,'일곱':7,'여덟':8,'아홉':9,'열':10,
+                 '열한':11,'열하나':11,'열두':12,'열둘':12 };
+
+/**
+ * 제목에서 시간 정보 추출
+ * "성빈 다섯시 반" → { hour:17, minute:30 }
+ * "3시" → { hour:15, minute:0 }
+ * "7시 30분" → { hour:19, minute:30 }
+ * 시간 없으면 null 반환
+ */
+export function parseTimeFromTitle(title) {
+  if (!title) return null;
+
+  let hour = null, minute = 0;
+
+  // 패턴1: 숫자시 (예: 3시, 12시, 3시반, 3시 30분)
+  const numMatch = title.match(/(\d{1,2})\s*시\s*(반|(\d{1,2})\s*분)?/);
+  if (numMatch) {
+    hour = parseInt(numMatch[1]);
+    if (numMatch[2] === '반') minute = 30;
+    else if (numMatch[3]) minute = parseInt(numMatch[3]);
+  }
+
+  // 패턴2: 한글시 (예: 다섯시, 세시 반)
+  if (hour === null) {
+    for (const [kr, num] of Object.entries(KR_NUM)) {
+      const re = new RegExp(`${kr}\\s*시\\s*(반|(\\d{1,2})\\s*분)?`);
+      const m = title.match(re);
+      if (m) {
+        hour = num;
+        if (m[1] === '반') minute = 30;
+        else if (m[2]) minute = parseInt(m[2]);
+        break;
+      }
+    }
+  }
+
+  // 패턴3: HH:MM 형식 (예: 17:30, 5:00)
+  if (hour === null) {
+    const colonMatch = title.match(/(\d{1,2}):(\d{2})/);
+    if (colonMatch) {
+      hour = parseInt(colonMatch[1]);
+      minute = parseInt(colonMatch[2]);
+      // HH:MM은 24시간 형식으로 간주, 변환 불필요
+      if (hour >= 0 && hour <= 23) return { hour, minute };
+    }
+  }
+
+  if (hour === null) return null;
+
+  // 항상 오후 처리 (새벽 약속 없음)
+  // 1~11시 → +12 (오후), 12시 → 그대로, 13~23시 → 그대로
+  if (hour >= 1 && hour <= 11) hour += 12;
+
+  return { hour, minute };
+}
+
+/**
+ * 시간이 있는 이벤트의 알림 분 계산
+ * - 오전 8시 알림
+ * - 1시간 전 알림
+ */
+function _calcReminders(dateStr, hour, minute) {
+  // 이벤트 시각 (분 단위, 자정 기준)
+  const eventMin = hour * 60 + minute;
+  const morning8 = 8 * 60; // 오전 8시 = 480분
+
+  // 이벤트까지 남은 분 (오전 8시 기준)
+  const minFrom8 = eventMin - morning8;
+
+  const reminders = [{ method: 'popup', minutes: 60 }]; // 1시간 전
+
+  if (minFrom8 > 60) {
+    // 오전 8시 알림 (이벤트 시간 - 8시 = 분 차이)
+    reminders.push({ method: 'popup', minutes: minFrom8 });
+  }
+
+  return reminders;
 }
 
 // ── 유틸 ────────────────────────────────────────────────────────
