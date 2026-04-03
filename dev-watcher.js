@@ -67,13 +67,12 @@ onSnapshot(q, async (snap) => {
       status: 'processing',
     });
 
-    // Claude Code 실행 (--print 모드: 비대화형)
-    const prompt = `프로젝트 경로: ${PROJECT_DIR}
+    // Claude Code 실행
+    const prompt = `이 프로젝트는 "${PROJECT_DIR}"에 있는 Life Streak 대시보드 웹앱입니다.
+아래 사용자 지시사항대로 코드를 수정하고, 수정이 끝나면 git add, git commit, git push origin main까지 완료해주세요.
+마지막에 변경사항을 한국어로 간결하게 요약해주세요 (코드 블록 제외, 요약만).
 
-아래 지시사항을 처리하고, 완료되면 git commit & push까지 해주세요.
-처리 결과를 간결한 한국어 요약으로 알려주세요 (변경사항 요약만, 코드는 제외).
-
-지시사항:
+사용자 지시:
 ${task.instruction}`;
 
     const result = await runClaude(prompt);
@@ -102,15 +101,19 @@ ${task.instruction}`;
   }
 });
 
-// Claude Code 실행 (--print 모드)
+// Claude Code 실행 (파이프 모드: stdin으로 프롬프트 전달)
 function runClaude(prompt) {
   return new Promise((resolve, reject) => {
-    const child = spawn('claude', ['--print', '--dangerously-skip-permissions', prompt], {
+    const child = spawn('claude', ['--dangerously-skip-permissions'], {
       cwd: PROJECT_DIR,
       shell: true,
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: ['pipe', 'pipe', 'pipe'],
       timeout: 600000, // 10분 타임아웃
     });
+
+    // 프롬프트를 stdin으로 전달 후 닫기
+    child.stdin.write(prompt);
+    child.stdin.end();
 
     let stdout = '';
     let stderr = '';
