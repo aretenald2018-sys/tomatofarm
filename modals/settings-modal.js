@@ -15,6 +15,25 @@ export const MODAL_HTML = `
         <button class="ex-editor-cancel" onclick="closeSettingsModal()">취소</button>
         <button class="ex-editor-save"   onclick="saveSettings()">저장하기</button>
       </div>
+      <div style="border-top:1px solid var(--border);margin-top:16px;padding-top:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <span style="font-size:12px;font-weight:700;color:var(--muted2)">📅 Google Calendar 연동</span>
+          <span id="gcal-status" style="font-size:11px;font-weight:600;color:var(--muted)">미연결</span>
+        </div>
+        <div>
+          <div class="ex-editor-label">Google OAuth Client ID</div>
+          <input class="ex-editor-input" id="cfg-gcal-client-id" type="text" placeholder="xxxxx.apps.googleusercontent.com" autocomplete="off">
+        </div>
+        <div style="font-size:10px;color:var(--muted);line-height:1.5;padding:6px 8px;background:var(--surface2);border-radius:6px;margin-bottom:10px">
+          Google Cloud Console에서 OAuth 2.0 클라이언트 ID 생성<br>
+          승인된 JavaScript 출처에 앱 URL 추가 필요
+        </div>
+        <div style="display:flex;gap:8px">
+          <button id="gcal-connect-btn" onclick="connectGCal()" style="flex:1;padding:8px;border:none;border-radius:8px;background:#4285f4;color:#fff;font-size:12px;font-weight:600;cursor:pointer">Google 연결</button>
+          <button id="gcal-disconnect-btn" onclick="disconnectGCal()" style="flex:1;padding:8px;border:none;border-radius:8px;background:var(--surface2);color:var(--muted);font-size:12px;cursor:pointer;display:none">연결 해제</button>
+          <button id="gcal-sync-btn" onclick="syncGCalNow()" style="flex:1;padding:8px;border:none;border-radius:8px;background:#10b981;color:#fff;font-size:12px;font-weight:600;cursor:pointer;display:none">지금 동기화</button>
+        </div>
+      </div>
       <div id="pwa-install-section" style="border-top:1px solid var(--border);margin-top:16px;padding-top:14px;display:none">
         <button id="pwa-install-btn" onclick="installPWA()" style="width:100%;padding:12px;border:none;border-radius:10px;background:var(--accent);color:#fff;font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
           📲 앱 다운로드 (홈 화면에 추가)

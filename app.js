@@ -17,6 +17,9 @@ import { loadAll, saveGoal, deleteGoal, getGoals,
          imageToBase64, getMovieData, saveMovieData, getAllMovieMonths,
          getCookingRecords } from './data.js';
 import { loadCSVDatabase, searchCSVFood } from './fatsecret-api.js';
+import { connectGoogleCalendar, disconnectGoogleCalendar, isGCalConnected,
+         tryAutoConnect, syncCreateToGCal, syncUpdateToGCal, syncDeleteToGCal,
+         fetchGCalEvents } from './gcal-sync.js';
 import { loadStocks }                             from './stocks.js?v=20260401';
 import { getDietRec, getWorkoutRec,
          analyzeGoalFeasibility }                 from './ai.js';
@@ -90,6 +93,11 @@ async function initializeApp() {
   loadCSVDatabase(csvPath)
     .then(() => console.log('[app] CSV 데이터 백그라운드 로드 완료'))
     .catch(e => console.warn('[app] CSV 로드 실패:', e));
+
+  // Google Calendar 자동 재연결
+  tryAutoConnect().then(ok => {
+    if (ok) { console.log('[app] Google Calendar 자동 연결 성공'); syncGCalNow(); }
+  });
 }
 
 // ── 모달 유틸리티 ────────────────────────────────────────────────
@@ -476,11 +484,25 @@ async function saveCalEventFromModal() {
   if (!start || !end) { alert('기간을 입력해주세요.'); return; }
   if (end < start) { alert('종료일이 시작일보다 빠릅니다.'); return; }
 
+  const isNew = !_calEventId;
+  const existing = isNew ? null : getEvents().find(e => e.id === _calEventId);
   const ev = {
     id:    _calEventId || `ev_${Date.now()}`,
     title, start, end, color: _calEventColor,
+    gcalId: existing?.gcalId || null,
   };
   await saveEvent(ev);
+
+  // Google Calendar 동기화
+  if (isGCalConnected()) {
+    if (isNew || !ev.gcalId) {
+      const gcalId = await syncCreateToGCal(ev);
+      if (gcalId) { ev.gcalId = gcalId; await saveEvent(ev); }
+    } else {
+      await syncUpdateToGCal(ev);
+    }
+  }
+
   document.getElementById('cal-event-modal').classList.remove('open');
   renderMonthlyCalendar();
   renderCalendar();
@@ -489,8 +511,13 @@ async function saveCalEventFromModal() {
 async function deleteCalEventFromModal() {
   if (!_calEventId) return;
   if (!confirm('이 일정을 삭제할까요?')) return;
+  const ev = getEvents().find(e => e.id === _calEventId);
   const result = await deleteEvent(_calEventId);
   if (result.success) {
+    // Google Calendar에서도 삭제
+    if (isGCalConnected() && ev?.gcalId) {
+      await syncDeleteToGCal(ev.gcalId);
+    }
     document.getElementById('cal-event-modal').classList.remove('open');
     renderMonthlyCalendar();
     renderCalendar();
@@ -522,6 +549,8 @@ function runExportCSV(period) {
 // ── 설정 모달 ────────────────────────────────────────────────────
 function openSettingsModal() {
   document.getElementById('cfg-anthropic').value = localStorage.getItem('cfg_anthropic') || '';
+  document.getElementById('cfg-gcal-client-id').value = localStorage.getItem('cfg_gcal_client_id') || '';
+  _updateGCalStatus();
   _renderNutritionDBList();
   document.getElementById('settings-modal').classList.add('open');
 }
@@ -557,8 +586,98 @@ function saveSettings() {
   const anthropic = document.getElementById('cfg-anthropic').value.trim();
   if (anthropic) localStorage.setItem('cfg_anthropic', anthropic);
 
+  const gcalClientId = document.getElementById('cfg-gcal-client-id').value.trim();
+  if (gcalClientId) localStorage.setItem('cfg_gcal_client_id', gcalClientId);
+
   document.getElementById('settings-modal').classList.remove('open');
   loadStocks();
+}
+
+// ── Google Calendar 연동 ──────────────────────────────────────────
+function _updateGCalStatus() {
+  const statusEl = document.getElementById('gcal-status');
+  const connectBtn = document.getElementById('gcal-connect-btn');
+  const disconnectBtn = document.getElementById('gcal-disconnect-btn');
+  const syncBtn = document.getElementById('gcal-sync-btn');
+  if (!statusEl) return;
+
+  if (isGCalConnected()) {
+    statusEl.textContent = '연결됨';
+    statusEl.style.color = '#10b981';
+    connectBtn.style.display = 'none';
+    disconnectBtn.style.display = '';
+    syncBtn.style.display = '';
+  } else {
+    statusEl.textContent = '미연결';
+    statusEl.style.color = 'var(--muted)';
+    connectBtn.style.display = '';
+    disconnectBtn.style.display = 'none';
+    syncBtn.style.display = 'none';
+  }
+}
+
+async function connectGCal() {
+  const clientId = document.getElementById('cfg-gcal-client-id').value.trim();
+  if (!clientId) { alert('Google OAuth Client ID를 먼저 입력해주세요.'); return; }
+  localStorage.setItem('cfg_gcal_client_id', clientId);
+
+  const ok = await connectGoogleCalendar();
+  if (ok) {
+    _updateGCalStatus();
+    await syncGCalNow();
+  }
+}
+
+function disconnectGCal() {
+  disconnectGoogleCalendar();
+  _updateGCalStatus();
+}
+
+async function syncGCalNow() {
+  if (!isGCalConnected()) return;
+
+  const syncBtn = document.getElementById('gcal-sync-btn');
+  if (syncBtn) { syncBtn.textContent = '동기화 중...'; syncBtn.disabled = true; }
+
+  try {
+    // 1년 전 ~ 1년 후 범위로 동기화
+    const now = new Date();
+    const yearAgo = new Date(now); yearAgo.setFullYear(now.getFullYear() - 1);
+    const yearLater = new Date(now); yearLater.setFullYear(now.getFullYear() + 1);
+    const fmt = d => d.toISOString().substring(0, 10);
+
+    const gcalEvents = await fetchGCalEvents(fmt(yearAgo), fmt(yearLater));
+    const appEvents = getEvents();
+
+    // Google Calendar에만 있는 이벤트 → 앱에 추가
+    for (const ge of gcalEvents) {
+      const existing = appEvents.find(ae => ae.gcalId === ge.gcalId || ae.id === ge.id);
+      if (!existing) {
+        await saveEvent(ge);
+      } else {
+        // Google Calendar 쪽이 더 최신이면 업데이트
+        if (existing.title !== ge.title || existing.start !== ge.start || existing.end !== ge.end) {
+          await saveEvent({ ...existing, title: ge.title, start: ge.start, end: ge.end, color: ge.color, gcalId: ge.gcalId });
+        }
+      }
+    }
+
+    // 앱에만 있고 gcalId 없는 이벤트 → Google Calendar에 push
+    for (const ae of appEvents) {
+      if (!ae.gcalId) {
+        const gcalId = await syncCreateToGCal(ae);
+        if (gcalId) { ae.gcalId = gcalId; await saveEvent(ae); }
+      }
+    }
+
+    renderMonthlyCalendar();
+    renderCalendar();
+    console.log('[GCal] 동기화 완료');
+  } catch (e) {
+    console.error('[GCal] 동기화 오류:', e);
+  } finally {
+    if (syncBtn) { syncBtn.textContent = '지금 동기화'; syncBtn.disabled = false; }
+  }
 }
 
 // ── 다이어트 플랜 모달 ────────────────────────────────────────────
@@ -1378,6 +1497,9 @@ window.openSettingsModal        = openSettingsModal;
 window.closeSettingsModal       = closeSettingsModal;
 window.saveSettings             = saveSettings;
 window.installPWA               = installPWA;
+window.connectGCal              = connectGCal;
+window.disconnectGCal           = disconnectGCal;
+window.syncGCalNow              = syncGCalNow;
 // 다이어트 플랜
 window.openDietPlanModal        = openDietPlanModal;
 window.closeDietPlanModal       = closeDietPlanModal;
