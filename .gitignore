@@ -4,3 +4,6 @@ node_modules/
 .claude/
 dom-analysis-report.json
 network-analysis-report.json
+.dev-task.json
+.dev-result.json
+.dev-prompt-tmp.txt
