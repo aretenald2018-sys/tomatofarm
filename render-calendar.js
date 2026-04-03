@@ -279,9 +279,9 @@ function _scheduleRow(year, m, days) {
       const isRealEnd   = ev.end <= mEnd;
 
       const color = ev.color || '#f59e0b';
-      const viewMode = localStorage.getItem('event_view_mode') || 'bar';
+      const evMode = ev.displayMode || 'bar';
 
-      if (viewMode === 'arrow') {
+      if (evMode === 'arrow') {
         const arrow = document.createElement('div');
         arrow.className = 'schedule-event-arrow';
         arrow.style.cssText = [

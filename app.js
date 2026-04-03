@@ -440,15 +440,18 @@ async function deleteStockPurchaseFromModal() {
 // ── 캘린더 이벤트 모달 ───────────────────────────────────────────
 let _calEventId = null;
 let _calEventColor = '#f59e0b';
+let _calEventStyle = 'bar';
 
 function openCalEventModal(startDate, endDate, eventId) {
   _calEventId    = eventId || null;
   _calEventColor = '#f59e0b';
+  _calEventStyle = localStorage.getItem('event_view_mode') || 'bar'; // 신규 이벤트 기본값
 
   if (eventId) {
     const ev = getEvents().find(e => e.id === eventId);
     if (ev) {
       _calEventColor = ev.color || '#f59e0b';
+      _calEventStyle = ev.displayMode || 'bar';
       document.getElementById('cal-event-title').value = ev.title || '';
       document.getElementById('cal-event-start').value = ev.start || startDate;
       document.getElementById('cal-event-end').value   = ev.end   || endDate;
@@ -468,7 +471,7 @@ function openCalEventModal(startDate, endDate, eventId) {
     s.classList.toggle('selected', s.dataset.color === _calEventColor);
   });
   document.getElementById('cal-event-modal').classList.add('open');
-  _updateEventViewToggle();
+  _updateEventStyleBtns();
 }
 
 function closeCalEventModal(e) { _closeModal('cal-event-modal', e); }
@@ -493,6 +496,7 @@ async function saveCalEventFromModal() {
   const ev = {
     id:    _calEventId || `ev_${Date.now()}`,
     title, start, end, color: _calEventColor,
+    displayMode: _calEventStyle,
     gcalId: existing?.gcalId || null,
   };
   await saveEvent(ev);
@@ -555,18 +559,21 @@ function _updateEventViewToggle() {
   if (!btn) return;
   const mode = localStorage.getItem('event_view_mode') || 'bar';
   btn.textContent = mode === 'bar' ? '━ 바' : '→ 선';
-  // 모달 내 스타일 버튼도 업데이트
+}
+
+function _updateEventStyleBtns() {
   const barBtn = document.getElementById('evt-style-bar');
   const arrowBtn = document.getElementById('evt-style-arrow');
-  if (barBtn) barBtn.style.borderColor = mode === 'bar' ? 'var(--accent)' : 'var(--border)';
-  if (arrowBtn) arrowBtn.style.borderColor = mode === 'arrow' ? 'var(--accent)' : 'var(--border)';
+  if (barBtn) barBtn.style.borderColor = _calEventStyle === 'bar' ? 'var(--accent)' : 'var(--border)';
+  if (arrowBtn) arrowBtn.style.borderColor = _calEventStyle === 'arrow' ? 'var(--accent)' : 'var(--border)';
 }
 
 function setEventViewFromModal(mode) {
+  _calEventStyle = mode;
+  // 새 이벤트의 기본값도 업데이트
   localStorage.setItem('event_view_mode', mode);
+  _updateEventStyleBtns();
   _updateEventViewToggle();
-  renderCalendar();
-  renderMonthlyCalendar();
 }
 
 // CSV 내보내기 ─────────────────────────────────────────────────

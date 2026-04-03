@@ -218,11 +218,6 @@ function _buildDayCell(info) {
   return cell;
 }
 
-// ── 이벤트 표시 모드 ────────────────────────────────────────────
-function _getEventViewMode() {
-  return localStorage.getItem('event_view_mode') || 'bar';
-}
-
 // ── 이벤트 바/화살표 행 ─────────────────────────────────────────
 function _buildEventsRow(week, events) {
   const validDays = week.filter(d => !d.empty);
@@ -248,9 +243,7 @@ function _buildEventsRow(week, events) {
     tracks.push([{s,e}]); return tracks.length - 1;
   });
 
-  const mode = _getEventViewMode();
-  const BAR_H = mode === 'arrow' ? 18 : 22;
-  const BAR_GAP = 2;
+  const BAR_H = 20, BAR_GAP = 2;
   const totalH = tracks.length * (BAR_H + BAR_GAP);
 
   const row = document.createElement('div');
@@ -266,18 +259,16 @@ function _buildEventsRow(week, events) {
     const isStart= ev.start >= weekStart;
     const isEnd  = ev.end   <= weekEnd;
     const color  = ev.color || '#f59e0b';
+    const evMode = ev.displayMode || 'bar';
 
-    if (mode === 'arrow') {
+    if (evMode === 'arrow') {
       const el = document.createElement('div');
       el.className = 'monthly-event-arrow';
       el.style.cssText = `left:calc(${pctL}% + 4px);width:calc(${pctW}% - 8px);top:${track*(BAR_H+BAR_GAP) + BAR_H/2 - 1}px;height:${BAR_H}px;align-items:center;`;
 
       let html = '';
-      // 시작점: 동그라미
       if (isStart) html += `<div class="event-arrow-dot" style="background:${color}"></div>`;
-      // 선
       html += `<div class="event-arrow-line" style="background:${color}"><span class="event-arrow-label" style="color:${color}">${ev.title}</span></div>`;
-      // 끝점: 화살촉
       if (isEnd) html += `<div class="event-arrow-head" style="border-left:6px solid ${color}"></div>`;
 
       el.innerHTML = html;
