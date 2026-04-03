@@ -75,7 +75,13 @@ onSnapshot(q, async (snap) => {
 사용자 지시:
 ${task.instruction}`;
 
-    const result = await runClaude(prompt);
+    const result = await runClaude(prompt, async (progressText) => {
+      try {
+        await updateDoc(doc(db, 'dev_tasks', taskId), {
+          progress: progressText.slice(-2000),
+        });
+      } catch {}
+    });
 
     console.log('\n--- 처리 완료 ---');
     console.log(result.slice(0, 500));
@@ -102,7 +108,8 @@ ${task.instruction}`;
 });
 
 // Claude Code 실행 (-p 모드: 파일 수정/bash 등 도구 사용 가능)
-function runClaude(prompt) {
+// onProgress(text): 2초마다 호출되는 진행상황 콜백
+function runClaude(prompt, onProgress) {
   return new Promise((resolve, reject) => {
     const child = spawn('claude', ['-p', '--dangerously-skip-permissions'], {
       cwd: PROJECT_DIR,
@@ -117,11 +124,18 @@ function runClaude(prompt) {
 
     let stdout = '';
     let stderr = '';
+    let progressTimer = null;
 
     child.stdout.on('data', (data) => {
       const text = data.toString();
       stdout += text;
       process.stdout.write(text);
+
+      // 2초 디바운스로 Firebase에 진행상황 전송
+      clearTimeout(progressTimer);
+      progressTimer = setTimeout(() => {
+        if (onProgress) onProgress(stdout);
+      }, 2000);
     });
 
     child.stderr.on('data', (data) => {
@@ -129,6 +143,7 @@ function runClaude(prompt) {
     });
 
     child.on('close', (code) => {
+      clearTimeout(progressTimer);
       if (code === 0) {
         resolve(stdout.trim());
       } else {
@@ -137,6 +152,7 @@ function runClaude(prompt) {
     });
 
     child.on('error', (err) => {
+      clearTimeout(progressTimer);
       reject(new Error(`Failed to start Claude: ${err.message}`));
     });
   });

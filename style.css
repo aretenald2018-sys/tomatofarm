@@ -510,6 +510,8 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans KR',sans-seri
 .dev-task-error{margin-top:10px;background:rgba(239,68,68,0.06);border-radius:10px;padding:10px 14px;font-size:11px;color:#ef4444;line-height:1.5;}
 .dev-task-delete{background:none;border:none;color:var(--muted);font-size:10px;margin-top:8px;cursor:pointer;padding:4px 0;-webkit-tap-highlight-color:transparent;}
 .dev-task-delete:active{color:#ef4444;}
+.dev-task-log{margin-top:8px;background:var(--surface3);border-radius:8px;padding:8px 12px;max-height:110px;overflow-y:auto;}
+.dev-task-log-body{font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace;line-height:1.6;word-break:break-all;}
 
 /* (removed: loa styles) */
 

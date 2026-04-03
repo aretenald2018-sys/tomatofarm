@@ -122,6 +122,7 @@ function _renderTaskList(tasks) {
       </div>
       <div class="dev-task-instruction">${_escHtml(t.instruction)}</div>
       ${t.status === 'processing' ? '<div class="dev-task-progress"><div class="dev-progress-bar"></div></div>' : ''}
+      ${t.status === 'processing' && t.progress ? `<div class="dev-task-log"><div class="dev-task-log-body">${_escHtml(t.progress.slice(-500))}</div></div>` : ''}
       ${t.result ? `<div class="dev-task-result">
         <div class="dev-result-header">처리 결과${doneTime ? ' · ' + doneTime : ''}</div>
         <div class="dev-result-body">${_formatResult(t.result)}</div>
