@@ -401,27 +401,39 @@ function _initButtonEventListeners() {
 function _buildSparkline(exerciseId, color) {
   const history = getVolumeHistory(exerciseId);
   if (history.length < 2) return '';
-  const recent = history.slice(-10);
-  const vals = recent.map(h => h.volume);
+  // 전체 히스토리 사용 (주식 흐름 스타일)
+  const vals = history.map(h => h.volume);
   const min = Math.min(...vals), max = Math.max(...vals);
   const range = max - min || 1;
-  const W = 80, H = 24, pad = 2;
+  const W = 120, H = 28, pad = 2;
   const coords = vals.map((v, i) => ({
     x: pad + (i / (vals.length - 1)) * (W - pad * 2),
     y: pad + (1 - (v - min) / range) * (H - pad * 2),
   }));
   const points = coords.map(c => `${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(' ');
   const lastPt = coords[coords.length - 1];
-  const lastVal = vals[vals.length - 1], prevVal = vals[vals.length - 2];
-  const diff = lastVal - prevVal;
-  const arrow = diff > 0 ? '↑' : diff < 0 ? '↓' : '→';
-  const arrowColor = diff > 0 ? 'var(--diet-ok)' : diff < 0 ? 'var(--diet-bad)' : 'var(--muted)';
+  const firstPt = coords[0];
+  const lastVal = vals[vals.length - 1], firstVal = vals[0];
+  const totalDiff = lastVal - firstVal;
+  const isUp = totalDiff >= 0;
+  const lineColor = color || 'var(--accent)';
+  // 그라디언트 fill (주식 차트 스타일)
+  const fillId = `spark-fill-${exerciseId.replace(/[^a-z0-9]/gi,'')}`;
+  const fillPoints = `${firstPt.x.toFixed(1)},${H} ${points} ${lastPt.x.toFixed(1)},${H}`;
+  const arrow = totalDiff > 0 ? '↑' : totalDiff < 0 ? '↓' : '→';
+  const arrowColor = totalDiff > 0 ? 'var(--diet-ok)' : totalDiff < 0 ? 'var(--diet-bad)' : 'var(--muted)';
+  const pct = firstVal > 0 ? Math.abs(totalDiff / firstVal * 100).toFixed(0) : 0;
   return `<div class="ex-sparkline-wrap">
     <svg width="${W}" height="${H}" class="ex-sparkline">
-      <polyline points="${points}" fill="none" stroke="${color||'var(--accent)'}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-      <circle cx="${lastPt.x.toFixed(1)}" cy="${lastPt.y.toFixed(1)}" r="2" fill="${color||'var(--accent)'}"/>
+      <defs><linearGradient id="${fillId}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="${lineColor}" stop-opacity="0.15"/>
+        <stop offset="100%" stop-color="${lineColor}" stop-opacity="0"/>
+      </linearGradient></defs>
+      <polygon points="${fillPoints}" fill="url(#${fillId})"/>
+      <polyline points="${points}" fill="none" stroke="${lineColor}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="${lastPt.x.toFixed(1)}" cy="${lastPt.y.toFixed(1)}" r="2.5" fill="${lineColor}"/>
     </svg>
-    <span class="ex-sparkline-diff" style="color:${arrowColor}">${arrow}${Math.abs(diff).toLocaleString()}</span>
+    <span class="ex-sparkline-diff" style="color:${arrowColor}">${arrow}${pct}%</span>
   </div>`;
 }
 

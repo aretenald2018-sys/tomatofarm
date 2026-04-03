@@ -619,7 +619,7 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans KR',sans-seri
 
 /* ── 세트 간 휴식 타이머 (플로팅 바) ── */
 .rest-timer-bar{
-  position:fixed;bottom:60px;left:50%;transform:translateX(-50%);
+  position:fixed;bottom:120px;left:50%;transform:translateX(-50%);
   width:calc(100% - 24px);max-width:480px;
   background:var(--surface2);border:1px solid var(--gym);border-radius:14px;
   padding:12px 14px 10px;z-index:500;
