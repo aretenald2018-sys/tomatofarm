@@ -117,6 +117,7 @@ let _liveChart = null;
 let _liveVolumeChart = null;
 let _liveInterval = null;
 let _liveAutoRefresh = true;
+let _finChartYAxisBlurred = true; // 세로축 블러 상태 (클릭 시 해제)
 
 const M7 = [
   { sym: 'AAPL', name: '애플' },
@@ -193,8 +194,8 @@ function _buildHTML() {
     </div>
     <div class="fin-section-body${_collapsed.benchmark?' collapsed':''}">
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <div class="fin-chart-wrap" style="height:220px;flex:1;min-width:0"><canvas id="fin-recent5-chart"></canvas></div>
-        <div class="fin-chart-wrap" style="height:220px;flex:1;min-width:0"><canvas id="fin-main-chart"></canvas></div>
+        <div class="fin-chart-wrap fin-chart-blurable" style="height:220px;flex:1;min-width:0;position:relative;cursor:pointer" onclick="window.__toggleFinChartBlur()"><canvas id="fin-recent5-chart"></canvas><div class="fin-yaxis-blur-overlay"></div></div>
+        <div class="fin-chart-wrap fin-chart-blurable" style="height:220px;flex:1;min-width:0;position:relative;cursor:pointer" onclick="window.__toggleFinChartBlur()"><canvas id="fin-main-chart"></canvas><div class="fin-yaxis-blur-overlay"></div></div>
       </div>
       <div id="fin-bench-list"></div>
       <div id="fin-plan-list"></div>
@@ -257,6 +258,22 @@ function _bindToggle() {
     });
   });
 }
+
+// ================================================================
+// 자산 추이 그래프 세로축 블러 토글
+// ================================================================
+window.__toggleFinChartBlur = function() {
+  _finChartYAxisBlurred = !_finChartYAxisBlurred;
+  // 블러 오버레이 업데이트
+  document.querySelectorAll('.fin-chart-blurable').forEach(el => {
+    const overlay = el.querySelector('.fin-yaxis-blur-overlay');
+    if (overlay) overlay.style.display = _finChartYAxisBlurred ? '' : 'none';
+    el.style.cursor = _finChartYAxisBlurred ? 'pointer' : 'default';
+  });
+  // 차트 y축 틱 재렌더
+  _renderRecent5Chart();
+  _renderMainChart();
+};
 
 // ================================================================
 // Inflow/Outflow 토글
@@ -2344,13 +2361,14 @@ function _renderRecent5Chart() {
           grid: { color: '#2c3040' },
         },
         y: {
-          ticks: { color: '#5c6478', font: { size: 9 }, callback: v => formatManwon(v), maxTicksLimit: 6 },
+          ticks: { color: '#5c6478', font: { size: 9 }, callback: v => _finChartYAxisBlurred ? '●●●●' : formatManwon(v), maxTicksLimit: 6 },
           grid: { color: '#2c3040' },
         },
       },
       plugins: {
         legend: { labels: { color: '#e2e4ea', font: { size: 9 }, boxWidth: 10, padding: 6 } },
         tooltip: {
+          filter: () => !_finChartYAxisBlurred,
           callbacks: {
             title: ctx => {
               const idx = Math.round(ctx[0].parsed.x);
@@ -2525,13 +2543,14 @@ function _renderMainChart() {
           grid: { color: '#2c3040' },
         },
         y: {
-          ticks: { color: '#5c6478', font: { size: 9 }, callback: v => formatManwon(v), maxTicksLimit: 6 },
+          ticks: { color: '#5c6478', font: { size: 9 }, callback: v => _finChartYAxisBlurred ? '●●●●' : formatManwon(v), maxTicksLimit: 6 },
           grid: { color: '#2c3040' },
         },
       },
       plugins: {
         legend: { labels: { color: '#e2e4ea', font: { size: 9 }, boxWidth: 12, padding: 8 } },
         tooltip: {
+          filter: () => !_finChartYAxisBlurred,
           callbacks: {
             title: ctx => {
               const idx = Math.round(ctx[0].parsed.x);
