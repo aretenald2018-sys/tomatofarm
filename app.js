@@ -1377,6 +1377,7 @@ window.closePbPosition              = closePbPosition;
 window.openSettingsModal        = openSettingsModal;
 window.closeSettingsModal       = closeSettingsModal;
 window.saveSettings             = saveSettings;
+window.installPWA               = installPWA;
 // 다이어트 플랜
 window.openDietPlanModal        = openDietPlanModal;
 window.closeDietPlanModal       = closeDietPlanModal;
@@ -1408,6 +1409,58 @@ window.fatsecretAddFood          = fatsecretAddFood;
 window.fatsecretBackToSearch     = fatsecretBackToSearch;
 window.wtAddFoodItem            = wtAddFoodItem;
 window.wtRemoveFoodItem         = wtRemoveFoodItem;
+
+// ── PWA 설치 (앱 다운로드) ────────────────────────────────────
+let _deferredInstallPrompt = null;
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  _deferredInstallPrompt = e;
+  // 설정 모달이 열려있으면 설치 버튼 표시
+  const section = document.getElementById('pwa-install-section');
+  if (section) section.style.display = 'block';
+});
+
+window.addEventListener('appinstalled', () => {
+  _deferredInstallPrompt = null;
+  const section = document.getElementById('pwa-install-section');
+  if (section) section.style.display = 'none';
+});
+
+function installPWA() {
+  if (_deferredInstallPrompt) {
+    _deferredInstallPrompt.prompt();
+    _deferredInstallPrompt.userChoice.then((result) => {
+      if (result.outcome === 'accepted') {
+        const section = document.getElementById('pwa-install-section');
+        if (section) section.style.display = 'none';
+      }
+      _deferredInstallPrompt = null;
+    });
+  } else {
+    alert('이미 설치되었거나, 브라우저가 설치를 지원하지 않습니다.\n\n수동 설치: 브라우저 메뉴(⋮) → "홈 화면에 추가" 또는 "앱 설치"를 선택하세요.');
+  }
+}
+
+// openSettingsModal에서 설치 버튼 표시 업데이트
+const _origOpenSettings = openSettingsModal;
+function _patchedOpenSettings() {
+  _origOpenSettings();
+  const section = document.getElementById('pwa-install-section');
+  if (section) {
+    // 이미 standalone 모드(설치됨)이면 숨김
+    const isInstalled = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+    section.style.display = (_deferredInstallPrompt || !isInstalled) && !isInstalled ? 'none' : 'none';
+    // beforeinstallprompt가 캐치되었거나, 아직 standalone이 아니면 표시
+    if (_deferredInstallPrompt) {
+      section.style.display = 'block';
+    } else if (!isInstalled) {
+      // 프롬프트 없지만 미설치 → 수동 안내용으로 표시
+      section.style.display = 'block';
+    }
+  }
+}
+window.openSettingsModal = _patchedOpenSettings;
 
 // ── 앱 초기화 ────────────────────────────────────────────────
 window.addEventListener('load', initializeApp);
