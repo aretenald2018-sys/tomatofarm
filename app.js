@@ -549,7 +549,6 @@ function runExportCSV(period) {
 // ── 설정 모달 ────────────────────────────────────────────────────
 function openSettingsModal() {
   document.getElementById('cfg-anthropic').value = localStorage.getItem('cfg_anthropic') || '';
-  document.getElementById('cfg-gcal-client-id').value = localStorage.getItem('cfg_gcal_client_id') || '';
   _updateGCalStatus();
   _renderNutritionDBList();
   document.getElementById('settings-modal').classList.add('open');
@@ -586,9 +585,6 @@ function saveSettings() {
   const anthropic = document.getElementById('cfg-anthropic').value.trim();
   if (anthropic) localStorage.setItem('cfg_anthropic', anthropic);
 
-  const gcalClientId = document.getElementById('cfg-gcal-client-id').value.trim();
-  if (gcalClientId) localStorage.setItem('cfg_gcal_client_id', gcalClientId);
-
   document.getElementById('settings-modal').classList.remove('open');
   loadStocks();
 }
@@ -617,10 +613,6 @@ function _updateGCalStatus() {
 }
 
 async function connectGCal() {
-  const clientId = document.getElementById('cfg-gcal-client-id').value.trim();
-  if (!clientId) { alert('Google OAuth Client ID를 먼저 입력해주세요.'); return; }
-  localStorage.setItem('cfg_gcal_client_id', clientId);
-
   const ok = await connectGoogleCalendar();
   if (ok) {
     _updateGCalStatus();

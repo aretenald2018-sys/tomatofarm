@@ -5,6 +5,7 @@
 const SCOPES = 'https://www.googleapis.com/auth/calendar';
 const CALENDAR_ID = 'primary';
 const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest';
+const GCAL_CLIENT_ID = '28566238351-5pdka3va2riocuj2quvr7juo5cim3v91.apps.googleusercontent.com';
 
 let _tokenClient = null;
 let _gapiInited = false;
@@ -94,17 +95,11 @@ function initGis(clientId) {
  * @returns {Promise<boolean>}
  */
 export async function connectGoogleCalendar() {
-  const clientId = localStorage.getItem('cfg_gcal_client_id');
-  if (!clientId) {
-    alert('Google OAuth Client ID가 설정되지 않았습니다.\n설정(⚙️)에서 입력해주세요.');
-    return false;
-  }
-
   try {
     await loadGapiScript();
     await loadGisScript();
     await initGapi();
-    initGis(clientId);
+    initGis(GCAL_CLIENT_ID);
 
     return new Promise((resolve) => {
       _tokenClient.callback = (resp) => {
@@ -130,14 +125,13 @@ export async function connectGoogleCalendar() {
  * 저장된 토큰으로 자동 재연결 시도 (무음)
  */
 export async function tryAutoConnect() {
-  const clientId = localStorage.getItem('cfg_gcal_client_id');
-  if (!clientId || !localStorage.getItem('gcal_connected')) return false;
+  if (!localStorage.getItem('gcal_connected')) return false;
 
   try {
     await loadGapiScript();
     await loadGisScript();
     await initGapi();
-    initGis(clientId);
+    initGis(GCAL_CLIENT_ID);
 
     return new Promise((resolve) => {
       _tokenClient.callback = (resp) => {
