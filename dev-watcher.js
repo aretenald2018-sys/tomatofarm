@@ -8,7 +8,7 @@
 
 import { initializeApp } from 'firebase/app';
 import {
-  getFirestore, collection, query, where, orderBy, limit,
+  getFirestore, collection, query, where, limit,
   onSnapshot, doc, updateDoc, serverTimestamp,
 } from 'firebase/firestore';
 import { spawn } from 'child_process';
@@ -18,7 +18,6 @@ import { fileURLToPath } from 'url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_DIR = __dirname;
 
-// Firebase 설정 (config.js와 동일)
 const FIREBASE_CONFIG = {
   apiKey:            "AIzaSyCk2czvJ8DRautrUput8TLjdrArpQm7BBk",
   authDomain:        "exercise-management.firebaseapp.com",
@@ -36,9 +35,9 @@ let processing = false;
 console.log('========================================');
 console.log('  Dev Watcher 시작');
 console.log('  Firebase 감시 중... (Ctrl+C로 종료)');
-console.log('========================================');
+console.log('========================================\n');
 
-// pending 작업 실시간 감시
+// pending 작업 감시
 const q = query(
   collection(db, 'dev_tasks'),
   where('status', '==', 'pending'),
@@ -48,57 +47,48 @@ const q = query(
 onSnapshot(q, async (snap) => {
   if (snap.empty || processing) return;
 
-  // createdAt 기준 정렬 (인덱스 불필요)
   const docs = snap.docs
     .map(d => ({ id: d.id, ...d.data() }))
     .sort((a, b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0));
-  const taskDoc = snap.docs.find(d => d.id === docs[0].id);
   const task = docs[0];
-  const taskId = taskDoc.id;
+  const taskId = task.id;
+  const taskRef = doc(db, 'dev_tasks', taskId);
 
   processing = true;
-  console.log(`\n--- 새 작업 감지: ${taskId} ---`);
-  console.log(`지시: ${task.instruction}`);
-  console.log('처리 시작...\n');
+  console.log(`\n[${new Date().toLocaleTimeString()}] 새 작업: ${taskId}`);
+  console.log(`지시: ${task.instruction}\n`);
 
   try {
-    // 상태를 processing으로 변경
-    await updateDoc(doc(db, 'dev_tasks', taskId), {
+    await updateDoc(taskRef, {
       status: 'processing',
+      log: '작업을 분석하고 있습니다...',
     });
 
-    // Claude Code 실행
-    const prompt = `이 프로젝트는 "${PROJECT_DIR}"에 있는 Life Streak 대시보드 웹앱입니다.
-아래 사용자 지시사항대로 코드를 수정하고, 수정이 끝나면 git add, git commit, git push origin main까지 완료해주세요.
-마지막에 변경사항을 한국어로 간결하게 요약해주세요 (코드 블록 제외, 요약만).
+    const prompt = buildPrompt(task.instruction);
 
-사용자 지시:
-${task.instruction}`;
-
-    const result = await runClaude(prompt, async (progressText) => {
-      try {
-        await updateDoc(doc(db, 'dev_tasks', taskId), {
-          progress: progressText.slice(-2000),
-        });
-      } catch {}
+    // Claude 실행 + 실시간 로그
+    const result = await runClaude(prompt, async (logLine) => {
+      if (logLine) {
+        try { await updateDoc(taskRef, { log: logLine }); } catch {}
+      }
     });
 
-    console.log('\n--- 처리 완료 ---');
-    console.log(result.slice(0, 500));
-
-    // 결과 저장
-    await updateDoc(doc(db, 'dev_tasks', taskId), {
+    const summary = extractSummary(result);
+    await updateDoc(taskRef, {
       status: 'done',
-      result: result,
+      result: summary,
+      log: '',
       completedAt: serverTimestamp(),
     });
+    console.log(`\n[완료] ${taskId}\n`);
 
   } catch (err) {
-    console.error('처리 오류:', err.message);
+    console.error('오류:', err.message);
     try {
-      await updateDoc(doc(db, 'dev_tasks', taskId), {
+      await updateDoc(taskRef, {
         status: 'error',
-        result: err.message,
+        result: '처리 중 오류: ' + err.message,
+        log: '',
         completedAt: serverTimestamp(),
       });
     } catch {}
@@ -107,58 +97,87 @@ ${task.instruction}`;
   }
 });
 
-// Claude Code 실행 (-p 모드: 파일 수정/bash 등 도구 사용 가능)
-// onProgress(text): 2초마다 호출되는 진행상황 콜백
-function runClaude(prompt, onProgress) {
+// ── 프롬프트 ──
+function buildPrompt(instruction) {
+  return `너는 "${PROJECT_DIR}"에 있는 Life Streak 대시보드 웹앱의 개발자야.
+사용자가 모바일 개발탭에서 아래 지시를 보냈어. 반드시 코드를 수정해야 해.
+
+중요 규칙:
+1. 관련 파일을 읽고 코드를 실제로 수정해.
+2. 수정이 끝나면 git add → git commit → git push origin main 까지 완료해.
+3. 프로젝트 설명이나 질문을 하지 마. 바로 코드 수정에 착수해.
+4. 마지막에 변경사항을 한국어로 간결하게 요약해 (코드 블록 없이 텍스트만).
+
+사용자 지시:
+${instruction}`;
+}
+
+// ── Claude 실행 ──
+function runClaude(prompt, onLog) {
   return new Promise((resolve, reject) => {
     const child = spawn('claude', ['-p', '--dangerously-skip-permissions'], {
       cwd: PROJECT_DIR,
       shell: true,
       stdio: ['pipe', 'pipe', 'pipe'],
-      timeout: 600000, // 10분 타임아웃
+      timeout: 600000,
     });
 
-    // stdin으로 프롬프트 전달 후 닫기
     child.stdin.write(prompt);
     child.stdin.end();
 
     let stdout = '';
     let stderr = '';
-    let progressTimer = null;
+    let lastLog = '';
 
     child.stdout.on('data', (data) => {
       const text = data.toString();
       stdout += text;
       process.stdout.write(text);
 
-      // 2초 디바운스로 Firebase에 진행상황 전송
-      clearTimeout(progressTimer);
-      progressTimer = setTimeout(() => {
-        if (onProgress) onProgress(stdout);
-      }, 2000);
+      // 진행 로그 추출
+      const lines = text.split('\n').filter(l => l.trim().length > 5);
+      for (const line of lines.reverse()) {
+        const l = line.trim();
+        if (l !== lastLog) {
+          lastLog = l;
+          if (onLog) onLog(l.slice(0, 200));
+          break;
+        }
+      }
     });
 
-    child.stderr.on('data', (data) => {
-      stderr += data.toString();
-    });
+    child.stderr.on('data', (data) => { stderr += data.toString(); });
 
     child.on('close', (code) => {
-      clearTimeout(progressTimer);
-      if (code === 0) {
+      if (code === 0 || stdout.length > 100) {
         resolve(stdout.trim());
       } else {
         reject(new Error(stderr || `Claude exited with code ${code}`));
       }
     });
 
-    child.on('error', (err) => {
-      clearTimeout(progressTimer);
-      reject(new Error(`Failed to start Claude: ${err.message}`));
-    });
+    child.on('error', (err) => reject(new Error(`spawn failed: ${err.message}`)));
   });
 }
 
-// 프로세스 종료 처리
+// ── 결과 요약 추출 ──
+function extractSummary(output) {
+  if (!output) return '(출력 없음)';
+  const lines = output.split('\n').filter(l => l.trim());
+  // "변경사항", "요약", "완료" 키워드 이후 추출
+  let startIdx = -1;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const l = lines[i].toLowerCase();
+    if (l.includes('변경사항') || l.includes('요약') || l.includes('## ') ||
+        l.includes('완료') || l.includes('정리하면')) {
+      startIdx = i;
+      break;
+    }
+  }
+  if (startIdx >= 0) return lines.slice(startIdx).join('\n').slice(0, 2000);
+  return lines.slice(-15).join('\n').slice(0, 2000);
+}
+
 process.on('SIGINT', () => {
   console.log('\nDev Watcher 종료');
   process.exit(0);
