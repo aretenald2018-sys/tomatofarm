@@ -593,6 +593,20 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans KR',sans-seri
 .schedule-event-bar:active{opacity:.75;}
 .schedule-cell.drag-highlight{background:rgba(245,158,11,.18)!important;}
 
+/* ── 이벤트 화살표(선) 모드 ── */
+.monthly-event-arrow{position:absolute;display:flex;align-items:center;cursor:pointer;transition:opacity .12s;-webkit-tap-highlight-color:transparent;pointer-events:auto;}
+.monthly-event-arrow:active{opacity:.75;}
+.event-arrow-line{height:2.5px;flex:1;min-width:0;position:relative;}
+.event-arrow-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.event-arrow-head{width:0;height:0;border-top:5px solid transparent;border-bottom:5px solid transparent;flex-shrink:0;}
+.event-arrow-label{position:absolute;top:-14px;left:8px;font-size:9px;font-weight:600;white-space:nowrap;pointer-events:none;}
+.schedule-event-arrow{-webkit-tap-highlight-color:transparent;}
+.schedule-event-arrow:active{opacity:.75;}
+
+/* 토글 버튼 */
+.event-view-toggle{background:none;border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:10px;padding:2px 8px;cursor:pointer;transition:all .15s;}
+.event-view-toggle:hover{border-color:var(--accent);color:var(--accent);}
+
 /* ── 이벤트 색상 선택 ── */
 .event-color-picker{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;}
 .event-color-swatch{width:28px;height:28px;border-radius:50%;cursor:pointer;border:3px solid transparent;transition:border-color .12s;-webkit-tap-highlight-color:transparent;}

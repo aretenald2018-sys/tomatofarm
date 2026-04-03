@@ -94,6 +94,9 @@ async function initializeApp() {
     .then(() => console.log('[app] CSV 데이터 백그라운드 로드 완료'))
     .catch(e => console.warn('[app] CSV 로드 실패:', e));
 
+  // 이벤트 표시 모드 토글 초기화
+  _updateEventViewToggle();
+
   // Google Calendar 자동 재연결
   tryAutoConnect().then(ok => {
     if (ok) { console.log('[app] Google Calendar 자동 연결 성공'); syncGCalNow(); }
@@ -535,6 +538,23 @@ function openMonthlyCalendarModal(year, month) {
 }
 
 function closeMonthlyCalendarModal(e) { _closeModal('monthly-calendar-modal', e); }
+
+// ── 이벤트 표시 모드 전환 (바 ↔ 화살표) ─────────────────────────
+function toggleEventViewMode() {
+  const current = localStorage.getItem('event_view_mode') || 'bar';
+  const next = current === 'bar' ? 'arrow' : 'bar';
+  localStorage.setItem('event_view_mode', next);
+  _updateEventViewToggle();
+  renderCalendar();
+  renderMonthlyCalendar();
+}
+
+function _updateEventViewToggle() {
+  const btn = document.getElementById('event-view-toggle');
+  if (!btn) return;
+  const mode = localStorage.getItem('event_view_mode') || 'bar';
+  btn.textContent = mode === 'bar' ? '━ 바' : '→ 선';
+}
 
 // CSV 내보내기 ─────────────────────────────────────────────────
 function openExportModal() {
@@ -1346,6 +1366,7 @@ window.renderAll                = renderAll;
 window.renderHome               = renderHome;
 window.switchTab                = switchTab;
 window.changeYear               = changeYear;
+window.toggleEventViewMode      = toggleEventViewMode;
 window.changeMonthlyMonth       = changeMonthlyMonth;
 window.setPeriod                = setPeriod;
 window.getDietRec               = getDietRec;
