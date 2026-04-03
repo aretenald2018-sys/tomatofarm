@@ -225,9 +225,11 @@ function fromGCalEvent(gcalEv) {
     color: GCAL_TO_COLOR[gcalEv.colorId] || '#3b82f6',
   };
 
-  // 시간 정보 보존
+  // 시간 정보 보존 (dateTime 또는 제목 파싱)
   if (gcalEv.start?.dateTime) {
     ev.startTime = gcalEv.start.dateTime.substring(11, 16); // "HH:MM"
+  } else if (parsed) {
+    ev.startTime = `${String(parsed.hour).padStart(2,'0')}:${String(parsed.minute).padStart(2,'0')}`;
   }
   if (gcalEv.end?.dateTime) {
     ev.endTime = gcalEv.end.dateTime.substring(11, 16);

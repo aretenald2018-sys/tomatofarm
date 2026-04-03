@@ -690,14 +690,24 @@ async function syncGCalNow() {
     const appEvents = getEvents();
 
     // Google Calendar에만 있는 이벤트 → 앱에 추가
+    // + 제목에 시간이 포함되어 있으면 cleanTitle로 GCal 제목도 업데이트
+    const { parseTimeFromTitle } = await import('./gcal-sync.js');
     for (const ge of gcalEvents) {
       const existing = appEvents.find(ae => ae.gcalId === ge.gcalId || ae.id === ge.id);
       if (!existing) {
+        // 새 이벤트 — GCal 원본 제목에서 시간이 파싱됐으면 GCal도 cleanTitle로 업데이트
         await saveEvent(ge);
+        if (ge.startTime && ge.gcalId) {
+          await syncUpdateToGCal(ge);
+        }
       } else {
-        // Google Calendar 쪽이 더 최신이면 업데이트
         if (existing.title !== ge.title || existing.start !== ge.start || existing.end !== ge.end) {
-          await saveEvent({ ...existing, title: ge.title, start: ge.start, end: ge.end, color: ge.color, gcalId: ge.gcalId });
+          const updated = { ...existing, title: ge.title, start: ge.start, end: ge.end, color: ge.color, gcalId: ge.gcalId, startTime: ge.startTime || existing.startTime };
+          await saveEvent(updated);
+          // GCal 제목도 cleanTitle로 정리
+          if (ge.startTime && ge.gcalId) {
+            await syncUpdateToGCal(updated);
+          }
         }
       }
     }
