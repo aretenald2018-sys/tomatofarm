@@ -170,7 +170,7 @@ export function isGCalConnected() {
  * 앱 이벤트 → Google Calendar 이벤트 변환
  */
 function toGCalEvent(ev) {
-  const time = parseTimeFromTitle(ev.title);
+  // ev.title은 이미 cleanTitle (시간 제거됨), 시간은 ev.startTime에 있음
   const gcalEvent = {
     summary: ev.title,
     extendedProperties: {
@@ -178,17 +178,17 @@ function toGCalEvent(ev) {
     }
   };
 
-  if (time) {
-    // 시간이 있는 이벤트 → dateTime 형식 + 알림
-    const hh = String(time.hour).padStart(2, '0');
-    const mm = String(time.minute).padStart(2, '0');
-    const endHour = time.hour + 1; // 기본 1시간 일정
+  // startTime이 있으면 시간 포함 이벤트
+  if (ev.startTime) {
+    const [hh, mm] = ev.startTime.split(':');
+    const hour = parseInt(hh), minute = parseInt(mm);
+    const endHour = hour + 1;
     const ehh = String(endHour).padStart(2, '0');
     gcalEvent.start = { dateTime: `${ev.start}T${hh}:${mm}:00`, timeZone: 'Asia/Seoul' };
     gcalEvent.end   = { dateTime: `${ev.end}T${ehh}:${mm}:00`, timeZone: 'Asia/Seoul' };
     gcalEvent.reminders = {
       useDefault: false,
-      overrides: _calcReminders(ev.start, time.hour, time.minute),
+      overrides: _calcReminders(ev.start, hour, minute),
     };
   } else {
     // 종일 이벤트
@@ -214,10 +214,12 @@ function fromGCalEvent(gcalEv) {
     end = _subtractOneDay(end);
   }
 
+  const rawTitle = gcalEv.summary || '(제목 없음)';
+  const parsed = parseTimeFromTitle(rawTitle);
   const ev = {
     id: gcalEv.extendedProperties?.private?.appEventId || `gcal_${gcalEv.id}`,
     gcalId: gcalEv.id,
-    title: gcalEv.summary || '(제목 없음)',
+    title: parsed?.cleanTitle || rawTitle,
     start,
     end,
     color: GCAL_TO_COLOR[gcalEv.colorId] || '#3b82f6',
@@ -312,16 +314,17 @@ const KR_NUM = { '한':1,'두':2,'세':3,'네':4,'다섯':5,'여섯':6,'일곱':
                  '열한':11,'열하나':11,'열두':12,'열둘':12 };
 
 /**
- * 제목에서 시간 정보 추출
- * "성빈 다섯시 반" → { hour:17, minute:30 }
- * "3시" → { hour:15, minute:0 }
- * "7시 30분" → { hour:19, minute:30 }
+ * 제목에서 시간 정보 추출 + 시간 부분 제거된 cleanTitle 반환
+ * "영화모임 다섯시 반" → { hour:17, minute:30, cleanTitle:"영화모임" }
+ * "3시 성빈" → { hour:15, minute:0, cleanTitle:"성빈" }
+ * "7시 30분" → { hour:19, minute:30, cleanTitle:"" }
  * 시간 없으면 null 반환
  */
 export function parseTimeFromTitle(title) {
   if (!title) return null;
 
   let hour = null, minute = 0;
+  let matchedPattern = null;
 
   // 패턴1: 숫자시 (예: 3시, 12시, 3시반, 3시 30분)
   const numMatch = title.match(/(\d{1,2})\s*시\s*(반|(\d{1,2})\s*분)?/);
@@ -329,6 +332,7 @@ export function parseTimeFromTitle(title) {
     hour = parseInt(numMatch[1]);
     if (numMatch[2] === '반') minute = 30;
     else if (numMatch[3]) minute = parseInt(numMatch[3]);
+    matchedPattern = numMatch[0];
   }
 
   // 패턴2: 한글시 (예: 다섯시, 세시 반)
@@ -340,6 +344,7 @@ export function parseTimeFromTitle(title) {
         hour = num;
         if (m[1] === '반') minute = 30;
         else if (m[2]) minute = parseInt(m[2]);
+        matchedPattern = m[0];
         break;
       }
     }
@@ -351,18 +356,21 @@ export function parseTimeFromTitle(title) {
     if (colonMatch) {
       hour = parseInt(colonMatch[1]);
       minute = parseInt(colonMatch[2]);
-      // HH:MM은 24시간 형식으로 간주, 변환 불필요
-      if (hour >= 0 && hour <= 23) return { hour, minute };
+      matchedPattern = colonMatch[0];
+      if (hour >= 0 && hour <= 23) {
+        const cleanTitle = title.replace(matchedPattern, '').replace(/\s+/g, ' ').trim();
+        return { hour, minute, cleanTitle };
+      }
     }
   }
 
   if (hour === null) return null;
 
   // 항상 오후 처리 (새벽 약속 없음)
-  // 1~11시 → +12 (오후), 12시 → 그대로, 13~23시 → 그대로
   if (hour >= 1 && hour <= 11) hour += 12;
 
-  return { hour, minute };
+  const cleanTitle = title.replace(matchedPattern, '').replace(/\s+/g, ' ').trim();
+  return { hour, minute, cleanTitle };
 }
 
 /**

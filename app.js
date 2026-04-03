@@ -493,10 +493,18 @@ async function saveCalEventFromModal() {
 
   const isNew = !_calEventId;
   const existing = isNew ? null : getEvents().find(e => e.id === _calEventId);
+
+  // 시간 정보 분리: "영화모임 다섯시반" → title:"영화모임", startTime:"17:30"
+  const { parseTimeFromTitle } = await import('./gcal-sync.js');
+  const timeParsed = parseTimeFromTitle(title);
+  const cleanTitle = timeParsed?.cleanTitle || title;
+  const startTime = timeParsed ? `${String(timeParsed.hour).padStart(2,'0')}:${String(timeParsed.minute).padStart(2,'0')}` : (existing?.startTime || null);
+
   const ev = {
     id:    _calEventId || `ev_${Date.now()}`,
-    title, start, end, color: _calEventColor,
+    title: cleanTitle, start, end, color: _calEventColor,
     displayMode: _calEventStyle,
+    startTime,
     gcalId: existing?.gcalId || null,
   };
   await saveEvent(ev);
