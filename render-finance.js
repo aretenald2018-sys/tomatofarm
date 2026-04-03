@@ -512,15 +512,19 @@ async function _renderDetailTab(sym, tab) {
     await _loadLiveChart(sym, true);
   } else if (tab === 'chart') {
     content.innerHTML = `
-      <div style="display:flex;justify-content:center;gap:6px;margin-bottom:10px">
-        <button class="fin-add-btn stock-range-btn" data-range="1mo" onclick="changeStockChartRange('1mo')">1M</button>
-        <button class="fin-add-btn stock-range-btn active" data-range="3mo" onclick="changeStockChartRange('3mo')">3M</button>
-        <button class="fin-add-btn stock-range-btn" data-range="6mo" onclick="changeStockChartRange('6mo')">6M</button>
-        <button class="fin-add-btn stock-range-btn" data-range="1y" onclick="changeStockChartRange('1y')">1Y</button>
+      <div style="display:flex;justify-content:center;gap:4px;margin-bottom:10px">
+        <button class="fin-add-btn stock-range-btn" data-range="1mo" onclick="changeStockChartRange('1mo')">1개월</button>
+        <button class="fin-add-btn stock-range-btn active" data-range="3mo" onclick="changeStockChartRange('3mo')">3개월</button>
+        <button class="fin-add-btn stock-range-btn" data-range="6mo" onclick="changeStockChartRange('6mo')">6개월</button>
+        <button class="fin-add-btn stock-range-btn" data-range="1y" onclick="changeStockChartRange('1y')">1년</button>
       </div>
-      <div style="height:200px"><canvas id="stock-price-chart"></canvas></div>
-      <div style="height:70px;margin-top:6px"><canvas id="stock-volume-chart"></canvas></div>
-      <div style="height:70px;margin-top:6px"><canvas id="stock-rsi-chart"></canvas></div>`;
+      <div id="sc-tooltip-bar" class="sc-tooltip-bar"></div>
+      <div id="sc-price-wrap" class="sc-chart-wrap" style="height:200px"><canvas id="stock-price-chart"></canvas></div>
+      <div class="sc-drag-handle" data-above="sc-price-wrap" data-below="sc-vol-wrap"></div>
+      <div id="sc-vol-wrap" class="sc-chart-wrap" style="height:70px"><canvas id="stock-volume-chart"></canvas></div>
+      <div class="sc-drag-handle" data-above="sc-vol-wrap" data-below="sc-rsi-wrap"></div>
+      <div id="sc-rsi-wrap" class="sc-chart-wrap" style="height:80px"><canvas id="stock-rsi-chart"></canvas></div>`;
+    _initDragHandles();
     await _loadStockChart(sym, '3mo');
   } else if (tab === 'stratA') {
     _renderDetailStratA(sym, content);
@@ -659,19 +663,72 @@ export async function changeStockChartRange(range) {
   await _loadStockChart(_currentStockSym, range);
 }
 
-// 차트 간 크로스헤어 동기화
-function _syncCharts(sourceChart, allCharts) {
-  const srcIndex = sourceChart._active?.[0]?.index;
-  if (srcIndex == null) return;
-  allCharts.forEach(ch => {
-    if (!ch || ch === sourceChart) return;
-    ch.setActiveElements([{ datasetIndex: 0, index: srcIndex }]);
-    ch.tooltip?.setActiveElements([{ datasetIndex: 0, index: srcIndex }], { x: 0, y: 0 });
-    ch.update('none');
+// ── 드래그 핸들: 차트 영역 리사이즈 ──
+function _initDragHandles() {
+  document.querySelectorAll('.sc-drag-handle').forEach(handle => {
+    let startY = 0, aboveH = 0, belowH = 0, aboveEl = null, belowEl = null;
+    const onMove = e => {
+      e.preventDefault();
+      const y = (e.touches ? e.touches[0].clientY : e.clientY);
+      const dy = y - startY;
+      const newAbove = Math.max(40, aboveH + dy);
+      const newBelow = Math.max(40, belowH - dy);
+      aboveEl.style.height = newAbove + 'px';
+      belowEl.style.height = newBelow + 'px';
+      // 차트 리사이즈
+      [_stockPriceChart, _stockVolumeChart, _stockRsiChart].forEach(c => c?.resize());
+    };
+    const onEnd = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onEnd);
+      document.removeEventListener('touchmove', onMove);
+      document.removeEventListener('touchend', onEnd);
+    };
+    const onStart = e => {
+      aboveEl = document.getElementById(handle.dataset.above);
+      belowEl = document.getElementById(handle.dataset.below);
+      if (!aboveEl || !belowEl) return;
+      startY = e.touches ? e.touches[0].clientY : e.clientY;
+      aboveH = aboveEl.offsetHeight;
+      belowH = belowEl.offsetHeight;
+      document.addEventListener('mousemove', onMove, { passive: false });
+      document.addEventListener('mouseup', onEnd);
+      document.addEventListener('touchmove', onMove, { passive: false });
+      document.addEventListener('touchend', onEnd);
+    };
+    handle.addEventListener('mousedown', onStart);
+    handle.addEventListener('touchstart', onStart, { passive: false });
   });
 }
 
-// 크로스헤어 세로선 플러그인
+// ── 크로스헤어 + 토스 스타일 툴팁바 ──
+function _updateTooltipBar(idx) {
+  const bar = document.getElementById('sc-tooltip-bar');
+  if (!bar || !_stockChartData || idx == null) { if (bar) bar.style.display = 'none'; return; }
+  const d = _stockChartData;
+  const c = d.closes[idx], o = d.opens[idx], h = d.highs[idx], l = d.lows[idx];
+  if (c == null) { bar.style.display = 'none'; return; }
+  const prev = idx > 0 ? d.closes[idx - 1] : o;
+  const chg = prev ? ((c - prev) / prev * 100) : 0;
+  const UP = '#ef4444', DN = '#3b82f6';
+  const col = chg >= 0 ? UP : DN;
+  const sign = chg >= 0 ? '+' : '';
+  const rsi = d.rsiValues[idx];
+  const vol = d.volumes[idx];
+  const rsiColor = rsi != null ? (rsi >= 70 ? UP : rsi <= 30 ? '#10b981' : '#e2e4ea') : '#64748b';
+  bar.style.display = 'flex';
+  bar.innerHTML = `
+    <span style="color:#e2e4ea;font-weight:700">$${c.toFixed(2)}</span>
+    <span style="color:${col}">${sign}${chg.toFixed(2)}%</span>
+    <span style="color:#64748b;font-size:10px">${d.labels[idx]}</span>
+    <span style="color:#64748b">|</span>
+    <span style="font-size:10px">시 $${o?.toFixed(0)||'-'} 고 <span style="color:${UP}">$${h?.toFixed(0)||'-'}</span> 저 <span style="color:${DN}">$${l?.toFixed(0)||'-'}</span></span>
+    <span style="color:#64748b">|</span>
+    <span style="font-size:10px;color:${rsiColor}">RSI ${rsi ?? '-'}</span>
+    <span style="font-size:10px;color:#64748b">${vol != null ? (vol >= 1e6 ? (vol/1e6).toFixed(1)+'M' : vol >= 1e3 ? (vol/1e3).toFixed(0)+'K' : vol) : '-'}</span>`;
+}
+
+// 크로스헤어 세로선 + 동기화 플러그인
 const _crosshairPlugin = {
   id: 'crosshair',
   afterEvent(chart, args) {
@@ -681,14 +738,27 @@ const _crosshairPlugin = {
       if (el.length > 0) {
         chart._crosshairX = el[0].element.x;
         chart._crosshairIdx = el[0].index;
-      } else {
-        chart._crosshairX = null;
-        chart._crosshairIdx = null;
+        // 동기화
+        [_stockPriceChart, _stockVolumeChart, _stockRsiChart].forEach(ch => {
+          if (!ch || ch === chart) return;
+          ch._crosshairX = el[0].element.x;
+          ch._crosshairIdx = el[0].index;
+          ch.setActiveElements([{ datasetIndex: 0, index: el[0].index }]);
+          ch.update('none');
+        });
+        _updateTooltipBar(el[0].index);
       }
     }
     if (evt.type === 'mouseout') {
       chart._crosshairX = null;
       chart._crosshairIdx = null;
+      [_stockPriceChart, _stockVolumeChart, _stockRsiChart].forEach(ch => {
+        if (!ch) return;
+        ch._crosshairX = null;
+        ch._crosshairIdx = null;
+        ch.update('none');
+      });
+      _updateTooltipBar(null);
     }
   },
   afterDraw(chart) {
@@ -696,61 +766,13 @@ const _crosshairPlugin = {
     const ctx = chart.ctx;
     const { top, bottom } = chart.chartArea;
     ctx.save();
-    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
     ctx.lineWidth = 1;
-    ctx.setLineDash([3, 3]);
+    ctx.setLineDash([2, 2]);
     ctx.beginPath();
     ctx.moveTo(chart._crosshairX, top);
     ctx.lineTo(chart._crosshairX, bottom);
     ctx.stroke();
-    ctx.restore();
-  },
-};
-
-// 캔들스틱 커스텀 플러그인
-const _candlestickPlugin = {
-  id: 'candlestick',
-  afterDatasetsDraw(chart) {
-    const meta = chart._candleMeta;
-    if (!meta) return;
-    const ctx = chart.ctx;
-    const xScale = chart.scales.x;
-    const yScale = chart.scales.y;
-    const { opens, highs, lows, closes } = meta;
-    const barCount = closes.length;
-    const barWidth = Math.max(2, Math.min(8, (chart.chartArea.right - chart.chartArea.left) / barCount * 0.6));
-
-    ctx.save();
-    for (let i = 0; i < barCount; i++) {
-      const o = opens[i], h = highs[i], l = lows[i], c = closes[i];
-      if (o == null || c == null) continue;
-      const x = xScale.getPixelForValue(i);
-      const yO = yScale.getPixelForValue(o);
-      const yC = yScale.getPixelForValue(c);
-      const yH = yScale.getPixelForValue(h);
-      const yL = yScale.getPixelForValue(l);
-      const bullish = c >= o;
-      const color = bullish ? '#ef4444' : '#3b82f6';
-
-      // 꼬리 (wick)
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(x, yH);
-      ctx.lineTo(x, yL);
-      ctx.stroke();
-
-      // 몸통 (body)
-      const bodyTop = Math.min(yO, yC);
-      const bodyH = Math.max(Math.abs(yO - yC), 1);
-      ctx.fillStyle = bullish ? color : color;
-      ctx.fillRect(x - barWidth / 2, bodyTop, barWidth, bodyH);
-      if (!bullish) {
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 0.5;
-        ctx.strokeRect(x - barWidth / 2, bodyTop, barWidth, bodyH);
-      }
-    }
     ctx.restore();
   },
 };
@@ -791,55 +813,32 @@ async function _loadStockChart(sym, range) {
     // 데이터 저장 (툴팁 연동용)
     _stockChartData = { labels, opens, highs, lows, closes, volumes, rsiValues };
 
-    // 차트 렌더 시작
+    // 종가 기준 등락 판별 (토스 스타일: 첫날 대비)
+    const firstClose = closes.find(c => c != null) || 0;
+    const lastClose = closes.filter(c => c != null).pop() || 0;
+    const isUp = lastClose >= firstClose;
+    const UP = '#ef4444', DN = '#3b82f6';
+    const lineColor = isUp ? UP : DN;
 
-    const allCharts = () => [_stockPriceChart, _stockVolumeChart, _stockRsiChart];
+    // 공통: X축 패딩 (오른쪽에 여유 공간 → 오늘 터치 가능)
+    const xPadRight = 20;
 
-    // 공통 툴팁: 가격 + RSI 동시 표시
-    const sharedTooltip = {
-      mode: 'index',
-      intersect: false,
-      callbacks: {
-        title: ctx => {
-          const idx = ctx[0]?.dataIndex;
-          return idx != null && _stockChartData ? _stockChartData.labels[idx] : '';
-        },
-        afterBody: ctx => {
-          const idx = ctx[0]?.dataIndex;
-          if (idx == null || !_stockChartData) return '';
-          const d = _stockChartData;
-          const lines = [];
-          if (d.opens[idx] != null) lines.push(`시가: $${d.opens[idx]?.toFixed(2)}`);
-          if (d.highs[idx] != null) lines.push(`고가: $${d.highs[idx]?.toFixed(2)}`);
-          if (d.lows[idx] != null)  lines.push(`저가: $${d.lows[idx]?.toFixed(2)}`);
-          if (d.closes[idx] != null) lines.push(`종가: $${d.closes[idx]?.toFixed(2)}`);
-          if (d.rsiValues[idx] != null) {
-            const r = d.rsiValues[idx];
-            const tag = r >= 70 ? ' (과매수)' : r <= 30 ? ' (과매도)' : '';
-            lines.push(`RSI(14): ${r}${tag}`);
-          }
-          if (d.volumes[idx] != null) {
-            const v = d.volumes[idx];
-            lines.push(`거래량: ${v >= 1e6 ? (v/1e6).toFixed(1)+'M' : v >= 1e3 ? (v/1e3).toFixed(0)+'K' : v}`);
-          }
-          return lines;
-        },
-        label: () => '',
-      },
-      backgroundColor: 'rgba(20,22,40,0.95)',
-      titleColor: '#e2e4ea',
-      bodyColor: '#a0a6b8',
-      borderColor: '#3c4060',
-      borderWidth: 1,
-      padding: 10,
-      titleFont: { size: 11, weight: 'bold' },
-      bodyFont: { size: 10 },
+    // 공통: 차트 기본 옵션
+    const baseOpts = {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      layout: { padding: { right: xPadRight } },
     };
 
-    // ── 캔들스틱 가격 차트 ──
+    // ── 가격 차트 (토스 스타일: 부드러운 라인 + 그라디언트 fill) ──
     if (_stockPriceChart) _stockPriceChart.destroy();
     const priceCanvas = document.getElementById('stock-price-chart');
-    // 더미 데이터셋 (캔들은 플러그인으로 그림)
+    if (!priceCanvas) return;
+    const priceCtx = priceCanvas.getContext('2d');
+    const gradFill = priceCtx.createLinearGradient(0, 0, 0, priceCanvas.parentElement.offsetHeight);
+    gradFill.addColorStop(0, isUp ? 'rgba(239,68,68,0.18)' : 'rgba(59,130,246,0.18)');
+    gradFill.addColorStop(1, 'rgba(0,0,0,0)');
+
     _stockPriceChart = new Chart(priceCanvas, {
       type: 'line',
       data: {
@@ -847,69 +846,100 @@ async function _loadStockChart(sym, range) {
         datasets: [{
           label: '종가',
           data: closes,
-          borderColor: 'transparent',
+          borderColor: lineColor,
+          borderWidth: 2,
           pointRadius: 0,
-          fill: false,
+          pointHoverRadius: 5,
+          pointHoverBackgroundColor: lineColor,
+          pointHoverBorderColor: '#fff',
+          pointHoverBorderWidth: 2,
+          fill: true,
+          backgroundColor: gradFill,
+          tension: 0.3,
+          spanGaps: true,
         }],
       },
       options: {
-        responsive: true, maintainAspectRatio: false,
-        interaction: { mode: 'index', intersect: false },
+        ...baseOpts,
         scales: {
-          x: { ticks: { color: '#5c6478', font: { size: 8 }, maxTicksLimit: 8, maxRotation: 0 }, grid: { color: '#2c3040' } },
+          x: {
+            ticks: { color: '#5c6478', font: { size: 9 }, maxTicksLimit: 6, maxRotation: 0, padding: 4 },
+            grid: { display: false },
+          },
           y: {
-            min: Math.min(...lows.filter(v => v != null)) * 0.995,
-            max: Math.max(...highs.filter(v => v != null)) * 1.005,
-            ticks: { color: '#5c6478', font: { size: 9 }, callback: v => '$' + v.toFixed(0) },
-            grid: { color: '#2c3040' },
+            position: 'right',
+            ticks: { color: '#5c6478', font: { size: 9 }, callback: v => '$' + v.toFixed(0), maxTicksLimit: 5 },
+            grid: { color: 'rgba(255,255,255,0.04)' },
           },
         },
         plugins: {
           legend: { display: false },
-          tooltip: sharedTooltip,
-          title: { display: true, text: '캔들스틱', color: '#e2e4ea', font: { size: 10 }, align: 'start' },
+          tooltip: { enabled: false },
         },
-        onHover: () => _syncCharts(_stockPriceChart, allCharts()),
-      },
-      plugins: [_candlestickPlugin, _crosshairPlugin],
-    });
-    _stockPriceChart._candleMeta = { opens, highs, lows, closes };
-
-    // ── 거래량 차트 ──
-    if (_stockVolumeChart) _stockVolumeChart.destroy();
-    const volCanvas = document.getElementById('stock-volume-chart');
-    const volColors = closes.map((c, i) => i > 0 && closes[i-1] != null && c != null ? (c >= closes[i-1] ? 'rgba(239,68,68,0.6)' : 'rgba(59,130,246,0.6)') : 'rgba(148,163,184,0.4)');
-    _stockVolumeChart = new Chart(volCanvas, {
-      type: 'bar',
-      data: {
-        labels,
-        datasets: [{
-          label: '거래량',
-          data: volumes,
-          backgroundColor: volColors,
-          borderWidth: 0,
-        }],
-      },
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        interaction: { mode: 'index', intersect: false },
-        scales: {
-          x: { ticks: { color: '#5c6478', font: { size: 8 }, maxTicksLimit: 8, maxRotation: 0 }, grid: { display: false } },
-          y: { ticks: { color: '#5c6478', font: { size: 8 }, callback: v => v >= 1e6 ? (v/1e6).toFixed(0)+'M' : v >= 1e3 ? (v/1e3).toFixed(0)+'K' : v }, grid: { color: '#2c3040' } },
-        },
-        plugins: {
-          legend: { display: false },
-          tooltip: sharedTooltip,
-          title: { display: true, text: '거래량', color: '#e2e4ea', font: { size: 10 }, align: 'start' },
-        },
-        onHover: () => _syncCharts(_stockVolumeChart, allCharts()),
       },
       plugins: [_crosshairPlugin],
     });
 
-    // ── RSI 차트 ──
+    // ── 거래량 차트 (토스 스타일: 등락 컬러바) ──
+    if (_stockVolumeChart) _stockVolumeChart.destroy();
+    const volCanvas = document.getElementById('stock-volume-chart');
+    if (!volCanvas) return;
+
+    // 거래량 이동평균(20) — 추이 파악용
+    const volMA = [];
+    for (let i = 0; i < volumes.length; i++) {
+      if (i < 19) { volMA.push(null); continue; }
+      const s = volumes.slice(i - 19, i + 1);
+      volMA.push(s.reduce((a, b) => a + (b || 0), 0) / 20);
+    }
+
+    const volColors = closes.map((c, i) => {
+      if (i === 0 || c == null) return 'rgba(148,163,184,0.3)';
+      const prev = closes[i - 1];
+      return c >= prev ? 'rgba(239,68,68,0.55)' : 'rgba(59,130,246,0.55)';
+    });
+
+    _stockVolumeChart = new Chart(volCanvas, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          { label: '거래량', data: volumes, backgroundColor: volColors, borderWidth: 0, order: 2 },
+          { label: '20MA', data: volMA, type: 'line', borderColor: '#f59e0b', borderWidth: 1.2, pointRadius: 0, fill: false, tension: 0.3, order: 1 },
+        ],
+      },
+      options: {
+        ...baseOpts,
+        scales: {
+          x: { ticks: { display: false }, grid: { display: false } },
+          y: {
+            position: 'right',
+            ticks: { color: '#5c6478', font: { size: 8 }, callback: v => v >= 1e6 ? (v/1e6).toFixed(0)+'M' : v >= 1e3 ? (v/1e3).toFixed(0)+'K' : '', maxTicksLimit: 3 },
+            grid: { color: 'rgba(255,255,255,0.03)' },
+          },
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: { enabled: false },
+        },
+      },
+      plugins: [_crosshairPlugin],
+    });
+
+    // ── RSI 차트 (토스 스타일: 영역 fill + 구간 표시) ──
     if (_stockRsiChart) _stockRsiChart.destroy();
     const rsiCanvas = document.getElementById('stock-rsi-chart');
+    if (!rsiCanvas) return;
+    const rsiCtx = rsiCanvas.getContext('2d');
+
+    // RSI 색상: 현재 값 기준
+    const lastRsi = rsiValues.filter(r => r != null).pop();
+    const rsiLineColor = lastRsi != null ? (lastRsi >= 70 ? UP : lastRsi <= 30 ? '#10b981' : '#f59e0b') : '#f59e0b';
+    const rsiFillAlpha = lastRsi != null ? (lastRsi >= 70 ? 'rgba(239,68,68,0.12)' : lastRsi <= 30 ? 'rgba(16,185,129,0.12)' : 'rgba(245,158,11,0.12)') : 'rgba(245,158,11,0.12)';
+    const rsiFillGrad = rsiCtx.createLinearGradient(0, 0, 0, rsiCanvas.parentElement.offsetHeight);
+    rsiFillGrad.addColorStop(0, rsiFillAlpha);
+    rsiFillGrad.addColorStop(1, 'rgba(0,0,0,0)');
+
     _stockRsiChart = new Chart(rsiCanvas, {
       type: 'line',
       data: {
@@ -917,26 +947,31 @@ async function _loadStockChart(sym, range) {
         datasets: [{
           label: 'RSI(14)',
           data: rsiValues,
-          borderColor: '#f59e0b',
+          borderColor: rsiLineColor,
           borderWidth: 1.5,
           pointRadius: 0,
-          fill: false,
-          tension: 0.2,
+          pointHoverRadius: 4,
+          pointHoverBackgroundColor: rsiLineColor,
+          fill: true,
+          backgroundColor: rsiFillGrad,
+          tension: 0.3,
         }],
       },
       options: {
-        responsive: true, maintainAspectRatio: false,
-        interaction: { mode: 'index', intersect: false },
+        ...baseOpts,
         scales: {
-          x: { ticks: { color: '#5c6478', font: { size: 8 }, maxTicksLimit: 8, maxRotation: 0 }, grid: { display: false } },
-          y: { min: 0, max: 100, ticks: { color: '#5c6478', font: { size: 8 }, stepSize: 30 }, grid: { color: '#2c3040' } },
+          x: { ticks: { display: false }, grid: { display: false } },
+          y: {
+            min: 0, max: 100,
+            position: 'right',
+            ticks: { color: '#5c6478', font: { size: 8 }, stepSize: 50, callback: v => v === 50 ? '50' : v === 0 ? '' : v === 100 ? '' : '' },
+            grid: { color: 'rgba(255,255,255,0.03)' },
+          },
         },
         plugins: {
           legend: { display: false },
-          tooltip: sharedTooltip,
-          title: { display: true, text: 'RSI (14)', color: '#e2e4ea', font: { size: 10 }, align: 'start' },
+          tooltip: { enabled: false },
         },
-        onHover: () => _syncCharts(_stockRsiChart, allCharts()),
       },
       plugins: [
         _crosshairPlugin,
@@ -945,40 +980,48 @@ async function _loadStockChart(sym, range) {
           beforeDraw(chart) {
             const ctx = chart.ctx;
             const yScale = chart.scales.y;
-            const { left, right } = chart.chartArea;
-            const y70 = yScale.getPixelForValue(70);
-            const yTop = yScale.getPixelForValue(100);
+            const { left, right, top, bottom } = chart.chartArea;
             ctx.save();
+            // 과매수 영역 (70~100)
+            const y70 = yScale.getPixelForValue(70);
+            const y100 = yScale.getPixelForValue(100);
             ctx.fillStyle = 'rgba(239,68,68,0.06)';
-            ctx.fillRect(left, yTop, right - left, y70 - yTop);
+            ctx.fillRect(left, y100, right - left, y70 - y100);
+            // 과매도 영역 (0~30)
             const y30 = yScale.getPixelForValue(30);
-            const yBot = yScale.getPixelForValue(0);
+            const y0 = yScale.getPixelForValue(0);
             ctx.fillStyle = 'rgba(16,185,129,0.06)';
-            ctx.fillRect(left, y30, right - left, yBot - y30);
-            ctx.strokeStyle = 'rgba(239,68,68,0.3)';
-            ctx.setLineDash([3,3]);
+            ctx.fillRect(left, y30, right - left, y0 - y30);
+            // 경계선
+            ctx.strokeStyle = 'rgba(239,68,68,0.25)';
+            ctx.setLineDash([3, 3]);
+            ctx.lineWidth = 0.8;
             ctx.beginPath(); ctx.moveTo(left, y70); ctx.lineTo(right, y70); ctx.stroke();
-            ctx.strokeStyle = 'rgba(16,185,129,0.3)';
+            ctx.strokeStyle = 'rgba(16,185,129,0.25)';
             ctx.beginPath(); ctx.moveTo(left, y30); ctx.lineTo(right, y30); ctx.stroke();
+            // 50 기준선
+            const y50 = yScale.getPixelForValue(50);
+            ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+            ctx.beginPath(); ctx.moveTo(left, y50); ctx.lineTo(right, y50); ctx.stroke();
+            // 레이블
+            ctx.font = '8px sans-serif';
+            ctx.fillStyle = 'rgba(239,68,68,0.5)';
+            ctx.fillText('과매수', left + 2, y70 + 10);
+            ctx.fillStyle = 'rgba(16,185,129,0.5)';
+            ctx.fillText('과매도', left + 2, y30 - 4);
             ctx.restore();
           },
         },
       ],
     });
 
-    // 요약 정보
-    const lastPrice = closes.filter(c => c != null).pop();
-    const lastRsi = rsiValues.filter(r => r != null).pop();
-    const infoEl = document.getElementById('stock-chart-info');
-    if (infoEl) {
-      const rsiLabel = lastRsi != null ? (lastRsi >= 70 ? '과매수' : lastRsi <= 30 ? '과매도' : '보통') : '';
-      const rsiColor = lastRsi != null ? (lastRsi >= 70 ? '#ef4444' : lastRsi <= 30 ? '#10b981' : 'var(--muted2)') : 'var(--muted)';
-      infoEl.innerHTML = `현재가: <strong>$${lastPrice?.toFixed(2) || '-'}</strong> · RSI(14): <strong style="color:${rsiColor}">${lastRsi ?? '-'} ${rsiLabel}</strong>`;
-    }
+    // 초기 툴팁바: 마지막 데이터
+    _updateTooltipBar(closes.length - 1);
+
   } catch (e) {
     console.warn('[stock-chart]', e);
-    const content = document.getElementById('sd-content');
-    if (content) content.innerHTML = `<div style="color:var(--diet-bad);font-size:12px;text-align:center;padding:20px">차트 데이터를 불러올 수 없습니다</div>`;
+    const el = document.getElementById('sd-content');
+    if (el) el.innerHTML = `<div style="color:var(--diet-bad);font-size:12px;text-align:center;padding:20px">차트 데이터를 불러올 수 없습니다</div>`;
   }
 }
 
