@@ -3,7 +3,7 @@
 
 // 캐시 버전: 타임스탬프 기반 자동 생성 — 파일 수정 시 SW 자동 업데이트
 // (SW 파일 내용이 1바이트라도 바뀌면 브라우저가 새 SW로 인식)
-const CACHE_VERSION = 'dashboard3-v20260331d';
+const CACHE_VERSION = 'dashboard3-v20260403a';
 const RUNTIME_CACHE = 'dashboard3-runtime';
 const STATIC_ASSETS = [
   './',
@@ -27,6 +27,8 @@ const STATIC_ASSETS = [
   './render-stats.js',
   './render-loa.js',
   './render-monthly-calendar.js',
+  './render-finance.js',
+  './finance-calc.js',
   // 모달 핸들러
   './app-modal-goals.js',
   './app-modal-quests.js',

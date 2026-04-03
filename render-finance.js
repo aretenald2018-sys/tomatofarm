@@ -383,11 +383,12 @@ function _renderStockList() {
     const conA = _consensus(_rsiSignal(rsi), _bbSignal(d.closes, bb), _stochSignal(stoch));
     // 전략B 신호
     const gate = _trendGate(d.closes);
+    const dropSpeed = _pbDropSpeed(d.closes);
     let conB;
     if (!gate.active && !gate.near) {
       conB = { consensus: 'OFF' };
     } else {
-      conB = _consensus(_pbPriceSignal(d.closes), _pbRsiSignal(rsi), _pbVolumeSignal(d.volumes, d.closes));
+      conB = _pbConsensus(_pbPriceSignal(d.closes), _pbRsiSignal(rsi), _pbVolumeSignal(d.volumes, d.closes), gate, dropSpeed);
     }
     const badgeA = _compactBadge(conA.consensus, 'A');
     const badgeB = _compactBadge(conB.consensus, 'B');
@@ -570,22 +571,31 @@ function _renderDetailStratB(sym, el) {
   const priceSig = _pbPriceSignal(d.closes);
   const rsiSig = _pbRsiSignal(rsi);
   const volSig = _pbVolumeSignal(d.volumes, d.closes);
+  const dropSpeed = _pbDropSpeed(d.closes);
   let con;
   if (!gate.active && !gate.near) {
     con = { consensus: 'OFF', action: '비활성 — 전략A 참고', summary: '-' };
   } else {
-    con = _consensus(priceSig, rsiSig, volSig);
-    if (gate.near) con.action += ' (추세 경계)';
+    con = _pbConsensus(priceSig, rsiSig, volSig, gate, dropSpeed);
   }
   const pos = _getPbPositions()[sym];
   const gateColor = gate.active ? '#10b981' : gate.near ? '#f59e0b' : '#ef4444';
   const gateText = gate.active ? 'ON' : gate.near ? '경계' : 'OFF';
+  const strengthLabel = { strong: '강', moderate: '중', weak: '약', none: '-' }[gate.strength] || '-';
+  const strengthColor = { strong: '#10b981', moderate: '#f59e0b', weak: '#ef4444', none: '#64748b' }[gate.strength] || '#64748b';
 
   el.innerHTML = `
     <div class="fin-ind-row" style="padding:12px 0">
-      <div><div class="fin-ind-label">추세 게이트</div><div class="fin-ind-sub">50SMA ${gate.sma50?.toFixed(0)||'-'} vs 200SMA ${gate.sma200?.toFixed(0)||'-'}</div></div>
-      <div style="font-size:14px;font-weight:700;color:${gateColor}">${gateText}</div>
+      <div><div class="fin-ind-label">추세 게이트</div><div class="fin-ind-sub">50SMA ${gate.sma50?.toFixed(0)||'-'} vs 200SMA ${gate.sma200?.toFixed(0)||'-'} · 이격 ${gate.diff?.toFixed(1)||'-'}%</div></div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <span style="font-size:14px;font-weight:700;color:${gateColor}">${gateText}</span>
+        <span style="font-size:10px;color:${strengthColor}">(${strengthLabel})</span>
+      </div>
     </div>
+    ${dropSpeed.fast ? `<div class="fin-ind-row" style="background:rgba(239,68,68,0.08);border-radius:6px;padding:8px 10px;margin-bottom:4px">
+      <div><div class="fin-ind-label" style="color:#ef4444">급락 감지</div><div class="fin-ind-sub">5일간 ${dropSpeed.val} — 눌림목이 아닌 급락 가능성</div></div>
+      <div style="font-size:12px;font-weight:700;color:#ef4444">⚠️</div>
+    </div>` : ''}
     <div class="fin-verdict">
       <div class="fin-verdict-label">Pullback 종합</div>
       ${con.consensus === 'OFF' ? '<span class="fin-sr-badge" style="background:#1e293b;color:#64748b;font-size:11px;padding:4px 10px">OFF</span>' : _signalBadge(con.consensus)}
@@ -594,7 +604,7 @@ function _renderDetailStratB(sym, el) {
     </div>
     ${gate.active || gate.near ? `
     <div class="fin-ind-row">
-      <div><div class="fin-ind-label">20SMA 이격</div></div>
+      <div><div class="fin-ind-label">20SMA 이격</div><div class="fin-ind-sub">SMA20: $${priceSig.sma20?.toFixed(0)||'-'}</div></div>
       <div class="fin-ind-val">${priceSig.val} ${_dirBadge(priceSig.dir)}</div>
     </div>
     <div class="fin-ind-row">

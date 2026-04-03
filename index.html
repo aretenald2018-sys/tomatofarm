@@ -43,40 +43,6 @@
 <!-- ═══ 홈 탭 ═══ -->
 <div id="tab-home" class="tab-panel active">
 
-  <!-- 종합 스트릭 대시보드 -->
-  <div class="dash-board">
-    <div class="dash-card dash-workout">
-      <div class="dash-card-title">운동</div>
-      <div class="dash-stat-val" id="dash-workout-streak">0</div>
-      <div class="dash-stat-lbl">일 연속</div>
-    </div>
-    <div class="dash-card dash-diet">
-      <div class="dash-card-title">식단</div>
-      <div class="dash-stat-val" id="dash-diet-streak">0</div>
-      <div class="dash-stat-lbl">일 연속</div>
-    </div>
-    <div class="dash-card dash-cf">
-      <div class="dash-card-title">크로스핏</div>
-      <div class="dash-stat-val" id="dash-cf-streak">0</div>
-      <div class="dash-stat-lbl">일 연속</div>
-    </div>
-    <div class="dash-card dash-stretch">
-      <div class="dash-card-title">스트레칭</div>
-      <div class="dash-stat-val" id="dash-stretch-streak">0</div>
-      <div class="dash-stat-lbl">일 연속</div>
-    </div>
-    <div class="dash-card dash-wine-free">
-      <div class="dash-card-title">와인프리</div>
-      <div class="dash-stat-val" id="dash-wine-free-streak">0</div>
-      <div class="dash-stat-lbl">일 연속</div>
-    </div>
-  </div>
-
-  <!-- 오늘의 운동 빠른 기록 버튼 -->
-  <div class="quick-workout-bar">
-    <button class="quick-workout-btn" onclick="switchTab('workout')">오늘의 운동 · 식단 기록</button>
-  </div>
-
   <!-- 홈 섹션 -->
   <div class="home-section">
 
@@ -97,7 +63,7 @@
     <div class="home-card" id="card-unit-goal">
       <div class="section-title-row" style="align-items:center">
         <div class="home-card-title" style="margin-bottom:0">🎯 단위 목표달성</div>
-        <button class="home-card-edit-btn" onclick="openUnitGoalDatePicker()">✏️</button>
+        <button class="section-title-edit-btn" onclick="openUnitGoalDatePicker()">✏️</button>
       </div>
       <div id="unit-goal-content"></div>
     </div>
@@ -186,21 +152,6 @@
       <div id="diet-goal-content"></div>
     </div>
 
-    <!-- 오늘의 식단/운동 -->
-    <div class="home-card" id="card-today-diet">
-      <div class="section-title-row" style="margin-bottom:8px">
-        <div class="home-card-title editable-title" id="title-today_diet">오늘의 식단</div>
-        <button class="section-title-edit-btn" onclick="editSectionTitle('today_diet')">✏️</button>
-      </div>
-      <div id="today-diet-summary"></div>
-    </div>
-    <div class="home-card" id="card-today-workout">
-      <div class="section-title-row" style="margin-bottom:8px">
-        <div class="home-card-title editable-title" id="title-today_workout">오늘의 운동</div>
-        <button class="section-title-edit-btn" onclick="editSectionTitle('today_workout')">✏️</button>
-      </div>
-      <div id="today-workout-summary"></div>
-    </div>
   </div>
 </div>
 
@@ -559,7 +510,7 @@ async function saveStreakSettingsAndClose() {
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
-<script type="module" src="app.js?v=20260401"></script>
+<script type="module" src="app.js?v=20260403"></script>
 
 <!-- PWA Service Worker 등록 -->
 <script>
