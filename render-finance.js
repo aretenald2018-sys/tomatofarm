@@ -194,8 +194,8 @@ function _buildHTML() {
     </div>
     <div class="fin-section-body${_collapsed.benchmark?' collapsed':''}">
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <div class="fin-chart-wrap fin-chart-blurable" style="height:220px;flex:1;min-width:0;position:relative;cursor:pointer" onclick="window.__toggleFinChartBlur()"><canvas id="fin-recent5-chart"></canvas><div class="fin-yaxis-blur-overlay"></div></div>
-        <div class="fin-chart-wrap fin-chart-blurable" style="height:220px;flex:1;min-width:0;position:relative;cursor:pointer" onclick="window.__toggleFinChartBlur()"><canvas id="fin-main-chart"></canvas><div class="fin-yaxis-blur-overlay"></div></div>
+        <div class="fin-chart-wrap fin-chart-blurable" style="height:220px;flex:1;min-width:0;position:relative;cursor:pointer" onclick="window.__toggleFinChartBlur()"><canvas id="fin-recent5-chart"></canvas></div>
+        <div class="fin-chart-wrap fin-chart-blurable" style="height:220px;flex:1;min-width:0;position:relative;cursor:pointer" onclick="window.__toggleFinChartBlur()"><canvas id="fin-main-chart"></canvas></div>
       </div>
       <div id="fin-bench-list"></div>
       <div id="fin-plan-list"></div>
@@ -262,15 +262,61 @@ function _bindToggle() {
 // ================================================================
 // 자산 추이 그래프 세로축 블러 토글
 // ================================================================
+
+// Chart.js 플러그인: Y축 틱 텍스트만 블러 (Threads 스타일)
+const _yAxisBlurPlugin = {
+  id: 'yAxisBlur',
+  afterDraw(chart) {
+    if (!_finChartYAxisBlurred) return;
+    const yScale = chart.scales.y;
+    if (!yScale) return;
+    const ctx = chart.ctx;
+    // Y축 틱 레이블 영역만 블러로 다시 그리기
+    const ticks = yScale.ticks;
+    if (!ticks || !ticks.length) return;
+
+    ctx.save();
+    ctx.filter = 'blur(4px)';
+    // 틱 레이블 위치에 맞춰 실제 텍스트를 블러로 덮어쓰기
+    ctx.font = `${yScale.options.ticks.font?.size || 9}px -apple-system, sans-serif`;
+    ctx.fillStyle = yScale.options.ticks.color || '#5c6478';
+    ctx.textAlign = yScale.position === 'right' ? 'left' : 'right';
+    ctx.textBaseline = 'middle';
+
+    const isRight = yScale.position === 'right';
+    const xPos = isRight ? yScale.left + 8 : yScale.right - 8;
+
+    ticks.forEach((tick, i) => {
+      const y = yScale.getPixelForTick(i);
+      const label = yScale.getLabelForValue(tick.value);
+      const formatted = typeof yScale.options.ticks.callback === 'function'
+        ? yScale.options.ticks.callback.call(yScale, tick.value, i, ticks)
+        : label;
+      if (formatted !== undefined && formatted !== null && formatted !== '') {
+        // 배경으로 원래 텍스트 숨기기
+        const metrics = ctx.measureText(String(formatted));
+        const pad = 3;
+        ctx.save();
+        ctx.filter = 'none';
+        ctx.fillStyle = chart.options.scales?.y?.grid?.color === '#2c3040' ? '#1e2028' : '#1a1a2e';
+        const bgX = isRight ? xPos - pad : xPos - metrics.width - pad;
+        ctx.fillRect(bgX, y - 7, metrics.width + pad * 2, 14);
+        ctx.restore();
+
+        // 블러된 텍스트 그리기
+        ctx.fillStyle = yScale.options.ticks.color || '#5c6478';
+        ctx.fillText(String(formatted), xPos, y);
+      }
+    });
+    ctx.restore();
+  }
+};
+
 window.__toggleFinChartBlur = function() {
   _finChartYAxisBlurred = !_finChartYAxisBlurred;
-  // 블러 오버레이 업데이트
   document.querySelectorAll('.fin-chart-blurable').forEach(el => {
-    const overlay = el.querySelector('.fin-yaxis-blur-overlay');
-    if (overlay) overlay.style.display = _finChartYAxisBlurred ? '' : 'none';
     el.style.cursor = _finChartYAxisBlurred ? 'pointer' : 'default';
   });
-  // 차트 y축 틱 재렌더
   _renderRecent5Chart();
   _renderMainChart();
 };
@@ -2361,7 +2407,7 @@ function _renderRecent5Chart() {
           grid: { color: '#2c3040' },
         },
         y: {
-          ticks: { color: '#5c6478', font: { size: 9 }, callback: v => _finChartYAxisBlurred ? '●●●●' : formatManwon(v), maxTicksLimit: 6 },
+          ticks: { color: '#5c6478', font: { size: 9 }, callback: v => formatManwon(v), maxTicksLimit: 6},
           grid: { color: '#2c3040' },
         },
       },
@@ -2380,6 +2426,7 @@ function _renderRecent5Chart() {
         title: { display: true, text: `최근 5년 (${startYear}~${currentYear})`, color: '#e2e4ea', font: { size: 11 }, padding: { bottom: 6 } },
       },
     },
+    plugins: [_yAxisBlurPlugin],
   });
 }
 
@@ -2543,7 +2590,7 @@ function _renderMainChart() {
           grid: { color: '#2c3040' },
         },
         y: {
-          ticks: { color: '#5c6478', font: { size: 9 }, callback: v => _finChartYAxisBlurred ? '●●●●' : formatManwon(v), maxTicksLimit: 6 },
+          ticks: { color: '#5c6478', font: { size: 9 }, callback: v => formatManwon(v), maxTicksLimit: 6},
           grid: { color: '#2c3040' },
         },
       },
@@ -2563,7 +2610,7 @@ function _renderMainChart() {
         title: { display: true, text: '전체 추이', color: '#e2e4ea', font: { size: 11 }, padding: { bottom: 6 } },
       },
     },
-    plugins: [{
+    plugins: [_yAxisBlurPlugin, {
       id: 'gapIndicator',
       afterDraw(chart) {
         const ctx = chart.ctx;
