@@ -42,15 +42,18 @@ console.log('========================================');
 const q = query(
   collection(db, 'dev_tasks'),
   where('status', '==', 'pending'),
-  orderBy('createdAt', 'asc'),
-  limit(1)
+  limit(5)
 );
 
 onSnapshot(q, async (snap) => {
   if (snap.empty || processing) return;
 
-  const taskDoc = snap.docs[0];
-  const task = taskDoc.data();
+  // createdAt 기준 정렬 (인덱스 불필요)
+  const docs = snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0));
+  const taskDoc = snap.docs.find(d => d.id === docs[0].id);
+  const task = docs[0];
   const taskId = taskDoc.id;
 
   processing = true;
