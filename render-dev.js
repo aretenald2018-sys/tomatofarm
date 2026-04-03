@@ -3,22 +3,18 @@
 // ================================================================
 
 import { CONFIG } from './config.js';
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
+import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
 import {
   getFirestore, doc, setDoc, deleteDoc,
-  collection, getDocs, query, orderBy, limit,
+  collection, query, orderBy, limit,
   onSnapshot, serverTimestamp,
 } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 
-let db;
-try {
-  const app = initializeApp(CONFIG.FIREBASE, 'dev-app');
-  db = getFirestore(app);
-} catch {
-  // 이미 초기화된 경우
-  const { getApp } = await import("https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js");
-  try { db = getFirestore(getApp('dev-app')); } catch { db = getFirestore(getApp()); }
-}
+const db = (() => {
+  const apps = getApps();
+  const app = apps.length ? apps[0] : initializeApp(CONFIG.FIREBASE);
+  return getFirestore(app);
+})();
 
 const COL = 'dev_tasks';
 let _unsubscribe = null;
