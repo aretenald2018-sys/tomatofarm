@@ -483,8 +483,8 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans KR',sans-seri
 /* ── 개발 탭 (토스 스타일) ── */
 .dev-header{padding:20px 20px 4px;}.dev-title{font-size:20px;font-weight:700;color:var(--text);}.dev-subtitle{display:block;font-size:12px;color:var(--muted);margin-top:4px;}
 .dev-input-area{padding:12px 20px 16px;display:flex;gap:8px;align-items:flex-end;}
-.dev-textarea{flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:12px;color:var(--text);font-family:'Noto Sans KR',sans-serif;font-size:14px;padding:12px 14px;resize:none;outline:none;transition:border-color .15s;line-height:1.5;}
-.dev-textarea:focus{border-color:#3b82f6;}
+.dev-textarea{flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:12px;color:var(--text);font-family:'Noto Sans KR',sans-serif;font-size:14px;padding:12px 14px;resize:none;outline:none;transition:border-color .15s,box-shadow .15s;line-height:1.5;-webkit-tap-highlight-color:transparent;}
+.dev-textarea:focus{border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,0.25);}
 .dev-textarea::placeholder{color:var(--muted);}
 .dev-submit-btn{background:#3b82f6;color:#fff;border:none;border-radius:20px;font-family:'Noto Sans KR',sans-serif;font-size:14px;font-weight:700;padding:12px 20px;cursor:pointer;white-space:nowrap;transition:all .12s;-webkit-tap-highlight-color:transparent;flex-shrink:0;}
 .dev-submit-btn:active{transform:scale(.96);}.dev-submit-btn:disabled{opacity:.5;cursor:not-allowed;}
