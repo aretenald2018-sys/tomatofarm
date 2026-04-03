@@ -225,11 +225,13 @@ function fromGCalEvent(gcalEv) {
     color: GCAL_TO_COLOR[gcalEv.colorId] || '#3b82f6',
   };
 
-  // 시간 정보 보존 (dateTime 또는 제목 파싱)
-  if (gcalEv.start?.dateTime) {
-    ev.startTime = gcalEv.start.dateTime.substring(11, 16); // "HH:MM"
-  } else if (parsed) {
+  // 시간 정보: 제목에서 파싱한 시간이 슬롯 시간보다 우선
+  if (parsed) {
+    // 제목에 시간이 있으면 그게 사용자 의도 → 우선 적용
     ev.startTime = `${String(parsed.hour).padStart(2,'0')}:${String(parsed.minute).padStart(2,'0')}`;
+    ev._timeOverride = true; // 동기화 시 GCal 시간도 이걸로 업데이트
+  } else if (gcalEv.start?.dateTime) {
+    ev.startTime = gcalEv.start.dateTime.substring(11, 16);
   }
   if (gcalEv.end?.dateTime) {
     ev.endTime = gcalEv.end.dateTime.substring(11, 16);
