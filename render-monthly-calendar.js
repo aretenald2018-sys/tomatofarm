@@ -312,7 +312,7 @@ function _initDrag(calWrap) {
 
   function getDate(el) {
     const d = el?.closest?.('[data-date]')?.dataset?.date || null;
-    return (d && d <= todayStr) ? d : null;  // 미래 날짜 무시
+    return d || null;
   }
   function highlight(s, e) {
     const lo = s<=e?s:e, hi = s<=e?e:s;

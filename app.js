@@ -468,6 +468,7 @@ function openCalEventModal(startDate, endDate, eventId) {
     s.classList.toggle('selected', s.dataset.color === _calEventColor);
   });
   document.getElementById('cal-event-modal').classList.add('open');
+  _updateEventViewToggle();
 }
 
 function closeCalEventModal(e) { _closeModal('cal-event-modal', e); }
@@ -554,6 +555,18 @@ function _updateEventViewToggle() {
   if (!btn) return;
   const mode = localStorage.getItem('event_view_mode') || 'bar';
   btn.textContent = mode === 'bar' ? '━ 바' : '→ 선';
+  // 모달 내 스타일 버튼도 업데이트
+  const barBtn = document.getElementById('evt-style-bar');
+  const arrowBtn = document.getElementById('evt-style-arrow');
+  if (barBtn) barBtn.style.borderColor = mode === 'bar' ? 'var(--accent)' : 'var(--border)';
+  if (arrowBtn) arrowBtn.style.borderColor = mode === 'arrow' ? 'var(--accent)' : 'var(--border)';
+}
+
+function setEventViewFromModal(mode) {
+  localStorage.setItem('event_view_mode', mode);
+  _updateEventViewToggle();
+  renderCalendar();
+  renderMonthlyCalendar();
 }
 
 // CSV 내보내기 ─────────────────────────────────────────────────
@@ -1367,6 +1380,7 @@ window.renderHome               = renderHome;
 window.switchTab                = switchTab;
 window.changeYear               = changeYear;
 window.toggleEventViewMode      = toggleEventViewMode;
+window.setEventViewFromModal    = setEventViewFromModal;
 window.changeMonthlyMonth       = changeMonthlyMonth;
 window.setPeriod                = setPeriod;
 window.getDietRec               = getDietRec;

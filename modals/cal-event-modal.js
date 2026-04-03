@@ -28,6 +28,13 @@ export const MODAL_HTML = `
           <div class="event-color-swatch" data-color="#6b7280" style="background:#6b7280" onclick="selectEventColor('#6b7280')"></div>
         </div>
       </div>
+      <div>
+        <div class="ex-editor-label">표시 스타일</div>
+        <div style="display:flex;gap:8px">
+          <button class="event-style-btn" id="evt-style-bar" onclick="setEventViewFromModal('bar')" style="flex:1;padding:8px;border:2px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:12px;cursor:pointer;transition:all .15s">━ 바</button>
+          <button class="event-style-btn" id="evt-style-arrow" onclick="setEventViewFromModal('arrow')" style="flex:1;padding:8px;border:2px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:12px;cursor:pointer;transition:all .15s">→ 선</button>
+        </div>
+      </div>
       <div class="ex-editor-actions">
         <button class="ex-editor-cancel" onclick="closeCalEventModal()">취소</button>
         <button class="ex-editor-save" onclick="saveCalEventFromModal()">저장</button>
