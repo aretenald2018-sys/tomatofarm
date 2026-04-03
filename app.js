@@ -125,7 +125,7 @@ function switchTab(tab) {
   if (panel) panel.classList.add('active');
   if (tab === 'home')     renderHome();
   if (tab === 'stats')    renderStats();
-  if (tab === 'calendar') renderCalendar();
+  if (tab === 'calendar') { renderCalendar(); if (isGCalConnected()) syncGCalNow(); }
   if (tab === 'wine')     renderWine();
   if (tab === 'dev')      renderDev();
   if (tab === 'cooking')  renderCooking();
@@ -596,10 +596,16 @@ function runExportCSV(period) {
 
 // ── 설정 모달 ────────────────────────────────────────────────────
 function openSettingsModal() {
-  document.getElementById('cfg-anthropic').value = localStorage.getItem('cfg_anthropic') || '';
-  _updateGCalStatus();
-  _renderNutritionDBList();
-  document.getElementById('settings-modal').classList.add('open');
+  try {
+    const anthropicEl = document.getElementById('cfg-anthropic');
+    if (anthropicEl) anthropicEl.value = localStorage.getItem('cfg_anthropic') || '';
+    _updateGCalStatus();
+    _renderNutritionDBList();
+    document.getElementById('settings-modal')?.classList.add('open');
+  } catch (e) {
+    console.error('[Settings] 모달 열기 오류:', e);
+    document.getElementById('settings-modal')?.classList.add('open');
+  }
 }
 
 function _renderNutritionDBList() {
@@ -1618,23 +1624,16 @@ function installPWA() {
 
 // openSettingsModal에서 설치 버튼 표시 업데이트
 const _origOpenSettings = openSettingsModal;
-function _patchedOpenSettings() {
-  _origOpenSettings();
-  const section = document.getElementById('pwa-install-section');
-  if (section) {
-    // 이미 standalone 모드(설치됨)이면 숨김
-    const isInstalled = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
-    section.style.display = (_deferredInstallPrompt || !isInstalled) && !isInstalled ? 'none' : 'none';
-    // beforeinstallprompt가 캐치되었거나, 아직 standalone이 아니면 표시
-    if (_deferredInstallPrompt) {
-      section.style.display = 'block';
-    } else if (!isInstalled) {
-      // 프롬프트 없지만 미설치 → 수동 안내용으로 표시
-      section.style.display = 'block';
+window.openSettingsModal = function() {
+  try { _origOpenSettings(); } catch(e) { console.error(e); document.getElementById('settings-modal')?.classList.add('open'); }
+  try {
+    const section = document.getElementById('pwa-install-section');
+    if (section) {
+      const isInstalled = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+      section.style.display = _deferredInstallPrompt ? 'block' : (!isInstalled ? 'block' : 'none');
     }
-  }
-}
-window.openSettingsModal = _patchedOpenSettings;
+  } catch(e) { console.error(e); }
+};
 
 // ── 앱 초기화 ────────────────────────────────────────────────
 window.addEventListener('load', initializeApp);
