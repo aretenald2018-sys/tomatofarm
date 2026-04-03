@@ -11,8 +11,8 @@ import {
   getFirestore, collection, query, where, orderBy, limit,
   onSnapshot, doc, updateDoc, serverTimestamp,
 } from 'firebase/firestore';
-import { execSync, spawn } from 'child_process';
-import { resolve, dirname } from 'path';
+import { spawn } from 'child_process';
+import { dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -101,17 +101,17 @@ ${task.instruction}`;
   }
 });
 
-// Claude Code 실행 (파이프 모드: stdin으로 프롬프트 전달)
+// Claude Code 실행 (-p 모드: 파일 수정/bash 등 도구 사용 가능)
 function runClaude(prompt) {
   return new Promise((resolve, reject) => {
-    const child = spawn('claude', ['--dangerously-skip-permissions'], {
+    const child = spawn('claude', ['-p', '--dangerously-skip-permissions'], {
       cwd: PROJECT_DIR,
       shell: true,
       stdio: ['pipe', 'pipe', 'pipe'],
       timeout: 600000, // 10분 타임아웃
     });
 
-    // 프롬프트를 stdin으로 전달 후 닫기
+    // stdin으로 프롬프트 전달 후 닫기
     child.stdin.write(prompt);
     child.stdin.end();
 
