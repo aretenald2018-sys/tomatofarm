@@ -26,10 +26,7 @@ import { renderHome }                             from './render-home.js';
 import { renderMonthlyCalendar, renderMonthlyCalendarInModal,
          changeMonthlyMonth }                     from './render-monthly-calendar.js';
 import { renderMovie, changeMovieMonth, startMovieCrawl, toggleMovieTagFilter }  from './render-movie.js';
-import { renderLoa, toggleLoaCheck, toggleLoaWeekly,
-         setLoaActiveChar, deleteLoaChar,
-         openLoaAddModal, closeLoaAddModal,
-         searchLoaSiblings, selectLoaChar }        from './render-loa.js';
+import { renderDev, submitDevTask }                from './render-dev.js';
 import { renderWine, openWineModal, closeWineModal,
          saveWineFromModal, deleteWineFromModal,
          searchVivinoRating, searchWineImage,
@@ -119,7 +116,7 @@ function switchTab(tab) {
   if (tab === 'stats')    renderStats();
   if (tab === 'calendar') renderCalendar();
   if (tab === 'wine')     renderWine();
-  if (tab === 'loa')      renderLoa();
+  if (tab === 'dev')      renderDev();
   if (tab === 'cooking')  renderCooking();
   if (tab === 'movie')    renderMovie();
   if (tab === 'finance')  renderFinance();
@@ -225,8 +222,7 @@ function _initSwipeNavigation() {
     if (t.closest('.tab-nav') || t.closest('input[type="range"]') ||
         t.closest('canvas') || t.closest('textarea') ||
         t.closest('.dash-board') || t.closest('.stock-panel') ||
-        t.closest('.grid-wrap') || t.closest('.loa-header') ||
-        t.closest('.loa-matrix-wrap')) return;
+        t.closest('.grid-wrap')) return;
     startX = e.touches[0].clientX;
     startY = e.touches[0].clientY;
     startTime = Date.now();
@@ -1313,16 +1309,9 @@ window.closeMonthlyCalendarModal = closeMonthlyCalendarModal;
 window.openExportModal          = openExportModal;
 window.closeExportModal         = closeExportModal;
 window.runExportCSV             = runExportCSV;
-// 로아
-window.renderLoa           = renderLoa;
-window.toggleLoaCheck      = toggleLoaCheck;
-window.toggleLoaWeekly     = toggleLoaWeekly;
-window.setLoaActiveChar    = setLoaActiveChar;
-window.deleteLoaChar       = deleteLoaChar;
-window.openLoaAddModal     = openLoaAddModal;
-window.closeLoaAddModal    = closeLoaAddModal;
-window.searchLoaSiblings   = searchLoaSiblings;
-window.selectLoaChar       = selectLoaChar;
+// 개발
+window.renderDev           = renderDev;
+window.submitDevTask       = submitDevTask;
 // 와인
 window.openWineModal            = openWineModal;
 window.closeWineModal           = closeWineModal;

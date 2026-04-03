@@ -12,7 +12,6 @@ const MODALS = [
   { id: 'section-title-modal',    path: './modals/section-title-modal.js',    export: 'MODAL_HTML' },
   { id: 'stock-purchase-modal',   path: './modals/stock-purchase-modal.js',   export: 'MODAL_HTML' },
   { id: 'export-modal',           path: './modals/export-modal.js',           export: 'MODAL_HTML' },
-  { id: 'loa-add-modal',          path: './modals/loa-add-modal.js',          export: 'MODAL_HTML' },
   { id: 'wine-modal',             path: './modals/wine-modal.js',             export: 'MODAL_HTML' },
   { id: 'cal-event-modal',        path: './modals/cal-event-modal.js',        export: 'MODAL_HTML' },
   { id: 'cooking-modal',          path: './modals/cooking-modal.js',          export: 'MODAL_HTML' },

@@ -56,7 +56,7 @@ let _finPlans      = []; // 계획실적 [{id, name, entries: [{year, target}]}]
 let _finBudgets    = []; // 가계부 [{id, year, groups: [{name, items: [{name, target, qGoals:{1:n,...}, months:{1:n,...}}]}]}]
 
 // ── 설정 캐시 (Firebase settings 컬렉션) ────────────────────────
-const DEFAULT_TAB_ORDER = ['home','workout','cooking','monthly','calendar','wine','movie','stats','finance','loa'];
+const DEFAULT_TAB_ORDER = ['home','workout','cooking','monthly','calendar','wine','movie','stats','finance','dev'];
 
 const DEFAULT_DIET_PLAN = {
   // 신체 정보
