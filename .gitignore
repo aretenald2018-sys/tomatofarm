@@ -1,0 +1,6 @@
+node_modules/
+.env
+*.apk
+.claude/
+dom-analysis-report.json
+network-analysis-report.json
