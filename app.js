@@ -1710,18 +1710,17 @@ function fatsecretBackToSearch() {
 // ── 초기화 ───────────────────────────────────────────────────────
 async function init() {
   try {
-    // 모달은 항상 로드 (로그인 전에도 필요할 수 있음)
-    await loadAndInjectModals();
-
-    // 로그인 안 되어있으면 대기 (login-screen에서 처리)
+    // 로그인 안 되어있으면 모달만 로드하고 대기
     const { getCurrentUser, loadSavedUser } = await import('./data.js');
     const user = loadSavedUser() || getCurrentUser();
     if (!user) {
+      await loadAndInjectModals();
       document.getElementById('loading').style.display = 'none';
       return; // 로그인 화면이 표시됨
     }
 
-    await loadAll();
+    // 모달 로드 + 데이터 로드 병렬 실행
+    await Promise.all([loadAndInjectModals(), loadAll()]);
     // localStorage 캐시를 Firebase 최신으로 동기화
     const { refreshCurrentUserFromDB } = await import('./data.js');
     await refreshCurrentUserFromDB();
@@ -1752,13 +1751,20 @@ async function init() {
     _initTabDrag();
     _initSwipeNavigation();
     renderHome();
-    // 알림 벨 표시 및 배지 초기화
+
+    // 홈 렌더링 후 즉시 로딩 화면 숨기기 (나머지는 백그라운드)
+    const loadEl2 = document.getElementById('loading');
+    if (loadEl2) { loadEl2.style.display = 'none'; loadEl2.classList.add('hidden'); }
+
+    // 나머지 초기화는 비동기로 (체감 속도 개선)
     const bellBtn = document.getElementById('notif-bell');
     if (bellBtn) bellBtn.style.display = '';
-    refreshNotifCenter();
-    renderCalendar();
-    loadWorkoutDate(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
-    loadStocks();
+    requestAnimationFrame(() => {
+      refreshNotifCenter();
+      renderCalendar();
+      loadWorkoutDate(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
+      loadStocks();
+    });
   } catch (err) {
     console.error('[init] 초기화 오류:', err);
     // 오류가 발생해도 로딩 화면 숨기고 기본 렌더링

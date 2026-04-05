@@ -43,19 +43,13 @@ export async function loadAndInjectModals() {
   const container = document.getElementById('modals-container');
   if (!container) return;
 
-  const htmlParts = [];
-
-  for (const modalConfig of MODALS) {
-    try {
-      const module = await import(modalConfig.path + '?v=' + Date.now());
-      const html = module[modalConfig.export];
-      if (html) {
-        htmlParts.push(html);
-      }
-    } catch (err) {
-      console.warn(`[modal-manager] ${modalConfig.id} 로드 실패:`, err);
-    }
-  }
+  const cacheKey = '?v=20260405';
+  const results = await Promise.allSettled(
+    MODALS.map(cfg => import(cfg.path + cacheKey).then(m => m[cfg.export] || ''))
+  );
+  const htmlParts = results
+    .filter(r => r.status === 'fulfilled' && r.value)
+    .map(r => r.value);
 
   container.innerHTML = htmlParts.join('\n');
   _modalsLoaded = true;
