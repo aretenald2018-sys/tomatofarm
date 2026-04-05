@@ -89,10 +89,8 @@ async function initializeApp() {
   await loadAndInjectModals();
 
   // CSV 데이터 백그라운드 로드
-  const isGithubPages = window.location.pathname.includes('/dashboard3/');
-  const csvPath = isGithubPages
-    ? '/dashboard3/public/data/foods.csv'
-    : '/public/data/foods.csv';
+  const basePath = window.location.pathname.replace(/\/[^/]*$/, '');
+  const csvPath = basePath + '/public/data/foods.csv';
   loadCSVDatabase(csvPath)
     .then(() => console.log('[app] CSV 데이터 백그라운드 로드 완료'))
     .catch(e => console.warn('[app] CSV 로드 실패:', e));
@@ -1006,13 +1004,10 @@ async function openNutritionSearch(mealId) {
   // 만약 로드되지 않았다면 여기서 로드
   if (!window._nutritionCSVLoaded) {
     try {
-      const isGithubPages = window.location.pathname.includes('/dashboard3/');
-      const csvPath = isGithubPages
-        ? '/dashboard3/public/data/foods.csv'
-        : '/public/data/foods.csv';
-      await loadCSVDatabase(csvPath);
+      const csvPath2 = window.location.pathname.replace(/\/[^/]*$/, '') + '/public/data/foods.csv';
+      await loadCSVDatabase(csvPath2);
       window._nutritionCSVLoaded = true;
-      console.log('[영양검색] CSV 로드됨:', csvPath);
+      console.log('[영양검색] CSV 로드됨:', csvPath2);
     } catch (e) {
       console.warn('[영양검색] CSV 로드 실패:', e);
     }
@@ -1564,7 +1559,7 @@ async function fatsecretSearch() {
       // CSV 데이터 로드 (첫 검색 시에만)
       if (!window._csvLoaded) {
         try {
-          await loadCSVDatabase('/public/data/foods.csv');
+          await loadCSVDatabase(window.location.pathname.replace(/\/[^/]*$/, '') + '/public/data/foods.csv');
           window._csvLoaded = true;
           console.log('[CSV] 로드 완료');
         } catch (csvErr) {
