@@ -1304,7 +1304,7 @@ function _renderTomatoCard() {
 
       <div class="tf-kcal-section">
         <div class="tf-kcal-header">
-          <span class="tf-kcal-label">칼로리 현황</span>
+          <span class="tf-kcal-label">칼로리 현황 <span style="font-size:10px;font-weight:400;color:var(--text-tertiary);">눌러서 탄단지 보기 →</span></span>
           <span class="tf-kcal-msg ${kcalOk ? 'tf-ok' : todayKcal > 0 ? 'tf-over' : ''}">${kcalMsg}</span>
         </div>
         <div class="tf-kcal-row">
@@ -1750,7 +1750,7 @@ async function _renderFriendFeed() {
           ${sug.slice(0,5).map(a => {
             const nick = a.nickname || a.lastName + a.firstName;
             return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;">
-              <div style="width:36px;height:36px;border-radius:50%;background:var(--surface3);color:var(--text-secondary);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;flex-shrink:0;cursor:pointer;" onclick="openFriendProfile('${a.id}','${nick}')">${nick.charAt(0)}</div>
+              <div style="width:36px;height:36px;border-radius:50%;background:#fff3e0;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;cursor:pointer;" onclick="openFriendProfile('${a.id}','${nick}')">🍅</div>
               <div style="flex:1;font-size:14px;font-weight:500;color:var(--text);cursor:pointer;" onclick="openFriendProfile('${a.id}','${nick}')">${nick}</div>
               <button onclick="quickAddNeighbor('${a.id}')" style="padding:6px 14px;border:none;border-radius:999px;background:var(--primary);color:#fff;font-size:12px;font-weight:600;cursor:pointer;">이웃 추가</button>
             </div>`;
@@ -1788,7 +1788,7 @@ async function _renderFriendFeed() {
       }
       if (!items) items = '<div class="friend-feed-item" style="color:var(--text-tertiary);">오늘 아직 기록이 없어요</div>';
       else activeCount++;
-      html += `<div class="friend-card"><div class="friend-card-header"><span class="friend-avatar">${ini}</span><span class="friend-name" data-fid="${f.friendId}" data-fname="${fullName.replace(/"/g,'&quot;')}" style="cursor:pointer">${name}</span><button class="friend-gift-btn" data-gift-fid="${f.friendId}" data-gift-name="${fullName.replace(/"/g,'&quot;')}" title="토마토 선물">🍅</button></div>${items}</div>`;
+      html += `<div class="friend-card"><div class="friend-card-header"><span class="friend-avatar" style="font-size:18px;">🍅</span><span class="friend-name" data-fid="${f.friendId}" data-fname="${fullName.replace(/"/g,'&quot;')}" style="cursor:pointer">${name}</span><button class="friend-gift-btn" data-gift-fid="${f.friendId}" data-gift-name="${fullName.replace(/"/g,'&quot;')}" title="토마토 선물">🍅</button></div>${items}</div>`;
     }
     // 활동 요약 배너
     const banner = activeCount > 0
@@ -1812,7 +1812,7 @@ async function _renderFriendFeed() {
             const nick = a.nickname || a.lastName + a.firstName;
             const ini2 = nick.charAt(0);
             return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;">
-              <div style="width:36px;height:36px;border-radius:50%;background:var(--surface3);color:var(--text-secondary);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;flex-shrink:0;cursor:pointer;" onclick="openFriendProfile('${a.id}','${nick}')">${ini2}</div>
+              <div style="width:36px;height:36px;border-radius:50%;background:#fff3e0;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;cursor:pointer;" onclick="openFriendProfile('${a.id}','${nick}')">🍅</div>
               <div style="flex:1;min-width:0;" onclick="openFriendProfile('${a.id}','${nick}')" style="cursor:pointer;">
                 <div style="font-size:14px;font-weight:500;color:var(--text);cursor:pointer;">${nick}</div>
               </div>
@@ -2049,15 +2049,24 @@ window.openFriendProfile = async function(friendId, friendName) {
     else if (streakCounting && i > 0) streakCounting = false;
   }
 
-  // 4. 토마토 단계 (친구의 성장 단계는 보여주되 숫자는 —)
-  const stages = ['🌱','🌿','🌸','🍅'];
-  const stageIdx = Math.floor(Math.random() * 4); // 실제로는 친구 설정에서 가져와야 하지만, 현재 접근 불가 → 아이콘만
-
-  // 토마토 수
+  // 4. 토마토 수 & 레벨
   let tomatoCount = '—';
+  let tomatoLevel = 1;
   if (isMyProfile) {
     const ts = getTS();
     tomatoCount = ts.totalTomatoes + (ts.giftedReceived || 0) - (ts.giftedSent || 0);
+  }
+  if (typeof tomatoCount === 'number') {
+    if (tomatoCount >= 100) tomatoLevel = 10;
+    else if (tomatoCount >= 70) tomatoLevel = 9;
+    else if (tomatoCount >= 50) tomatoLevel = 8;
+    else if (tomatoCount >= 35) tomatoLevel = 7;
+    else if (tomatoCount >= 24) tomatoLevel = 6;
+    else if (tomatoCount >= 16) tomatoLevel = 5;
+    else if (tomatoCount >= 10) tomatoLevel = 4;
+    else if (tomatoCount >= 5) tomatoLevel = 3;
+    else if (tomatoCount >= 2) tomatoLevel = 2;
+    else tomatoLevel = 1;
   }
 
   // 5. 목표 달성률 (구체 수치 비공개, %만)
@@ -2069,10 +2078,11 @@ window.openFriendProfile = async function(friendId, friendName) {
     <div class="modal-sheet" style="max-width:400px;max-height:85vh;overflow-y:auto;" onclick="event.stopPropagation()">
       <div class="sheet-handle"></div>
       <div style="text-align:center;padding:16px 0 8px;">
-        <div style="width:56px;height:56px;border-radius:50%;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;margin:0 auto 10px;">${ini}</div>
+        <div style="width:56px;height:56px;border-radius:50%;background:#fff3e0;display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 6px;">🍅</div>
+        ${typeof tomatoCount === 'number' ? `<div style="font-size:11px;font-weight:700;color:var(--primary);margin-bottom:6px;">Lv.${tomatoLevel}</div>` : ''}
         ${isFriend || isMyProfile
-          ? `<div style="font-size:18px;font-weight:700;color:var(--text);">${realName}</div>
-             ${nickname !== realName ? `<div style="font-size:13px;color:var(--text-tertiary);margin-top:2px;">${nickname}</div>` : ''}`
+          ? `<div style="font-size:18px;font-weight:700;color:var(--text);">${nickname}</div>
+             ${nickname !== realName ? `<div style="font-size:13px;color:var(--text-tertiary);margin-top:2px;">${realName}</div>` : ''}`
           : `<div style="font-size:18px;font-weight:700;color:var(--text);">${nickname}</div>
              <div style="font-size:12px;color:var(--text-tertiary);margin-top:3px;">${maskedName}</div>
              <div style="font-size:10px;color:var(--text-tertiary);margin-top:2px;">이웃이 되면 이름을 볼 수 있어요</div>`

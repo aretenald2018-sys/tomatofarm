@@ -3516,7 +3516,12 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
 .tf-kcal-day-label { font-size: 10px; font-weight: 700; color: var(--text-tertiary); }
 
 /* Tappable kcal cells */
-.tf-kcal-tappable { cursor: pointer; transition: all 0.15s ease; }
+.tf-kcal-tappable { cursor: pointer; transition: all 0.15s ease; position: relative; }
+.tf-kcal-tappable::after {
+  content: '▾'; position: absolute; bottom: 2px; right: 4px;
+  font-size: 8px; color: var(--text-tertiary); opacity: 0.5;
+}
+.tf-kcal-tappable:hover { background: var(--surface3); }
 .tf-kcal-tappable:active { transform: scale(0.96); }
 
 /* Macro detail popover */
