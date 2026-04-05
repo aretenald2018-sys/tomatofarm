@@ -593,6 +593,21 @@ export async function loadAll() {
 
     _nutritionDB = [];
     nutritionSnap.forEach(d => _nutritionDB.push(d.data()));
+    // 음식 DB가 비어있으면 김태우(관리자) DB에서 복사
+    if (_nutritionDB.length === 0 && !isAdmin() && !isAdminGuest()) {
+      try {
+        const sharedSnap = await getDocs(collection(db, 'users', ADMIN_ID, 'nutrition_db'));
+        const sharedItems = [];
+        sharedSnap.forEach(d => sharedItems.push(d.data()));
+        if (sharedItems.length > 0) {
+          _nutritionDB = sharedItems;
+          // 내 DB에도 복사 저장
+          for (const item of sharedItems) {
+            await setDoc(_doc('nutrition_db', item.id), item);
+          }
+        }
+      } catch(e) { console.warn('[data] 공유 음식DB 복사 실패:', e); }
+    }
 
     // ── 재무 데이터 처리 ──
     _finBenchmarks = [];
