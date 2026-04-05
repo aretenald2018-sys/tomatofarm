@@ -220,11 +220,9 @@ function _buildHTML() {
         <div class="fin-chart-wrap fin-chart-blurable" style="height:240px;position:relative;cursor:pointer" onclick="window.__toggleFinChartBlur()"><canvas id="fin-recent5-chart"></canvas></div>
         <div class="fin-chart-wrap fin-chart-blurable" style="height:240px;position:relative;cursor:pointer" onclick="window.__toggleFinChartBlur()"><canvas id="fin-main-chart"></canvas></div>
       </div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin:12px 0 8px;">
-        <div style="flex:1;min-width:120px;" id="fin-bench-list"></div>
-        <div style="flex:1;min-width:120px;" id="fin-plan-list"></div>
-        <div style="flex:1;min-width:120px;" id="fin-actual-list"></div>
-      </div>
+      <div id="fin-bench-list"></div>
+      <div id="fin-plan-list"></div>
+      <div id="fin-actual-list"></div>
 
       <!-- Inflow/Outflow 그래프 (토글, 디폴트 숨김) -->
       <div style="margin-top:12px">
@@ -500,12 +498,12 @@ function _renderStockList() {
 
 function _compactBadge(consensus, label) {
   const m = {
-    'STRONGLY BUY': {bg:'#4c0519',c:'#fca5a5',t:'S.BUY'},
-    'BUY': {bg:'#4c0519',c:'#f87171',t:'BUY'},
-    'NEUTRAL': {bg:'#1e293b',c:'#94a3b8',t:'HOLD'},
-    'SELL': {bg:'#172554',c:'#93c5fd',t:'SELL'},
-    'STRONGLY SELL': {bg:'#172554',c:'#60a5fa',t:'S.SELL'},
-    'OFF': {bg:'#1e293b',c:'#64748b',t:'OFF'},
+    'STRONGLY BUY': {bg:'rgba(239,68,68,0.15)',c:'#ef4444',t:'S.BUY'},
+    'BUY': {bg:'rgba(239,68,68,0.12)',c:'#ef4444',t:'BUY'},
+    'NEUTRAL': {bg:'rgba(148,163,184,0.15)',c:'var(--text-secondary)',t:'HOLD'},
+    'SELL': {bg:'rgba(59,130,246,0.12)',c:'#3b82f6',t:'SELL'},
+    'STRONGLY SELL': {bg:'rgba(59,130,246,0.15)',c:'#3b82f6',t:'S.SELL'},
+    'OFF': {bg:'rgba(148,163,184,0.1)',c:'var(--text-tertiary)',t:'OFF'},
   };
   const s = m[consensus] || m['NEUTRAL'];
   return `<span class="fin-sr-badge" style="background:${s.bg};color:${s.c}" title="전략${label}">${s.t}</span>`;
@@ -690,7 +688,7 @@ function _renderDetailStratB(sym, el) {
     </div>` : ''}
     <div class="fin-verdict">
       <div class="fin-verdict-label">Pullback 종합</div>
-      ${con.consensus === 'OFF' ? '<span class="fin-sr-badge" style="background:#1e293b;color:#64748b;font-size:11px;padding:4px 10px">OFF</span>' : _signalBadge(con.consensus)}
+      ${con.consensus === 'OFF' ? '<span class="fin-sr-badge" style="background:rgba(148,163,184,0.1);color:var(--text-tertiary);font-size:11px;padding:4px 10px">OFF</span>' : _signalBadge(con.consensus)}
       <div class="fin-verdict-summary">${con.summary}</div>
       <div class="fin-verdict-action">${con.action}</div>
     </div>
@@ -2661,7 +2659,7 @@ function _renderMainChart() {
           ctx.stroke();
           // 물결 기호
           ctx.setLineDash([]);
-          ctx.fillStyle = '#1e2030';
+          ctx.fillStyle = _getCC().bg;
           ctx.fillRect(xMid - 12, yMid - 10, 24, 20);
           ctx.fillStyle = _getCC().tick;
           ctx.font = '12px sans-serif';
