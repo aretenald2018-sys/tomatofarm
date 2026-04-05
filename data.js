@@ -324,24 +324,29 @@ export async function markNotificationRead(notifId) {
 }
 
 // 좋아요
-export async function toggleLike(targetUserId, dateKey, field) {
+export async function toggleLike(targetUserId, dateKey, field, emoji) {
   // field: 'workout' | 'meal_breakfast' | 'meal_lunch' 등
   if (!_currentUser) return;
   const likeId = `${_currentUser.id}_${targetUserId}_${dateKey}_${field}`;
   const likeDoc = doc(db, '_likes', likeId);
   const snap = await getDoc(likeDoc);
   if (snap.exists()) {
+    if (emoji && snap.data().emoji !== emoji) {
+      // 이모지 변경
+      await setDoc(likeDoc, { ...snap.data(), emoji }, { merge: true });
+      return true;
+    }
     await deleteDoc(likeDoc);
     return false; // unlike
   } else {
     await setDoc(likeDoc, {
       id: likeId, from: _currentUser.id, to: targetUserId,
-      dateKey, field, createdAt: Date.now(),
+      dateKey, field, emoji: emoji || '👏', createdAt: Date.now(),
     });
     // 상대에게 알림
     await sendNotification(targetUserId, {
       type: 'like', from: _currentUser.id, dateKey, field,
-      message: '좋아요를 눌렀어요.',
+      message: `${emoji || '👏'} 리액션을 보냈어요.`,
     });
     return true; // liked
   }

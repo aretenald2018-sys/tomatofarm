@@ -1981,6 +1981,10 @@ window.openFriendProfile = async function(friendId, friendName) {
   ];
   const allLikes = (todayW && isFriend) ? await getLikes(friendId, tk) : [];
   const getReactionCount = (field) => allLikes.filter(l => l.field === field).length;
+  const getReactionEmojis = (field) => {
+    const emojis = allLikes.filter(l => l.field === field && l.emoji).map(l => l.emoji);
+    return [...new Set(emojis)];
+  };
   if (todayW) {
 
     const photoKeys = { breakfast: 'bPhoto', lunch: 'lPhoto', dinner: 'dPhoto', snack: 'sPhoto' };
@@ -1991,10 +1995,13 @@ window.openFriendProfile = async function(friendId, friendName) {
       if (foods.length || memoText || photo) {
         const foodNames = foods.map(f => f.name).join(', ') || memoText;
         const kcal = foods.reduce((s, f) => s + (f.kcal || 0), 0);
-        const photoHtml = photo ? `<img src="${photo}" style="width:100%;max-height:120px;object-fit:cover;border-radius:8px;margin-top:4px;">` : '';
-        const mealReactCount = getReactionCount('meal_' + m.memo);
-        const reactBadge = mealReactCount > 0 ? `<span style="font-size:10px;font-weight:600;color:var(--primary);margin-right:2px;">${mealReactCount}</span>` : '';
-        const reactionBtn = (isFriend && !isMyProfile) ? `${reactBadge}<button class="friend-like-btn" onclick="showReactionPicker(this,'${friendId}','${tk}','meal_${m.memo}')" style="flex-shrink:0;font-size:16px;background:none;border:none;cursor:pointer;padding:2px;">🤍</button>` : (mealReactCount > 0 ? `<span style="font-size:10px;font-weight:600;color:var(--primary);">${mealReactCount} 👏</span>` : '');
+        const photoHtml = photo ? `<img src="${photo}" style="width:100%;max-height:200px;object-fit:contain;border-radius:8px;margin-top:4px;">` : '';
+        const mealField = 'meal_' + m.memo;
+        const mealReactCount = getReactionCount(mealField);
+        const mealEmojis = getReactionEmojis(mealField);
+        const emojiDisplay = mealEmojis.length > 0 ? mealEmojis.join('') : '';
+        const reactBadge = mealReactCount > 0 ? `<span style="font-size:12px;margin-right:2px;">${emojiDisplay}</span><span style="font-size:10px;font-weight:600;color:var(--primary);margin-right:2px;">${mealReactCount}</span>` : '';
+        const reactionBtn = (isFriend && !isMyProfile) ? `${reactBadge}<button class="friend-like-btn" onclick="showReactionPicker(this,'${friendId}','${tk}','${mealField}')" style="flex-shrink:0;font-size:16px;background:none;border:none;cursor:pointer;padding:2px;">🤍</button>` : (mealReactCount > 0 ? `<span style="font-size:12px;">${emojiDisplay}</span> <span style="font-size:10px;font-weight:600;color:var(--primary);">${mealReactCount}</span>` : '');
         todayDietHtml += `<div style="padding:6px 0;font-size:12px;border-bottom:1px solid var(--border);">
           <div style="display:flex;align-items:center;justify-content:space-between;">
             <span style="color:var(--text-secondary);flex-shrink:0;">${m.label}</span>
@@ -2098,9 +2105,11 @@ window.openFriendProfile = async function(friendId, friendName) {
           <span style="font-size:12px;font-weight:500;color:var(--text-tertiary);">오늘의 운동 ${volumeGrowth}</span>
           ${(() => {
             const wReactCount = isFriend ? getReactionCount('workout') : 0;
-            const wBadge = wReactCount > 0 ? `<span style="font-size:10px;font-weight:600;color:var(--primary);margin-right:2px;">${wReactCount}</span>` : '';
+            const wEmojis = getReactionEmojis('workout');
+            const wEmojiDisplay = wEmojis.length > 0 ? wEmojis.join('') : '';
+            const wBadge = wReactCount > 0 ? `<span style="font-size:12px;margin-right:2px;">${wEmojiDisplay}</span><span style="font-size:10px;font-weight:600;color:var(--primary);margin-right:2px;">${wReactCount}</span>` : '';
             if (isFriend && !isMyProfile && todayW?.exercises?.length) return `${wBadge}<button class="friend-like-btn" onclick="showReactionPicker(this,'${friendId}','${tk}','workout')" style="font-size:16px;background:none;border:none;cursor:pointer;padding:2px;">🤍</button>`;
-            if (wReactCount > 0) return `<span style="font-size:10px;font-weight:600;color:var(--primary);">${wReactCount} 👏</span>`;
+            if (wReactCount > 0) return `<span style="font-size:12px;">${wEmojiDisplay}</span> <span style="font-size:10px;font-weight:600;color:var(--primary);">${wReactCount}</span>`;
             return '';
           })()}
         </div>
@@ -2108,7 +2117,7 @@ window.openFriendProfile = async function(friendId, friendName) {
           <div style="display:flex;flex-wrap:wrap;gap:4px;">
             ${(todayW.muscles || []).map(m => `<span style="font-size:11px;padding:3px 8px;background:var(--primary-bg);color:var(--primary);border-radius:999px;font-weight:600;">${m}</span>`).join('')}
           </div>
-          ${todayW?.workoutPhoto ? `<img src="${todayW.workoutPhoto}" style="width:100%;max-height:140px;object-fit:cover;border-radius:8px;margin-top:8px;">` : ''}
+          ${todayW?.workoutPhoto ? `<img src="${todayW.workoutPhoto}" style="width:100%;max-height:240px;object-fit:contain;border-radius:8px;margin-top:8px;">` : ''}
         ` : '<div style="font-size:12px;color:var(--text-tertiary);">아직 기록이 없어요</div>'}
       </div>
 
@@ -2324,18 +2333,20 @@ window.deleteGb = async function(entryId, targetId) {
 
 window.sendReaction = async function(tid, dk, field, emoji) {
   document.querySelectorAll('.reaction-picker').forEach(p => p.remove());
-  const { sendNotification, getCurrentUser } = await import('./data.js');
   const user = getCurrentUser();
   if (!user) return;
-  const reactionMsg = REACTIONS.find(r => r.emoji === emoji)?.label || '';
-  await sendNotification(tid, {
-    type: 'reaction', from: user.id,
-    message: `${reactionMsg} ${emoji}`,
-    dateKey: dk, field,
-  });
-  // 버튼 피드백
-  const feedItems = document.querySelectorAll('.friend-feed-item');
+  // 리액션을 _likes에 저장 (이모지 포함)
+  await toggleLike(tid, dk, field, emoji);
   _showToast(`${emoji} 리액션을 보냈어요!`);
+  // 프로필 모달이 열려있으면 갱신
+  if (document.getElementById('dynamic-modal')) {
+    const accounts = await getAccountList();
+    const acc = accounts.find(a => a.id === tid);
+    const name = acc ? acc.lastName + acc.firstName : tid;
+    document.getElementById('dynamic-modal').remove();
+    window.openFriendProfile(tid, name);
+  }
+  _renderFriendFeed();
 };
 window.markNotifRead = async function(id) { await markNotificationRead(id); _renderFriendFeed(); refreshNotifCenter(); };
 
