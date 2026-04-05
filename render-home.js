@@ -1748,7 +1748,8 @@ async function _renderFriendFeed() {
         emptyMsg += `<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);text-align:left;">
           <div style="font-size:13px;font-weight:500;color:var(--text-secondary);margin-bottom:10px;">알 수도 있는 이웃</div>
           ${sug.slice(0,5).map(a => {
-            const nick = a.nickname || a.lastName + a.firstName;
+            const fullName = a.lastName + a.firstName;
+            const nick = (a.nickname && a.nickname !== fullName) ? a.nickname : a.lastName + '**';
             return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;">
               <div style="width:36px;height:36px;border-radius:50%;background:#fff3e0;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;cursor:pointer;" onclick="openFriendProfile('${a.id}','${nick}')">🍅</div>
               <div style="flex:1;font-size:14px;font-weight:500;color:var(--text);cursor:pointer;" onclick="openFriendProfile('${a.id}','${nick}')">${nick}</div>
@@ -1809,7 +1810,8 @@ async function _renderFriendFeed() {
         suggestHtml = `<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);">
           <div style="font-size:13px;font-weight:500;color:var(--text-secondary);margin-bottom:10px;">알 수도 있는 이웃</div>
           ${suggestions.slice(0, 5).map(a => {
-            const nick = a.nickname || a.lastName + a.firstName;
+            const fullName = a.lastName + a.firstName;
+            const nick = (a.nickname && a.nickname !== fullName) ? a.nickname : a.lastName + '**';
             const ini2 = nick.charAt(0);
             return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;">
               <div style="width:36px;height:36px;border-radius:50%;background:#fff3e0;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;cursor:pointer;" onclick="openFriendProfile('${a.id}','${nick}')">🍅</div>
