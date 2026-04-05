@@ -1,6 +1,6 @@
 // 현실(연간 실적) CRUD 모달
 export const MODAL_HTML = `
-<div class="modal-overlay" id="fin-actual-modal" onclick="closeFinActualModal(event)">
+<div class="modal-backdrop" id="fin-actual-modal" onclick="closeFinActualModal(event)">
   <div class="modal-sheet" onclick="event.stopPropagation()">
     <div class="modal-title" id="fin-actual-modal-title">연간 실적 추가</div>
 

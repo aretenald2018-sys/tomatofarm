@@ -1,5 +1,5 @@
 export const MODAL_HTML = `
-<div class="modal-overlay" id="goal-modal" onclick="closeGoalModal(event)">
+<div class="modal-backdrop" id="goal-modal" onclick="closeGoalModal(event)">
 <div class="modal-sheet">
 <div class="sheet-handle"></div>
 <div class="modal-title">🎯 목표 설정</div>
@@ -25,8 +25,8 @@ export const MODAL_HTML = `
 <input class="ex-editor-input" id="goal-diet-ok-pct" type="number" min="1" max="100" placeholder="예: 80">
 </div>
 <div class="ex-editor-actions">
-<button class="ex-editor-cancel" onclick="closeGoalModal()">취소</button>
-<button class="ex-editor-save"   onclick="saveGoalFromModal()">저장하기</button>
+<button class="tds-btn cancel-btn ghost md" onclick="closeGoalModal()">취소</button>
+<button class="tds-btn fill md"   onclick="saveGoalFromModal()">저장하기</button>
 </div>
 </div>
 </div>

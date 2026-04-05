@@ -1,6 +1,6 @@
 // 계획실적 CRUD 모달
 export const MODAL_HTML = `
-<div class="modal-overlay" id="fin-plan-modal" onclick="closeFinPlanModal(event)">
+<div class="modal-backdrop" id="fin-plan-modal" onclick="closeFinPlanModal(event)">
   <div class="modal-sheet" onclick="event.stopPropagation()">
     <div class="modal-title" id="fin-plan-modal-title">계획실적 추가</div>
 

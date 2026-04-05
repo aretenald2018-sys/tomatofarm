@@ -123,8 +123,19 @@ object WidgetUtils {
         return events.any { ev ->
             val start = getString(ev, "start")
             val end = getString(ev, "end").ifEmpty { start }
-            ds in start..end
+            if (start.isEmpty()) return@any false
+            ds >= start && ds <= end
         }
+    }
+
+    /** 해당 날짜의 이벤트 제목 목록 반환 */
+    fun getEventTitles(events: List<JSONObject>, cal: Calendar): List<String> {
+        val ds = dateKey(cal)
+        return events.filter { ev ->
+            val start = getString(ev, "start")
+            val end = getString(ev, "end").ifEmpty { start }
+            start.isNotEmpty() && ds >= start && ds <= end
+        }.map { getString(it, "title") }.filter { it.isNotEmpty() }
     }
 
     fun isSameDay(a: Calendar, b: Calendar): Boolean =
@@ -167,6 +178,25 @@ object WidgetUtils {
     // ── Open-app PendingIntent ──
     fun openAppIntent(ctx: Context, requestCode: Int = 0): PendingIntent {
         val intent = Intent(ctx, MainActivity::class.java)
+        return PendingIntent.getActivity(
+            ctx, requestCode, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
+    fun openAppWithDate(ctx: Context, date: String, requestCode: Int): PendingIntent {
+        val intent = Intent(ctx, MainActivity::class.java)
+        intent.putExtra("addEventDate", date)
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        return PendingIntent.getActivity(
+            ctx, requestCode, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+        )
+    }
+
+    fun openAppWithTab(ctx: Context, tab: String, requestCode: Int = 0): PendingIntent {
+        val intent = Intent(ctx, MainActivity::class.java)
+        intent.putExtra("tab", tab)
         return PendingIntent.getActivity(
             ctx, requestCode, intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE

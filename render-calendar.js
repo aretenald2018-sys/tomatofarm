@@ -2,13 +2,13 @@
 // render-calendar.js  — Streak 탭 (연간 캘린더)
 // ================================================================
 
-import { MONTHS, DAYS }                                          from './config.js';
+import { MONTHS, DAYS, MUSCLES }                                 from './config.js';
 import { getMuscles, getCF, dietDayOk, getExList,
          daysInMonth, isToday, isFuture, isBeforeStart,
          getGymSkip, getGymHealth, getCFHealth,
          getBreakfastSkipped, getLunchSkipped, getDinnerSkipped,
-         getEvents, dateKey, getStreakSettings }                 from './data.js';
-import { MUSCLES }                                               from './config.js';
+         getEvents, dateKey, getStreakSettings,
+         getCalendarRows }                                       from './data.js';
 
 let _currentYear = new Date().getFullYear();
 export const getCurrentYear = () => _currentYear;
@@ -42,9 +42,14 @@ export function renderCalendar() {
     table.appendChild(_makeHead(_currentYear, m, days));
 
     const tbody = document.createElement('tbody');
-    tbody.appendChild(_gymRow(_currentYear, m, days));
-    tbody.appendChild(_cfRow(_currentYear, m, days));
-    tbody.appendChild(_dietRow(_currentYear, m, days));
+    const calRows = getCalendarRows();
+    for (const rowDef of calRows) {
+      if (rowDef.id === 'gym')  tbody.appendChild(_gymRow(_currentYear, m, days));
+      else if (rowDef.id === 'cf')   tbody.appendChild(_cfRow(_currentYear, m, days));
+      else if (rowDef.id === 'diet') tbody.appendChild(_dietRow(_currentYear, m, days));
+      // 커스텀 행은 빈 행으로 (향후 확장)
+      else tbody.appendChild(_customRow(rowDef, _currentYear, m, days));
+    }
     tbody.appendChild(_scheduleRow(_currentYear, m, days));
     table.appendChild(tbody);
 
@@ -200,6 +205,21 @@ function _makeCell(y, m, d) {
   const dn = document.createElement('div'); dn.className='day-num'; dn.textContent=d; cell.appendChild(dn);
   cell.addEventListener('click', () => { if (!isFuture(y,m,d)) window.openSheet(y,m,d); });
   return cell;
+}
+
+// ── 커스텀 행 (사용자 정의) ─────────────────────────────────────────
+function _customRow(rowDef, year, m, days) {
+  const row = document.createElement('tr');
+  const lbl = document.createElement('td'); lbl.className = 'row-label';
+  lbl.textContent = `${rowDef.emoji || '📌'} ${rowDef.label}`;
+  row.appendChild(lbl);
+  for (let d = 1; d <= days; d++) {
+    const td = document.createElement('td');
+    if (isBeforeStart(year, m, d)) { td.style.display = 'none'; row.appendChild(td); continue; }
+    const cell = _makeCell(year, m, d);
+    td.appendChild(cell); row.appendChild(td);
+  }
+  return row;
 }
 
 // ── 스케줄 행 ──────────────────────────────────────────────────────

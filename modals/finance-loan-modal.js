@@ -1,6 +1,6 @@
 // 대출/레버리지 CRUD 모달
 export const MODAL_HTML = `
-<div class="modal-overlay" id="fin-loan-modal" onclick="closeFinLoanModal(event)">
+<div class="modal-backdrop" id="fin-loan-modal" onclick="closeFinLoanModal(event)">
   <div class="modal-sheet" onclick="event.stopPropagation()">
     <div class="modal-title" id="fin-loan-modal-title">대출 추가</div>
 

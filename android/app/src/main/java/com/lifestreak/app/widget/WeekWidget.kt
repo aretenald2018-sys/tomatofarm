@@ -97,7 +97,10 @@ class WeekWidget : AppWidgetProvider() {
                                 }
                                 v.setTextColor(nameIds[i], nameColor)
 
-                                // Day number
+                                // Day number + click → 일정 등록
+                                val dateStr = WidgetUtils.dateKey(dayCal)
+                                val datePi = WidgetUtils.openAppWithDate(ctx, dateStr, widgetId * 10 + i)
+                                v.setOnClickPendingIntent(numIds[i], datePi)
                                 v.setTextViewText(numIds[i], "${dayCal.get(Calendar.DAY_OF_MONTH)}")
                                 if (isToday) {
                                     v.setInt(numIds[i], "setBackgroundResource", R.drawable.cal_today_bg)

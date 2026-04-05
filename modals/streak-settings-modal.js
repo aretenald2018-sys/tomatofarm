@@ -3,7 +3,7 @@
 // ================================================================
 
 export const MODAL_HTML = `
-<div class="modal-overlay" id="streak-settings-modal" onclick="closeStreakSettingsModal(event)" style="display:none;z-index:1001">
+<div class="modal-backdrop" id="streak-settings-modal" onclick="closeStreakSettingsModal(event)" style="display:none;z-index:1001">
   <div class="modal-sheet">
     <div class="sheet-handle"></div>
     <div class="modal-title">Streak 탭 세팅</div>
@@ -49,8 +49,8 @@ export const MODAL_HTML = `
 
       <!-- Buttons -->
       <div style="display:flex;gap:8px">
-        <button class="ex-editor-save" onclick="saveStreakSettingsAndClose()" style="flex:1">저장</button>
-        <button class="ex-editor-cancel" onclick="closeStreakSettingsModal()" style="flex:1">취소</button>
+        <button class="tds-btn fill md" onclick="saveStreakSettingsAndClose()" style="flex:1">저장</button>
+        <button class="tds-btn cancel-btn ghost md" onclick="closeStreakSettingsModal()" style="flex:1">취소</button>
       </div>
     </div>
   </div>

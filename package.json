@@ -7,17 +7,25 @@
   "scripts": {
     "start": "node api-server.js",
     "dev": "python -m http.server 5500",
-    "build": "echo 'No build needed for static site'",
+    "build": "node scripts/copy-www.js",
+    "cap:sync": "npm run build && npx cap sync android",
+    "cap:open": "npx cap open android",
     "crawl": "node crawl-movies-optimized.js",
     "server": "node api-server.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.24.3",
+    "@capacitor/android": "^8.3.0",
+    "@capacitor/cli": "^8.3.0",
+    "@capacitor/core": "^8.3.0",
     "express": "^4.21.0",
     "firebase": "^12.11.0",
     "puppeteer": "^24.40.0"
   },
   "engines": {
     "node": "18.x"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.2"
   }
 }

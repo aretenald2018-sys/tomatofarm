@@ -5,7 +5,8 @@
       "name": "dashboard-server",
       "runtimeExecutable": "python",
       "runtimeArgs": ["-m", "http.server", "5500"],
-      "port": 5500
+      "port": 5500,
+      "autoPort": false
     },
     {
       "name": "api-server",

@@ -50,11 +50,11 @@ class MonthWidget : AppWidgetProvider() {
                             v.setOnClickPendingIntent(R.id.widget_root, pendingOpen)
                             v.setTextViewText(R.id.month_label, "${year}년 ${month + 1}월")
 
-                            // Use GregorianCalendar for precise first-day-of-week
                             val firstDay = GregorianCalendar(year, month, 1)
-                            val startDow = firstDay.get(Calendar.DAY_OF_WEEK) - 1 // 0=Sun
+                            val startDow = firstDay.get(Calendar.DAY_OF_WEEK) - 1
                             val daysInMonth = firstDay.getActualMaximum(Calendar.DAY_OF_MONTH)
                             val todayDom = now.get(Calendar.DAY_OF_MONTH)
+                            val upcoming = mutableListOf<String>()
 
                             for (i in 0..41) {
                                 val dayNum = i - startDow + 1
@@ -62,20 +62,22 @@ class MonthWidget : AppWidgetProvider() {
                                 if (cellId == 0) continue
 
                                 if (dayNum in 1..daysInMonth) {
-                                    v.setTextViewText(cellId, "$dayNum")
-
-                                    val key = WidgetUtils.dateKey(year, month, dayNum)
-                                    val dayData = workouts[key]
-                                    val active = WidgetUtils.hasActivity(dayData)
-                                    val isToday = dayNum == todayDom
-
-                                    // Check calendar events
                                     val dayCal = GregorianCalendar(year, month, dayNum)
-                                    val hasEvent = WidgetUtils.hasEventOnDate(events, dayCal)
+                                    val titles = WidgetUtils.getEventTitles(events, dayCal)
+                                    val key = WidgetUtils.dateKey(year, month, dayNum)
+                                    val active = WidgetUtils.hasActivity(workouts[key])
+                                    val isToday = dayNum == todayDom
+                                    val hasEvent = titles.isNotEmpty()
+                                    val col = i % 7
 
-                                    val col = i % 7 // 0=Sun, 6=Sat
+                                    // 텍스트: 날짜 + 일정제목
+                                    if (hasEvent) {
+                                        v.setTextViewText(cellId, "$dayNum\n${titles.first().take(3)}")
+                                    } else {
+                                        v.setTextViewText(cellId, "$dayNum")
+                                    }
 
-                                    // Background
+                                    // 배경
                                     if (isToday) {
                                         v.setInt(cellId, "setBackgroundResource", R.drawable.cal_today_bg)
                                     } else if (hasEvent) {
@@ -84,34 +86,40 @@ class MonthWidget : AppWidgetProvider() {
                                         v.setInt(cellId, "setBackgroundResource", 0)
                                     }
 
-                                    // Text color: activity > event > day-of-week default
+                                    // 색상
                                     val textColor = when {
-                                        isToday -> WidgetUtils.COLOR_YELLOW
-                                        active && hasEvent -> 0xFF80FFB0.toInt() // green+event
-                                        active -> WidgetUtils.COLOR_GREEN
-                                        hasEvent -> WidgetUtils.COLOR_BLUE
-                                        col == 0 -> WidgetUtils.COLOR_RED
-                                        col == 6 -> WidgetUtils.COLOR_BLUE
-                                        else -> WidgetUtils.COLOR_GRAY
+                                        isToday -> 0xFFFFD54F.toInt()
+                                        active && hasEvent -> 0xFF80FFB0.toInt()
+                                        hasEvent -> 0xFF79BAFF.toInt()
+                                        active -> 0xFF4CAF50.toInt()
+                                        col == 0 -> 0xFFFF6B6B.toInt()
+                                        col == 6 -> 0xFF6B9FFF.toInt()
+                                        else -> 0xFF888888.toInt()
                                     }
                                     v.setTextColor(cellId, textColor)
+
+                                    // 클릭 → 일정 등록
+                                    val dateStr = WidgetUtils.dateKey(year, month, dayNum)
+                                    v.setOnClickPendingIntent(cellId, WidgetUtils.openAppWithDate(ctx, dateStr, widgetId * 100 + dayNum))
+
+                                    if (hasEvent) titles.forEach { t -> upcoming.add("${dayNum}일 $t") }
                                 } else {
                                     v.setTextViewText(cellId, "")
                                     v.setInt(cellId, "setBackgroundResource", 0)
                                 }
                             }
 
+                            // 하단 일정 목록
+                            val eventListId = ctx.resources.getIdentifier("event_list", "id", ctx.packageName)
+                            if (eventListId != 0 && upcoming.isNotEmpty()) {
+                                v.setTextViewText(eventListId, upcoming.joinToString(" · "))
+                            }
+
                             mgr.updateAppWidget(widgetId, v)
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                        }
+                        } catch (e: Exception) { e.printStackTrace() }
                     }
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
+                } catch (e: Exception) { e.printStackTrace() }
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        } catch (e: Exception) { e.printStackTrace() }
     }
 }

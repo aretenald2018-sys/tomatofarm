@@ -1,20 +1,10 @@
 export const MODAL_HTML = `
-<div class="modal-overlay" id="settings-modal" onclick="closeSettingsModal(event)">
+<div class="modal-backdrop" id="settings-modal" onclick="closeSettingsModal(event)">
   <div class="modal-sheet">
     <div class="sheet-handle"></div>
-    <div class="modal-title">⚙️ API 연동 설정</div>
+    <div class="modal-title">⚙️ 설정</div>
     <div class="ex-editor-form">
-      <div>
-        <div class="ex-editor-label">Anthropic API 키 (Claude AI)</div>
-        <input class="ex-editor-input" id="cfg-anthropic" type="password" placeholder="sk-ant-api03-..." autocomplete="off">
-      </div>
-      <div style="font-size:11px;color:var(--muted);line-height:1.6;padding:8px;background:var(--surface2);border-radius:8px;border:1px solid var(--border)">
-        키 정보는 현재 기기의 브라우저에만 저장됩니다.<br>주식 데이터는 Yahoo Finance에서 자동 제공 (키 불필요).
-      </div>
-      <div class="ex-editor-actions">
-        <button class="ex-editor-cancel" onclick="closeSettingsModal()">취소</button>
-        <button class="ex-editor-save"   onclick="saveSettings()">저장하기</button>
-      </div>
+      <input type="hidden" id="cfg-anthropic">
       <div style="border-top:1px solid var(--border);margin-top:16px;padding-top:14px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
           <span style="font-size:12px;font-weight:700;color:var(--muted2)">📅 Google Calendar 연동</span>
@@ -33,11 +23,13 @@ export const MODAL_HTML = `
       </div>
       <div style="border-top:1px solid var(--border);margin-top:16px;padding-top:14px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <span style="font-size:12px;font-weight:700;color:var(--muted2)">🥦 영양 성분 DB 관리</span>
-          <button class="ex-picker-add" onclick="openNutritionItemEditor(null)" style="padding:4px 12px;font-size:11px">+ 품목 추가</button>
+          <span style="font-size:12px;font-weight:700;color:var(--text-secondary)">📆 캘린더 행 관리</span>
+          <button onclick="addCalendarRow()" style="background:var(--primary-bg);color:var(--primary);border:none;border-radius:var(--radius-full);padding:4px 12px;font-size:11px;font-weight:600;cursor:pointer;">+ 추가</button>
         </div>
-        <div id="settings-nutrition-db-list" style="max-height:220px;overflow-y:auto"></div>
+        <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:8px;">캘린더와 홈에 표시되는 활동 항목을 관리해요.</div>
+        <div id="settings-calendar-rows" style="max-height:200px;overflow-y:auto;"></div>
       </div>
+      <div id="settings-nutrition-db-list" style="display:none"></div>
     </div>
   </div>
 </div>

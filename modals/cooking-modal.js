@@ -1,5 +1,5 @@
 export const MODAL_HTML = `
-<div class="modal-overlay" id="cooking-modal" onclick="closeCookingModal(event)">
+<div class="modal-backdrop" id="cooking-modal" onclick="closeCookingModal(event)">
   <div class="modal-sheet cooking-modal-sheet">
     <div class="sheet-handle"></div>
     <div class="modal-title" id="cooking-modal-title">🍳 요리 기록 추가</div>
@@ -58,8 +58,8 @@ export const MODAL_HTML = `
           <div style="display:flex;gap:8px;align-items:center">
             <input class="wine-form-input" id="cooking-ing-weight" type="number" placeholder="중량(g)" style="width:80px" oninput="window._previewIngredientNutrition()">
             <span id="cooking-ing-preview" style="font-size:11px;color:var(--muted);flex:1"></span>
-            <button class="ex-editor-save" onclick="window._confirmIngredient()" style="padding:4px 12px;font-size:12px">추가</button>
-            <button class="ex-editor-cancel" onclick="window._cancelIngredient()" style="padding:4px 8px;font-size:12px">취소</button>
+            <button class="tds-btn fill md" onclick="window._confirmIngredient()" style="padding:4px 12px;font-size:12px">추가</button>
+            <button class="tds-btn cancel-btn ghost md" onclick="window._cancelIngredient()" style="padding:4px 8px;font-size:12px">취소</button>
           </div>
         </div>
       </div>
@@ -91,10 +91,10 @@ export const MODAL_HTML = `
         <img id="cooking-photo-preview" style="display:none;width:100%;max-height:200px;object-fit:cover;border-radius:8px;margin-top:8px;border:1px solid var(--border)" alt="미리보기">
       </div>
       <div class="wine-form-actions">
-        <button class="ex-editor-cancel" onclick="closeCookingModal()">취소</button>
-        <button class="ex-editor-save"   onclick="saveCookingFromModal()">저장하기</button>
+        <button class="tds-btn cancel-btn ghost md" onclick="closeCookingModal()">취소</button>
+        <button class="tds-btn fill md"   onclick="saveCookingFromModal()">저장하기</button>
       </div>
-      <button class="ex-editor-delete" id="cooking-delete-btn" onclick="deleteCookingFromModal()" style="display:none">🗑️ 기록 삭제</button>
+      <button class="tds-btn danger sm" id="cooking-delete-btn" onclick="deleteCookingFromModal()" style="display:none">🗑️ 기록 삭제</button>
     </div>
   </div>
 </div>

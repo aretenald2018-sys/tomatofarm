@@ -1,5 +1,5 @@
 export const MODAL_HTML = `
-<div class="modal-overlay" id="fatsecret-modal" onclick="closeFatSecretSearch(event)">
+<div class="modal-backdrop" id="fatsecret-modal" onclick="closeFatSecretSearch(event)">
   <div class="modal-sheet" style="max-height:88vh">
     <div class="sheet-handle"></div>
     <div class="modal-title">🔍 음식 검색</div>
@@ -13,7 +13,7 @@ export const MODAL_HTML = `
       <div style="display:flex;gap:8px;margin-bottom:8px">
         <input class="ex-editor-input" id="fs-search-input" placeholder="음식명 입력" style="flex:1"
           onkeydown="if(event.key==='Enter')fatsecretSearch()">
-        <button class="ex-editor-save" style="width:60px;padding:0" onclick="fatsecretSearch()">검색</button>
+        <button class="tds-btn fill md" style="width:60px;padding:0" onclick="fatsecretSearch()">검색</button>
       </div>
 
       <!-- 🔎 검색 결과 -->
@@ -30,7 +30,7 @@ export const MODAL_HTML = `
         <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
           <input class="ex-editor-input" id="fs-grams-input" type="number" min="1" step="1" placeholder="중량 입력" style="flex:1" value="100">
           <span style="font-size:13px;color:var(--muted)">g</span>
-          <button class="ex-editor-save" onclick="fatsecretAddFood()">식단 추가</button>
+          <button class="tds-btn fill md" onclick="fatsecretAddFood()">식단 추가</button>
         </div>
 
         <!-- 영양정보 미리보기 -->

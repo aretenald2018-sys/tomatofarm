@@ -1,5 +1,5 @@
 export const MODAL_HTML = `
-<div class="modal-overlay" id="quest-modal" onclick="closeQuestModal(event)">
+<div class="modal-backdrop" id="quest-modal" onclick="closeQuestModal(event)">
 <div class="modal-sheet">
 <div class="sheet-handle"></div>
 <div class="modal-title" id="quest-modal-title">⚔️ 새 퀘스트 추가</div>
@@ -31,8 +31,8 @@ export const MODAL_HTML = `
 </select>
 </div>
 <div class="ex-editor-actions">
-<button class="ex-editor-cancel" onclick="closeQuestModal()">취소</button>
-<button class="ex-editor-save"   onclick="saveQuestFromModal()">저장하기</button>
+<button class="tds-btn cancel-btn ghost md" onclick="closeQuestModal()">취소</button>
+<button class="tds-btn fill md"   onclick="saveQuestFromModal()">저장하기</button>
 </div>
 </div>
 </div>

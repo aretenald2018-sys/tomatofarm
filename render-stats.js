@@ -192,8 +192,8 @@ function _drawVolumeChart(canvas,history){
     data:{labels:history.map(h=>h.date.slice(5)),
       datasets:[{data:history.map(h=>h.volume),borderColor:color,backgroundColor:color+'22',tension:.3,fill:true,pointRadius:4,pointBackgroundColor:color}]},
     options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
-      scales:{x:{ticks:{color:'#5c6478',font:{size:10}},grid:{color:'#2c3040'}},
-              y:{ticks:{color:'#5c6478',font:{size:10}},grid:{color:'#2c3040'}}}},
+      scales:{x:{ticks:{color:'#5c6478',font:{size:10}},grid:{color:document.documentElement.classList.contains('light') ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)'}},
+              y:{ticks:{color:'#5c6478',font:{size:10}},grid:{color:document.documentElement.classList.contains('light') ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)'}}}},
   });
 }
 

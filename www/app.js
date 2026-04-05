@@ -63,6 +63,9 @@ import {
   openBudgetGroupModal, deleteBudgetGroup,
   openBudgetItemModal, closeBudgetItemModal, saveBudgetItemFromModal, deleteBudgetItemFromModal, deleteBudgetItem,
   editBudgetMonth, editBudgetQGoal,
+  openStockDetail, closeStockDetailModal, switchStockDetailTab, changeStockChartRange,
+  openSwingBuy, editSwingPosition, closeSwingPosition,
+  openPbBuy, editPbPosition, closePbPosition,
 } from './render-finance.js';
 import { loadAndInjectModals } from './modal-manager.js';
 
@@ -1368,6 +1371,16 @@ window.deleteBudgetItemFromModal    = deleteBudgetItemFromModal;
 window.deleteBudgetItem             = deleteBudgetItem;
 window.editBudgetMonth              = editBudgetMonth;
 window.editBudgetQGoal              = editBudgetQGoal;
+window.openStockDetail              = openStockDetail;
+window.closeStockDetailModal        = closeStockDetailModal;
+window.switchStockDetailTab         = switchStockDetailTab;
+window.changeStockChartRange        = changeStockChartRange;
+window.openSwingBuy                 = openSwingBuy;
+window.editSwingPosition            = editSwingPosition;
+window.closeSwingPosition           = closeSwingPosition;
+window.openPbBuy                    = openPbBuy;
+window.editPbPosition               = editPbPosition;
+window.closePbPosition              = closePbPosition;
 // 설정
 window.openSettingsModal        = openSettingsModal;
 window.closeSettingsModal       = closeSettingsModal;

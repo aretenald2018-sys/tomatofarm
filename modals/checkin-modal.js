@@ -1,5 +1,5 @@
 export const MODAL_HTML = `
-<div class="modal-overlay" id="checkin-modal" onclick="closeCheckinModal(event)">
+<div class="modal-backdrop" id="checkin-modal" onclick="closeCheckinModal(event)">
   <div class="modal-sheet">
     <div class="sheet-handle"></div>
     <div class="modal-title">📊 주간 체크인</div>
@@ -11,9 +11,9 @@ export const MODAL_HTML = `
       </div>
       <div><div class="ex-editor-label">메모</div><input class="ex-editor-input" id="ci-note" placeholder="이번 주 컨디션이나 변화 기록..."></div>
       <div class="ex-editor-actions">
-        <button class="ex-editor-cancel" id="ci-delete-btn" onclick="deleteCheckinFromModal()" style="display:none;color:var(--diet-bad)">삭제</button>
-        <button class="ex-editor-cancel" onclick="closeCheckinModal()">취소</button>
-        <button class="ex-editor-save" onclick="saveCheckinFromModal()">저장하기</button>
+        <button class="tds-btn cancel-btn ghost md" id="ci-delete-btn" onclick="deleteCheckinFromModal()" style="display:none;color:var(--diet-bad)">삭제</button>
+        <button class="tds-btn cancel-btn ghost md" onclick="closeCheckinModal()">취소</button>
+        <button class="tds-btn fill md" onclick="saveCheckinFromModal()">저장하기</button>
       </div>
     </div>
   </div>

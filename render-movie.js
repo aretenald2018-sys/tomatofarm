@@ -44,7 +44,7 @@ export async function renderMovie() {
   await _renderMovieCalendar(el);
 }
 
-// Firestore에서 최신 데이터 새로고침
+// 새로고침: Firestore → 없으면 CORS 프록시로 직접 크롤링 시도
 export async function startMovieCrawl() {
   const btn = document.getElementById('movie-refresh-btn');
   if (!btn) return;
@@ -53,15 +53,100 @@ export async function startMovieCrawl() {
   btn.textContent = '🔄 로딩 중...';
 
   try {
+    // 1차: Firestore에서 최신 데이터
     await refreshMovieData(_currentYear, _currentMonth);
+    const data = await getMovieData(_currentYear, _currentMonth);
+
+    // 2차: Firestore에 데이터 없으면 브라우저에서 직접 크롤링 시도
+    if (!data.events || data.events.length === 0) {
+      btn.textContent = '🔄 크롤링 중...';
+      const crawled = await _browserCrawlMovies(_currentYear, _currentMonth);
+      if (crawled && crawled.events?.length) {
+        const { saveMovieData } = await import('./data.js');
+        await saveMovieData(_currentYear, _currentMonth, crawled);
+        console.log(`✅ 브라우저 크롤링 성공: ${crawled.events.length}건`);
+      }
+    }
+
     await renderMovie();
-    console.log(`✅ ${_currentYear}년 ${_currentMonth + 1}월 데이터 새로고침 완료`);
+    console.log(`✅ ${_currentYear}년 ${_currentMonth + 1}월 새로고침 완료`);
   } catch (e) {
     console.error('❌ 새로고침 오류:', e.message);
   } finally {
     btn.disabled = false;
     btn.textContent = '🔄 새로고침';
   }
+}
+
+// CORS 프록시로 muko.kr 직접 크롤링 (브라우저용)
+async function _browserCrawlMovies(year, month) {
+  const monthStr = String(month + 1).padStart(2, '0');
+  const url = `https://muko.kr/calender/selected_month/${year}${monthStr}`;
+
+  const PROXIES = [
+    u => `https://corsproxy.io/?${encodeURIComponent(u)}`,
+    u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+  ];
+
+  let html = null;
+  for (const makeProxy of PROXIES) {
+    try {
+      const res = await fetch(makeProxy(url), { signal: AbortSignal.timeout(10000) });
+      if (res.ok) { html = await res.text(); break; }
+    } catch (e) {
+      console.warn('[movie-crawl] 프록시 실패:', e.message);
+    }
+  }
+
+  if (!html) return null;
+
+  // HTML 파싱 (cheerio 없이 DOM으로)
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, 'text/html');
+  const events = [];
+
+  const TAG_MAP = {
+    '시사회': 'premiere', 'GV': 'gv', '상영회': 'screening',
+    '개봉일': 'release', '재개봉': 'rerelease',
+    '무대인사': 'vip', '우대인사': 'vip', '영화제': 'festival',
+  };
+
+  // muko.kr 달력 구조 파싱: .fc-daygrid-day 또는 title 속성
+  doc.querySelectorAll('[title]').forEach(el => {
+    const title = el.getAttribute('title') || '';
+    if (!title || title.length < 3) return;
+
+    // 날짜 추��: data-date 또는 부���에서
+    const dateAttr = el.closest('[data-date]')?.getAttribute('data-date');
+    let day = 0;
+    if (dateAttr) {
+      const d = new Date(dateAttr);
+      if (d.getFullYear() === year && d.getMonth() === month) day = d.getDate();
+    }
+    if (!day) return;
+
+    // 태그 추출
+    const tags = [];
+    Object.keys(TAG_MAP).forEach(k => {
+      if (title.includes(k)) tags.push(TAG_MAP[k]);
+    });
+
+    // href
+    const href = el.closest('a')?.href || el.querySelector('a')?.href || '';
+
+    events.push({ date: day, title: title.trim(), tags, time: '', href });
+  });
+
+  // 중복 제거
+  const seen = new Set();
+  const unique = events.filter(e => {
+    const key = `${e.date}_${e.title}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  return { year, month: month + 1, events: unique, crawledAt: new Date().toISOString(), source: 'browser' };
 }
 
 async function _renderMovieCalendar(el) {

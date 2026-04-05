@@ -1,5 +1,5 @@
 export const MODAL_HTML = `
-<div class="modal-overlay" id="loa-add-modal" onclick="closeLoaAddModal(event)">
+<div class="modal-backdrop" id="loa-add-modal" onclick="closeLoaAddModal(event)">
 <div class="modal-sheet">
 <div class="sheet-handle"></div>
 <div class="modal-title">👤 캐릭터 등록</div>
@@ -14,7 +14,7 @@ onkeydown="if(event.key==='Enter') searchLoaSiblings()">
 <div id="loa-search-error" style="font-size:11px;color:var(--diet-bad);margin-top:4px;"></div>
 </div>
 <div id="loa-sibling-list" class="loa-sibling-list"></div>
-<button class="ex-editor-cancel" onclick="closeLoaAddModal()" style="margin-top:4px;">닫기</button>
+<button class="tds-btn cancel-btn ghost md" onclick="closeLoaAddModal()" style="margin-top:4px;">닫기</button>
 </div>
 </div>
 </div>

@@ -1,6 +1,6 @@
 // 벤치마크 CRUD 모달
 export const MODAL_HTML = `
-<div class="modal-overlay" id="fin-benchmark-modal" onclick="closeFinBenchmarkModal(event)">
+<div class="modal-backdrop" id="fin-benchmark-modal" onclick="closeFinBenchmarkModal(event)">
   <div class="modal-sheet" onclick="event.stopPropagation()">
     <div class="modal-title" id="fin-bench-modal-title">벤치마크 추가</div>
 

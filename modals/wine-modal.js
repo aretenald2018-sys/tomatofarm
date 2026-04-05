@@ -1,5 +1,5 @@
 export const MODAL_HTML = `
-<div class="modal-overlay" id="wine-modal" onclick="closeWineModal(event)">
+<div class="modal-backdrop" id="wine-modal" onclick="closeWineModal(event)">
   <div class="modal-sheet wine-modal-sheet">
     <div class="sheet-handle"></div>
     <div class="modal-title" id="wine-modal-title">🍷 와인 기록 추가</div>
@@ -88,10 +88,10 @@ export const MODAL_HTML = `
         <img id="wine-image-preview" style="display:none;width:80px;height:100px;object-fit:cover;border-radius:6px;margin-top:8px;border:1px solid var(--border)" alt="미리보기">
       </div>
       <div class="wine-form-actions">
-        <button class="ex-editor-cancel" onclick="closeWineModal()">취소</button>
-        <button class="ex-editor-save"   onclick="saveWineFromModal()">저장하기</button>
+        <button class="tds-btn cancel-btn ghost md" onclick="closeWineModal()">취소</button>
+        <button class="tds-btn fill md"   onclick="saveWineFromModal()">저장하기</button>
       </div>
-      <button class="ex-editor-delete" id="wine-delete-btn" onclick="deleteWineFromModal()" style="display:none">🗑️ 기록 삭제</button>
+      <button class="tds-btn danger sm" id="wine-delete-btn" onclick="deleteWineFromModal()" style="display:none">🗑️ 기록 삭제</button>
     </div>
   </div>
 </div>

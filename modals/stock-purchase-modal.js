@@ -1,5 +1,5 @@
 export const MODAL_HTML = `
-<div class="modal-overlay" id="stock-purchase-modal" onclick="closeStockPurchaseModal(event)">
+<div class="modal-backdrop" id="stock-purchase-modal" onclick="closeStockPurchaseModal(event)">
 <div class="modal-sheet">
 <div class="sheet-handle"></div>
 <div class="modal-title">💰 매입 기록 추가</div>
@@ -26,10 +26,10 @@ export const MODAL_HTML = `
 <input class="ex-editor-input" id="sp-amount" type="number" step="0.01" placeholder="미입력 시 단가×수량으로 자동 계산">
 </div>
 <div class="ex-editor-actions">
-<button class="ex-editor-cancel" onclick="closeStockPurchaseModal()">취소</button>
-<button class="ex-editor-save"   onclick="saveStockPurchaseFromModal()">저장하기</button>
+<button class="tds-btn cancel-btn ghost md" onclick="closeStockPurchaseModal()">취소</button>
+<button class="tds-btn fill md"   onclick="saveStockPurchaseFromModal()">저장하기</button>
 </div>
-<button class="ex-editor-delete" id="sp-delete-btn" onclick="deleteStockPurchaseFromModal()" style="display:none">🗑️ 매입 정보 삭제</button>
+<button class="tds-btn danger sm" id="sp-delete-btn" onclick="deleteStockPurchaseFromModal()" style="display:none">🗑️ 매입 정보 삭제</button>
 </div>
 </div>
 </div>

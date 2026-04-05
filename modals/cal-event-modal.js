@@ -1,5 +1,5 @@
 export const MODAL_HTML = `
-<div class="modal-overlay" id="cal-event-modal" onclick="closeCalEventModal(event)">
+<div class="modal-backdrop" id="cal-event-modal" onclick="closeCalEventModal(event)">
   <div class="modal-sheet">
     <div class="sheet-handle"></div>
     <div class="modal-title" id="cal-event-modal-title">📅 일정 추가</div>
@@ -36,10 +36,10 @@ export const MODAL_HTML = `
         </div>
       </div>
       <div class="ex-editor-actions">
-        <button class="ex-editor-cancel" onclick="closeCalEventModal()">취소</button>
-        <button class="ex-editor-save" onclick="saveCalEventFromModal()">저장</button>
+        <button class="tds-btn cancel-btn ghost md" onclick="closeCalEventModal()">취소</button>
+        <button class="tds-btn fill md" onclick="saveCalEventFromModal()">저장</button>
       </div>
-      <button class="ex-editor-delete" id="cal-event-delete-btn" onclick="deleteCalEventFromModal()" style="display:none">🗑️ 일정 삭제</button>
+      <button class="tds-btn danger sm" id="cal-event-delete-btn" onclick="deleteCalEventFromModal()" style="display:none">🗑️ 일정 삭제</button>
     </div>
   </div>
 </div>
