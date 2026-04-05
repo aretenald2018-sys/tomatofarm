@@ -8,7 +8,8 @@ import { saveDay, saveExercise, deleteExercise,
          getLastSession, isFuture, TODAY,
          getDietPlan, calcDietMetrics,
          getVolumeHistory, calcVolume,
-         isDietDaySuccess, getDayTargetKcal }  from './data.js';
+         isDietDaySuccess, getDayTargetKcal,
+         getBodyCheckins }                     from './data.js';
 
 
 let _date       = null;   // { y, m, d }
@@ -17,6 +18,8 @@ let _hiddenExercises = []; // 모달에서 임시로 숨길 운동 ID 목록
 let _gymStatus  = 'none'; // 'done'|'skip'|'health'|'none'
 let _cfStatus   = 'none';
 let _stretching = false;
+let _swimming   = false;
+let _running    = false;
 let _wineFree   = false;
 let _breakfastSkipped = false;
 let _lunchSkipped = false;
@@ -54,6 +57,8 @@ export function loadWorkoutDate(y, m, d) {
   else                  _cfStatus = 'none';
 
   _stretching = !!day.stretching;
+  _swimming   = !!day.swimming;
+  _running    = !!day.running;
   _wineFree   = !!day.wine_free;
   _breakfastSkipped = !!day.breakfast_skipped;
   _lunchSkipped = !!day.lunch_skipped;
@@ -82,6 +87,9 @@ export function loadWorkoutDate(y, m, d) {
   _renderGymStatusBtns();
   _renderCFStatusBtns();
   _renderStretchingToggle();
+  // 수영/런닝 칩 상태 복원
+  document.getElementById('wt-chip-swimming')?.classList.toggle('active', _swimming);
+  document.getElementById('wt-chip-running')?.classList.toggle('active', _running);
   _renderWineFreeToggle();
   _renderMealSkippedToggles();
   _initButtonEventListeners();
@@ -148,6 +156,16 @@ export function wtSetCFStatus(status) {
 export function wtToggleStretching() {
   _stretching = !_stretching;
   _renderStretchingToggle();
+  saveWorkoutDay().catch(e => console.error('Save error:', e));
+}
+
+export function wtToggleSwimming() {
+  _swimming = !_swimming;
+  saveWorkoutDay().catch(e => console.error('Save error:', e));
+}
+
+export function wtToggleRunning() {
+  _running = !_running;
   saveWorkoutDay().catch(e => console.error('Save error:', e));
 }
 
@@ -320,6 +338,8 @@ export async function saveWorkoutDay() {
     gym_skip:   _gymStatus === 'skip',
     gym_health: _gymStatus === 'health',
     stretching: _stretching,
+    swimming:   _swimming,
+    running:    _running,
     wine_free:  _wineFree,
     breakfast_skipped: _breakfastSkipped,
     lunch_skipped: _lunchSkipped,
@@ -596,7 +616,7 @@ function _renderPickerList() {
     });
     const addBtn = document.createElement('button');
     addBtn.className = 'ex-picker-add';
-    addBtn.textContent = `+ ${muscle.name} 종목 추가`;
+    addBtn.textContent = `+ ${muscle.name} 종목 추가(선택)`;
     addBtn.addEventListener('click', () => wtOpenExerciseEditor(null, muscle.id));
     group.appendChild(addBtn);
     container.appendChild(group);
@@ -635,7 +655,16 @@ function _renderCalorieTracker() {
 
   const plan    = getDietPlan();
   const metrics = calcDietMetrics(plan);
-  if (!plan.weight) { tracker.style.display = 'none'; return; }
+  if (!plan._userSet || !plan.weight) {
+    tracker.style.display = 'none';
+    // 인라인 설정 폼 표시
+    const setup = document.getElementById('wt-diet-setup');
+    if (setup) { setup.style.display = ''; setup.style.opacity = '1'; setup.style.transform = 'scale(1)'; }
+    return;
+  }
+  // 플랜이 있으면 설정 폼 숨기기
+  const setupEl = document.getElementById('wt-diet-setup');
+  if (setupEl) setupEl.style.display = 'none';
 
   // 오늘이 리피드 데이인지 판단
   const dow = _date ? new Date(_date.y, _date.m, _date.d).getDay() : new Date().getDay();
@@ -703,6 +732,7 @@ function _renderCalorieTracker() {
       <span class="macro-bar-info" style="color:${over?'var(--diet-bad)':color}">${info}</span>
     </div>`;
   }).join('');
+
 }
 
 // ── 식사별 음식 아이템 렌더 ──────────────────────────────────────
@@ -820,6 +850,8 @@ async function _autoSaveDiet() {
       gym_skip:   _gymStatus === 'skip',
       gym_health: _gymStatus === 'health',
       stretching: _stretching,
+      swimming:   _swimming,
+      running:    _running,
       wine_free:  _wineFree,
       breakfast_skipped: _breakfastSkipped,
       lunch_skipped: _lunchSkipped,

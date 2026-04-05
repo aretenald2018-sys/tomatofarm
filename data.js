@@ -35,6 +35,50 @@ enableIndexedDbPersistence(db).catch(err => {
   }
 });
 
+// ── IndexedDB 백업 (모바일 localStorage 클리어 방지) ─────────────
+const _IDB_NAME = 'dashboard3_session';
+const _IDB_STORE = 'auth';
+
+function _openIDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(_IDB_NAME, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(_IDB_STORE);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function _idbSet(key, value) {
+  try {
+    const db = await _openIDB();
+    const tx = db.transaction(_IDB_STORE, 'readwrite');
+    tx.objectStore(_IDB_STORE).put(value, key);
+    await new Promise((r, j) => { tx.oncomplete = r; tx.onerror = j; });
+    db.close();
+  } catch {}
+}
+
+async function _idbGet(key) {
+  try {
+    const db = await _openIDB();
+    const tx = db.transaction(_IDB_STORE, 'readonly');
+    const req = tx.objectStore(_IDB_STORE).get(key);
+    const result = await new Promise((r, j) => { req.onsuccess = () => r(req.result); req.onerror = j; });
+    db.close();
+    return result;
+  } catch { return null; }
+}
+
+async function _idbRemove(key) {
+  try {
+    const db = await _openIDB();
+    const tx = db.transaction(_IDB_STORE, 'readwrite');
+    tx.objectStore(_IDB_STORE).delete(key);
+    await new Promise((r, j) => { tx.oncomplete = r; tx.onerror = j; });
+    db.close();
+  } catch {}
+}
+
 // ── 계정 시스템 ──────────────────────────────────────────────────
 let _currentUser = null; // { id: 'kim_taewoo', lastName: '김', firstName: '태우', hasPassword: false }
 
@@ -83,8 +127,11 @@ export function setCurrentUser(user) {
   _currentUser = user;
   if (user) {
     localStorage.setItem('currentUser', JSON.stringify(user));
+    _idbSet('currentUser', user);
   } else {
     localStorage.removeItem('currentUser');
+    _idbRemove('currentUser');
+    _idbRemove('kim_authenticated');
   }
 }
 
@@ -92,6 +139,27 @@ export function loadSavedUser() {
   try {
     const saved = localStorage.getItem('currentUser');
     if (saved) { _currentUser = JSON.parse(saved); return _currentUser; }
+  } catch {}
+  return null;
+}
+
+// 김태우 인증 상태 IndexedDB 백업
+export function backupKimAuth() { _idbSet('kim_authenticated', true); }
+export function clearKimAuth() { _idbRemove('kim_authenticated'); }
+
+// localStorage가 클리어된 경우 IndexedDB에서 복구
+export async function restoreUserFromBackup() {
+  if (_currentUser) return _currentUser; // 이미 로드됨
+  try {
+    const backup = await _idbGet('currentUser');
+    if (backup) {
+      _currentUser = backup;
+      localStorage.setItem('currentUser', JSON.stringify(backup));
+      // 김태우 인증 상태도 복구
+      const kimAuth = await _idbGet('kim_authenticated');
+      if (kimAuth) localStorage.setItem('kim_authenticated', 'true');
+      return _currentUser;
+    }
   } catch {}
   return null;
 }
@@ -119,6 +187,127 @@ export async function getAccountList() {
 
 export async function saveAccount(account) {
   await setDoc(doc(db, '_accounts', account.id), account);
+}
+
+// 삭제된 계정 복구: _friend_requests, _guestbook, _likes, _notifications에서 ID 수집
+export async function recoverDeletedAccounts() {
+  try {
+    const existing = await getAccountList();
+    const existingIds = new Set(existing.map(a => a.id));
+    const missingIds = new Set();
+
+    // 1) _friend_requests에서 ID 수집
+    const frSnap = await getDocs(collection(db, '_friend_requests'));
+    frSnap.forEach(d => {
+      const data = d.data();
+      if (data.from && !existingIds.has(data.from)) missingIds.add(data.from);
+      if (data.to && !existingIds.has(data.to))     missingIds.add(data.to);
+    });
+
+    // 2) _guestbook에서 ID + fromName 수집 (별명 복구용)
+    const gbNameMap = {};
+    const gbSnap = await getDocs(collection(db, '_guestbook'));
+    gbSnap.forEach(d => {
+      const data = d.data();
+      if (data.from) {
+        if (!existingIds.has(data.from)) missingIds.add(data.from);
+        if (data.fromName) gbNameMap[data.from] = data.fromName;
+      }
+      if (data.to && !existingIds.has(data.to)) missingIds.add(data.to);
+    });
+
+    // 3) _likes에서 ID 수집
+    const lkSnap = await getDocs(collection(db, '_likes'));
+    lkSnap.forEach(d => {
+      const data = d.data();
+      if (data.from && !existingIds.has(data.from)) missingIds.add(data.from);
+      if (data.to && !existingIds.has(data.to))     missingIds.add(data.to);
+    });
+
+    // 4) _notifications에서 ID 수집
+    const ntSnap = await getDocs(collection(db, '_notifications'));
+    ntSnap.forEach(d => {
+      const data = d.data();
+      if (data.from && !existingIds.has(data.from)) missingIds.add(data.from);
+      if (data.to && !existingIds.has(data.to))     missingIds.add(data.to);
+    });
+
+    // (guest) ID 제외, 김_태우 관련은 이미 처리됨
+    missingIds.delete('김_태우');
+    missingIds.delete('김_태우(guest)');
+
+    // 5) 누락 계정 복구
+    let recovered = 0;
+    for (const id of missingIds) {
+      if (id.includes('(guest)')) continue;
+      // ID 형식: lastName_firstName (소문자)
+      const parts = id.split('_');
+      if (parts.length < 2) continue;
+      const lastName = parts[0];
+      const firstName = parts.slice(1).join('_');
+      // 방명록에 저장된 fromName이 있으면 별명으로 사용
+      const savedName = gbNameMap[id] || '';
+      const baseName = lastName + firstName;
+      const account = {
+        id,
+        lastName,
+        firstName,
+        nickname: savedName || baseName,
+        hasPassword: false,
+        passwordHash: null,
+        createdAt: Date.now(),
+      };
+      await setDoc(doc(db, '_accounts', id), account);
+      recovered++;
+      console.log('[recover] 계정 복구:', id, '별명:', account.nickname);
+    }
+    if (recovered > 0) console.log(`[recover] 총 ${recovered}개 계정 복구 완료`);
+    return recovered;
+  } catch(e) {
+    console.warn('[recover] 계정 복구 실패:', e);
+    return 0;
+  }
+}
+
+// ── 사용자 삭제 (관리자 전용) ────────────────────────────────────
+export async function deleteUserAccount(userId) {
+  if (!isAdmin()) throw new Error('관리자만 삭제 가능');
+  if (userId === ADMIN_ID || userId === ADMIN_GUEST_ID) throw new Error('관리자 계정은 삭제 불가');
+
+  // 1) users/{userId} 하위 컬렉션 전체 삭제
+  const USER_COLS = ['workouts','exercises','goals','quests','wines','cal_events','cooking',
+    'body_checkins','nutrition_db','finance_benchmarks','finance_actuals','finance_loans',
+    'finance_positions','finance_plans','finance_budgets','movies','tomato_cycles','settings'];
+  for (const colName of USER_COLS) {
+    try {
+      const snap = await getDocs(collection(db, 'users', userId, colName));
+      for (const d of snap.docs) await deleteDoc(doc(db, 'users', userId, colName, d.id));
+    } catch(e) { console.warn(`[deleteUser] ${colName} 삭제 실패:`, e.message); }
+  }
+
+  // 2) 글로벌 컬렉션에서 해당 사용자 관련 문서 삭제
+  const globalCols = [
+    { name: '_friend_requests', fields: ['from','to'] },
+    { name: '_guestbook',       fields: ['from','to'] },
+    { name: '_likes',           fields: ['from','to'] },
+    { name: '_notifications',   fields: ['to'] },
+    { name: '_letters',         fields: ['from'] },
+  ];
+  for (const gc of globalCols) {
+    try {
+      const snap = await getDocs(collection(db, gc.name));
+      for (const d of snap.docs) {
+        const data = d.data();
+        if (gc.fields.some(f => data[f] === userId)) {
+          await deleteDoc(doc(db, gc.name, d.id));
+        }
+      }
+    } catch(e) { console.warn(`[deleteUser] ${gc.name} 삭제 실패:`, e.message); }
+  }
+
+  // 3) _accounts에서 삭제
+  await deleteDoc(doc(db, '_accounts', userId));
+  console.log(`[deleteUser] ${userId} 계정 및 데이터 완전 삭제 완료`);
 }
 
 // 소셜 ID: AdminGuest는 Admin과 같은 소셜 ID 사용 (친구/알림 공유)
@@ -1042,7 +1231,13 @@ export const getExList    = ()      => _exList;
 export const getCache     = ()      => _cache;
 export const getDay       = (y,m,d) => _cache[dateKey(y,m,d)] || {};
 export const getExercises = (y,m,d) => getDay(y,m,d).exercises || [];
-export const getMuscles   = (y,m,d) => [...new Set(getExercises(y,m,d).map(e => e.muscleId))];
+export const getMuscles   = (y,m,d) => {
+  const day = getDay(y,m,d);
+  const ids = new Set(getExercises(y,m,d).map(e => e.muscleId));
+  if (day.swimming) ids.add('swimming');
+  if (day.running)  ids.add('running');
+  return [...ids];
+};
 export const getCF        = (y,m,d) => !!getDay(y,m,d).cf;
 export const getMemo      = (y,m,d) => getDay(y,m,d).memo || '';
 

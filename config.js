@@ -68,6 +68,8 @@ export const MUSCLES = [
   { id:'bicep',    name:'이두', color:'#f59e0b' },
   { id:'tricep',   name:'삼두', color:'#ec4899' },
   { id:'abs',      name:'복근', color:'#84cc16' },
+  { id:'swimming', name:'수영', color:'#0ea5e9' },
+  { id:'running',  name:'런닝', color:'#f43f5e' },
 ];
 
 export const MONTHS = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];

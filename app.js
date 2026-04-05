@@ -33,6 +33,7 @@ import { renderMonthlyCalendar, renderMonthlyCalendarInModal,
          changeMonthlyMonth }                     from './render-monthly-calendar.js';
 import { renderMovie, changeMovieMonth, startMovieCrawl, toggleMovieTagFilter }  from './render-movie.js';
 import { renderDev, submitDevTask }                from './render-dev.js';
+import { renderAdmin }                            from './render-admin.js';
 import { renderWine, openWineModal, closeWineModal,
          saveWineFromModal, deleteWineFromModal,
          searchVivinoRating, searchWineImage,
@@ -40,7 +41,7 @@ import { renderWine, openWineModal, closeWineModal,
          searchCriticRatings }                    from './render-wine.js';
 import {
   loadWorkoutDate, changeWorkoutDate, goToTodayWorkout, saveWorkoutDay,
-  wtSetGymStatus, wtSetCFStatus, wtToggleStretching, wtToggleWineFree, wtToggleMealSkipped,
+  wtSetGymStatus, wtSetCFStatus, wtToggleStretching, wtToggleSwimming, wtToggleRunning, wtToggleWineFree, wtToggleMealSkipped,
   wtOpenExercisePicker, wtCloseExercisePicker,
   wtOpenExerciseEditor, wtCloseExerciseEditor,
   wtSaveExerciseFromEditor, wtDeleteExerciseFromEditor,
@@ -129,6 +130,7 @@ function switchTab(tab) {
   if (tab === 'calendar') { renderCalendar(); if (isGCalConnected()) syncGCalNow(); }
   if (tab === 'wine')     renderWine();
   if (tab === 'dev')      renderDev();
+  if (tab === 'admin')    renderAdmin();
   if (tab === 'cooking')  renderCooking();
   if (tab === 'movie')    renderMovie();
   if (tab === 'finance')  renderFinance();
@@ -979,6 +981,13 @@ async function saveCheckinFromModal() {
     note:       note || null,
   };
   await saveBodyCheckin(rec);
+
+  // 식단 플랜의 현재 체중도 동기화
+  const plan = getDietPlan();
+  if (plan._userSet && plan.weight) {
+    await saveDietPlan({ weight });
+  }
+
   document.getElementById('checkin-modal').classList.remove('open');
   renderAll();
 }
@@ -1791,7 +1800,20 @@ async function init() {
 
     _initTabDrag();
     _initSwipeNavigation();
+
+    // 어드민 전용 메뉴 표시
+    if (isAdmin()) {
+      const adminMenu = document.getElementById('admin-menu-items');
+      if (adminMenu) adminMenu.style.display = '';
+    }
+    // 편지 버튼 표시 (모든 사용자)
+    const letterBtn = document.getElementById('letter-btn');
+    if (letterBtn) letterBtn.style.display = '';
+
     renderHome();
+
+    // 첫 이용자 튜토리얼
+    _showTutorialIfNeeded();
 
     // 홈 렌더링 후 즉시 로딩 화면 숨기기 (나머지는 백그라운드)
     const loadEl2 = document.getElementById('loading');
@@ -1848,6 +1870,247 @@ function _initDietInputButtons() {
   }, false);
 }
 
+// ── 첫 이용자 튜토리얼 (코치마크 스타일) ───────────────────────
+function _showTutorialIfNeeded() {
+  if (localStorage.getItem('tutorial_completed')) return;
+  if (isAdmin()) { localStorage.setItem('tutorial_completed', '1'); return; }
+
+  const steps = [
+    {
+      icon: '🍅',
+      title: '내 토마토',
+      desc: '4일간 식단 목표를 달성하면 토마토를 하나 수확해요. 매일 꾸준히 기록해보세요!',
+      tab: 'home',
+      target: '#hero-content',
+      tabLabel: '홈',
+      position: 'below',
+    },
+    {
+      icon: '👋',
+      title: '이웃과 함께해요',
+      desc: '이웃을 맺으면 친구가 뭘 먹었는지, 무슨 운동을 했는지 볼 수 있어요. 좋아요와 응원 메시지도 남길 수 있답니다!',
+      tab: 'home',
+      target: '#card-friends',
+      tabLabel: '홈',
+      position: 'below',
+    },
+    {
+      icon: '🍽️',
+      title: '오늘의 칼로리',
+      desc: '식단 탭에서 신체정보를 입력하면 하루 목표 칼로리가 자동 계산돼요. 아침·점심·저녁·간식을 기록하세요.',
+      tab: 'diet',
+      target: '#wt-diet-setup, .diet-grid',
+      tabLabel: '식단',
+      position: 'below',
+    },
+    {
+      icon: '🔍',
+      title: '가공식품도 검색 가능',
+      desc: '라라스윗, 다논, 프로틴바 등 가공식품까지 모두 검색돼요. 영양 정보가 자동으로 입력됩니다.',
+      tab: 'diet',
+      target: '.diet-grid',
+      tabLabel: '식단',
+      position: 'above',
+    },
+    {
+      icon: '💪',
+      title: '운동 기록',
+      desc: '헬스, 크로스핏, 수영, 런닝 등 다양한 운동을 기록할 수 있어요. 세트·횟수까지 상세하게!',
+      tab: 'workout',
+      target: '#wt-flow',
+      tabLabel: '운동',
+      position: 'below',
+    },
+  ];
+
+  let currentStep = 0;
+
+  function getOverlay() {
+    let el = document.getElementById('tutorial-overlay');
+    if (!el) { el = document.createElement('div'); el.id = 'tutorial-overlay'; document.body.appendChild(el); }
+    return el;
+  }
+
+  function renderStep() {
+    const s = steps[currentStep];
+    const isLast = currentStep === steps.length - 1;
+
+    // 기존 오버레이 즉시 제거 (깜빡임 방지)
+    const prevOverlay = document.getElementById('tutorial-overlay');
+    if (prevOverlay) prevOverlay.innerHTML = '';
+
+    // 해당 탭으로 이동
+    switchTab(s.tab);
+
+    // 1단계: 탭 전환 후 타겟 요소를 뷰포트로 스크롤
+    setTimeout(() => {
+      const targetEl = s.target.split(',').map(sel => document.querySelector(sel.trim())).find(el => el && el.offsetHeight > 0);
+
+      if (targetEl) {
+        targetEl.scrollIntoView({ behavior: 'instant', block: 'center' });
+      }
+
+      // 2단계: 스크롤 완료 후 좌표 계산 & 렌더
+      requestAnimationFrame(() => { requestAnimationFrame(() => {
+        _renderCoachOverlay(targetEl, s, isLast);
+      }); });
+    }, 400);
+  }
+
+  function _renderCoachOverlay(targetEl, s, isLast) {
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    // 타겟 뷰포트 좌표
+    const rect = targetEl
+      ? targetEl.getBoundingClientRect()
+      : null;
+
+    // 하이라이트: 타겟 상단 일부만 보여주되, 뷰포트 안에 맞춤
+    // 타겟이 뷰포트보다 크면 상단 120px만 하이라이트
+    const pad = 10;
+    let hlTop, hlLeft, hlW, hlH;
+    if (rect) {
+      const maxHlH = Math.min(rect.height, 150); // 하이라이트 최대 높이 제한
+      hlLeft = Math.max(rect.left - pad, 0);
+      hlW = Math.min(rect.width + pad * 2, vw - hlLeft);
+      // 하이라이트를 뷰포트 상단 30% ~ 50% 영역에 위치시키기
+      hlTop = Math.max(rect.top - pad, 0);
+      hlH = Math.min(maxHlH + pad * 2, vh * 0.4);
+      // 뷰포트 밖으로 넘어가면 클램프
+      if (hlTop + hlH > vh * 0.55) {
+        hlH = Math.max(vh * 0.55 - hlTop, 60);
+      }
+    } else {
+      hlTop = vh * 0.15; hlLeft = 16; hlW = vw - 32; hlH = 100;
+    }
+    const hlBottom = hlTop + hlH;
+
+    // 툴팁: 항상 뷰포트 안에 위치 (하이라이트 아래, 공간 없으면 위)
+    const gap = 14;
+    const tooltipMinH = 220;
+    const maxW = 400;
+    const tooltipW = Math.min(maxW, vw - 32);
+
+    // X 위치: 하이라이트 중심 정렬
+    const hlCenterX = hlLeft + hlW / 2;
+    let tooltipLeft = Math.round(hlCenterX - tooltipW / 2);
+    tooltipLeft = Math.max(16, Math.min(tooltipLeft, vw - tooltipW - 16));
+
+    // Y 위치: 아래 우선, 안 되면 위
+    let tooltipTopVal;
+    let arrowDir;
+    const belowY = hlBottom + gap;
+    const aboveBottomY = hlTop - gap;
+
+    if (vh - belowY >= tooltipMinH) {
+      // 아래에 충분한 공간
+      tooltipTopVal = belowY;
+      arrowDir = 'up';
+    } else if (aboveBottomY >= tooltipMinH) {
+      // 위에 충분한 공간 → bottom 기준
+      tooltipTopVal = Math.max(aboveBottomY - tooltipMinH, 8);
+      arrowDir = 'down';
+    } else {
+      // 둘 다 부족 → 뷰포트 하단에 고정, 하이라이트는 상단에 축소
+      tooltipTopVal = vh - tooltipMinH - 16;
+      arrowDir = 'up';
+      // 하이라이트가 툴팁과 겹치지 않도록 축소
+      if (hlBottom > tooltipTopVal - gap) {
+        hlH = Math.max(tooltipTopVal - gap - hlTop, 40);
+      }
+    }
+
+    // 툴팁이 뷰포트 밖으로 나가지 않도록 최종 클램프
+    tooltipTopVal = Math.max(8, Math.min(tooltipTopVal, vh - tooltipMinH - 8));
+
+    // 화살표 X 위치
+    const arrowX = Math.max(20, Math.min(Math.round(hlCenterX - tooltipLeft), tooltipW - 20));
+
+    const hlBottomFinal = hlTop + hlH;
+
+    const overlay = getOverlay();
+    overlay.innerHTML = `
+      <div class="coach-backdrop" id="coach-backdrop">
+        <svg class="coach-svg" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <mask id="coach-mask">
+              <rect width="100%" height="100%" fill="white"/>
+              <rect x="${hlLeft}" y="${hlTop}" width="${hlW}" height="${hlH}" rx="16" fill="black"/>
+            </mask>
+          </defs>
+          <rect width="100%" height="100%" fill="rgba(0,0,0,0.5)" mask="url(#coach-mask)"/>
+        </svg>
+        <div class="coach-highlight" style="top:${hlTop}px;left:${hlLeft}px;width:${hlW}px;height:${hlH}px;"></div>
+        <div class="coach-tooltip coach-arrow-${arrowDir}" style="top:${tooltipTopVal}px;left:${tooltipLeft}px;width:${tooltipW}px;">
+          <div class="coach-tooltip-head">
+            <div class="coach-step-badge">${currentStep + 1} / ${steps.length}</div>
+            <div class="coach-tab-badge">${s.tabLabel} 탭</div>
+          </div>
+          <div class="coach-tooltip-icon">${s.icon}</div>
+          <div class="coach-tooltip-title">${s.title}</div>
+          <div class="coach-tooltip-desc">${s.desc}</div>
+          <div class="coach-tooltip-actions">
+            ${currentStep > 0 ? '<button class="coach-btn coach-btn-ghost" id="tut-prev">이전</button>' : ''}
+            <button class="coach-btn coach-btn-primary" id="tut-next">${isLast ? '시작하기!' : '다음'}</button>
+          </div>
+          <button class="coach-dismiss" id="tut-dismiss">건너뛰고 다시는 안보기</button>
+        </div>
+      </div>
+    `;
+
+    // 화살표 위치 동적 설정
+    const tooltip = overlay.querySelector('.coach-tooltip');
+    if (tooltip) tooltip.style.setProperty('--arrow-x', arrowX + 'px');
+
+    // 이벤트 바인딩
+    document.getElementById('tut-next')?.addEventListener('click', () => {
+      if (isLast) { closeTutorial(); } else { currentStep++; renderStep(); }
+    });
+    document.getElementById('tut-prev')?.addEventListener('click', () => {
+      if (currentStep > 0) { currentStep--; renderStep(); }
+    });
+    document.getElementById('tut-dismiss')?.addEventListener('click', closeTutorial);
+    document.getElementById('coach-backdrop')?.addEventListener('click', (e) => {
+      if (e.target.closest('.coach-tooltip')) return;
+      if (isLast) { closeTutorial(); } else { currentStep++; renderStep(); }
+    });
+
+    // 리사이즈 시 위치 재계산
+    window.addEventListener('resize', () => {
+      const el = s.target.split(',').map(sel => document.querySelector(sel.trim())).find(el => el && el.offsetHeight > 0);
+      if (el && document.getElementById('coach-backdrop')) {
+        _renderCoachOverlay(el, s, isLast);
+      }
+    }, { once: true });
+  }
+
+  function closeTutorial() {
+    localStorage.setItem('tutorial_completed', '1');
+    const overlay = document.getElementById('tutorial-overlay');
+    if (overlay) {
+      overlay.classList.add('coach-fade-out');
+      setTimeout(() => overlay.remove(), 250);
+    }
+    // 홈탭으로 복귀
+    switchTab('home');
+  }
+
+  // 패치노트가 떠 있으면 패치노트 완료 후 시작, 아니면 바로 시작
+  function startWhenReady() {
+    const patchOverlay = document.getElementById('patchnote-overlay');
+    if (patchOverlay) {
+      // 패치노트가 떠 있음 → 닫힌 후 시작
+      window.addEventListener('patchnote-done', () => {
+        setTimeout(renderStep, 800);
+      }, { once: true });
+    } else {
+      setTimeout(renderStep, 600);
+    }
+  }
+  startWhenReady();
+}
+
 init();
 _initDietInputButtons();
 
@@ -1868,9 +2131,12 @@ window.openSheet                = openWorkoutTab; // 레거시 호환 (render-ca
 window.changeWorkoutDate        = changeWorkoutDate;
 window.goToTodayWorkout         = goToTodayWorkout;
 window.saveWorkoutDay           = saveWorkoutDay;
+window._wtExports = { loadWorkoutDate };
 window.wtSetGymStatus           = wtSetGymStatus;
 window.wtSetCFStatus            = wtSetCFStatus;
 window.wtToggleStretching       = wtToggleStretching;
+window.wtToggleSwimming         = wtToggleSwimming;
+window.wtToggleRunning          = wtToggleRunning;
 
 // ── 운동 탭 새 UX: 상태 먼저 선택 (CSS 전환) ────────────────────
 let _wtSelectedTypes = new Set();
@@ -1925,6 +2191,8 @@ window.wtToggleType = function(type) {
   wtSetGymStatus(_wtSelectedTypes.has('gym') ? 'done' : 'none');
   wtSetCFStatus(_wtSelectedTypes.has('cf') ? 'done' : 'none');
   if (type === 'stretch') wtToggleStretching();
+  if (type === 'swimming') wtToggleSwimming();
+  if (type === 'running') wtToggleRunning();
 };
 
 window.wtResetStatus = function() {
@@ -1933,7 +2201,7 @@ window.wtResetStatus = function() {
   flow.classList.remove('wt-chosen', 'wt-show-type');
   ['wt-gym-section','wt-memo-section','wt-save-section'].forEach(id =>
     document.getElementById(id)?.classList.remove('wt-open'));
-  ['wt-chip-gym','wt-chip-cf','wt-chip-stretch'].forEach(id =>
+  ['wt-chip-gym','wt-chip-cf','wt-chip-stretch','wt-chip-swimming','wt-chip-running'].forEach(id =>
     document.getElementById(id)?.classList.remove('active'));
   wtSetGymStatus('none'); wtSetCFStatus('none');
 };

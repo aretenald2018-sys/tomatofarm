@@ -8,7 +8,7 @@ import { getMuscles, getCF, dietDayOk, getExList,
          getGymSkip, getGymHealth, getCFHealth,
          getBreakfastSkipped, getLunchSkipped, getDinnerSkipped,
          getEvents, dateKey, getStreakSettings,
-         getCalendarRows }                                       from './data.js';
+         getCalendarRows, getDay, getCache }                     from './data.js';
 
 let _currentYear = new Date().getFullYear();
 export const getCurrentYear = () => _currentYear;
@@ -50,6 +50,9 @@ export function renderCalendar() {
       // 커스텀 행은 빈 행으로 (향후 확장)
       else tbody.appendChild(_customRow(rowDef, _currentYear, m, days));
     }
+    // 수영/런닝 행 (한 번이라도 기록한 적 있으면 표시)
+    if (_hasEverDone('swimming')) tbody.appendChild(_activityRow(_currentYear, m, days, 'swimming', '🏊', '수영', '#0ea5e9'));
+    if (_hasEverDone('running'))  tbody.appendChild(_activityRow(_currentYear, m, days, 'running',  '🏃', '런닝', '#f43f5e'));
     tbody.appendChild(_scheduleRow(_currentYear, m, days));
     table.appendChild(tbody);
 
@@ -141,6 +144,31 @@ function _cfRow(year, m, days) {
     } else if (getCF(year, m, d)) {
       cell.classList.add('cf-on');
       const ic = document.createElement('span'); ic.className='cell-icon'; ic.textContent='🔥'; cell.appendChild(ic);
+    }
+    td.appendChild(cell); row.appendChild(td);
+  }
+  return row;
+}
+
+function _hasEverDone(field) {
+  const cache = getCache();
+  for (const key in cache) {
+    if (cache[key][field]) return true;
+  }
+  return false;
+}
+
+function _activityRow(year, m, days, field, emoji, label, color) {
+  const row = document.createElement('tr');
+  const lbl = document.createElement('td'); lbl.className='row-label'; lbl.textContent=`${emoji} ${label}`; row.appendChild(lbl);
+  for (let d = 1; d <= days; d++) {
+    const td = document.createElement('td');
+    if (isBeforeStart(year, m, d)) { td.style.display = 'none'; row.appendChild(td); continue; }
+    const cell = _makeCell(year, m, d);
+    const day = getDay(year, m, d);
+    if (day[field]) {
+      cell.classList.add('gym-on');
+      const ic = document.createElement('span'); ic.className='cell-icon'; ic.textContent=emoji; cell.appendChild(ic);
     }
     td.appendChild(cell); row.appendChild(td);
   }

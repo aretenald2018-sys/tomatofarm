@@ -13,26 +13,59 @@ const DEFAULT_DIET_PLAN = {
 };
 
 /**
- * 다이어트 플랜 기반 메트릭스 계산 (BMR, TDEE, 데피싯/리피드 칼로리 등)
+ * BMR 계산 — 체지방률이 있으면 Katch-McArdle, 없으면 Mifflin-St Jeor
+ */
+function _calcBMR(weight, height, age, bodyFatPct) {
+  if (bodyFatPct > 0) {
+    // Katch-McArdle: 체지방률 알 때 가장 정확
+    const lbm = weight * (1 - bodyFatPct / 100);
+    return Math.round(370 + 21.6 * lbm);
+  }
+  // Mifflin-St Jeor (1990, 현대 표준, 남성)
+  return Math.round(10 * weight + 6.25 * height - 5 * age + 5);
+}
+
+/**
+ * 감량 시 지방 비율 — 현재 체지방률에 따라 동적 계산
+ * 고체지방(25%+) → 지방 80%+, 저체지방(10%-) → 지방 60%
+ */
+function _fatFraction(bodyFatPct) {
+  if (bodyFatPct >= 25) return 0.82;
+  if (bodyFatPct >= 20) return 0.78;
+  if (bodyFatPct >= 15) return 0.75;
+  if (bodyFatPct >= 10) return 0.68;
+  return 0.60; // 10% 미만: 근손실 비율 높음
+}
+
+/**
+ * 다이어트 플랜 기반 메트릭스 계산
+ * BMR: Katch-McArdle (BF% 있을 때) / Mifflin-St Jeor (없을 때)
+ * 감량비율: 체지방률 연동 동적 계산
  */
 export function calcDietMetrics(plan) {
   const p = { ...DEFAULT_DIET_PLAN, ...plan };
-  const bmr      = Math.round(13.7 * p.weight + 5 * p.height - 6.8 * p.age + 66);
+  const bmr      = _calcBMR(p.weight, p.height, p.age, p.bodyFatPct);
   const tdeeCalc = Math.round(bmr * p.activityFactor);
   const tdee     = Math.ceil(tdeeCalc / 100) * 100;
   const lbm      = p.weight - (p.weight * p.bodyFatPct / 100);
   const fatMass  = p.weight * p.bodyFatPct / 100;
   const fatToLose = (p.weight * (p.bodyFatPct - p.targetBodyFatPct)) / 100;
-  const totalWeightLoss = fatToLose / 0.713;
+  const fatRatio  = _fatFraction(p.bodyFatPct);
+  const bfBasedLoss = fatToLose > 0 ? fatToLose / fatRatio : 0;
+  const weightBasedLoss = p.targetWeight > 0 ? Math.max(p.weight - p.targetWeight, 0) : 0;
+  // 체중 목표와 체지방 목표 중 더 큰 감량을 기준으로 산정
+  const totalWeightLoss = Math.max(bfBasedLoss, weightBasedLoss);
   const weeklyLossKg = p.weight * p.lossRatePerWeek;
   const calPerKgPerDay = 7700 / 7 / p.activityFactor;
   const dailyDeficit = weeklyLossKg * calPerKgPerDay;
   const dailyIntake  = tdee - dailyDeficit;
-  const weeksNeeded  = totalWeightLoss / weeklyLossKg;
+  const weeksNeeded  = weeklyLossKg > 0 ? totalWeightLoss / weeklyLossKg : 0;
   const weeklyKcal   = Math.round(dailyIntake * 7);
   const refeedTotal  = p.refeedKcal;
-  const deficitDayKcal = Math.round((weeklyKcal - refeedTotal) / 5);
-  const refeedDayKcal  = Math.round(refeedTotal / 2);
+  const refeedDayCount = (p.refeedDays || []).length || 2;
+  const deficitDayCount = 7 - refeedDayCount;
+  const deficitDayKcal = deficitDayCount > 0 ? Math.round((weeklyKcal - refeedTotal) / deficitDayCount) : Math.round(weeklyKcal / 7);
+  const refeedDayKcal  = refeedDayCount > 0 ? Math.round(refeedTotal / refeedDayCount) : 0;
   // 탄단지 — 데피싯 데이
   const dProteinKcal = Math.round(deficitDayKcal * 0.41);
   const dCarbKcal    = Math.round(deficitDayKcal * 0.50);
@@ -42,7 +75,7 @@ export function calcDietMetrics(plan) {
   const rCarbKcal    = Math.round(refeedDayKcal * 0.60);
   const rFatKcal     = Math.round(refeedDayKcal * 0.11);
   return {
-    bmr, tdee, lbm, fatMass, fatToLose, totalWeightLoss,
+    bmr, tdee, lbm, fatMass, fatToLose, totalWeightLoss, fatRatio,
     weeklyLossKg, weeklyLossG: Math.round(weeklyLossKg * 1000),
     dailyDeficit: Math.round(dailyDeficit), dailyIntake: Math.round(dailyIntake),
     weeksNeeded,

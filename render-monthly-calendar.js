@@ -8,7 +8,7 @@ import { TODAY, getMuscles, getCF, dietDayOk,
          daysInMonth, getWeeklyMemos, saveWeeklyMemo,
          getGymSkip, getGymHealth, getCFSkip,
          getStretching, getWineFree, isFuture,
-         getEvents, getCookingForDate, dateKey }    from './data.js';
+         getEvents, getCookingForDate, dateKey, getDay } from './data.js';
 
 let _currentYear  = TODAY.getFullYear();
 let _currentMonth = TODAY.getMonth();
@@ -207,6 +207,9 @@ function _buildDayCell(info) {
     else if (gymS)       dots.innerHTML += `<span class="mcal-dot-icon">✗</span>`;
     const hasCooking = getCookingForDate(dateKey(y,m,d)).length > 0;
     if (hasCooking)      dots.innerHTML += `<span class="mcal-dot" style="background:#f59e0b;opacity:.9" title="요리"></span>`;
+    const dayData = getDay(y,m,d);
+    if (dayData.swimming) dots.innerHTML += `<span class="mcal-dot" style="background:#0ea5e9;opacity:.9" title="수영"></span>`;
+    if (dayData.running)  dots.innerHTML += `<span class="mcal-dot" style="background:#f43f5e;opacity:.9" title="런닝"></span>`;
     if (dots.innerHTML)  cell.appendChild(dots);
   }
 

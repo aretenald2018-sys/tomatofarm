@@ -103,6 +103,7 @@
   <span class="top-nav-title">토마토 키우기</span>
   <div style="display:flex;align-items:center;gap:4px;">
     <button class="icon-btn" id="pwa-install-btn" onclick="installPWA()" title="앱 설치" style="display:none;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 1.7c.442 0 .8.358.8.8v14.069l5.634-5.634a.8.8 0 011.132 1.13l-7 7a.8.8 0 01-1.132 0l-7-7a.8.8 0 011.132-1.13L11.2 16.568V2.5c0-.442.358-.8.8-.8zM4.2 21.5c0-.442.358-.8.8-.8h14c.442 0 .8.358.8.8s-.358.8-.8.8H5c-.442 0-.8-.358-.8-.8z" fill="currentColor"/></svg></button>
+    <button class="icon-btn" id="letter-btn" onclick="openLetterModal()" title="개발자에게 편지" style="display:none;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path fill-rule="evenodd" clip-rule="evenodd" d="M2.4 5.6A2.4 2.4 0 014.8 3.2h14.4a2.4 2.4 0 012.4 2.4v12.8a2.4 2.4 0 01-2.4 2.4H4.8a2.4 2.4 0 01-2.4-2.4V5.6zm2.4-.8a.8.8 0 00-.8.8v.469l8 5.333 8-5.333V5.6a.8.8 0 00-.8-.8H4.8zM20 7.931l-7.553 5.035a.8.8 0 01-.894 0L4 7.931V18.4a.8.8 0 00.8.8h14.4a.8.8 0 00.8-.8V7.931z" fill="currentColor"/></svg></button>
     <button class="icon-btn notif-bell" id="notif-bell" onclick="toggleNotifCenter()" title="알림" style="display:none;">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 2.2c-3.752 0-6.8 3.048-6.8 6.8v4.758l-1.866 2.798A.797.797 0 003.2 17v1c0 .442.358.8.8.8h5.206l-.005.133A.97.97 0 009.2 18.966C9.2 20.514 10.446 21.8 12 21.8s2.8-1.286 2.8-2.834V18.8H20c.442 0 .8-.358.8-.8v-1a.797.797 0 00-.134-.444L18.8 13.758V9c0-3.752-3.048-6.8-6.8-6.8zm1.2 16.6h-2.392l-.008.181c.008.682.559 1.219 1.2 1.219.646 0 1.2-.544 1.2-1.234V18.8zM19.172 17.2l-1.837-2.756A.797.797 0 0117.2 14V9c0-2.868-2.332-5.2-5.2-5.2S6.8 6.132 6.8 9v5a.797.797 0 01-.134.444L4.828 17.2h14.344z" fill="currentColor"/></svg>
       <span class="notif-badge" id="notif-badge" style="display:none;">0</span>
@@ -156,6 +157,12 @@
     <button class="more-menu-item tab-btn" data-tab="cooking" onclick="switchTab('cooking');toggleMoreMenu()">🍳 요리</button>
     <button class="more-menu-item tab-btn" data-tab="wine" onclick="switchTab('wine');toggleMoreMenu()">🍷 와인</button>
     <button class="more-menu-item tab-btn" data-tab="movie" onclick="switchTab('movie');toggleMoreMenu()">🎬 영화</button>
+    <div id="admin-menu-items" style="display:none;">
+      <div style="border-top:1px solid var(--border);margin-top:4px;padding-top:4px">
+        <button class="more-menu-item tab-btn" data-tab="admin" onclick="switchTab('admin');toggleMoreMenu()">🍅 토마토어드민</button>
+        <button class="more-menu-item tab-btn" data-tab="dev" onclick="switchTab('dev');toggleMoreMenu()">🛠️ 개발 요청</button>
+      </div>
+    </div>
     <div style="border-top:1px solid var(--border);margin-top:4px;padding-top:4px">
       <button class="more-menu-item" onclick="openTabSettingsModal();toggleMoreMenu()">⚙️ 탭 설정</button>
     </div>
@@ -323,6 +330,8 @@
           <button class="wt-type-chip" id="wt-chip-gym" onclick="wtToggleType('gym')">🏋️ 헬스</button>
           <button class="wt-type-chip" id="wt-chip-cf" onclick="wtToggleType('cf')">🔥 크로스핏</button>
           <button class="wt-type-chip" id="wt-chip-stretch" onclick="wtToggleType('stretch')">🧘 스트레칭</button>
+          <button class="wt-type-chip" id="wt-chip-swimming" onclick="wtToggleType('swimming')">🏊 수영</button>
+          <button class="wt-type-chip" id="wt-chip-running" onclick="wtToggleType('running')">🏃 런닝</button>
         </div>
       </div>
 
@@ -330,7 +339,7 @@
       <div class="wt-detail-section" id="wt-gym-section">
         <div class="ex-list-header">
           <span class="sheet-section-label" style="margin-bottom:0">헬스 종목</span>
-          <button class="ex-add-btn" onclick="wtOpenExercisePicker()">+ 종목 추가</button>
+          <button class="ex-add-btn" onclick="wtOpenExercisePicker()">+ 종목 추가(선택)</button>
         </div>
         <div id="wt-exercise-list" style="margin-top:8px;"></div>
       </div>
@@ -393,9 +402,81 @@
     <button id="wt-today-btn-diet" class="wt-today-btn" onclick="goToTodayWorkout()" style="display:none">오늘</button>
   </div>
   <div class="workout-tab-content">
+    <!-- 다이어트 인라인 설정 폼 (미설정 시 표시) -->
+    <div id="wt-diet-setup" style="display:none;padding:16px;background:var(--surface);border-radius:16px;border:1px solid var(--border);margin:0 0 12px;">
+      <div style="text-align:center;padding:4px 0 20px;">
+        <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:4px;">맞춤 식단 목표</div>
+        <div style="font-size:12px;color:#8B95A1;line-height:1.5;">신체 정보를 입력하면 하루 칼로리 목표를 자동 계산해드려요</div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:14px;">
+        <!-- 필수 입력 -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div>
+            <label style="font-size:11px;font-weight:600;color:#4E5968;display:block;margin-bottom:5px;">신장</label>
+            <div style="position:relative;">
+              <input id="ds-height" type="number" placeholder="170" style="width:100%;padding:11px 36px 11px 14px;border:1.5px solid #E5E8EB;border-radius:10px;font-size:15px;color:#191F28;background:#fff;outline:none;box-sizing:border-box;transition:border-color 0.15s;" onfocus="this.style.borderColor='#3182F6'" onblur="this.style.borderColor='#E5E8EB'">
+              <span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:12px;color:#8B95A1;">cm</span>
+            </div>
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;color:#4E5968;display:block;margin-bottom:5px;">연령</label>
+            <div style="position:relative;">
+              <input id="ds-age" type="number" placeholder="30" style="width:100%;padding:11px 36px 11px 14px;border:1.5px solid #E5E8EB;border-radius:10px;font-size:15px;color:#191F28;background:#fff;outline:none;box-sizing:border-box;transition:border-color 0.15s;" onfocus="this.style.borderColor='#3182F6'" onblur="this.style.borderColor='#E5E8EB'">
+              <span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:12px;color:#8B95A1;">세</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div>
+            <label style="font-size:11px;font-weight:600;color:#4E5968;display:block;margin-bottom:5px;">현재 체중</label>
+            <div style="position:relative;">
+              <input id="ds-weight" type="number" step="0.1" placeholder="75" style="width:100%;padding:11px 36px 11px 14px;border:1.5px solid #E5E8EB;border-radius:10px;font-size:15px;color:#191F28;background:#fff;outline:none;box-sizing:border-box;transition:border-color 0.15s;" onfocus="this.style.borderColor='#3182F6'" onblur="this.style.borderColor='#E5E8EB'">
+              <span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:12px;color:#8B95A1;">kg</span>
+            </div>
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;color:#4E5968;display:block;margin-bottom:5px;">목표 체중</label>
+            <div style="position:relative;">
+              <input id="ds-target-weight" type="number" step="0.1" placeholder="68" style="width:100%;padding:11px 36px 11px 14px;border:1.5px solid #E5E8EB;border-radius:10px;font-size:15px;color:#191F28;background:#fff;outline:none;box-sizing:border-box;transition:border-color 0.15s;" onfocus="this.style.borderColor='#3182F6'" onblur="this.style.borderColor='#E5E8EB'">
+              <span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:12px;color:#8B95A1;">kg</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 선택 입력 (체지방률) -->
+        <div style="border-top:1px solid #F2F4F6;padding-top:14px;">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
+            <span style="font-size:11px;font-weight:600;color:#4E5968;">체지방률</span>
+            <span style="font-size:10px;color:#8B95A1;background:#F2F4F6;padding:2px 6px;border-radius:4px;">선택</span>
+          </div>
+          <div style="font-size:11px;color:#8B95A1;margin-bottom:8px;line-height:1.5;">입력하지 않아도 체중·신장·연령 기반 추정치가 자동 적용돼요.<br><span style="color:#3182F6;">직접 입력하면 다이어트 기간과 칼로리를 더 정확하게 계산</span>할 수 있어요.</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div style="position:relative;">
+              <input id="ds-bodyfat" type="number" step="0.1" placeholder="자동 추정" style="width:100%;padding:11px 36px 11px 14px;border:1.5px solid #E5E8EB;border-radius:10px;font-size:14px;color:#191F28;background:#FAFBFC;outline:none;box-sizing:border-box;transition:border-color 0.15s;" onfocus="this.style.borderColor='#3182F6'" onblur="this.style.borderColor='#E5E8EB'">
+              <span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:12px;color:#8B95A1;">%</span>
+            </div>
+            <div style="position:relative;">
+              <input id="ds-target-bf" type="number" step="0.1" placeholder="자동 추정" style="width:100%;padding:11px 36px 11px 14px;border:1.5px solid #E5E8EB;border-radius:10px;font-size:14px;color:#191F28;background:#FAFBFC;outline:none;box-sizing:border-box;transition:border-color 0.15s;" onfocus="this.style.borderColor='#3182F6'" onblur="this.style.borderColor='#E5E8EB'">
+              <span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:12px;color:#8B95A1;">%</span>
+            </div>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:10px;color:#8B95A1;margin-top:4px;padding:0 2px;">
+            <span>현재 체지방률</span><span>목표 체지방률</span>
+          </div>
+        </div>
+      </div>
+
+      <button id="ds-submit-btn" onclick="submitDietSetup()" style="width:100%;padding:14px;border:none;border-radius:12px;background:#3182F6;color:#fff;font-size:15px;font-weight:600;cursor:pointer;margin-top:18px;transition:all 0.2s;">시작하기</button>
+    </div>
+
     <!-- 오늘의 칼로리 (최상단) -->
     <div class="sheet-section" id="wt-calorie-tracker" style="display:none">
-      <div class="sheet-section-label">오늘의 칼로리</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <div class="sheet-section-label">오늘의 칼로리</div>
+        <button onclick="openDietSetupInline()" style="padding:4px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text-secondary);font-size:11px;font-weight:500;cursor:pointer;">설정</button>
+      </div>
       <div class="cal-tracker-header">
         <span id="wt-day-type-badge" class="cal-day-type"></span>
       </div>
@@ -654,6 +735,10 @@ async function saveStreakSettingsAndClose() {
   <div id="dev-container"></div>
 </div>
 
+<div id="tab-admin" class="tab-panel">
+  <div id="admin-container"></div>
+</div>
+
 <!-- ═══ 영화 탭 ═══ -->
 <div id="tab-movie" class="tab-panel">
   <div class="movie-tab-header">
@@ -690,21 +775,22 @@ async function saveStreakSettingsAndClose() {
 let _pendingAccount = null;
 
 async function initLoginScreen() {
-  const { loadSavedUser, getAccountList, setCurrentUser, loadAll } = await import('./data.js');
+  const { loadSavedUser, restoreUserFromBackup, getAccountList, setCurrentUser, loadAll } = await import('./data.js');
 
-  // 이미 로그인된 사용자가 있으면 바로 진입
-  const saved = loadSavedUser();
+  // 이미 로그인된 사용자가 있으면 바로 진입 (localStorage → IndexedDB 순)
+  let saved = loadSavedUser();
+  if (!saved) saved = await restoreUserFromBackup();
   if (saved) {
     const isKimSaved = saved.id === '김_태우' || saved.id === '김_태우(guest)';
     if (isKimSaved) {
       // 이미 이 세션에서 인증 완료했으면 바로 진입
-      if (sessionStorage.getItem('kim_authenticated')) {
+      if (localStorage.getItem('kim_authenticated')) {
         document.getElementById('login-screen').style.display = 'none';
         document.getElementById('loading').style.display = 'flex';
         return;
       }
       // 김태우 잠금 화면
-      const { setCurrentUser, hashPassword, verifyPassword, getAccountList, saveAccount } = await import('./data.js');
+      const { setCurrentUser, hashPassword, verifyPassword, getAccountList, saveAccount, backupKimAuth } = await import('./data.js');
       const accounts = await getAccountList();
       let kimAcc = accounts.find(a => a.id === '김_태우(guest)') || accounts.find(a => a.id === saved.id);
       if (kimAcc && (!kimAcc.hasPassword || !kimAcc.passwordHash)) {
@@ -731,7 +817,8 @@ async function initLoginScreen() {
         const pw = document.getElementById('kim-lock-pw').value;
         if (kimAcc && verifyPassword(kimAcc, pw)) {
           setCurrentUser(kimAcc);
-          sessionStorage.setItem('kim_authenticated', 'true');
+          localStorage.setItem('kim_authenticated', 'true');
+          backupKimAuth();
           lockDiv.remove();
           document.getElementById('loading').style.display = 'flex';
           location.reload();
@@ -741,13 +828,96 @@ async function initLoginScreen() {
       };
       document.getElementById('kim-lock-other').onclick = () => {
         setCurrentUser(null);
-        sessionStorage.removeItem('kim_authenticated');
+        localStorage.removeItem('kim_authenticated');
         lockDiv.remove();
         location.reload();
       };
       setTimeout(() => document.getElementById('kim-lock-pw')?.focus(), 100);
       return;
     } else {
+      // 패치노트 팝업 (v1: 별명 재설정 + 비밀번호 설정 안내)
+      const patchKey = 'patchnote_v1_' + saved.id;
+      if (!localStorage.getItem(patchKey)) {
+        const { getAccountList, saveAccount, hashPassword, setCurrentUser } = await import('./data.js');
+        const accs = await getAccountList();
+        const myAcc = accs.find(a => a.id === saved.id);
+        const realName = myAcc ? myAcc.lastName + myAcc.firstName.replace(/\(.*\)/, '') : saved.id.replace(/_/g, '');
+        const currentNick = myAcc?.nickname || realName;
+        const hasNoPw = !myAcc?.hasPassword;
+
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('login-screen').style.display = 'none';
+
+        const overlay = document.createElement('div');
+        overlay.id = 'patchnote-overlay';
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;padding:20px;';
+        overlay.innerHTML = `
+        <div style="background:var(--bg,#fff);border-radius:20px;max-width:360px;width:100%;padding:32px 24px 24px;box-shadow:0 8px 32px rgba(0,0,0,0.12);overflow-y:auto;max-height:90vh;">
+          <div style="text-align:center;margin-bottom:24px;">
+            <div style="width:56px;height:56px;border-radius:50%;background:#fff3e0;display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 12px;">🍅</div>
+            <div style="font-size:18px;font-weight:700;color:var(--text,#191F28);line-height:1.4;">농장장 패치노트</div>
+            <div style="font-size:13px;color:var(--text-tertiary,#8B95A1);margin-top:4px;">${realName}님, 안녕하세요</div>
+          </div>
+
+          <div style="background:var(--surface2,#F2F4F6);border-radius:14px;padding:16px;margin-bottom:20px;">
+            <div style="font-size:13px;font-weight:600;color:var(--text,#191F28);margin-bottom:8px;">무엇이 바뀌었나요?</div>
+            <div style="font-size:12px;color:var(--text-secondary,#4E5968);line-height:1.7;">
+              이전에 앱을 사용하다 로그아웃되는 문제가 있었어요.<br>
+              이번 업데이트로 <b>한 번 로그인하면 계속 유지</b>됩니다.<br><br>
+              복구 과정에서 별명${hasNoPw ? '과 비밀번호' : ''} 정보가 초기화되었어요.<br>
+              아래에서 다시 설정해주시면 바로 반영됩니다.
+            </div>
+          </div>
+
+          <!-- 별명 입력 -->
+          <div style="margin-bottom:16px;">
+            <label style="font-size:13px;font-weight:600;color:var(--text,#191F28);display:block;margin-bottom:6px;">별명</label>
+            <div style="font-size:11px;color:var(--text-tertiary,#8B95A1);margin-bottom:8px;">이웃들에게 보이는 이름이에요</div>
+            <input id="patch-nickname" type="text" value="${currentNick !== realName ? currentNick.replace(/"/g,'&quot;') : ''}" placeholder="${realName}" style="width:100%;padding:14px 16px;border:1.5px solid var(--border,#E5E8EB);border-radius:12px;font-size:15px;color:var(--text,#191F28);background:var(--surface,#fff);outline:none;box-sizing:border-box;transition:border-color 0.15s;" onfocus="this.style.borderColor='#3182F6'" onblur="this.style.borderColor='var(--border,#E5E8EB)'">
+          </div>
+
+          <!-- 비밀번호 입력 -->
+          ${hasNoPw ? `
+          <div style="margin-bottom:20px;">
+            <label style="font-size:13px;font-weight:600;color:var(--text,#191F28);display:block;margin-bottom:6px;">비밀번호 <span style="font-size:11px;font-weight:400;color:var(--text-tertiary,#8B95A1);">선택</span></label>
+            <div style="font-size:11px;color:var(--text-tertiary,#8B95A1);margin-bottom:8px;">설정하지 않아도 자동 로그인이 유지돼요</div>
+            <input id="patch-password" type="password" placeholder="비밀번호 (미입력 시 자동 로그인만)" style="width:100%;padding:14px 16px;border:1.5px solid var(--border,#E5E8EB);border-radius:12px;font-size:15px;color:var(--text,#191F28);background:var(--surface,#fff);outline:none;box-sizing:border-box;transition:border-color 0.15s;" onfocus="this.style.borderColor='#3182F6'" onblur="this.style.borderColor='var(--border,#E5E8EB)'">
+          </div>
+          ` : ''}
+
+          <button id="patch-submit-btn" style="width:100%;padding:15px;border:none;border-radius:14px;background:#3182F6;color:#fff;font-size:15px;font-weight:600;cursor:pointer;transition:background 0.15s;margin-bottom:8px;">확인</button>
+          <button id="patch-skip-btn" style="width:100%;padding:12px;border:none;border-radius:14px;background:transparent;color:var(--text-tertiary,#8B95A1);font-size:13px;cursor:pointer;">나중에 하기</button>
+        </div>`;
+
+        document.body.appendChild(overlay);
+
+        const proceed = async (skip) => {
+          if (!skip && myAcc) {
+            const nickVal = document.getElementById('patch-nickname')?.value.trim();
+            if (nickVal) myAcc.nickname = nickVal;
+            const pwVal = document.getElementById('patch-password')?.value;
+            if (pwVal && pwVal.length > 0) {
+              myAcc.hasPassword = true;
+              myAcc.passwordHash = hashPassword(pwVal);
+            }
+            await saveAccount(myAcc);
+            setCurrentUser(myAcc);
+          }
+          localStorage.setItem(patchKey, 'done');
+          overlay.remove();
+          // 패치노트 완료 → 튜토리얼 대기 해제
+          window._patchnoteDone = true;
+          window.dispatchEvent(new Event('patchnote-done'));
+          document.getElementById('loading').style.display = 'flex';
+          if (!skip) location.reload();
+        };
+
+        document.getElementById('patch-submit-btn').onclick = () => proceed(false);
+        document.getElementById('patch-skip-btn').onclick = () => proceed(true);
+        setTimeout(() => document.getElementById('patch-nickname')?.focus(), 200);
+        return;
+      }
+
       document.getElementById('login-screen').style.display = 'none';
       document.getElementById('loading').style.display = 'flex';
       return;
@@ -826,18 +996,13 @@ async function initLoginScreen() {
     const { hashPassword, deleteDoc: delDoc } = await import('./data.js');
     const adminIds = ['김_태우', '김_태우(guest)'];
 
-    // 더미 계정 삭제 (1회)
-    const cleaned = localStorage.getItem('dummy_cleaned_v2');
-    if (!cleaned) {
-      const { doc, deleteDoc } = await import("https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js");
-      const { getFirestore } = await import("https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js");
-      const db = getFirestore();
-      for (const a of accounts) {
-        if (!adminIds.includes(a.id)) {
-          try { await deleteDoc(doc(db, '_accounts', a.id)); console.log('[cleanup] 삭제:', a.id); } catch(e) {}
-        }
-      }
-      localStorage.setItem('dummy_cleaned_v2', 'done');
+    // 더미 계정 삭제 — 비활성화 (계정이 삭제되는 버그 원인이었음)
+    // 삭제된 계정 1회 복구 (이전 삭제 코드로 유실된 계정)
+    if (!localStorage.getItem('accounts_recovered_v1')) {
+      const { recoverDeletedAccounts } = await import('./data.js');
+      const cnt = await recoverDeletedAccounts();
+      if (cnt > 0) console.log('[login] 삭제된 계정 ' + cnt + '개 복구됨');
+      localStorage.setItem('accounts_recovered_v1', 'done');
     }
 
     // Admin/Guest 비밀번호 통일 + nickname/firstName 완전 동기화
@@ -966,7 +1131,9 @@ async function createAccountAndLogin() {
         return;
       }
       setCurrentUser(found);
-      sessionStorage.setItem('kim_authenticated', 'true');
+      localStorage.setItem('kim_authenticated', 'true');
+      const { backupKimAuth: bkAuth } = await import('./data.js');
+      bkAuth();
       document.getElementById('login-screen').style.display = 'none';
       document.getElementById('loading').style.display = 'flex';
       location.reload();
@@ -1006,7 +1173,7 @@ async function createAccountAndLogin() {
 async function logoutAccount() {
   const { getCurrentUser, setCurrentUser, isAdmin, isAdminGuest, getAccountList } = await import('./data.js');
   const user = getCurrentUser();
-  const name = user ? `${user.lastName}${user.firstName}` : '';
+  const name = user ? `${user.lastName}${user.firstName}`.replace(/\(.*\)/, '') : '';
   const isKimTaewoo = isAdmin() || isAdminGuest();
 
   // 김태우 계정이면 모드 전환 옵션 추가
@@ -1046,9 +1213,10 @@ async function logoutAccount() {
 }
 
 async function confirmLogout() {
-  const { setCurrentUser } = await import('./data.js');
+  const { setCurrentUser, clearKimAuth } = await import('./data.js');
   setCurrentUser(null);
-  sessionStorage.removeItem('kim_authenticated');
+  localStorage.removeItem('kim_authenticated');
+  clearKimAuth();
   location.reload();
 }
 
@@ -1138,6 +1306,179 @@ window.selectAccount = selectAccount;
 window.verifyAndLogin = verifyAndLogin;
 window.closePasswordModal = closePasswordModal;
 window.createAccountAndLogin = createAccountAndLogin;
+
+// ── 개발자에게 편지 ──
+async function openLetterModal() {
+  const { getCurrentUser } = await import('./data.js');
+  const user = getCurrentUser();
+  if (!user) return;
+  const nick = user.nickname || (user.lastName + user.firstName);
+
+  document.getElementById('dynamic-modal')?.remove();
+  const modal = document.createElement('div'); modal.id = 'dynamic-modal'; document.body.appendChild(modal);
+  modal.innerHTML = `<div class="modal-backdrop" style="display:flex;z-index:10000;" onclick="if(event.target===this)document.getElementById('dynamic-modal')?.remove();">
+    <div class="modal-sheet" style="max-width:400px;padding:24px;" onclick="event.stopPropagation()">
+      <div class="sheet-handle"></div>
+      <div style="text-align:center;margin-bottom:20px;">
+        <div style="font-size:28px;margin-bottom:8px;">✉️</div>
+        <div style="font-size:17px;font-weight:700;color:var(--text);">개발자에게 편지</div>
+        <div style="font-size:12px;color:var(--text-tertiary);margin-top:4px;">건의사항, 버그 제보, 응원 뭐든 좋아요</div>
+      </div>
+      <textarea id="letter-text" style="width:100%;min-height:120px;padding:14px 16px;border:1.5px solid var(--border);border-radius:12px;font-size:14px;color:var(--text);background:var(--surface);outline:none;resize:vertical;font-family:inherit;box-sizing:border-box;line-height:1.6;transition:border-color 0.15s;" placeholder="편하게 적어주세요..." onfocus="this.style.borderColor='#3182F6'" onblur="this.style.borderColor='var(--border)'"></textarea>
+      <div style="display:flex;gap:8px;margin-top:16px;">
+        <button onclick="document.getElementById('dynamic-modal')?.remove()" style="flex:1;padding:14px;border:1px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text-secondary);font-size:14px;font-weight:600;cursor:pointer;">닫기</button>
+        <button id="letter-send-btn" onclick="sendLetter()" style="flex:2;padding:14px;border:none;border-radius:12px;background:#3182F6;color:#fff;font-size:14px;font-weight:600;cursor:pointer;">보내기</button>
+      </div>
+    </div>
+  </div>`;
+  setTimeout(() => document.getElementById('letter-text')?.focus(), 200);
+}
+window.openLetterModal = openLetterModal;
+
+// ── 식단 탭 인라인 다이어트 설정 ──
+async function submitDietSetup() {
+  const h = parseFloat(document.getElementById('ds-height')?.value);
+  const w = parseFloat(document.getElementById('ds-weight')?.value);
+  const age = parseInt(document.getElementById('ds-age')?.value);
+  const tw = parseFloat(document.getElementById('ds-target-weight')?.value);
+  if (!h || !w || !age || !tw) { alert('신장, 체중, 연령, 목표 체중을 입력해주세요.'); return; }
+
+  // 체지방률: 미입력 시 BMI 기반 추정 (Deurenberg + 보수적 보정 -2%p)
+  let bf = parseFloat(document.getElementById('ds-bodyfat')?.value);
+  let bfEstimated = false;
+  if (!bf) {
+    const bmi = w / ((h / 100) ** 2);
+    // Deurenberg(1991) 남성: 1.20*BMI + 0.23*나이 - 16.2, 보수적 보정 -2%p
+    bf = Math.round((1.20 * bmi + 0.23 * age - 16.2 - 2) * 10) / 10;
+    bf = Math.max(5, Math.min(bf, 40));
+    bfEstimated = true;
+  }
+  let tbf = parseFloat(document.getElementById('ds-target-bf')?.value);
+  if (!tbf) {
+    const targetBmi = tw / ((h / 100) ** 2);
+    tbf = Math.round((1.20 * targetBmi + 0.23 * age - 16.2 - 2) * 10) / 10;
+    tbf = Math.max(5, Math.min(tbf, 35));
+  }
+
+  const btn = document.getElementById('ds-submit-btn');
+  btn.textContent = '계산 중...'; btn.disabled = true;
+
+  const { saveDietPlan } = await import('./data.js');
+  await saveDietPlan({
+    height: h, weight: w, bodyFatPct: bf, age,
+    targetWeight: tw, targetBodyFatPct: tbf,
+    startDate: new Date().toISOString().split('T')[0],
+  });
+
+  // 애니메이션: 설정 폼 → 칼로리 트래커
+  const setup = document.getElementById('wt-diet-setup');
+  setup.style.transition = 'opacity 0.3s, transform 0.3s';
+  setup.style.opacity = '0';
+  setup.style.transform = 'scale(0.95)';
+
+  setTimeout(() => {
+    setup.style.display = 'none';
+    // 칼로리 트래커 표시 (애니메이션)
+    const tracker = document.getElementById('wt-calorie-tracker');
+    tracker.style.display = 'block';
+    tracker.style.opacity = '0';
+    tracker.style.transform = 'translateY(-10px)';
+    tracker.style.transition = 'opacity 0.4s, transform 0.4s';
+    requestAnimationFrame(() => {
+      tracker.style.opacity = '1';
+      tracker.style.transform = 'translateY(0)';
+    });
+    // 다이어트 요약도 표시
+    const summary = document.getElementById('wt-diet-summary');
+    if (summary) {
+      summary.style.opacity = '0';
+      summary.style.transition = 'opacity 0.4s 0.15s';
+      summary.style.display = 'block';
+      requestAnimationFrame(() => { summary.style.opacity = '1'; });
+    }
+    // 데이터 리렌더
+    const { loadWorkoutDate } = window._wtExports || {};
+    if (loadWorkoutDate) {
+      const t = new Date();
+      loadWorkoutDate(t.getFullYear(), t.getMonth(), t.getDate());
+    } else {
+      location.reload();
+    }
+  }, 300);
+}
+window.submitDietSetup = submitDietSetup;
+
+// "설정" 버튼 → 인라인 폼 다시 열기
+async function openDietSetupInline() {
+  const { getDietPlan } = await import('./data.js');
+  const plan = getDietPlan();
+  const setup = document.getElementById('wt-diet-setup');
+  if (!setup) return;
+
+  // 기존 값 채우기 (0은 빈칸 처리)
+  document.getElementById('ds-height').value = plan.height || '';
+  document.getElementById('ds-weight').value = plan.weight || '';
+  document.getElementById('ds-bodyfat').value = plan.bodyFatPct || '';
+  document.getElementById('ds-age').value = plan.age || '';
+  document.getElementById('ds-target-weight').value = plan.targetWeight || '';
+  document.getElementById('ds-target-bf').value = plan.targetBodyFatPct || '';
+  document.getElementById('ds-submit-btn').textContent = '저장하기';
+  document.getElementById('ds-submit-btn').disabled = false;
+
+  // 칼로리 트래커 숨기고 폼 보이기
+  const tracker = document.getElementById('wt-calorie-tracker');
+  const summary = document.getElementById('wt-diet-summary');
+  tracker.style.transition = 'opacity 0.2s';
+  tracker.style.opacity = '0';
+  if (summary) { summary.style.transition = 'opacity 0.2s'; summary.style.opacity = '0'; }
+
+  setTimeout(() => {
+    tracker.style.display = 'none';
+    if (summary) summary.style.display = 'none';
+    setup.style.display = 'block';
+    setup.style.opacity = '0';
+    setup.style.transform = 'scale(0.95)';
+    setup.style.transition = 'opacity 0.3s, transform 0.3s';
+    requestAnimationFrame(() => {
+      setup.style.opacity = '1';
+      setup.style.transform = 'scale(1)';
+    });
+  }, 200);
+}
+window.openDietSetupInline = openDietSetupInline;
+
+async function sendLetter() {
+  const text = document.getElementById('letter-text')?.value.trim();
+  if (!text) return;
+  const btn = document.getElementById('letter-send-btn');
+  btn.textContent = '보내는 중...'; btn.disabled = true;
+  try {
+    const { getCurrentUser } = await import('./data.js');
+    const { getFirestore } = await import("https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js");
+    const { doc, setDoc, collection } = await import("https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js");
+    const db = getFirestore();
+    const user = getCurrentUser();
+    const id = 'letter_' + Date.now() + '_' + Math.random().toString(36).slice(2,6);
+    await setDoc(doc(db, '_letters', id), {
+      id, from: user.id,
+      fromName: user.nickname || (user.lastName + user.firstName),
+      message: text, createdAt: Date.now(), read: false,
+    });
+    // 김태우에게 알림
+    const { sendNotification } = await import('./data.js');
+    await sendNotification('김_태우', {
+      type: 'letter', from: user.id,
+      message: '개발자에게 편지를 보냈어요 ✉️',
+    });
+    document.getElementById('dynamic-modal')?.remove();
+    alert('편지를 보냈어요! 감사합니다 💌');
+  } catch(e) {
+    console.error('[letter]', e);
+    alert('전송 실패: ' + e.message);
+    btn.textContent = '보내기'; btn.disabled = false;
+  }
+}
+window.sendLetter = sendLetter;
 
 // 페이지 로드 시 로그인 초기화
 document.addEventListener('DOMContentLoaded', initLoginScreen);

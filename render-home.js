@@ -46,7 +46,9 @@ export function renderHome() {
     _applyAllSectionTitles();
     if (shouldShow('homeCards', 'goals'))      _renderGoals();
     if (shouldShow('homeCards', 'quests'))     { _renderQuests(); _initQuestDragDrop(); }
-    if (shouldShow('homeCards', 'diet_goal'))  _renderDietGoalCard();
+    // 다이어트 목표 카드는 식단 탭으로 이동됨 — 홈에서 숨김
+    const dietGoalEl = document.getElementById('card-diet-goal');
+    if (dietGoalEl) dietGoalEl.style.display = 'none';
     _renderFriendFeed();
   } catch(e) {
     console.error('[renderHome] 렌더링 오류:', e);
@@ -1173,6 +1175,65 @@ function _buildMacroLine(label, dayData, actKey, tgtKey, lessIsGood) {
 }
 
 // ── 토마토 통합 카드 (토스 스타일) ────────────────────────────────
+function _buildDietStatusHtml(plan, metrics) {
+  if (!plan._userSet || !plan.weight) return '';
+
+  const checkins = getBodyCheckins();
+  const latest = checkins.length ? checkins[checkins.length - 1] : null;
+  const curWeight = latest?.weight ?? plan.weight;
+  const wTarget = plan.targetWeight || (plan.weight - (metrics.totalWeightLoss || 0));
+  const wStart = plan.weight;
+  const lost = Math.max(wStart - curWeight, 0);
+  const remain = Math.max(curWeight - wTarget, 0);
+  const wProgress = wStart > wTarget ? Math.min(Math.round((wStart - curWeight) / (wStart - wTarget) * 100), 100) : 0;
+
+  const weeksLeft = metrics.weeksNeeded;
+  const doneText = plan.startDate
+    ? (() => { const d = new Date(plan.startDate); d.setDate(d.getDate() + Math.round(weeksLeft * 7)); return `${d.getMonth()+1}/${d.getDate()}`; })()
+    : `${Math.round(weeksLeft)}주 후`;
+
+  const dow = TODAY.getDay();
+  const isRefeed = (plan.refeedDays || []).includes(dow);
+
+  return `
+    <div class="tf-diet-section">
+      <div class="tf-kcal-header">
+        <span class="tf-kcal-label">다이어트 현황</span>
+        <button onclick="openCheckinModal()" style="font-size:11px;color:#3182F6;font-weight:600;background:none;border:none;cursor:pointer;padding:0;">몸무게 입력 →</button>
+      </div>
+      <div class="tf-diet-body">
+        <div class="tf-diet-stats">
+          <div class="tf-diet-stat">
+            <span class="tf-diet-stat-label">현재</span>
+            <span class="tf-diet-stat-value">${curWeight.toFixed(1)}<span class="tf-diet-stat-unit">kg</span></span>
+          </div>
+          <div class="tf-diet-stat-arrow">→</div>
+          <div class="tf-diet-stat">
+            <span class="tf-diet-stat-label">목표</span>
+            <span class="tf-diet-stat-value">${wTarget.toFixed(1)}<span class="tf-diet-stat-unit">kg</span></span>
+          </div>
+          <div class="tf-diet-stat-divider"></div>
+          <div class="tf-diet-stat">
+            <span class="tf-diet-stat-label">감량</span>
+            <span class="tf-diet-stat-value tf-diet-highlight">${lost > 0 ? '-' : ''}${lost.toFixed(1)}<span class="tf-diet-stat-unit">kg</span></span>
+          </div>
+        </div>
+        <div class="tf-diet-progress-wrap">
+          <div class="tf-diet-progress-bar">
+            <div class="tf-diet-progress-fill" style="width:${wProgress}%"></div>
+          </div>
+          <div class="tf-diet-progress-info">
+            <div class="tf-diet-tags">
+              <span class="tf-diet-tag ${isRefeed ? 'tf-diet-tag-blue' : 'tf-diet-tag-orange'}">${isRefeed ? '리피드' : '데피싯'}</span>
+              ${remain > 0 ? `<span class="tf-diet-tag tf-diet-tag-gray">${remain.toFixed(1)}kg 남음</span>` : '<span class="tf-diet-tag tf-diet-tag-green">달성!</span>'}
+            </div>
+            <span class="tf-diet-eta">📅 ${doneText} 예상</span>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
 function _renderTomatoCard() {
   const heroEl = document.getElementById('hero-content');
   const unitEl = document.getElementById('unit-goal-content');
@@ -1318,6 +1379,8 @@ function _renderTomatoCard() {
         </div>
         <div class="tf-macro-detail" id="tf-macro-detail" style="display:none"></div>
       </div>
+
+      ${_buildDietStatusHtml(plan, metrics)}
 
     </div>
   `;
@@ -1697,6 +1760,84 @@ function _renderFarmCyworld() {
   `;
 }
 
+// ── 이웃 별명 해석 (공통) ────────────────────────────────────────
+function _resolveNickname(a, accounts) {
+  let _raw = a.nickname || '';
+  if (a.id === '김_태우') {
+    const _gst = accounts.find(x => x.id === '김_태우(guest)');
+    const _isReal = (n) => !n || n === '김태우' || n === '김태우(Admin)' || n === '김태우(Guest)';
+    if (_isReal(_raw) && _gst && !_isReal(_gst.nickname)) _raw = _gst.nickname;
+  }
+  const baseName = a.lastName + a.firstName.replace(/\(.*\)/, '');
+  return (_raw && _raw !== baseName) ? _raw : baseName;
+}
+
+// ── 새로운 이웃 섹션 (Seed Design 스타일 페이징) ─────────────────
+const _NEIGHBOR_PAGE_SIZE = 5;
+let _neighborPage = 0;
+
+function _buildNeighborSection(suggestList, accounts, friends) {
+  const total = suggestList.length;
+  if (!total) return '';
+  const totalPages = Math.ceil(total / _NEIGHBOR_PAGE_SIZE);
+  const page = Math.min(_neighborPage, totalPages - 1);
+  const start = page * _NEIGHBOR_PAGE_SIZE;
+  const pageItems = suggestList.slice(start, start + _NEIGHBOR_PAGE_SIZE);
+
+  const rows = pageItems.map(a => {
+    const nick = _resolveNickname(a, accounts);
+    return `<div class="neighbor-row" style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);" data-nid="${a.id}" data-nnick="${nick.replace(/"/g,'&quot;')}">
+      <div style="width:40px;height:40px;border-radius:50%;background:#EBF4FF;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;cursor:pointer;">🍅</div>
+      <div style="flex:1;min-width:0;cursor:pointer;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;">
+        <div style="font-size:14px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${nick}</div>
+      </div>
+      <button onclick="event.stopPropagation();quickAddNeighbor('${a.id}')" style="padding:7px 16px;border:none;border-radius:999px;background:#3182F6;color:#fff;font-size:12px;font-weight:600;cursor:pointer;flex-shrink:0;transition:background 0.15s;">이웃 추가</button>
+    </div>`;
+  }).join('');
+
+  // 페이지 인디케이터 (dot style, Toss blue)
+  let paging = '';
+  if (totalPages > 1) {
+    const dots = Array.from({length: totalPages}, (_, i) =>
+      `<button class="nb-page-dot" data-nbpage="${i}" style="width:${i === page ? '20px' : '8px'};height:8px;border-radius:4px;border:none;background:${i === page ? '#3182F6' : '#D1D6DB'};cursor:pointer;padding:0;transition:all 0.2s;"></button>`
+    ).join('');
+    paging = `<div style="display:flex;align-items:center;justify-content:center;gap:6px;padding:12px 0 4px;">${dots}</div>`;
+    paging += `<div style="text-align:center;font-size:11px;color:#8B95A1;margin-top:2px;">${page + 1} / ${totalPages}</div>`;
+  }
+
+  return `<div id="neighbor-section" style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+      <div style="font-size:14px;font-weight:700;color:var(--text);">새로운 이웃</div>
+      <span style="font-size:12px;color:#8B95A1;">${total}명</span>
+    </div>
+    <div id="neighbor-list">${rows}</div>
+    ${paging}
+  </div>`;
+}
+
+function _bindNeighborPaging(container, suggestList, accounts, friends) {
+  if (!suggestList.length) return;
+  container.addEventListener('click', (e) => {
+    // 페이지 dot 클릭
+    const dot = e.target.closest('.nb-page-dot');
+    if (dot) {
+      _neighborPage = parseInt(dot.dataset.nbpage);
+      const section = container.querySelector('#neighbor-section');
+      if (section) {
+        section.outerHTML = _buildNeighborSection(suggestList, accounts, friends);
+        _bindNeighborPaging(container, suggestList, accounts, friends);
+      }
+      return;
+    }
+    // 이웃 행 클릭 → 프로필 (버튼 제외)
+    const row = e.target.closest('.neighbor-row');
+    if (row && !e.target.closest('button')) {
+      e.preventDefault();
+      openFriendProfile(row.dataset.nid, row.dataset.nnick);
+    }
+  });
+}
+
 // ── 친구 피드 ────────────────────────────────────────────────────
 async function _renderFriendFeed() {
   const feedEl = document.getElementById('friend-feed');
@@ -1716,13 +1857,13 @@ async function _renderFriendFeed() {
       let nh = '';
       for (const req of pending) {
         const a = accounts.find(x => x.id === req.from);
-        const nm = a ? a.lastName + a.firstName : req.from;
+        const nm = a ? _resolveNickname(a, accounts) : req.from.replace(/_/g, '');
         nh += '<div class="friend-notif-row"><span>' + nm + '님이 이웃 요청을 보냈어요</span><div style="display:flex;gap:6px;"><button onclick="acceptFriendReq(\'' + req.id + '\')" style="background:var(--primary);color:#fff;border:none;border-radius:var(--radius-sm);padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;">수락</button><button onclick="rejectFriendReq(\'' + req.id + '\')" style="background:var(--surface3);color:var(--text-secondary);border:none;border-radius:var(--radius-sm);padding:6px 12px;font-size:12px;cursor:pointer;">거절</button></div></div>';
       }
       for (const n of unread.slice(0, 3)) {
         if (n.type === 'friend_request') continue;
         const a = accounts.find(x => x.id === n.from);
-        const nm = a ? a.lastName + a.firstName : (n.from || '');
+        const nm = a ? _resolveNickname(a, accounts) : (n.from || '').replace(/_/g, '');
         const ic = n.type === 'like' ? '❤️' : n.type === 'friend_accepted' ? '🤝' : '💬';
         nh += '<div class="friend-notif-row" onclick="markNotifRead(\'' + n.id + '\')">' + ic + ' ' + nm + '님이 ' + n.message + '</div>';
       }
@@ -1737,7 +1878,7 @@ async function _renderFriendFeed() {
     if (!friends.length) {
       // 이웃 없어도 추천은 보여줌
       let emptyMsg = '<div style="text-align:center;padding:16px;color:var(--text-tertiary);font-size:13px;line-height:1.6;">이웃을 추가하고 함께 토마토를 키워보세요.<br>서로 응원하며 더 건강해질 수 있어요.</div>';
-      // 추천 이웃 생성
+      // 새로운 이웃 (전체 목록 + 페이징)
       const user = getCurrentUser();
       const { isAdminGuest: isAG2 } = await import('./data.js');
       const myId2 = isAG2() ? '김_태우' : user?.id;
@@ -1745,27 +1886,10 @@ async function _renderFriendFeed() {
       if (isAG2()) excludeIds.add('김_태우');
       const sug = accounts.filter(a => !excludeIds.has(a.id) && !a.id.includes('(guest)'));
       if (sug.length) {
-        emptyMsg += `<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);text-align:left;">
-          <div style="font-size:13px;font-weight:500;color:var(--text-secondary);margin-bottom:10px;">알 수도 있는 이웃</div>
-          ${sug.slice(0,5).map(a => {
-            let _raw = a.nickname || '';
-            // SSOT: 김태우 계정은 admin/guest 양쪽에서 유효한 별명 찾기
-            if (a.id === '김_태우') {
-              const _gst = accounts.find(x => x.id === '김_태우(guest)');
-              const _isReal = (n) => !n || n === '김태우' || n === '김태우(Admin)' || n === '김태우(Guest)';
-              if (_isReal(_raw) && _gst && !_isReal(_gst.nickname)) _raw = _gst.nickname;
-            }
-            const baseName = a.lastName + a.firstName.replace(/\(.*\)/, '');
-            const nick = (_raw && _raw !== baseName) ? _raw : a.lastName + '**';
-            return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;">
-              <div style="width:36px;height:36px;border-radius:50%;background:#fff3e0;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;cursor:pointer;" onclick="openFriendProfile('${a.id}','${nick}')">🍅</div>
-              <div style="flex:1;font-size:14px;font-weight:500;color:var(--text);cursor:pointer;" onclick="openFriendProfile('${a.id}','${nick}')">${nick}</div>
-              <button onclick="quickAddNeighbor('${a.id}')" style="padding:6px 14px;border:none;border-radius:999px;background:var(--primary);color:#fff;font-size:12px;font-weight:600;cursor:pointer;">이웃 추가</button>
-            </div>`;
-          }).join('')}
-        </div>`;
+        emptyMsg += _buildNeighborSection(sug, accounts, []);
       }
       feedEl.innerHTML = emptyMsg;
+      _bindNeighborPaging(feedEl, sug, accounts, []);
       return;
     }
     const tk = dateKey(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
@@ -1773,15 +1897,8 @@ async function _renderFriendFeed() {
     let activeCount = 0;
     for (const f of friends) {
       const acc = accounts.find(a => a.id === f.friendId);
-      // SSOT: 김태우 계정은 admin/guest 양쪽에서 유효한 별명 찾기
-      let nick = acc?.nickname || (acc ? acc.lastName + acc.firstName : f.friendId);
-      if (f.friendId === '김_태우' || f.friendId === '김_태우(guest)') {
-        const admAcc = accounts.find(a => a.id === '김_태우');
-        const gstAcc = accounts.find(a => a.id === '김_태우(guest)');
-        const isReal = (n) => !n || n === '김태우' || n === '김태우(Admin)' || n === '김태우(Guest)';
-        nick = (!isReal(gstAcc?.nickname) ? gstAcc.nickname : !isReal(admAcc?.nickname) ? admAcc.nickname : nick);
-      }
-      const fullName = acc ? acc.lastName + acc.firstName : f.friendId;
+      const nick = acc ? _resolveNickname(acc, accounts) : f.friendId.replace(/_/g, '');
+      const fullName = acc ? acc.lastName + acc.firstName.replace(/\(.*\)/, '') : f.friendId.replace(/_/g, '');
       const name = nick; // 피드에는 별명만
       const ini = nick.charAt(0);
       const w = await getFriendWorkout(f.friendId, tk);
@@ -1803,15 +1920,16 @@ async function _renderFriendFeed() {
       }
       if (!items) items = '<div class="friend-feed-item" style="color:var(--text-tertiary);">오늘 아직 기록이 없어요</div>';
       else activeCount++;
-      html += `<div class="friend-card"><div class="friend-card-header"><span class="friend-avatar" style="font-size:18px;">🍅</span><span class="friend-name" data-fid="${f.friendId}" data-fname="${fullName.replace(/"/g,'&quot;')}" style="cursor:pointer">${name}</span><button class="friend-gift-btn" data-gift-fid="${f.friendId}" data-gift-name="${fullName.replace(/"/g,'&quot;')}" title="토마토 선물">🍅</button></div>${items}</div>`;
+      html += `<div class="friend-card"><div class="friend-card-header"><span class="friend-avatar" style="font-size:18px;">🍅</span><span class="friend-name" data-fid="${f.friendId}" data-fname="${fullName.replace(/"/g,'&quot;')}" style="cursor:pointer;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;">${name}</span><button class="friend-gift-btn" data-gift-fid="${f.friendId}" data-gift-name="${fullName.replace(/"/g,'&quot;')}" title="토마토 선물">🍅</button></div>${items}</div>`;
     }
     // 활동 요약 배너
     const banner = activeCount > 0
       ? `<div style="padding:10px 12px;background:var(--primary-bg);border-radius:10px;font-size:12px;font-weight:500;color:var(--primary);margin-bottom:10px;text-align:center;">오늘 ${activeCount}명의 이웃이 기록했어요</div>`
       : '';
 
-    // 추천 이웃
+    // 새로운 이웃 (전체 목록 + 페이징)
     let suggestHtml = '';
+    let suggestList = [];
     try {
       const user = getCurrentUser();
       const { isAdminGuest: isAG } = await import('./data.js');
@@ -1819,38 +1937,18 @@ async function _renderFriendFeed() {
       const friendIds = new Set(friends.map(f => f.friendId));
       friendIds.add(myId);
       if (isAG()) { friendIds.add('김_태우(guest)'); friendIds.add('김_태우'); }
-      const suggestions = accounts.filter(a => !friendIds.has(a.id) && !a.id.includes('(guest)'));
-      if (suggestions.length > 0) {
-        suggestHtml = `<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);">
-          <div style="font-size:13px;font-weight:500;color:var(--text-secondary);margin-bottom:10px;">알 수도 있는 이웃</div>
-          ${suggestions.slice(0, 5).map(a => {
-            let _raw = a.nickname || '';
-            // SSOT: 김태우 계정은 admin/guest 양쪽에서 유효한 별명 찾기
-            if (a.id === '김_태우') {
-              const _gst = accounts.find(x => x.id === '김_태우(guest)');
-              const _isReal = (n) => !n || n === '김태우' || n === '김태우(Admin)' || n === '김태우(Guest)';
-              if (_isReal(_raw) && _gst && !_isReal(_gst.nickname)) _raw = _gst.nickname;
-            }
-            const baseName = a.lastName + a.firstName.replace(/\(.*\)/, '');
-            const nick = (_raw && _raw !== baseName) ? _raw : a.lastName + '**';
-            const ini2 = nick.charAt(0);
-            return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;">
-              <div style="width:36px;height:36px;border-radius:50%;background:#fff3e0;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;cursor:pointer;" onclick="openFriendProfile('${a.id}','${nick}')">🍅</div>
-              <div style="flex:1;min-width:0;" onclick="openFriendProfile('${a.id}','${nick}')" style="cursor:pointer;">
-                <div style="font-size:14px;font-weight:500;color:var(--text);cursor:pointer;">${nick}</div>
-              </div>
-              <button onclick="quickAddNeighbor('${a.id}')" style="padding:6px 14px;border:none;border-radius:999px;background:var(--primary);color:#fff;font-size:12px;font-weight:600;cursor:pointer;">이웃 추가</button>
-            </div>`;
-          }).join('')}
-        </div>`;
+      suggestList = accounts.filter(a => !friendIds.has(a.id) && !a.id.includes('(guest)'));
+      if (suggestList.length > 0) {
+        suggestHtml = _buildNeighborSection(suggestList, accounts, friends);
       }
     } catch(e) { console.warn('[suggest]', e); }
 
     feedEl.innerHTML = banner + html + suggestHtml;
+    _bindNeighborPaging(feedEl, suggestList, accounts, friends);
     // 이벤트 위임: 이름 클릭→프로필, 선물 클릭→선물
     feedEl.onclick = (e) => {
       const nameEl = e.target.closest('.friend-name[data-fid]');
-      if (nameEl) { openFriendProfile(nameEl.dataset.fid, nameEl.dataset.fname); return; }
+      if (nameEl) { e.preventDefault(); openFriendProfile(nameEl.dataset.fid, nameEl.dataset.fname); return; }
       const giftEl = e.target.closest('.friend-gift-btn[data-gift-fid]');
       if (giftEl) { openTomatoGiftModal(giftEl.dataset.giftFid, giftEl.dataset.giftName); return; }
     };
@@ -1865,10 +1963,15 @@ window.openFriendManager = async function() {
   if (!friends.length) fl = '<div style="text-align:center;padding:16px;color:var(--text-tertiary);font-size:13px;">아직 등록된 이웃이 없어요</div>';
   else fl = friends.map(f => {
     const a = accounts.find(x => x.id === f.friendId);
-    const nick = a?.nickname || (a ? a.lastName + a.firstName : f.friendId);
+    const nick = a ? _resolveNickname(a, accounts) : f.friendId.replace(/_/g, '');
+    const realName = a ? a.lastName + a.firstName.replace(/\(.*\)/, '') : f.friendId.replace(/_/g, '');
     return `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);cursor:pointer;" data-fid="${f.friendId}" data-fname="${nick.replace(/"/g,'&quot;')}" class="friend-manager-row">
       <span class="friend-avatar">${nick.charAt(0)}</span>
-      <span style="flex:1;font-size:14px;font-weight:500;">${nick}</span>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:14px;font-weight:500;">${nick}</div>
+        ${nick !== realName ? `<div style="font-size:11px;color:var(--text-tertiary);">${realName}</div>` : ''}
+      </div>
+      <button onclick="event.stopPropagation();editFriendNickname('${f.friendId}')" style="background:none;border:none;color:var(--primary);font-size:12px;cursor:pointer;padding:4px 8px;">별명</button>
       <button onclick="event.stopPropagation();deleteFriend('${f.reqId}')" style="background:none;border:none;color:var(--text-tertiary);font-size:12px;cursor:pointer;">삭제</button>
     </div>`;
   }).join('');
@@ -1941,6 +2044,23 @@ window.quickAddNeighbor = async function(targetId) {
   else { _showToast('이웃 요청을 보냈어요!'); }
   _renderFriendFeed();
 };
+
+// 이웃 별명 편집
+window.editFriendNickname = async function(friendId) {
+  const { getAccountList, saveAccount } = await import('./data.js');
+  const accounts = await getAccountList();
+  const acc = accounts.find(a => a.id === friendId);
+  if (!acc) { _showToast('계정을 찾을 수 없어요'); return; }
+  const realName = acc.lastName + acc.firstName.replace(/\(.*\)/, '');
+  const current = acc.nickname || realName;
+  const newNick = prompt(`${realName}의 별명을 입력하세요`, current === realName ? '' : current);
+  if (newNick === null) return;
+  acc.nickname = newNick.trim() || realName;
+  await saveAccount(acc);
+  _showToast(`별명이 "${acc.nickname}"(으)로 변경되었어요`);
+  window.openFriendManager();
+};
+
 // 리액션 시스템 (인스타 스토리 패턴)
 const REACTIONS = [
   { emoji: '👏', label: '대단해' },
@@ -1966,6 +2086,33 @@ window.showReactionPicker = function(btn, tid, dk, field) {
   // 외부 클릭 시 닫기
   setTimeout(() => {
     const close = (e) => { if (!picker.contains(e.target)) { picker.remove(); document.removeEventListener('click', close); } };
+    document.addEventListener('click', close);
+  }, 10);
+};
+
+// Teams 스타일 리액션 상세 팝오버
+window.showReactionDetail = async function(btn, tid, dk, field) {
+  document.querySelectorAll('.reaction-detail-popup').forEach(p => p.remove());
+  const likes = await getLikes(tid, dk);
+  const fieldLikes = likes.filter(l => l.field === field);
+  if (!fieldLikes.length) return;
+  const accounts = await getAccountList();
+  const rows = fieldLikes.map(l => {
+    const acc = accounts.find(a => a.id === l.from);
+    const name = acc ? _resolveNickname(acc, accounts) : l.from.replace(/_/g, '');
+    return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;${fieldLikes.indexOf(l) < fieldLikes.length - 1 ? 'border-bottom:1px solid var(--border);' : ''}">
+      <span style="font-size:16px;">${l.emoji || '👏'}</span>
+      <span style="font-size:13px;font-weight:500;color:var(--text);">${name}</span>
+    </div>`;
+  }).join('');
+  const popup = document.createElement('div');
+  popup.className = 'reaction-detail-popup';
+  popup.style.cssText = 'position:absolute;bottom:100%;right:0;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 14px;box-shadow:0 4px 16px rgba(0,0,0,0.12);z-index:100;min-width:140px;max-width:220px;';
+  popup.innerHTML = `<div style="font-size:11px;font-weight:600;color:var(--text-tertiary);margin-bottom:6px;">리액션 ${fieldLikes.length}개</div>${rows}`;
+  btn.parentElement.style.position = 'relative';
+  btn.parentElement.appendChild(popup);
+  setTimeout(() => {
+    const close = (e) => { if (!popup.contains(e.target) && e.target !== btn) { popup.remove(); document.removeEventListener('click', close); } };
     document.addEventListener('click', close);
   }, 10);
 };
@@ -2001,7 +2148,7 @@ window.openFriendProfile = async function(friendId, friendName) {
     const isReal = (n) => !n || n === '김태우' || n === '김태우(Admin)' || n === '김태우(Guest)';
     rawNick = !isReal(gNick) ? gNick : !isReal(aNick) ? aNick : rawNick;
   }
-  const baseName = friendAcc ? friendAcc.lastName + friendAcc.firstName.replace(/\(.*\)/, '') : friendName;
+  const baseName = friendAcc ? friendAcc.lastName + friendAcc.firstName.replace(/\(.*\)/, '') : friendName.replace(/_/g, '');
   const nickname = (rawNick && rawNick !== baseName) ? rawNick : baseName;
   const realName = baseName;
   const ini = nickname.charAt(0);
@@ -2040,8 +2187,8 @@ window.openFriendProfile = async function(friendId, friendName) {
         const mealReactCount = getReactionCount(mealField);
         const mealEmojis = getReactionEmojis(mealField);
         const emojiDisplay = mealEmojis.length > 0 ? mealEmojis.join('') : '';
-        const reactBadge = mealReactCount > 0 ? `<span style="font-size:12px;margin-right:2px;">${emojiDisplay}</span><span style="font-size:10px;font-weight:600;color:var(--primary);margin-right:2px;">${mealReactCount}</span>` : '';
-        const reactionBtn = (isFriend && !isMyProfile) ? `${reactBadge}<button class="friend-like-btn" onclick="showReactionPicker(this,'${friendId}','${tk}','${mealField}')" style="flex-shrink:0;font-size:16px;background:none;border:none;cursor:pointer;padding:2px;">🤍</button>` : (mealReactCount > 0 ? `<span style="font-size:12px;">${emojiDisplay}</span> <span style="font-size:10px;font-weight:600;color:var(--primary);">${mealReactCount}</span>` : '');
+        const reactBadge = mealReactCount > 0 ? `<span class="react-badge-detail" onclick="event.stopPropagation();showReactionDetail(this,'${friendId}','${tk}','${mealField}')" style="cursor:pointer;display:inline-flex;align-items:center;gap:2px;padding:2px 6px;border-radius:999px;background:var(--surface2);"><span style="font-size:12px;">${emojiDisplay}</span><span style="font-size:10px;font-weight:600;color:var(--primary);">${mealReactCount}</span></span>` : '';
+        const reactionBtn = (isFriend && !isMyProfile) ? `${reactBadge}<button class="friend-like-btn" onclick="showReactionPicker(this,'${friendId}','${tk}','${mealField}')" style="flex-shrink:0;font-size:16px;background:none;border:none;cursor:pointer;padding:2px;">🤍</button>` : (mealReactCount > 0 ? `<span class="react-badge-detail" onclick="event.stopPropagation();showReactionDetail(this,'${friendId}','${tk}','${mealField}')" style="cursor:pointer;display:inline-flex;align-items:center;gap:2px;padding:2px 6px;border-radius:999px;background:var(--surface2);"><span style="font-size:12px;">${emojiDisplay}</span><span style="font-size:10px;font-weight:600;color:var(--primary);">${mealReactCount}</span></span>` : `<span style="font-size:14px;opacity:0.3;">🤍</span>`);
         todayDietHtml += `<div style="padding:6px 0;font-size:12px;border-bottom:1px solid var(--border);">
           <div style="display:flex;align-items:center;justify-content:space-between;">
             <span style="color:var(--text-secondary);flex-shrink:0;">${m.label}</span>
@@ -2122,12 +2269,10 @@ window.openFriendProfile = async function(friendId, friendName) {
       <div style="text-align:center;padding:16px 0 8px;">
         <div style="width:56px;height:56px;border-radius:50%;background:#fff3e0;display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 6px;">🍅</div>
         ${typeof tomatoCount === 'number' ? `<div style="font-size:11px;font-weight:700;color:var(--primary);margin-bottom:6px;">Lv.${tomatoLevel}</div>` : ''}
-        ${nickname !== realName
-          ? `<div style="font-size:18px;font-weight:700;color:var(--text);">${nickname}</div>`
-          : ''}
+        <div style="font-size:20px;font-weight:700;color:var(--text);-webkit-user-select:none;user-select:none;">${nickname}</div>
         ${isFriend || isMyProfile
-          ? `<div style="font-size:${nickname !== realName ? '13' : '18'}px;${nickname !== realName ? 'color:var(--text-tertiary);margin-top:2px;' : 'font-weight:700;color:var(--text);'}">${realName}</div>`
-          : `<div style="font-size:${nickname !== realName ? '12' : '18'}px;${nickname !== realName ? 'color:var(--text-tertiary);margin-top:3px;' : 'font-weight:700;color:var(--text);'}">${realName.charAt(0)}${'*'.repeat(realName.length - 1)}</div>
+          ? (nickname !== realName ? `<div style="font-size:13px;color:var(--text-tertiary);margin-top:2px;-webkit-user-select:none;user-select:none;">${realName}</div>` : '')
+          : `<div style="font-size:12px;color:var(--text-tertiary);margin-top:3px;">${realName.charAt(0)}${'*'.repeat(realName.length - 1)}</div>
              <div style="font-size:10px;color:var(--text-tertiary);margin-top:2px;">이웃이 되면 이름을 볼 수 있어요</div>`
         }
       </div>
@@ -2158,9 +2303,9 @@ window.openFriendProfile = async function(friendId, friendName) {
             const wReactCount = isFriend ? getReactionCount('workout') : 0;
             const wEmojis = getReactionEmojis('workout');
             const wEmojiDisplay = wEmojis.length > 0 ? wEmojis.join('') : '';
-            const wBadge = wReactCount > 0 ? `<span style="font-size:12px;margin-right:2px;">${wEmojiDisplay}</span><span style="font-size:10px;font-weight:600;color:var(--primary);margin-right:2px;">${wReactCount}</span>` : '';
+            const wBadge = wReactCount > 0 ? `<span class="react-badge-detail" onclick="event.stopPropagation();showReactionDetail(this,'${friendId}','${tk}','workout')" style="cursor:pointer;display:inline-flex;align-items:center;gap:2px;padding:2px 6px;border-radius:999px;background:var(--surface2);margin-right:2px;"><span style="font-size:12px;">${wEmojiDisplay}</span><span style="font-size:10px;font-weight:600;color:var(--primary);">${wReactCount}</span></span>` : '';
             if (isFriend && !isMyProfile && todayW?.exercises?.length) return `${wBadge}<button class="friend-like-btn" onclick="showReactionPicker(this,'${friendId}','${tk}','workout')" style="font-size:16px;background:none;border:none;cursor:pointer;padding:2px;">🤍</button>`;
-            if (wReactCount > 0) return `<span style="font-size:12px;">${wEmojiDisplay}</span> <span style="font-size:10px;font-weight:600;color:var(--primary);">${wReactCount}</span>`;
+            if (wReactCount > 0) return `<span class="react-badge-detail" onclick="event.stopPropagation();showReactionDetail(this,'${friendId}','${tk}','workout')" style="cursor:pointer;display:inline-flex;align-items:center;gap:2px;padding:2px 6px;border-radius:999px;background:var(--surface2);"><span style="font-size:12px;">${wEmojiDisplay}</span><span style="font-size:10px;font-weight:600;color:var(--primary);">${wReactCount}</span></span>`;
             return '';
           })()}
         </div>
@@ -2306,8 +2451,8 @@ window.openIntroduceFriend = async function(friendId, friendName) {
   }
   let listHtml = others.map(f => {
     const acc = accounts.find(a => a.id === f.friendId);
-    const nm = acc ? acc.lastName + acc.firstName : f.friendId;
-    const ini = (acc?.lastName || '?').charAt(0);
+    const nm = acc ? _resolveNickname(acc, accounts) : f.friendId.replace(/_/g, '');
+    const ini = nm.charAt(0);
     return `<button onclick="confirmIntroduce('${friendId}','${f.friendId}','${friendName}','${nm}')" style="display:flex;align-items:center;gap:10px;width:100%;padding:12px;border:1px solid var(--border);border-radius:12px;background:var(--surface);cursor:pointer;margin-bottom:6px;text-align:left;transition:all 0.15s;">
       <div style="width:32px;height:32px;border-radius:50%;background:var(--surface3);color:var(--text-secondary);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0;">${ini}</div>
       <span style="font-size:14px;font-weight:500;color:var(--text);">${nm}</span>
@@ -2440,7 +2585,7 @@ window.sendReaction = async function(tid, dk, field, emoji) {
   if (document.getElementById('dynamic-modal')) {
     const accounts = await getAccountList();
     const acc = accounts.find(a => a.id === tid);
-    const name = acc ? acc.lastName + acc.firstName : tid;
+    const name = acc ? _resolveNickname(acc, accounts) : tid.replace(/_/g, '');
     document.getElementById('dynamic-modal').remove();
     window.openFriendProfile(tid, name);
   }
@@ -2533,7 +2678,7 @@ async function refreshNotifCenter() {
   // 친구 요청 (최상단)
   for (const req of pending) {
     const a = accounts.find(x => x.id === req.from);
-    const nm = a ? a.lastName + a.firstName : req.from;
+    const nm = a ? _resolveNickname(a, accounts) : req.from.replace(/_/g, '');
     html += `<div class="notif-item unread">
       <div class="notif-icon friend-req">👋</div>
       <div class="notif-body">
@@ -2554,7 +2699,7 @@ async function refreshNotifCenter() {
     if (n.read) readShown++;
     if (n.type === 'friend_request' && pending.some(p => p.from === n.from)) continue;
     const a = accounts.find(x => x.id === n.from);
-    const nm = a ? a.lastName + a.firstName : (n.from || '');
+    const nm = a ? _resolveNickname(a, accounts) : (n.from || '').replace(/_/g, '');
     let icon, iconClass;
     if (n.type === 'like')            { icon = '❤️'; iconClass = 'like'; }
     else if (n.type === 'friend_accepted') { icon = '🤝'; iconClass = 'friend-ok'; }

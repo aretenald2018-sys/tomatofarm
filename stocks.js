@@ -101,7 +101,9 @@ export async function loadStocks() {
 }
 
 function _renderLoading() {
-  document.getElementById('stock-row').innerHTML = CONFIG.TICKERS.map(t => `
+  const el = document.getElementById('stock-row');
+  if (!el) return;
+  el.innerHTML = CONFIG.TICKERS.map(t => `
     <div class="stock-chip">
       <div class="s-ticker">${t.sym}</div><div class="s-name">${t.name}</div>
       <div class="s-price" style="color:var(--muted)">로딩중...</div>

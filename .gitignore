@@ -7,3 +7,5 @@ network-analysis-report.json
 .dev-task.json
 .dev-result.json
 .dev-prompt-tmp.txt
+
+.vercel
