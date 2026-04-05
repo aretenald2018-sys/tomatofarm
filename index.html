@@ -691,17 +691,20 @@ async function initLoginScreen() {
   const { loadSavedUser, getAccountList, setCurrentUser, loadAll } = await import('./data.js');
 
   // 이미 로그인된 사용자가 있으면 바로 진입
-  // 단, 김태우 계정(Admin/Guest)은 매번 비밀번호 필요
   const saved = loadSavedUser();
   if (saved) {
     const isKimSaved = saved.id === '김_태우' || saved.id === '김_태우(guest)';
     if (isKimSaved) {
-      // 김태우는 매번 비밀번호 필요 → 간편 잠금 화면
+      // 이미 이 세션에서 인증 완료했으면 바로 진입
+      if (sessionStorage.getItem('kim_authenticated')) {
+        document.getElementById('login-screen').style.display = 'none';
+        document.getElementById('loading').style.display = 'flex';
+        return;
+      }
+      // 김태우 잠금 화면
       const { setCurrentUser, hashPassword, verifyPassword, getAccountList, saveAccount } = await import('./data.js');
       const accounts = await getAccountList();
-      // 항상 Guest 계정으로 로그인 (데이터는 공유)
       let kimAcc = accounts.find(a => a.id === '김_태우(guest)') || accounts.find(a => a.id === saved.id);
-      // 비밀번호가 설정 안 되어있으면 먼저 설정
       if (kimAcc && (!kimAcc.hasPassword || !kimAcc.passwordHash)) {
         kimAcc.hasPassword = true;
         kimAcc.passwordHash = hashPassword('kimtw100');
@@ -709,7 +712,6 @@ async function initLoginScreen() {
       }
       document.getElementById('loading').style.display = 'none';
       document.getElementById('login-screen').style.display = 'none';
-      // 잠금 화면 표시
       const lockDiv = document.createElement('div');
       lockDiv.id = 'kim-lock-screen';
       lockDiv.style.cssText = 'position:fixed;inset:0;z-index:9999;background:var(--bg);display:flex;align-items:center;justify-content:center;';
@@ -727,6 +729,7 @@ async function initLoginScreen() {
         const pw = document.getElementById('kim-lock-pw').value;
         if (kimAcc && verifyPassword(kimAcc, pw)) {
           setCurrentUser(kimAcc);
+          sessionStorage.setItem('kim_authenticated', 'true');
           lockDiv.remove();
           document.getElementById('loading').style.display = 'flex';
           location.reload();
@@ -736,6 +739,7 @@ async function initLoginScreen() {
       };
       document.getElementById('kim-lock-other').onclick = () => {
         setCurrentUser(null);
+        sessionStorage.removeItem('kim_authenticated');
         lockDiv.remove();
         location.reload();
       };
@@ -966,6 +970,7 @@ async function createAccountAndLogin() {
         return;
       }
       setCurrentUser(found);
+      sessionStorage.setItem('kim_authenticated', 'true');
       document.getElementById('login-screen').style.display = 'none';
       document.getElementById('loading').style.display = 'flex';
       location.reload();
@@ -1047,6 +1052,7 @@ async function logoutAccount() {
 async function confirmLogout() {
   const { setCurrentUser } = await import('./data.js');
   setCurrentUser(null);
+  sessionStorage.removeItem('kim_authenticated');
   location.reload();
 }
 

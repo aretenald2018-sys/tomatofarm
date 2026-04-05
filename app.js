@@ -100,10 +100,10 @@ async function initializeApp() {
   // 이벤트 표시 모드 토글 초기화
   _updateEventViewToggle();
 
-  // Google Calendar 자동 재연결
-  tryAutoConnect().then(ok => {
-    if (ok) { console.log('[app] Google Calendar 자동 연결 성공'); syncGCalNow(); }
-  });
+  // Google Calendar 자동 재연결 비활성화 (팝업 방지)
+  // tryAutoConnect().then(ok => {
+  //   if (ok) { console.log('[app] Google Calendar 자동 연결 성공'); syncGCalNow(); }
+  // });
 }
 
 // ── 모달 유틸리티 ────────────────────────────────────────────────
