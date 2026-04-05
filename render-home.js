@@ -1748,9 +1748,15 @@ async function _renderFriendFeed() {
         emptyMsg += `<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);text-align:left;">
           <div style="font-size:13px;font-weight:500;color:var(--text-secondary);margin-bottom:10px;">알 수도 있는 이웃</div>
           ${sug.slice(0,5).map(a => {
-            const _raw = a.nickname || '';
+            let _raw = a.nickname || '';
+            // SSOT: 김태우 계정은 admin/guest 양쪽에서 유효한 별명 찾기
+            if (a.id === '김_태우') {
+              const _gst = accounts.find(x => x.id === '김_태우(guest)');
+              const _isReal = (n) => !n || n === '김태우' || n === '김태우(Admin)' || n === '김태우(Guest)';
+              if (_isReal(_raw) && _gst && !_isReal(_gst.nickname)) _raw = _gst.nickname;
+            }
             const baseName = a.lastName + a.firstName.replace(/\(.*\)/, '');
-            const nick = (_raw && _raw !== baseName && _raw !== a.lastName + a.firstName) ? _raw : a.lastName + '**';
+            const nick = (_raw && _raw !== baseName) ? _raw : a.lastName + '**';
             return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;">
               <div style="width:36px;height:36px;border-radius:50%;background:#fff3e0;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;cursor:pointer;" onclick="openFriendProfile('${a.id}','${nick}')">🍅</div>
               <div style="flex:1;font-size:14px;font-weight:500;color:var(--text);cursor:pointer;" onclick="openFriendProfile('${a.id}','${nick}')">${nick}</div>
@@ -1767,7 +1773,14 @@ async function _renderFriendFeed() {
     let activeCount = 0;
     for (const f of friends) {
       const acc = accounts.find(a => a.id === f.friendId);
-      const nick = acc?.nickname || (acc ? acc.lastName + acc.firstName : f.friendId);
+      // SSOT: 김태우 계정은 admin/guest 양쪽에서 유효한 별명 찾기
+      let nick = acc?.nickname || (acc ? acc.lastName + acc.firstName : f.friendId);
+      if (f.friendId === '김_태우' || f.friendId === '김_태우(guest)') {
+        const admAcc = accounts.find(a => a.id === '김_태우');
+        const gstAcc = accounts.find(a => a.id === '김_태우(guest)');
+        const isReal = (n) => !n || n === '김태우' || n === '김태우(Admin)' || n === '김태우(Guest)';
+        nick = (!isReal(gstAcc?.nickname) ? gstAcc.nickname : !isReal(admAcc?.nickname) ? admAcc.nickname : nick);
+      }
       const fullName = acc ? acc.lastName + acc.firstName : f.friendId;
       const name = nick; // 피드에는 별명만
       const ini = nick.charAt(0);
@@ -1811,9 +1824,15 @@ async function _renderFriendFeed() {
         suggestHtml = `<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);">
           <div style="font-size:13px;font-weight:500;color:var(--text-secondary);margin-bottom:10px;">알 수도 있는 이웃</div>
           ${suggestions.slice(0, 5).map(a => {
-            const _raw = a.nickname || '';
+            let _raw = a.nickname || '';
+            // SSOT: 김태우 계정은 admin/guest 양쪽에서 유효한 별명 찾기
+            if (a.id === '김_태우') {
+              const _gst = accounts.find(x => x.id === '김_태우(guest)');
+              const _isReal = (n) => !n || n === '김태우' || n === '김태우(Admin)' || n === '김태우(Guest)';
+              if (_isReal(_raw) && _gst && !_isReal(_gst.nickname)) _raw = _gst.nickname;
+            }
             const baseName = a.lastName + a.firstName.replace(/\(.*\)/, '');
-            const nick = (_raw && _raw !== baseName && _raw !== a.lastName + a.firstName) ? _raw : a.lastName + '**';
+            const nick = (_raw && _raw !== baseName) ? _raw : a.lastName + '**';
             const ini2 = nick.charAt(0);
             return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;">
               <div style="width:36px;height:36px;border-radius:50%;background:#fff3e0;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;cursor:pointer;" onclick="openFriendProfile('${a.id}','${nick}')">🍅</div>
@@ -1956,23 +1975,40 @@ window.openFriendProfile = async function(friendId, friendName) {
   const { getFriendWorkout, dateKey: dk2, getAccountList, getMyFriends, getTomatoState: getTS, isAdmin: isA, isAdminGuest: isAG, getDataOwnerId: getOwnId } = await import('./data.js');
   const user = getCurrentUser();
   const myDataId = getOwnId();
-  const isMyProfile = friendId === user?.id || friendId === myDataId;
+
+  // SSOT: 김태우 계정 ID 정규화 (guest → admin으로 통일)
+  const ADMIN_ID = '김_태우';
+  const isKimId = (id) => id === '김_태우' || id === '김_태우(guest)';
+  const normalizedFriendId = isKimId(friendId) ? ADMIN_ID : friendId;
+
+  const isMyProfile = friendId === user?.id || friendId === myDataId || normalizedFriendId === myDataId;
   const myFriends = await getMyFriends();
-  const isFriend = isMyProfile || myFriends.some(f => f.friendId === friendId);
+  const isFriend = isMyProfile || myFriends.some(f => f.friendId === friendId || f.friendId === normalizedFriendId);
   const DOW = ['일','월','화','수','목','금','토'];
-  // 계정 데이터에서 별명/이름 결정
+
+  // 계정 데이터에서 별명/이름 결정 (SSOT: admin 계정 우선 조회)
   const allAccounts = await getAccountList();
-  const friendAcc = allAccounts.find(a => a.id === friendId);
-  const rawNick = friendAcc?.nickname || '';
-  const realNameRaw = friendAcc ? friendAcc.lastName + friendAcc.firstName : friendName;
+  const friendAcc = isKimId(friendId)
+    ? (allAccounts.find(a => a.id === ADMIN_ID) || allAccounts.find(a => a.id === friendId))
+    : allAccounts.find(a => a.id === friendId);
+  // 김태우 계정의 nickname은 admin/guest 양쪽에서 가장 유효한 값 찾기
+  let rawNick = friendAcc?.nickname || '';
+  if (isKimId(friendId) && (!rawNick || rawNick === '김태우')) {
+    const guestAcc = allAccounts.find(a => a.id === '김_태우(guest)');
+    const adminAcc = allAccounts.find(a => a.id === '김_태우');
+    const gNick = guestAcc?.nickname || '';
+    const aNick = adminAcc?.nickname || '';
+    const isReal = (n) => !n || n === '김태우' || n === '김태우(Admin)' || n === '김태우(Guest)';
+    rawNick = !isReal(gNick) ? gNick : !isReal(aNick) ? aNick : rawNick;
+  }
   const baseName = friendAcc ? friendAcc.lastName + friendAcc.firstName.replace(/\(.*\)/, '') : friendName;
   const nickname = (rawNick && rawNick !== baseName) ? rawNick : baseName;
   const realName = baseName;
   const ini = nickname.charAt(0);
   const tk = dk2(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
 
-  // 오늘 데이터 (자기 프로필이면 자기 데이터 경로로)
-  const lookupId = isMyProfile ? myDataId : friendId;
+  // 오늘 데이터 (SSOT: 정규화된 ID로 조회)
+  const lookupId = isMyProfile ? myDataId : normalizedFriendId;
   const todayW = await getFriendWorkout(lookupId, tk);
 
   // 1. 오늘 식단 상세 (음식 이름)
@@ -2164,8 +2200,8 @@ window.openFriendProfile = async function(friendId, friendName) {
           <div style="text-align:center;padding:12px;font-size:12px;color:var(--text-tertiary);">불러오는 중...</div>
         </div>
         <div style="display:flex;gap:6px;">
-          <input id="guestbook-input" style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:999px;font-size:13px;color:var(--text);background:var(--surface2);outline:none;font-family:var(--font-sans);transition:border-color 0.15s;" placeholder="응원 한마디 남기기" onfocus="this.style.borderColor='var(--primary)'" onblur="this.style.borderColor='var(--border)'" onkeydown="if(event.key==='Enter')submitGuestbook('${friendId}')">
-          <button onclick="submitGuestbook('${friendId}')" style="padding:8px 14px;border:none;border-radius:999px;background:var(--primary);color:#fff;font-size:13px;font-weight:600;cursor:pointer;flex-shrink:0;">남기기</button>
+          <input id="guestbook-input" style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:999px;font-size:13px;color:var(--text);background:var(--surface2);outline:none;font-family:var(--font-sans);transition:border-color 0.15s;" placeholder="응원 한마디 남기기" onfocus="this.style.borderColor='var(--primary)'" onblur="this.style.borderColor='var(--border)'" onkeydown="if(event.key==='Enter')submitGuestbook('${normalizedFriendId}')">
+          <button onclick="submitGuestbook('${normalizedFriendId}')" style="padding:8px 14px;border:none;border-radius:999px;background:var(--primary);color:#fff;font-size:13px;font-weight:600;cursor:pointer;flex-shrink:0;">남기기</button>
         </div>
       </div>
 
@@ -2185,7 +2221,7 @@ window.openFriendProfile = async function(friendId, friendName) {
   </div>`;
 
   // 방명록 로드
-  _loadGuestbook(friendId);
+  _loadGuestbook(normalizedFriendId);
 };
 
 // 토마토 상자 비주얼
