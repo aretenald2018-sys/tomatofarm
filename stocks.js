@@ -112,7 +112,9 @@ function _renderLoading() {
 
 export function renderStocks(data, partial = false) {
   const purchases = getStockPurchases();
-  document.getElementById('stock-row').innerHTML = data.map(s => {
+  const stockRow = document.getElementById('stock-row');
+  if (!stockRow) return;
+  stockRow.innerHTML = data.map(s => {
     const p = purchases[s.sym];
     let purchaseHtml = '';
     if (p) {

@@ -1191,6 +1191,7 @@ if ('serviceWorker' in navigator) {
         console.error('[PWA] Service Worker 등록 실패:', error);
         console.error('[PWA] 에러 상세:', error.message);
       });
+  });
 } else {
   console.warn('[PWA] Service Worker를 지원하지 않는 브라우저');
 }
