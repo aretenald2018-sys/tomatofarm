@@ -33,6 +33,14 @@
   --muted: var(--text-secondary);
   --muted2: var(--text-tertiary);
 
+  /* Chart colors */
+  --chart-tick: #5c6478;
+  --chart-grid: #2c3040;
+  --chart-label: #e2e4ea;
+  --chart-tooltip-title: #e2e4ea;
+  --chart-tooltip-body: #a0a6b8;
+  --chart-bg: #1e2028;
+
   /* Feature colors */
   --gym: #f04452;
   --gym-dim: rgba(249,115,22,0.10);
@@ -155,6 +163,14 @@
   --shadow-sm: 0 1px 2px rgba(0,0,0,0.06);
   --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
   --shadow-lg: 0 8px 24px rgba(0,0,0,0.12);
+
+  /* Chart colors - light */
+  --chart-tick: #6b7280;
+  --chart-grid: #e5e7eb;
+  --chart-label: #374151;
+  --chart-tooltip-title: #111827;
+  --chart-tooltip-body: #4b5563;
+  --chart-bg: #ffffff;
 
   /* Seed overrides for light */
   --seed-bg-layer: #ffffff;
@@ -2422,6 +2438,8 @@ body {
 .bud-under { color: var(--streak) !important; font-weight: 700; }
 
 /* ── Chart Container ── */
+.fin-charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+@media (max-width: 640px) { .fin-charts-grid { grid-template-columns: 1fr; } }
 .fin-chart-wrap { position: relative; width: 100%; max-height: 260px; margin: 10px 0; }
 .fin-yaxis-blur-overlay {
   position: absolute; left: 0; top: 0; bottom: 0; width: 52px;
@@ -2536,7 +2554,12 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
 
 /* 재무 섹션 카드 — 라이트 모드 */
 :root.light .fin-section { background: #fff; border-color: var(--border); box-shadow: var(--shadow-sm); }
-:root.light .fin-section-hdr { background: var(--surface2); border-color: var(--border); }
+:root.light .fin-section-hdr { background: #f8f9fa; border-bottom: 1px solid var(--border); }
+:root.light .fin-portfolio-card { background: #f8f9fa; border-color: var(--border); }
+:root.light .fin-stock-row { border-bottom-color: var(--border); }
+:root.light .fin-stock-row:active { background: #f0f1f3; }
+:root.light .fin-context-line { color: var(--text-secondary); }
+:root.light .fin-table td { border-bottom-color: var(--border); }
 :root.light .fin-pos-card { background: var(--surface2); border-color: var(--border); }
 :root.light .fin-bench-card { background: var(--surface2); border-color: var(--border); }
 :root.light .fin-yaxis-blur-overlay { background: rgba(255,255,255,0.4); }

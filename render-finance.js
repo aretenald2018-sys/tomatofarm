@@ -103,6 +103,21 @@ import { callClaude } from './ai.js';
 
 const _id = () => Date.now().toString(36) + Math.random().toString(36).substr(2);
 
+// 테마 감지 헬퍼: CSS 변수에서 차트 색상 가져오기
+function _c(varName) {
+  return getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+}
+const _chartColors = () => ({
+  tick: _c('--chart-tick') || '#5c6478',
+  grid: _c('--chart-grid') || '#2c3040',
+  label: _c('--chart-label') || '#e2e4ea',
+  ttTitle: _c('--chart-tooltip-title') || '#e2e4ea',
+  ttBody: _c('--chart-tooltip-body') || '#a0a6b8',
+  bg: _c('--chart-bg') || '#1e2028',
+  text: _c('--text') || '#f5f5f7',
+  border: _c('--border') || '#2c2c2e',
+});
+
 let _quotesMap = {};
 let _fxRate = 1450;
 let _fngData = null;
@@ -140,9 +155,17 @@ let _budgetQ = Math.ceil((new Date().getMonth() + 1) / 3); // 현재 분기
 // ================================================================
 // 메인 렌더
 // ================================================================
+// 모듈 레벨 차트 색상 캐시
+let _cc = null;
+function _getCC() {
+  if (!_cc) _cc = _chartColors();
+  return _cc;
+}
+
 export async function renderFinance() {
   const el = document.getElementById('fin-content');
   if (!el) return;
+  _cc = _chartColors(); // 테마 변경 시 갱신
 
   fetchExchangeRate().then(r => {
     _fxRate = r;
@@ -193,13 +216,15 @@ function _buildHTML() {
       </div>
     </div>
     <div class="fin-section-body${_collapsed.benchmark?' collapsed':''}">
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <div class="fin-chart-wrap fin-chart-blurable" style="height:220px;flex:1;min-width:0;position:relative;cursor:pointer" onclick="window.__toggleFinChartBlur()"><canvas id="fin-recent5-chart"></canvas></div>
-        <div class="fin-chart-wrap fin-chart-blurable" style="height:220px;flex:1;min-width:0;position:relative;cursor:pointer" onclick="window.__toggleFinChartBlur()"><canvas id="fin-main-chart"></canvas></div>
+      <div class="fin-charts-grid">
+        <div class="fin-chart-wrap fin-chart-blurable" style="height:240px;position:relative;cursor:pointer" onclick="window.__toggleFinChartBlur()"><canvas id="fin-recent5-chart"></canvas></div>
+        <div class="fin-chart-wrap fin-chart-blurable" style="height:240px;position:relative;cursor:pointer" onclick="window.__toggleFinChartBlur()"><canvas id="fin-main-chart"></canvas></div>
       </div>
-      <div id="fin-bench-list"></div>
-      <div id="fin-plan-list"></div>
-      <div id="fin-actual-list"></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin:12px 0 8px;">
+        <div style="flex:1;min-width:120px;" id="fin-bench-list"></div>
+        <div style="flex:1;min-width:120px;" id="fin-plan-list"></div>
+        <div style="flex:1;min-width:120px;" id="fin-actual-list"></div>
+      </div>
 
       <!-- Inflow/Outflow 그래프 (토글, 디폴트 숨김) -->
       <div style="margin-top:12px">
@@ -279,7 +304,7 @@ const _yAxisBlurPlugin = {
     ctx.filter = 'blur(4px)';
     // 틱 레이블 위치에 맞춰 실제 텍스트를 블러로 덮어쓰기
     ctx.font = `${yScale.options.ticks.font?.size || 9}px -apple-system, sans-serif`;
-    ctx.fillStyle = yScale.options.ticks.color || '#5c6478';
+    ctx.fillStyle = yScale.options.ticks.color || _getCC().tick;
     ctx.textAlign = yScale.position === 'right' ? 'left' : 'right';
     ctx.textBaseline = 'middle';
 
@@ -298,13 +323,13 @@ const _yAxisBlurPlugin = {
         const pad = 3;
         ctx.save();
         ctx.filter = 'none';
-        ctx.fillStyle = chart.options.scales?.y?.grid?.color === '#2c3040' ? '#1e2028' : '#1a1a2e';
+        ctx.fillStyle = _getCC().bg;
         const bgX = isRight ? xPos - pad : xPos - metrics.width - pad;
         ctx.fillRect(bgX, y - 7, metrics.width + pad * 2, 14);
         ctx.restore();
 
         // 블러된 텍스트 그리기
-        ctx.fillStyle = yScale.options.ticks.color || '#5c6478';
+        ctx.fillStyle = yScale.options.ticks.color || _getCC().tick;
         ctx.fillText(String(formatted), xPos, y);
       }
     });
@@ -778,10 +803,10 @@ function _updateTooltipBar(idx) {
   const sign = chg >= 0 ? '+' : '';
   const rsi = d.rsiValues[idx];
   const vol = d.volumes[idx];
-  const rsiColor = rsi != null ? (rsi >= 70 ? UP : rsi <= 30 ? '#10b981' : '#e2e4ea') : '#64748b';
+  const rsiColor = rsi != null ? (rsi >= 70 ? UP : rsi <= 30 ? '#10b981' : 'var(--text-secondary)') : '#64748b';
   bar.style.display = 'flex';
   bar.innerHTML = `
-    <span style="color:#e2e4ea;font-weight:700">$${c.toFixed(2)}</span>
+    <span style="color:var(--text);font-weight:700">$${c.toFixed(2)}</span>
     <span style="color:${col}">${sign}${chg.toFixed(2)}%</span>
     <span style="color:#64748b;font-size:10px">${d.labels[idx]}</span>
     <span style="color:#64748b">|</span>
@@ -926,12 +951,12 @@ async function _loadStockChart(sym, range) {
         ...baseOpts,
         scales: {
           x: {
-            ticks: { color: '#5c6478', font: { size: 9 }, maxTicksLimit: 6, maxRotation: 0, padding: 4 },
+            ticks: { color: _getCC().tick, font: { size: 9 }, maxTicksLimit: 6, maxRotation: 0, padding: 4 },
             grid: { display: false },
           },
           y: {
             position: 'right',
-            ticks: { color: '#5c6478', font: { size: 9 }, callback: v => '$' + v.toFixed(0), maxTicksLimit: 5 },
+            ticks: { color: _getCC().tick, font: { size: 9 }, callback: v => '$' + v.toFixed(0), maxTicksLimit: 5 },
             grid: { color: 'rgba(255,255,255,0.04)' },
           },
         },
@@ -977,7 +1002,7 @@ async function _loadStockChart(sym, range) {
           x: { ticks: { display: false }, grid: { display: false } },
           y: {
             position: 'right',
-            ticks: { color: '#5c6478', font: { size: 8 }, callback: v => v >= 1e6 ? (v/1e6).toFixed(0)+'M' : v >= 1e3 ? (v/1e3).toFixed(0)+'K' : '', maxTicksLimit: 3 },
+            ticks: { color: _getCC().tick, font: { size: 8 }, callback: v => v >= 1e6 ? (v/1e6).toFixed(0)+'M' : v >= 1e3 ? (v/1e3).toFixed(0)+'K' : '', maxTicksLimit: 3 },
             grid: { color: 'rgba(255,255,255,0.03)' },
           },
         },
@@ -1027,7 +1052,7 @@ async function _loadStockChart(sym, range) {
           y: {
             min: 0, max: 100,
             position: 'right',
-            ticks: { color: '#5c6478', font: { size: 8 }, stepSize: 50, callback: v => v === 50 ? '50' : v === 0 ? '' : v === 100 ? '' : '' },
+            ticks: { color: _getCC().tick, font: { size: 8 }, stepSize: 50, callback: v => v === 50 ? '50' : v === 0 ? '' : v === 100 ? '' : '' },
             grid: { color: 'rgba(255,255,255,0.03)' },
           },
         },
@@ -1265,12 +1290,12 @@ async function _loadLiveChart(sym, showLoading = true, rangeOverride) {
         interaction: { mode: 'index', intersect: false },
         scales: {
           x: {
-            ticks: { color: '#5c6478', font: { size: 8 }, maxTicksLimit: 6, maxRotation: 0 },
-            grid: { color: '#2c3040' },
+            ticks: { color: _getCC().tick, font: { size: 8 }, maxTicksLimit: 6, maxRotation: 0 },
+            grid: { color: _getCC().grid },
           },
           y: {
-            ticks: { color: '#5c6478', font: { size: 9 }, callback: v => '$' + v.toFixed(0) },
-            grid: { color: '#2c3040' },
+            ticks: { color: _getCC().tick, font: { size: 9 }, callback: v => '$' + v.toFixed(0) },
+            grid: { color: _getCC().grid },
           },
         },
         plugins: {
@@ -1288,7 +1313,7 @@ async function _loadLiveChart(sym, showLoading = true, rangeOverride) {
               },
             },
             backgroundColor: 'rgba(20,22,40,0.95)',
-            titleColor: '#e2e4ea', bodyColor: '#a0a6b8',
+            titleColor: _getCC().label, bodyColor: _getCC().tick,
             borderColor: '#3c4060', borderWidth: 1, padding: 10,
           },
         },
@@ -1313,8 +1338,8 @@ async function _loadLiveChart(sym, showLoading = true, rangeOverride) {
         animation: showLoading ? { duration: 400 } : false,
         interaction: { mode: 'index', intersect: false },
         scales: {
-          x: { ticks: { color: '#5c6478', font: { size: 8 }, maxTicksLimit: 6, maxRotation: 0 }, grid: { display: false } },
-          y: { ticks: { color: '#5c6478', font: { size: 8 }, callback: v => v >= 1e6 ? (v/1e6).toFixed(0)+'M' : v >= 1e3 ? (v/1e3).toFixed(0)+'K' : v }, grid: { color: '#2c3040' } },
+          x: { ticks: { color: _getCC().tick, font: { size: 8 }, maxTicksLimit: 6, maxRotation: 0 }, grid: { display: false } },
+          y: { ticks: { color: _getCC().tick, font: { size: 8 }, callback: v => v >= 1e6 ? (v/1e6).toFixed(0)+'M' : v >= 1e3 ? (v/1e3).toFixed(0)+'K' : v }, grid: { color: _getCC().grid } },
         },
         plugins: { legend: { display: false }, tooltip: { enabled: false } },
       },
@@ -2398,21 +2423,21 @@ function _renderRecent5Chart() {
         x: {
           type: 'linear', min: 0, max: xLabels.length - 1,
           ticks: {
-            color: '#5c6478', font: { size: 9 }, stepSize: 1,
+            color: _getCC().tick, font: { size: 9 }, stepSize: 1,
             callback: function(value) {
               const idx = Math.round(value);
               return idx >= 0 && idx < xLabels.length ? xLabels[idx] : '';
             },
           },
-          grid: { color: '#2c3040' },
+          grid: { color: _getCC().grid },
         },
         y: {
-          ticks: { color: '#5c6478', font: { size: 9 }, callback: v => formatManwon(v), maxTicksLimit: 6},
-          grid: { color: '#2c3040' },
+          ticks: { color: _getCC().tick, font: { size: 9 }, callback: v => formatManwon(v), maxTicksLimit: 6},
+          grid: { color: _getCC().grid },
         },
       },
       plugins: {
-        legend: { labels: { color: '#e2e4ea', font: { size: 9 }, boxWidth: 10, padding: 6 } },
+        legend: { labels: { color: _getCC().label, font: { size: 9 }, boxWidth: 10, padding: 6 } },
         tooltip: {
           filter: () => !_finChartYAxisBlurred,
           callbacks: {
@@ -2423,7 +2448,7 @@ function _renderRecent5Chart() {
             label: ctx => `${ctx.dataset.label}: ${formatManwon(ctx.parsed.y)}`,
           },
         },
-        title: { display: true, text: `최근 5년 (${startYear}~${currentYear})`, color: '#e2e4ea', font: { size: 11 }, padding: { bottom: 6 } },
+        title: { display: true, text: `최근 5년 (${startYear}~${currentYear})`, color: _getCC().label, font: { size: 11 }, padding: { bottom: 6 } },
       },
     },
     plugins: [_yAxisBlurPlugin],
@@ -2578,7 +2603,7 @@ function _renderMainChart() {
           type: 'linear',
           min: 0, max: xLabels.length - 1,
           ticks: {
-            color: '#5c6478', font: { size: 9 },
+            color: _getCC().tick, font: { size: 9 },
             stepSize: 1,
             maxRotation: 45, minRotation: 0,
             callback: function(value) {
@@ -2587,15 +2612,15 @@ function _renderMainChart() {
               return '';
             },
           },
-          grid: { color: '#2c3040' },
+          grid: { color: _getCC().grid },
         },
         y: {
-          ticks: { color: '#5c6478', font: { size: 9 }, callback: v => formatManwon(v), maxTicksLimit: 6},
-          grid: { color: '#2c3040' },
+          ticks: { color: _getCC().tick, font: { size: 9 }, callback: v => formatManwon(v), maxTicksLimit: 6},
+          grid: { color: _getCC().grid },
         },
       },
       plugins: {
-        legend: { labels: { color: '#e2e4ea', font: { size: 9 }, boxWidth: 12, padding: 8 } },
+        legend: { labels: { color: _getCC().label, font: { size: 9 }, boxWidth: 12, padding: 8 } },
         tooltip: {
           filter: () => !_finChartYAxisBlurred,
           callbacks: {
@@ -2607,7 +2632,7 @@ function _renderMainChart() {
             label: ctx => `${ctx.dataset.label}: ${formatManwon(ctx.parsed.y)}`,
           },
         },
-        title: { display: true, text: '전체 추이', color: '#e2e4ea', font: { size: 11 }, padding: { bottom: 6 } },
+        title: { display: true, text: '전체 추이', color: _getCC().label, font: { size: 11 }, padding: { bottom: 6 } },
       },
     },
     plugins: [_yAxisBlurPlugin, {
@@ -2622,7 +2647,7 @@ function _renderMainChart() {
           const yMid = (yScale.top + yScale.bottom) / 2;
           // 물결선 그리기
           ctx.save();
-          ctx.strokeStyle = '#5c6478';
+          ctx.strokeStyle = _getCC().tick;
           ctx.lineWidth = 1.5;
           ctx.setLineDash([3, 3]);
           ctx.beginPath();
@@ -2638,7 +2663,7 @@ function _renderMainChart() {
           ctx.setLineDash([]);
           ctx.fillStyle = '#1e2030';
           ctx.fillRect(xMid - 12, yMid - 10, 24, 20);
-          ctx.fillStyle = '#5c6478';
+          ctx.fillStyle = _getCC().tick;
           ctx.font = '12px sans-serif';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
@@ -2720,11 +2745,11 @@ function _renderFlowChart() {
     options: {
       responsive: true, maintainAspectRatio: false,
       scales: {
-        x: { ticks: { color: '#5c6478', font: { size: 10 } }, grid: { color: '#2c3040' } },
-        y: { ticks: { color: '#5c6478', font: { size: 10 }, callback: v => formatManwon(v) }, grid: { color: '#2c3040' } },
+        x: { ticks: { color: _getCC().tick, font: { size: 10 } }, grid: { color: _getCC().grid } },
+        y: { ticks: { color: _getCC().tick, font: { size: 10 }, callback: v => formatManwon(v) }, grid: { color: _getCC().grid } },
       },
       plugins: {
-        legend: { labels: { color: '#e2e4ea', font: { size: 10 } } },
+        legend: { labels: { color: _getCC().label, font: { size: 10 } } },
         tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${formatManwon(ctx.parsed.y)}` } },
       },
     },
