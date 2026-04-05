@@ -1963,9 +1963,11 @@ window.openFriendProfile = async function(friendId, friendName) {
   // 계정 데이터에서 별명/이름 결정
   const allAccounts = await getAccountList();
   const friendAcc = allAccounts.find(a => a.id === friendId);
-  const nickname = friendAcc?.nickname || friendName;
-  const realName = friendAcc ? friendAcc.lastName + friendAcc.firstName : friendName;
-  const maskedName = realName.charAt(0) + '***';
+  const rawNick = friendAcc?.nickname || '';
+  const realNameRaw = friendAcc ? friendAcc.lastName + friendAcc.firstName : friendName;
+  const baseName = friendAcc ? friendAcc.lastName + friendAcc.firstName.replace(/\(.*\)/, '') : friendName;
+  const nickname = (rawNick && rawNick !== baseName) ? rawNick : baseName;
+  const realName = baseName;
   const ini = nickname.charAt(0);
   const tk = dk2(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
 
@@ -2084,11 +2086,12 @@ window.openFriendProfile = async function(friendId, friendName) {
       <div style="text-align:center;padding:16px 0 8px;">
         <div style="width:56px;height:56px;border-radius:50%;background:#fff3e0;display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 6px;">🍅</div>
         ${typeof tomatoCount === 'number' ? `<div style="font-size:11px;font-weight:700;color:var(--primary);margin-bottom:6px;">Lv.${tomatoLevel}</div>` : ''}
+        ${nickname !== realName
+          ? `<div style="font-size:18px;font-weight:700;color:var(--text);">${nickname}</div>`
+          : ''}
         ${isFriend || isMyProfile
-          ? `<div style="font-size:18px;font-weight:700;color:var(--text);">${nickname}</div>
-             ${nickname !== realName ? `<div style="font-size:13px;color:var(--text-tertiary);margin-top:2px;">${realName}</div>` : ''}`
-          : `<div style="font-size:18px;font-weight:700;color:var(--text);">${nickname}</div>
-             <div style="font-size:12px;color:var(--text-tertiary);margin-top:3px;">${maskedName}</div>
+          ? `<div style="font-size:${nickname !== realName ? '13' : '18'}px;${nickname !== realName ? 'color:var(--text-tertiary);margin-top:2px;' : 'font-weight:700;color:var(--text);'}">${realName}</div>`
+          : `<div style="font-size:${nickname !== realName ? '12' : '18'}px;${nickname !== realName ? 'color:var(--text-tertiary);margin-top:3px;' : 'font-weight:700;color:var(--text);'}">${realName.charAt(0)}${'*'.repeat(realName.length - 1)}</div>
              <div style="font-size:10px;color:var(--text-tertiary);margin-top:2px;">이웃이 되면 이름을 볼 수 있어요</div>`
         }
       </div>
