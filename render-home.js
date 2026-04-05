@@ -2252,14 +2252,17 @@ async function _loadGuestbook(targetId) {
     const entries = allEntries.filter(e => e.createdAt >= todayStart.getTime());
     const user = getCurrentUser();
     const myId = user?.id;
+    const { getDataOwnerId } = await import('./data.js');
+    const myDataOwnerId = getDataOwnerId();
     if (!entries.length) {
       list.innerHTML = '<div style="text-align:center;padding:16px;font-size:12px;color:var(--text-tertiary);">오늘의 응원이 아직 없어요.<br>첫 번째 응원을 남겨보세요!</div>';
       return;
     }
     list.innerHTML = entries.slice(0, 20).map(e => {
       const isMe = e.from === myId || (e.from === '김_태우' && myId === '김_태우(guest)') || (e.from === '김_태우(guest)' && myId === '김_태우');
+      const isOwner = targetId === myId || targetId === myDataOwnerId;
       const timeAgo = _formatTimeAgo(e.createdAt);
-      const delBtn = isMe ? `<button onclick="deleteGb('${e.id}','${targetId}')" style="background:none;border:none;color:var(--text-tertiary);font-size:10px;cursor:pointer;padding:2px 4px;">삭제</button>` : '';
+      const delBtn = (isMe || isOwner) ? `<button onclick="deleteGb('${e.id}','${targetId}')" style="background:none;border:none;color:var(--text-tertiary);font-size:10px;cursor:pointer;padding:2px 4px;">삭제</button>` : '';
       return `<div style="padding:8px 0;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;gap:8px;">
         <div style="width:28px;height:28px;border-radius:50%;background:${isMe?'var(--primary)':'var(--surface3)'};color:${isMe?'#fff':'var(--text-secondary)'};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;">${(e.fromName||'?').charAt(0)}</div>
         <div style="flex:1;min-width:0;">
