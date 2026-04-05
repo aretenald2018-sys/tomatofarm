@@ -1316,6 +1316,7 @@ async function renderNutritionSearchResults() {
   const container = document.getElementById('nutrition-search-results');
 
   let html = '';
+  let allNames = new Set();
 
   if (!q) {
     const recentItems = getRecentNutritionItems(10);
@@ -1342,7 +1343,7 @@ async function renderNutritionSearchResults() {
     html += _renderNutritionSection('📊 CSV 검색 결과', dedupedCsv.slice(0, 15), { icon: '📊', isCSV: true, marginTop: true });
 
     // 먼저 CSV + DB 결과 표시 (즉시)
-    const allNames = new Set([...dbNames, ...dedupedCsv.map(c => c.name?.toLowerCase())]);
+    allNames = new Set([...dbNames, ...dedupedCsv.map(c => c.name?.toLowerCase())]);
 
     // 공공API 로딩 표시 placeholder
     html += `<div id="gov-api-results-placeholder" style="font-size:11px;color:var(--text-tertiary);text-align:center;padding:12px">🏛️ 공공 식품DB 검색 중...</div>`;
