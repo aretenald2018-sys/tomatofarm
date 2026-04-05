@@ -257,7 +257,7 @@ export async function getGuestbook(targetUserId) {
   return entries;
 }
 
-export async function writeGuestbook(targetUserId, message) {
+export async function writeGuestbook(targetUserId, message, parentId = null) {
   if (!_currentUser || !message.trim()) return { error: '메시지를 입력해주세요.' };
   const fromId = _socialId();
   const entryId = `gb_${fromId}_${targetUserId}_${Date.now()}`;
@@ -265,6 +265,7 @@ export async function writeGuestbook(targetUserId, message) {
     id: entryId, to: targetUserId, from: fromId,
     fromName: _currentUser.nickname || (_currentUser.lastName + _currentUser.firstName),
     message: message.trim(), createdAt: Date.now(),
+    ...(parentId ? { parentId } : {}),
   };
   await setDoc(doc(db, '_guestbook', entryId), entry);
   // 상대에게 알림

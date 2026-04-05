@@ -2258,22 +2258,36 @@ async function _loadGuestbook(targetId) {
       list.innerHTML = '<div style="text-align:center;padding:16px;font-size:12px;color:var(--text-tertiary);">오늘의 응원이 아직 없어요.<br>첫 번째 응원을 남겨보세요!</div>';
       return;
     }
-    list.innerHTML = entries.slice(0, 20).map(e => {
+    // 최상위 글과 리플라이 분리
+    const topEntries = entries.filter(e => !e.parentId);
+    const replies = entries.filter(e => e.parentId);
+    const replyMap = {};
+    replies.forEach(r => { (replyMap[r.parentId] = replyMap[r.parentId] || []).push(r); });
+
+    function _renderEntry(e, isReply = false) {
       const isMe = e.from === myId || (e.from === '김_태우' && myId === '김_태우(guest)') || (e.from === '김_태우(guest)' && myId === '김_태우');
       const isOwner = targetId === myId || targetId === myDataOwnerId;
       const timeAgo = _formatTimeAgo(e.createdAt);
       const delBtn = (isMe || isOwner) ? `<button onclick="deleteGb('${e.id}','${targetId}')" style="background:none;border:none;color:var(--text-tertiary);font-size:10px;cursor:pointer;padding:2px 4px;">삭제</button>` : '';
-      return `<div style="padding:8px 0;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;gap:8px;">
-        <div style="width:28px;height:28px;border-radius:50%;background:${isMe?'var(--primary)':'var(--surface3)'};color:${isMe?'#fff':'var(--text-secondary)'};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;">${(e.fromName||'?').charAt(0)}</div>
+      const replyBtn = !isReply ? `<button onclick="startGbReply('${e.id}','${(e.fromName||'').replace(/'/g,"\\'")}')" style="background:none;border:none;color:var(--text-tertiary);font-size:10px;cursor:pointer;padding:2px 4px;">답글</button>` : '';
+      return `<div style="padding:${isReply?'6':'8'}px 0;${isReply?'margin-left:36px;':''}border-bottom:1px solid var(--border);display:flex;align-items:flex-start;gap:8px;">
+        <div style="width:${isReply?'22':'28'}px;height:${isReply?'22':'28'}px;border-radius:50%;background:${isMe?'var(--primary)':'var(--surface3)'};color:${isMe?'#fff':'var(--text-secondary)'};display:flex;align-items:center;justify-content:center;font-size:${isReply?'9':'11'}px;font-weight:700;flex-shrink:0;">${(e.fromName||'?').charAt(0)}</div>
         <div style="flex:1;min-width:0;">
-          <div style="display:flex;align-items:center;gap:6px;">
-            <span style="font-size:12px;font-weight:600;color:var(--text);">${e.fromName || '익명'}</span>
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <span style="font-size:${isReply?'11':'12'}px;font-weight:600;color:var(--text);">${e.fromName || '익명'}</span>
             <span style="font-size:10px;color:var(--text-tertiary);">${timeAgo}</span>
-            ${delBtn}
+            ${replyBtn}${delBtn}
           </div>
-          <div style="font-size:13px;color:var(--text-secondary);margin-top:2px;line-height:1.4;word-break:break-word;">${e.message}</div>
+          <div style="font-size:${isReply?'12':'13'}px;color:var(--text-secondary);margin-top:2px;line-height:1.4;word-break:break-word;">${e.message}</div>
         </div>
       </div>`;
+    }
+
+    list.innerHTML = topEntries.slice(0, 20).map(e => {
+      let html = _renderEntry(e);
+      const childReplies = (replyMap[e.id] || []).sort((a,b) => a.createdAt - b.createdAt);
+      childReplies.forEach(r => { html += _renderEntry(r, true); });
+      return html;
     }).join('');
   } catch(err) {
     list.innerHTML = '<div style="text-align:center;padding:8px;font-size:12px;color:var(--text-tertiary);">불러올 수 없어요</div>';
@@ -2374,13 +2388,38 @@ window.openMyGuestbook = async function() {
   </div>`;
 };
 
+let _gbReplyParentId = null;
+
+window.startGbReply = function(parentId, fromName) {
+  _gbReplyParentId = parentId;
+  const input = document.getElementById('guestbook-input');
+  if (input) {
+    input.placeholder = `@${fromName}에게 답글`;
+    input.focus();
+  }
+  // 답글 취소 버튼 표시
+  let cancelBtn = document.getElementById('gb-reply-cancel');
+  if (!cancelBtn) {
+    cancelBtn = document.createElement('button');
+    cancelBtn.id = 'gb-reply-cancel';
+    cancelBtn.style.cssText = 'background:none;border:none;color:var(--text-tertiary);font-size:11px;cursor:pointer;padding:4px 0;';
+    cancelBtn.textContent = '답글 취소 ✕';
+    cancelBtn.onclick = () => { _gbReplyParentId = null; cancelBtn.remove(); input.placeholder = '응원 한마디 남기기'; };
+    input.parentElement.parentElement.insertBefore(cancelBtn, input.parentElement);
+  }
+};
+
 window.submitGuestbook = async function(targetId) {
   const input = document.getElementById('guestbook-input');
   if (!input || !input.value.trim()) return;
-  const result = await writeGuestbook(targetId, input.value);
+  const isReply = !!_gbReplyParentId;
+  const result = await writeGuestbook(targetId, input.value, _gbReplyParentId);
   if (result.error) { _showToast(result.error); return; }
   input.value = '';
-  _showToast('방명록을 남겼어요 📝');
+  input.placeholder = '응원 한마디 남기기';
+  _gbReplyParentId = null;
+  document.getElementById('gb-reply-cancel')?.remove();
+  _showToast(isReply ? '답글을 남겼어요 💬' : '방명록을 남겼어요 📝');
   _loadGuestbook(targetId);
 };
 
