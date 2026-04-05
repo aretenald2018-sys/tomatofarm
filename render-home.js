@@ -1748,7 +1748,9 @@ async function _renderFriendFeed() {
         emptyMsg += `<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);text-align:left;">
           <div style="font-size:13px;font-weight:500;color:var(--text-secondary);margin-bottom:10px;">알 수도 있는 이웃</div>
           ${sug.slice(0,5).map(a => {
-            const nick = a.nickname || a.lastName + '**';
+            const _raw = a.nickname || '';
+            const baseName = a.lastName + a.firstName.replace(/\(.*\)/, '');
+            const nick = (_raw && _raw !== baseName && _raw !== a.lastName + a.firstName) ? _raw : a.lastName + '**';
             return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;">
               <div style="width:36px;height:36px;border-radius:50%;background:#fff3e0;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;cursor:pointer;" onclick="openFriendProfile('${a.id}','${nick}')">🍅</div>
               <div style="flex:1;font-size:14px;font-weight:500;color:var(--text);cursor:pointer;" onclick="openFriendProfile('${a.id}','${nick}')">${nick}</div>
@@ -1809,7 +1811,9 @@ async function _renderFriendFeed() {
         suggestHtml = `<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);">
           <div style="font-size:13px;font-weight:500;color:var(--text-secondary);margin-bottom:10px;">알 수도 있는 이웃</div>
           ${suggestions.slice(0, 5).map(a => {
-            const nick = a.nickname || a.lastName + '**';
+            const _raw = a.nickname || '';
+            const baseName = a.lastName + a.firstName.replace(/\(.*\)/, '');
+            const nick = (_raw && _raw !== baseName && _raw !== a.lastName + a.firstName) ? _raw : a.lastName + '**';
             const ini2 = nick.charAt(0);
             return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;">
               <div style="width:36px;height:36px;border-radius:50%;background:#fff3e0;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;cursor:pointer;" onclick="openFriendProfile('${a.id}','${nick}')">🍅</div>
@@ -2151,7 +2155,7 @@ window.openFriendProfile = async function(friendId, friendName) {
       <!-- 방명록 -->
       <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:12px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-          <span style="font-size:13px;font-weight:500;color:var(--text-secondary);">방명록</span>
+          <span style="font-size:13px;font-weight:500;color:var(--text-secondary);">오늘의 방명록</span>
         </div>
         <div id="guestbook-list" style="max-height:160px;overflow-y:auto;margin-bottom:10px;">
           <div style="text-align:center;padding:12px;font-size:12px;color:var(--text-tertiary);">불러오는 중...</div>
@@ -2203,11 +2207,14 @@ async function _loadGuestbook(targetId) {
   const list = document.getElementById('guestbook-list');
   if (!list) return;
   try {
-    const entries = await getGuestbook(targetId);
+    const allEntries = await getGuestbook(targetId);
+    // 오늘 방명록만 필터링
+    const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+    const entries = allEntries.filter(e => e.createdAt >= todayStart.getTime());
     const user = getCurrentUser();
     const myId = user?.id;
     if (!entries.length) {
-      list.innerHTML = '<div style="text-align:center;padding:16px;font-size:12px;color:var(--text-tertiary);">아직 방명록이 없어요.<br>첫 번째 응원을 남겨보세요!</div>';
+      list.innerHTML = '<div style="text-align:center;padding:16px;font-size:12px;color:var(--text-tertiary);">오늘의 응원이 아직 없어요.<br>첫 번째 응원을 남겨보세요!</div>';
       return;
     }
     list.innerHTML = entries.slice(0, 20).map(e => {
@@ -2291,7 +2298,9 @@ window.openMyGuestbook = async function() {
   if (!user) return;
   const { isAdminGuest: isAG } = await import('./data.js');
   const myId = isAG() ? '김_태우' : user.id;
-  const entries = await getGuestbook(myId);
+  const allEntries = await getGuestbook(myId);
+  const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+  const entries = allEntries.filter(e => e.createdAt >= todayStart.getTime());
   const myName = user.lastName + user.firstName;
 
   document.getElementById('dynamic-modal')?.remove();
@@ -2299,7 +2308,7 @@ window.openMyGuestbook = async function() {
 
   let listHtml = '';
   if (!entries.length) {
-    listHtml = '<div style="text-align:center;padding:24px;font-size:13px;color:var(--text-tertiary);">아직 방명록이 없어요.<br>이웃들이 응원을 남기면 여기에 표시돼요.</div>';
+    listHtml = '<div style="text-align:center;padding:24px;font-size:13px;color:var(--text-tertiary);">오늘의 응원이 아직 없어요.<br>이웃들이 응원을 남기면 여기에 표시돼요.</div>';
   } else {
     listHtml = entries.slice(0, 30).map(e => {
       const timeAgo = _formatTimeAgo(e.createdAt);
@@ -2316,7 +2325,7 @@ window.openMyGuestbook = async function() {
   modal.innerHTML = `<div class="modal-backdrop" style="display:flex;z-index:10001;" onclick="if(event.target===this){document.getElementById('dynamic-modal')?.remove();}">
     <div class="modal-sheet" style="max-width:400px;" onclick="event.stopPropagation()">
       <div class="sheet-handle"></div>
-      <div class="modal-title" style="font-size:17px;font-weight:700;">📝 내 방명록</div>
+      <div class="modal-title" style="font-size:17px;font-weight:700;">📝 오늘의 방명록</div>
       <div style="max-height:400px;overflow-y:auto;padding:0 4px;">${listHtml}</div>
       <button onclick="document.getElementById('dynamic-modal')?.remove()" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text-secondary);font-size:13px;font-weight:600;cursor:pointer;margin-top:12px;">닫기</button>
     </div>

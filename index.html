@@ -839,42 +839,36 @@ async function initLoginScreen() {
       localStorage.setItem('dummy_cleaned_v2', 'done');
     }
 
-    // Admin/Guest 비밀번호 통일 + nickname 동기화
+    // Admin/Guest 비밀번호 통일 + nickname/firstName 완전 동기화
     const freshAccounts = await getAccountList();
-    const adminAcc2 = freshAccounts.find(a => a.id === '김_태우');
-    const guestAcc2 = freshAccounts.find(a => a.id === '김_태우(guest)');
-    // Admin의 nickname을 SSOT로, Guest에 동기화
-    if (adminAcc2 && guestAcc2 && adminAcc2.nickname && adminAcc2.nickname !== guestAcc2.nickname) {
-      guestAcc2.nickname = adminAcc2.nickname;
-    } else if (guestAcc2 && guestAcc2.nickname && adminAcc2 && !adminAcc2.nickname) {
-      adminAcc2.nickname = guestAcc2.nickname;
-    }
-    for (const a of freshAccounts) {
-      if (adminIds.includes(a.id)) {
-        a.hasPassword = true;
-        a.passwordHash = hashPassword('kimtw100');
-        await saveAccount(a);
-      }
-    }
+    let adminAcc2 = freshAccounts.find(a => a.id === '김_태우');
+    let guestAcc2 = freshAccounts.find(a => a.id === '김_태우(guest)');
+
     // 김태우(Guest) 계정이 없으면 자동 생성
-    if (!accounts.find(a => a.id === '김_태우(guest)')) {
-      const guestAccount = {
-        id: '김_태우(guest)',
-        lastName: '김',
-        firstName: '태우(Guest)',
-        hasPassword: true,
-        passwordHash: hashPassword('kimtw100'),
-        createdAt: Date.now(),
+    if (!guestAcc2) {
+      guestAcc2 = {
+        id: '김_태우(guest)', lastName: '김', firstName: '태우',
+        nickname: adminAcc2?.nickname || '', hasPassword: true,
+        passwordHash: hashPassword('kimtw100'), createdAt: Date.now(),
       };
-      await saveAccount(guestAccount);
+      await saveAccount(guestAcc2);
       console.log('[login] 김태우(Guest) 계정 자동 생성');
     }
-    // 김태우(Admin) 표시명 업데이트
-    const adminAcc = accounts.find(a => a.id === '김_태우');
-    if (adminAcc && adminAcc.firstName === '태우') {
-      adminAcc.firstName = '태우(Admin)';
-      await saveAccount(adminAcc);
-      console.log('[login] 김태우 → 김태우(Admin) 이름 업데이트');
+
+    // nickname SSOT: 둘 중 실명이 아닌 별명을 가진 쪽을 SSOT로 삼음
+    const realName = '김태우';
+    const isRealNick = (n) => !n || n === realName || n === '김태우(Admin)' || n === '김태우(Guest)';
+    const ssotNick = !isRealNick(guestAcc2?.nickname) ? guestAcc2.nickname
+                   : !isRealNick(adminAcc2?.nickname) ? adminAcc2.nickname
+                   : (guestAcc2?.nickname || adminAcc2?.nickname || '');
+    // 양쪽 동기화
+    if (adminAcc2) adminAcc2.nickname = ssotNick;
+    if (guestAcc2) guestAcc2.nickname = ssotNick;
+
+    for (const a of [adminAcc2, guestAcc2].filter(Boolean)) {
+      a.hasPassword = true;
+      a.passwordHash = hashPassword('kimtw100');
+      await saveAccount(a);
     }
   } catch(e) { console.warn('[login] pw update err:', e); }
 
