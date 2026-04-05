@@ -1311,7 +1311,7 @@ function renderNutritionSearchInitial() {
   container.innerHTML = html;
 }
 
-function renderNutritionSearchResults() {
+async function renderNutritionSearchResults() {
   const q = (document.getElementById('nutrition-search-input').value || '').trim();
   const container = document.getElementById('nutrition-search-results');
 
@@ -1341,28 +1341,16 @@ function renderNutritionSearchResults() {
     const dedupedCsv = csvResults.filter(c => !dbNames.has(c.name?.toLowerCase()));
     html += _renderNutritionSection('📊 CSV 검색 결과', dedupedCsv.slice(0, 15), { icon: '📊', isCSV: true, marginTop: true });
 
-    // 공공데이터 API 검색 결과
-    const pubResults = searchPublicFoodDB(q);
+    // 먼저 CSV + DB 결과 표시 (즉시)
     const allNames = new Set([...dbNames, ...dedupedCsv.map(c => c.name?.toLowerCase())]);
-    const dedupedPub = pubResults.filter(p => !allNames.has(p.name?.toLowerCase()));
-    if (dedupedPub.length) {
-      html += _renderNutritionSection('🏛️ 공공 식품DB', dedupedPub.slice(0, 15), { icon: '🏛️', marginTop: true });
-    } else if (_publicFoodLoading) {
-      html += `<div style="font-size:11px;color:var(--text-tertiary);text-align:center;padding:12px">🏛️ 공공 식품DB 로딩 중...</div>`;
-    }
 
-    // 농촌진흥청 메뉴젠 검색 결과
-    const agriResults = searchAgriFoodDB(q);
-    const allNames2 = new Set([...allNames, ...dedupedPub.map(p => p.name?.toLowerCase())]);
-    const dedupedAgri = agriResults.filter(a => !allNames2.has(a.name?.toLowerCase()));
-    if (dedupedAgri.length) {
-      html += _renderNutritionSection('🌾 농식품 영양DB', dedupedAgri.slice(0, 10), { icon: '🌾', marginTop: true });
-    }
+    // 공공API 로딩 표시 placeholder
+    html += `<div id="gov-api-results-placeholder" style="font-size:11px;color:var(--text-tertiary);text-align:center;padding:12px">🏛️ 공공 식품DB 검색 중...</div>`;
 
     html += _buildRecipeResultsHtml(q);
 
-    if (!recentFiltered.length && !dbResults.length && !dedupedCsv.length && !dedupedPub.length && !dedupedAgri.length && !html.includes('🍳 내 요리')) {
-      html = `<div style="font-size:12px;color:var(--text-tertiary);text-align:center;padding:16px">검색 결과 없음</div>`;
+    if (!recentFiltered.length && !dbResults.length && !dedupedCsv.length && !html.includes('🍳 내 요리')) {
+      // CSV/DB 결과 없으면 공공API 결과를 기다림 (아래에서 채워짐)
     }
   }
 
@@ -1374,6 +1362,44 @@ function renderNutritionSearchResults() {
   </div>`;
 
   container.innerHTML = html;
+
+  // 공공API 비동기 검색 (CSV/DB 결과 표시 후 추가)
+  if (q) {
+    try {
+      const govResults = await searchGovFoodAPI(q);
+      const placeholder = document.getElementById('gov-api-results-placeholder');
+      if (placeholder && govResults && govResults.length > 0) {
+        const dedupedGov = govResults.filter(g => !allNames?.has(g.name?.toLowerCase()));
+        if (dedupedGov.length > 0) {
+          // 공공API 결과를 nutrition-row 형태로 변환
+          const govItems = dedupedGov.map(g => ({
+            id: g.id,
+            name: g.name,
+            defaultWeight: g.defaultWeight || 100,
+            unit: '100g',
+            kcal: g.energy,
+            protein: g.protein,
+            fat: g.fat,
+            carbs: g.carbs,
+            _source: g.source || '공공DB',
+          }));
+          let govHtml = _renderNutritionSection(
+            '🏛️ 공공 식품DB (자연식품 포함)',
+            govItems.slice(0, 15),
+            { icon: '🏛️', marginTop: false }
+          );
+          placeholder.outerHTML = govHtml;
+        } else {
+          placeholder.remove();
+        }
+      } else if (placeholder) {
+        placeholder.remove();
+      }
+    } catch (e) {
+      console.warn('[공공API] 검색 실패:', e);
+      document.getElementById('gov-api-results-placeholder')?.remove();
+    }
+  }
 }
 
 // ── 식단 검색에서 직접 추가 → 저장 후 자동 weight 모달 ─────────────
