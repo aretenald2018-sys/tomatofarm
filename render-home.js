@@ -1979,10 +1979,9 @@ window.openFriendProfile = async function(friendId, friendName) {
     { key: 'dFoods', label: '저녁', memo: 'dinner' },
     { key: 'sFoods', label: '간식', memo: 'snack' },
   ];
+  const allLikes = (todayW && isFriend) ? await getLikes(friendId, tk) : [];
+  const getReactionCount = (field) => allLikes.filter(l => l.field === field).length;
   if (todayW) {
-    // 리액션 카운트 조회
-    const allLikes = isFriend ? await getLikes(friendId, tk) : [];
-    const getReactionCount = (field) => allLikes.filter(l => l.field === field).length;
 
     const photoKeys = { breakfast: 'bPhoto', lunch: 'lPhoto', dinner: 'dPhoto', snack: 'sPhoto' };
     meals.forEach(m => {
