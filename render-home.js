@@ -25,7 +25,8 @@ import { TODAY, getMuscles, getCF, getDiet, dietDayOk,
          getFarmState, saveFarmState, getFarmShopItems, buyFarmItem,
          placeFarmItem, removeFarmItem, moveFarmCharacter,
          getGuestbook, writeGuestbook, deleteGuestbookEntry,
-         introduceFriend, getDisplayName }  from './data.js';
+         introduceFriend, getDisplayName,
+         recordAction }  from './data.js';
 import { calcTomatoCycle, evaluateCycleResult, getQuarterKey,
          isDietDaySuccess, getDayTargetKcal as calcDayTarget }  from './calc.js';
 import { renderFarm, canvasClickToGrid }  from './farm-canvas.js';
@@ -1884,7 +1885,7 @@ async function _renderFriendFeed() {
       const myId2 = isAG2() ? '김_태우' : user?.id;
       const excludeIds = new Set([myId2, '김_태우(guest)']);
       if (isAG2()) excludeIds.add('김_태우');
-      const sug = accounts.filter(a => !excludeIds.has(a.id) && !a.id.includes('(guest)'));
+      const sug = accounts.filter(a => a.id && !excludeIds.has(a.id) && !a.id.includes('(guest)'));
       if (sug.length) {
         emptyMsg += _buildNeighborSection(sug, accounts, []);
       }
@@ -1937,7 +1938,7 @@ async function _renderFriendFeed() {
       const friendIds = new Set(friends.map(f => f.friendId));
       friendIds.add(myId);
       if (isAG()) { friendIds.add('김_태우(guest)'); friendIds.add('김_태우'); }
-      suggestList = accounts.filter(a => !friendIds.has(a.id) && !a.id.includes('(guest)'));
+      suggestList = accounts.filter(a => a.id && !friendIds.has(a.id) && !a.id.includes('(guest)'));
       if (suggestList.length > 0) {
         suggestHtml = _buildNeighborSection(suggestList, accounts, friends);
       }
@@ -1971,7 +1972,8 @@ window.openFriendManager = async function() {
         <div style="font-size:14px;font-weight:500;">${nick}</div>
         ${nick !== realName ? `<div style="font-size:11px;color:var(--text-tertiary);">${realName}</div>` : ''}
       </div>
-      <button onclick="event.stopPropagation();editFriendNickname('${f.friendId}')" style="background:none;border:none;color:var(--primary);font-size:12px;cursor:pointer;padding:4px 8px;">별명</button>
+      <button onclick="event.stopPropagation();openIntroduceFriend('${f.friendId}','${nick.replace(/'/g,"&#39;")}')" style="background:none;border:none;color:var(--seed-blue-600,#5e98fe);font-size:12px;cursor:pointer;padding:4px 8px;">소개</button>
+      <button onclick="event.stopPropagation();editFriendNickname('${f.friendId}')" style="background:none;border:none;color:var(--primary);font-size:12px;cursor:pointer;padding:4px 8px;${!isAdmin() ? 'display:none;' : ''}">별명</button>
       <button onclick="event.stopPropagation();deleteFriend('${f.reqId}')" style="background:none;border:none;color:var(--text-tertiary);font-size:12px;cursor:pointer;">삭제</button>
     </div>`;
   }).join('');
@@ -2023,12 +2025,13 @@ window.sendFriendReq = async function() {
   if (!accs.find(a => a.id === tid)) { st.innerHTML = '<span style="color:#ef4444;">해당 이름의 계정이 없어요.</span>'; return; }
   const r = await sendFriendRequest(myId, tid);
   st.innerHTML = r.error ? '<span style="color:var(--text-tertiary);">' + r.error + '</span>' : '<span style="color:var(--primary);">이웃 요청을 보냈어요!</span>';
-  if (!r.error) { document.getElementById('friend-add-last').value = ''; document.getElementById('friend-add-first').value = ''; }
+  if (!r.error) { recordAction('이웃요청'); document.getElementById('friend-add-last').value = ''; document.getElementById('friend-add-first').value = ''; }
 };
 
 window.acceptFriendReq = async function(id) {
   await acceptFriendRequest(id);
-  _showToast('🤝 이제 이웃 이웃가 되었어요!');
+  recordAction('이웃수락');
+  _showToast('🤝 이제 이웃이 되었어요!');
   renderHome();
 };
 window.rejectFriendReq = async function(id) { await removeFriend(id); renderHome(); };
@@ -2045,8 +2048,9 @@ window.quickAddNeighbor = async function(targetId) {
   _renderFriendFeed();
 };
 
-// 이웃 별명 편집
+// 이웃 별명 편집 (관리자 전용)
 window.editFriendNickname = async function(friendId) {
+  if (!isAdmin()) { _showToast('별명 변경은 관리자만 가능해요'); return; }
   const { getAccountList, saveAccount } = await import('./data.js');
   const accounts = await getAccountList();
   const acc = accounts.find(a => a.id === friendId);
@@ -2490,6 +2494,7 @@ window.confirmIntroduce = async function(idA, idB, nameA, nameB) {
   document.getElementById('introduce-modal')?.remove();
   const result = await introduceFriend(idA, idB, nameA, nameB);
   if (result.error) { _showToast(result.error); return; }
+  recordAction('이웃소개');
   _showToast(`${nameA}님과 ${nameB}님을 소개했어요! 👋`);
 };
 
@@ -2560,6 +2565,7 @@ window.submitGuestbook = async function(targetId) {
   const isReply = !!_gbReplyParentId;
   const result = await writeGuestbook(targetId, input.value, _gbReplyParentId);
   if (result.error) { _showToast(result.error); return; }
+  recordAction('방명록');
   input.value = '';
   input.placeholder = '응원 한마디 남기기';
   _gbReplyParentId = null;
@@ -2580,6 +2586,7 @@ window.sendReaction = async function(tid, dk, field, emoji) {
   if (!user) return;
   // 리액션을 _likes에 저장 (이모지 포함)
   await toggleLike(tid, dk, field, emoji);
+  recordAction('리액션');
   _showToast(`${emoji} 리액션을 보냈어요!`);
   // 프로필 모달이 열려있으면 갱신
   if (document.getElementById('dynamic-modal')) {
@@ -2624,6 +2631,7 @@ window.sendTomatoGiftFromModal = async function(friendId) {
   const msg = document.getElementById('tomato-gift-msg')?.value || '';
   const result = await sendTomatoGift(friendId, msg);
   if (result.error) { alert(result.error); return; }
+  recordAction('토마토선물');
   document.getElementById('modals-container').innerHTML = '';
   renderHome();
   refreshNotifCenter();
@@ -2716,6 +2724,8 @@ async function refreshNotifCenter() {
         </div>` : '';
     const clickAction = n.type === 'guestbook'
       ? `markNotifFromCenter('${n.id}',this);closeNotifCenter();openMyGuestbook()`
+      : n.type === 'patchnote'
+      ? `markNotifFromCenter('${n.id}',this);markPatchnoteReadFromNotif()`
       : `markNotifFromCenter('${n.id}',this)`;
     html += `<div class="notif-item${unreadCls}" onclick="${clickAction}">
       <div class="notif-icon ${iconClass}">${icon}</div>
@@ -2757,7 +2767,7 @@ window.markAllNotifsRead = async function() {
 
 window.acceptFriendFromNotif = async function(id) {
   await acceptFriendRequest(id);
-  _showToast('🤝 이제 이웃 이웃가 되었어요!');
+  _showToast('🤝 이제 이웃이 되었어요!');
   refreshNotifCenter();
   _renderFriendFeed();
 };
@@ -2766,6 +2776,20 @@ window.rejectFriendFromNotif = async function(id) {
   await removeFriend(id);
   refreshNotifCenter();
   _renderFriendFeed();
+};
+
+window.markPatchnoteReadFromNotif = async function() {
+  // 가장 최근 패치노트를 읽음 처리
+  const { getDocs, collection, getFirestore } = await import("https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js");
+  const db = getFirestore();
+  const snap = await getDocs(collection(db, '_patchnotes'));
+  const pns = []; snap.forEach(d => pns.push(d.data()));
+  pns.sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
+  if (pns.length > 0) {
+    const { markPatchnoteRead } = await import('./data.js');
+    await markPatchnoteRead(pns[0].id);
+  }
+  recordAction('패치노트읽음');
 };
 
 window.markNotifFromCenter = async function(id, el) {

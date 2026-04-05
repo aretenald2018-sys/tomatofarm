@@ -488,6 +488,50 @@ export async function introduceFriend(friendAId, friendBId, friendAName, friendB
   return { ok: true };
 }
 
+// ── 활동 추적 (관리자 대시보드용) ────────────────────────────────
+export async function recordLogin() {
+  if (!_currentUser?.id) return;
+  const uid = _currentUser.id;
+  try {
+    await setDoc(doc(db, '_accounts', uid), { lastLoginAt: Date.now() }, { merge: true });
+  } catch(e) { console.warn('[track] login:', e); }
+}
+
+export async function recordTutorialDone() {
+  if (!_currentUser?.id) return;
+  const uid = _currentUser.id;
+  try {
+    await setDoc(doc(db, '_accounts', uid), { tutorialDoneAt: Date.now() }, { merge: true });
+  } catch(e) { console.warn('[track] tutorial:', e); }
+}
+
+export async function markPatchnoteRead(patchnoteId) {
+  if (!_currentUser) return;
+  try {
+    const pnDoc = await getDoc(doc(db, '_patchnotes', patchnoteId));
+    if (!pnDoc.exists()) return;
+    const data = pnDoc.data();
+    const readBy = data.readBy || [];
+    const uid = _currentUser.id;
+    if (!readBy.includes(uid)) {
+      readBy.push(uid);
+      await setDoc(doc(db, '_patchnotes', patchnoteId), { readBy }, { merge: true });
+    }
+  } catch(e) { console.warn('[track] patchnote read:', e); }
+}
+
+export async function recordAction(action) {
+  if (!_currentUser?.id) return;
+  const uid = _currentUser.id;
+  try {
+    const accDoc = await getDoc(doc(db, '_accounts', uid));
+    const data = accDoc.exists() ? accDoc.data() : {};
+    const log = (data.actionLog || []).slice(-29); // 최근 30개만 유지
+    log.push({ action, at: Date.now() });
+    await setDoc(doc(db, '_accounts', uid), { actionLog: log }, { merge: true });
+  } catch(e) { console.warn('[track] action:', e); }
+}
+
 // ── 알림 시스템 ──────────────────────────────────────────────────
 
 export async function sendNotification(toUserId, data) {

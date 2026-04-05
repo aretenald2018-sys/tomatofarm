@@ -785,6 +785,8 @@ async function initLoginScreen() {
     if (isKimSaved) {
       // 이미 이 세션에서 인증 완료했으면 바로 진입
       if (localStorage.getItem('kim_authenticated')) {
+        const { recordLogin: rlAuto } = await import('./data.js');
+        rlAuto();
         document.getElementById('login-screen').style.display = 'none';
         document.getElementById('loading').style.display = 'flex';
         return;
@@ -819,6 +821,7 @@ async function initLoginScreen() {
           setCurrentUser(kimAcc);
           localStorage.setItem('kim_authenticated', 'true');
           backupKimAuth();
+          import('./data.js').then(m => m.recordLogin());
           lockDiv.remove();
           document.getElementById('loading').style.display = 'flex';
           location.reload();
@@ -918,6 +921,8 @@ async function initLoginScreen() {
         return;
       }
 
+      const { recordLogin: rlAuto2 } = await import('./data.js');
+      rlAuto2();
       document.getElementById('login-screen').style.display = 'none';
       document.getElementById('loading').style.display = 'flex';
       return;
@@ -1132,8 +1137,9 @@ async function createAccountAndLogin() {
       }
       setCurrentUser(found);
       localStorage.setItem('kim_authenticated', 'true');
-      const { backupKimAuth: bkAuth } = await import('./data.js');
+      const { backupKimAuth: bkAuth, recordLogin: rl1 } = await import('./data.js');
       bkAuth();
+      rl1();
       document.getElementById('login-screen').style.display = 'none';
       document.getElementById('loading').style.display = 'flex';
       location.reload();
@@ -1141,6 +1147,8 @@ async function createAccountAndLogin() {
     } else {
       // 비밀번호 없는 기존 계정 → 바로 로그인
       setCurrentUser(found);
+      const { recordLogin: rl2 } = await import('./data.js');
+      rl2();
       document.getElementById('login-screen').style.display = 'none';
       document.getElementById('loading').style.display = 'flex';
       location.reload();
@@ -1165,6 +1173,8 @@ async function createAccountAndLogin() {
 
   await saveAccount(account);
   setCurrentUser(account);
+  const { recordLogin: rl3 } = await import('./data.js');
+  rl3();
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('loading').style.display = 'flex';
   location.reload();

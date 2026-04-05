@@ -2087,6 +2087,7 @@ function _showTutorialIfNeeded() {
 
   function closeTutorial() {
     localStorage.setItem('tutorial_completed', '1');
+    import('./data.js').then(m => m.recordTutorialDone());
     const overlay = document.getElementById('tutorial-overlay');
     if (overlay) {
       overlay.classList.add('coach-fade-out');

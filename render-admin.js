@@ -71,7 +71,7 @@ export async function renderAdmin() {
     letters.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
     patchnotes.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
-    const realAccs = accs.filter(a => !a.id.includes('(guest)'));
+    const realAccs = accs.filter(a => a.id && !a.id.includes('(guest)'));
 
     // ── 핵심 지표 ──
     const totalUsers = realAccs.length;
@@ -113,6 +113,10 @@ export async function renderAdmin() {
       }
     }
 
+    // ── 최근 패치노트 읽음 현황 ──
+    const latestPatch = patchnotes[0]; // 가장 최근 패치노트
+    const patchReadSet = new Set(latestPatch?.readBy || []);
+
     // ── 사용자별 현황 조립 ──
     const userStats = realAccs.map(acc => {
       const uid = acc.id;
@@ -127,7 +131,13 @@ export async function renderAdmin() {
       const lastDay = userLastActive[uid];
       const lastActiveText = lastDay === undefined ? '14일+ 미활동'
         : lastDay === 0 ? '오늘' : lastDay === 1 ? '어제' : `${lastDay}일 전`;
-      return { uid, nick, realName, friendCount, likesSent, likesReceived, gbWritten, isActive, hasPw, lastActiveText, lastDay: lastDay ?? 999 };
+      // 추적 데이터
+      const lastLoginAt = acc.lastLoginAt || null;
+      const tutorialDoneAt = acc.tutorialDoneAt || null;
+      const patchRead = patchReadSet.has(uid);
+      const actionLog = acc.actionLog || [];
+      const recentActions = actionLog.slice(-5); // 최근 5개 행동
+      return { uid, nick, realName, friendCount, likesSent, likesReceived, gbWritten, isActive, hasPw, lastActiveText, lastDay: lastDay ?? 999, lastLoginAt, tutorialDoneAt, patchRead, recentActions };
     }).sort((a, b) => a.lastDay - b.lastDay);
 
     // 최근 리액션/방명록
@@ -188,20 +198,31 @@ export async function renderAdmin() {
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:20px;">
         <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:12px;">사용자별 현황</div>
         ${userStats.map(u => `
-          <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);">
-            <div style="width:32px;height:32px;border-radius:50%;background:${u.isActive ? '#E8F3FF' : 'var(--surface2,#F2F4F6)'};color:${u.isActive ? '#3182F6' : 'var(--text-tertiary)'};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;flex-shrink:0;">${u.nick.charAt(0)}</div>
-            <div style="flex:1;min-width:0;">
-              <div style="display:flex;align-items:center;gap:6px;">
-                <span style="font-size:13px;font-weight:600;color:var(--text);">${u.nick}</span>
-                ${u.nick !== u.realName ? `<span style="font-size:10px;color:var(--text-tertiary);">${u.realName}</span>` : ''}
-                ${u.isActive ? '<span style="width:6px;height:6px;border-radius:50%;background:#22c55e;flex-shrink:0;"></span>' : ''}
+          <div style="padding:10px 0;border-bottom:1px solid var(--border);">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div style="width:32px;height:32px;border-radius:50%;background:${u.isActive ? '#E8F3FF' : 'var(--surface2,#F2F4F6)'};color:${u.isActive ? '#3182F6' : 'var(--text-tertiary)'};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;flex-shrink:0;">${u.nick.charAt(0)}</div>
+              <div style="flex:1;min-width:0;">
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <span style="font-size:13px;font-weight:600;color:var(--text);">${u.nick}</span>
+                  ${u.nick !== u.realName ? `<span style="font-size:10px;color:var(--text-tertiary);">${u.realName}</span>` : ''}
+                  ${u.isActive ? '<span style="width:6px;height:6px;border-radius:50%;background:#22c55e;flex-shrink:0;"></span>' : ''}
+                </div>
+                <div style="font-size:11px;color:var(--text-tertiary);margin-top:2px;">
+                  ${u.lastActiveText} · 이웃 ${u.friendCount} · 리액션 ↑${u.likesSent} ↓${u.likesReceived}
+                  ${!u.hasPw ? ' · <span style="color:#f59e0b;">비번없음</span>' : ''}
+                </div>
               </div>
-              <div style="font-size:11px;color:var(--text-tertiary);margin-top:2px;">
-                ${u.lastActiveText} · 이웃 ${u.friendCount} · 리액션 ↑${u.likesSent} ↓${u.likesReceived}
-                ${!u.hasPw ? ' · <span style="color:#f59e0b;">비번없음</span>' : ''}
-              </div>
+              <button onclick="confirmDeleteUser('${u.uid}','${u.nick}')" style="flex-shrink:0;padding:6px 10px;border:1px solid #fecaca;border-radius:8px;background:#fff5f5;color:#ef4444;font-size:11px;font-weight:600;cursor:pointer;transition:all 0.15s;" onmouseover="this.style.background='#fee2e2'" onmouseout="this.style.background='#fff5f5'">삭제</button>
             </div>
-            <button onclick="confirmDeleteUser('${u.uid}','${u.nick}')" style="flex-shrink:0;padding:6px 10px;border:1px solid #fecaca;border-radius:8px;background:#fff5f5;color:#ef4444;font-size:11px;font-weight:600;cursor:pointer;transition:all 0.15s;" onmouseover="this.style.background='#fee2e2'" onmouseout="this.style.background='#fff5f5'">삭제</button>
+            <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;margin-left:42px;">
+              <span style="font-size:10px;padding:2px 8px;border-radius:999px;background:${u.lastLoginAt ? '#E8F3FF' : 'var(--surface2,#F2F4F6)'};color:${u.lastLoginAt ? '#3182F6' : 'var(--text-tertiary)'};">접속 ${u.lastLoginAt ? _fmtDate(u.lastLoginAt) : '기록없음'}</span>
+              <span style="font-size:10px;padding:2px 8px;border-radius:999px;background:${u.tutorialDoneAt ? '#ECFDF5' : '#FEF2F2'};color:${u.tutorialDoneAt ? '#059669' : '#DC2626'};">${u.tutorialDoneAt ? '코칭완료' : '코칭미완'}</span>
+              <span style="font-size:10px;padding:2px 8px;border-radius:999px;background:${u.patchRead ? '#ECFDF5' : '#FEF2F2'};color:${u.patchRead ? '#059669' : '#DC2626'};">${u.patchRead ? '패치읽음' : '패치안읽음'}</span>
+            </div>
+            ${u.recentActions.length > 0 ? `
+            <div style="margin-top:4px;margin-left:42px;display:flex;flex-wrap:wrap;gap:3px;">
+              ${u.recentActions.map(a => `<span style="font-size:9px;padding:1px 6px;border-radius:6px;background:var(--surface2,#F2F4F6);color:var(--text-tertiary);">${a.action} ${_fmtDate(a.at)}</span>`).join('')}
+            </div>` : ''}
           </div>
         `).join('')}
       </div>
