@@ -9,9 +9,9 @@ export const CONFIG = {
   get ANTHROPIC_KEY()    { return localStorage.getItem('cfg_anthropic')    || ''; },
   get ALPHAVANTAGE_KEY() { return localStorage.getItem('cfg_alphavantage') || ''; },
 
-  // 식품의약품안전처 식품영양성분 DB (data.go.kr 일반인증키)
-  FOOD_DB_KEY: '6c88b0f3a725fc2e417b0c0f655ee7e93e8314ac3467beee29e8ee4910acabf2',
-  FOOD_DB_URL: 'https://apis.data.go.kr/1471000/FoodNtrCpntDbInfo01/getFoodNtrCpntDbInq01',
+  // 식품의약품안전처 식품영양성분 DB (data.go.kr 일반인증키) — 자연식품+가공식품 모두 포함
+  FOOD_DB_KEY: 'e54c5a3ae4ee20df7abd68a1b14528ad309c2fbe25a9ab1128bf7e410414d59b',
+  FOOD_DB_URL: 'https://apis.data.go.kr/1471000/FoodNtrCpntDbInfo02/getFoodNtrCpntDbInq02',
 
   FIREBASE: {
     apiKey:            "AIzaSyCk2czvJ8DRautrUput8TLjdrArpQm7BBk",

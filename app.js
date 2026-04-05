@@ -19,7 +19,7 @@ import { loadAll, saveGoal, deleteGoal, getGoals,
          imageToBase64, getMovieData, saveMovieData, getAllMovieMonths,
          getCookingRecords,
          getCalendarRows, saveCalendarRows } from './data.js';
-import { loadCSVDatabase, searchCSVFood } from './fatsecret-api.js';
+import { loadCSVDatabase, searchCSVFood, searchGovFoodAPI } from './fatsecret-api.js';
 import { connectGoogleCalendar, disconnectGoogleCalendar, isGCalConnected,
          tryAutoConnect, syncCreateToGCal, syncUpdateToGCal, syncDeleteToGCal,
          fetchGCalEvents } from './gcal-sync.js';
@@ -1545,6 +1545,23 @@ function openFatSecretSearch(meal) {
 
 function closeFatSecretSearch(e) { _closeModal('fatsecret-modal', e); }
 
+function _renderFoodResults(foods) {
+  return foods.map((food, idx) => {
+    const isGov = (food.id || '').startsWith('gov_');
+    const sourceTag = food.source || (isGov ? '공공DB' : 'CSV');
+    const tagColor = sourceTag.includes('자연') ? '#10b981' : isGov ? '#06b6d4' : '#6b7280';
+    return `
+      <div class="fs-result-row" onclick="fatsecretSelectFoodById('${idx}')" style="cursor:pointer;padding:8px;border-bottom:1px solid var(--border);transition:background 0.2s" onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background='transparent'">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <div class="fs-result-name" style="font-weight:500">${food.name}</div>
+          <div style="font-size:9px;padding:1px 6px;border-radius:8px;background:${tagColor};color:#fff">${sourceTag}</div>
+        </div>
+        <div style="font-size:10px;color:var(--muted)">${food.manufacturer || ''}</div>
+        <div style="font-size:10px;color:var(--muted2)">에너지 ${food.energy}kcal | 단 ${food.protein}g | 지 ${food.fat}g | 탄 ${food.carbs}g</div>
+      </div>`;
+  }).join('');
+}
+
 async function fatsecretSearch() {
   const q = document.getElementById('fs-search-input').value.trim();
   if (!q) return;
@@ -1568,51 +1585,47 @@ async function fatsecretSearch() {
         }
       }
 
-      // CSV에서 검색
+      // CSV + 공공API 동시 검색 (자연식품도 함께 표시)
       const csvFoods = searchCSVFood(q);
       console.log('[CSV 검색 결과]', csvFoods.length, '개');
 
+      // CSV 결과를 먼저 표시 (즉시)
       if (csvFoods && csvFoods.length > 0) {
-        // CSV 결과 표시
-        results.innerHTML = csvFoods.map((food, idx) => {
-          const accuracy = Math.round(food.score);
-          const accuracyBar = '█'.repeat(Math.ceil(accuracy / 10)) + '░'.repeat(10 - Math.ceil(accuracy / 10));
-          return `
-            <div class="fs-result-row" onclick="fatsecretSelectFoodById('${idx}')" style="cursor:pointer;padding:8px;border-bottom:1px solid var(--border);transition:background 0.2s" onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background='transparent'">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-                <div class="fs-result-name" style="font-weight:500">${food.name}</div>
-                <div style="font-size:9px;color:var(--muted2)">CSV ${accuracy}%</div>
-              </div>
-              <div style="font-size:9px;color:var(--muted2);margin-bottom:4px">${accuracyBar}</div>
-              <div style="font-size:10px;color:var(--muted);margin-bottom:3px">제조사: ${food.manufacturer || '정보없음'}</div>
-              <div style="font-size:10px;color:var(--muted2)">에너지 ${food.energy} kcal | 단백질 ${food.protein}g</div>
-            </div>`;
-        }).join('');
+        results.innerHTML = _renderFoodResults(csvFoods);
         window._fsSearchItems = csvFoods;
-        return;
       }
-      // CSV에 없으면 계속 진행해서 FatSecret 시도
-    }
 
-    // 2️⃣ CSV 재검색 시도
-    console.log('[CSV] 재검색 시도:', q);
-    const csvFoods2 = await searchCSVFood(q);
-
-    if (!csvFoods2 || csvFoods2.length === 0) {
-      results.innerHTML = '<div style="padding:12px;text-align:center;color:var(--muted);font-size:12px">❌ 검색 결과 없음</div>';
+      // 공공API도 병렬로 검색 (자연식품 커버)
+      const govFoods = await searchGovFoodAPI(q);
+      if (govFoods && govFoods.length > 0) {
+        // 이름 중복 제거 후 합산 (공공API 자연식품 → 상단)
+        const csvNames = new Set((csvFoods || []).map(f => f.name));
+        const newGovFoods = govFoods.filter(f => !csvNames.has(f.name));
+        const combined = [...newGovFoods, ...(csvFoods || [])].slice(0, 15);
+        results.innerHTML = _renderFoodResults(combined);
+        window._fsSearchItems = combined;
+      } else if (!csvFoods || csvFoods.length === 0) {
+        results.innerHTML = '<div style="padding:12px;text-align:center;color:var(--muted);font-size:12px">검색 결과 없음</div>';
+      }
       return;
     }
 
-    // CSV 결과 표시
-    results.innerHTML = csvFoods2.map((food, idx) => {
-      return `
-        <div class="fs-result-row" onclick="fatsecretSelectFoodById('${idx}')" style="cursor:pointer;padding:8px;border-bottom:1px solid var(--border);transition:background 0.2s" onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background='transparent'">
-          <div class="fs-result-name" style="font-weight:500">${food.name}</div>
-          <div style="font-size:10px;color:var(--muted2)">🇰🇷 CSV 데이터 | ${food.manufacturer || '기타'}</div>
-        </div>`;
-    }).join('');
+    // 2️⃣ 영문 등 비한국어 → CSV 검색 + 공공API fallback
+    const csvFoods2 = searchCSVFood(q);
+    if (csvFoods2 && csvFoods2.length > 0) {
+      results.innerHTML = _renderFoodResults(csvFoods2);
+      window._fsSearchItems = csvFoods2;
+      return;
+    }
 
-    window._fsSearchItems = csvFoods2;
+    results.innerHTML = '<div style="padding:12px;text-align:center;color:var(--muted);font-size:12px">공공DB 검색 중...</div>';
+    const govFoods2 = await searchGovFoodAPI(q);
+    if (!govFoods2 || govFoods2.length === 0) {
+      results.innerHTML = '<div style="padding:12px;text-align:center;color:var(--muted);font-size:12px">검색 결과 없음</div>';
+      return;
+    }
+    results.innerHTML = _renderFoodResults(govFoods2);
+    window._fsSearchItems = govFoods2;
   } catch(e) {
     console.error('[검색 오류]', e);
     results.innerHTML = `<div style="padding:12px;color:var(--diet-bad);font-size:12px">❌ 오류: ${e.message}</div>`;
@@ -1632,9 +1645,9 @@ async function fatsecretSelectFoodById(idx) {
   const selectedName = document.getElementById('fs-selected-name');
   if (selectedName) selectedName.textContent = `🍽️ ${food.name}`;
 
-  // 💡 CSV 또는 FatSecret 데이터 구분
-  // ✅ CSV 데이터만 지원
-  console.log('[CSV 선택]', food.name);
+  // 💡 CSV / 공공API 데이터 모두 지원
+  const isGov = (food.id || '').startsWith('gov_');
+  console.log(`[${isGov ? '공공API' : 'CSV'} 선택]`, food.name);
   const nutrition = {
     kcal: food.energy,
     protein: food.protein,
@@ -1643,13 +1656,14 @@ async function fatsecretSelectFoodById(idx) {
   };
 
   // 영양정보 표시 (100g 기준)
+  const sourceLabel = isGov ? (food.source || '공공DB') : 'CSV 데이터';
   const nutritionPreview = document.getElementById('fs-nutrition-preview');
   if (nutritionPreview) {
     nutritionPreview.innerHTML = `
-      <strong>🇰🇷 CSV 데이터</strong><br>
+      <strong>${sourceLabel}</strong><br>
       100g 기준: <strong>${nutrition.kcal}kcal</strong> |
       단백질 ${nutrition.protein}g | 지방 ${nutrition.fat}g | 탄수화물 ${nutrition.carbs}g
-      ${food.manufacturer ? `<br><strong>제조사:</strong> ${food.manufacturer}` : ''}
+      ${food.manufacturer ? `<br><strong>${isGov ? '출처' : '제조사'}:</strong> ${food.manufacturer}` : ''}
     `;
   }
 

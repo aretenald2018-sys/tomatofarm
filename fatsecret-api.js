@@ -1,6 +1,7 @@
 // ================================================================
 // fatsecret-api.js — Claude + CSV RAG Integration
 // ================================================================
+import { CONFIG } from './config.js';
 
 // ========== CSV 데이터 로딩 ==========
 let csvFoodDatabase = null;
@@ -145,5 +146,70 @@ export function searchCSVFood(searchTerm) {
   }
 
   return results.slice(0, 10); // 상위 10개만 반환
+}
+
+// ========== 공공데이터포털 식품영양성분 API (자연식품 포함) ==========
+
+/**
+ * 공공데이터포털 API로 식품 검색 (자연식품 + 가공식품 모두 포함)
+ * CSV에 없는 원재료(우둔살, 닭가슴살 등) 검색 시 사용
+ */
+export async function searchGovFoodAPI(searchTerm) {
+  try {
+    // data.go.kr 직접 호출 (CORS 허용됨)
+    const params = new URLSearchParams({
+      serviceKey: CONFIG.FOOD_DB_KEY,
+      FOOD_NM_KR: searchTerm,
+      pageNo: '1',
+      numOfRows: '20',
+      type: 'json',
+    });
+    const url = `${CONFIG.FOOD_DB_URL}?${params.toString()}`;
+    console.log('[공공API] 검색:', searchTerm);
+
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    const items = data?.body?.items;
+    if (!items || items.length === 0) return [];
+
+    // 중복 제거 + 매핑
+    const seen = new Set();
+    const results = [];
+
+    for (const item of items) {
+      const name = item.FOOD_NM_KR || '';
+      if (seen.has(name)) continue;
+      seen.add(name);
+
+      const isRaw = item.DB_GRP_NM === '원재료성';
+      const foodName = name;
+      results.push({
+        id: `gov_${encodeURIComponent(name)}`,
+        name: foodName,
+        manufacturer: item.MAKER_NM || (isRaw ? '자연식품' : ''),
+        energy:  parseFloat(item.AMT_NUM1)  || 0,   // kcal
+        protein: parseFloat(item.AMT_NUM3)  || 0,   // 단백질(g)
+        fat:     parseFloat(item.AMT_NUM4)  || 0,   // 지방(g)
+        carbs:   parseFloat(item.AMT_NUM6)  || 0,   // 탄수화물(g)
+        sodium:  parseFloat(item.AMT_NUM13) || 0,   // 나트륨(mg)
+        calcium: 0,
+        iron: 0,
+        defaultWeight: _estimateServingSize(foodName),
+        score: isRaw ? 95 : 85,  // 원재료 우선 표시
+        source: isRaw ? '자연식품(공공DB)' : '가공식품(공공DB)',
+        rawData: item,
+      });
+    }
+
+    // 원재료(자연식품)를 상위에 배치
+    results.sort((a, b) => b.score - a.score);
+    console.log(`[공공API] 결과: ${results.length}개`);
+    return results.slice(0, 10);
+  } catch (err) {
+    console.error('[공공API] 검색 실패:', err);
+    return [];
+  }
 }
 

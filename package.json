@@ -23,9 +23,11 @@
     "puppeteer": "^24.40.0"
   },
   "engines": {
-    "node": "18.x"
+    "node": "24.x"
   },
   "devDependencies": {
+    "@seed-design/icon": "^0.6.2",
+    "sharp": "^0.34.5",
     "typescript": "^6.0.2"
   }
 }
