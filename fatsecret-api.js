@@ -150,11 +150,42 @@ export function searchCSVFood(searchTerm) {
 
 // ========== 공공데이터포털 식품영양성분 API (자연식품 포함) ==========
 
+// 검색 결과 캐시 (sessionStorage + 메모리)
+const _govFoodCache = {};
+const _GOV_CACHE_KEY = 'govFoodCache';
+const _GOV_CACHE_TTL = 24 * 60 * 60 * 1000; // 24시간
+
+function _loadGovCache() {
+  try {
+    const raw = sessionStorage.getItem(_GOV_CACHE_KEY);
+    if (!raw) return;
+    const { ts, data } = JSON.parse(raw);
+    if (Date.now() - ts < _GOV_CACHE_TTL) {
+      Object.assign(_govFoodCache, data);
+      console.log(`[공공API] 캐시 복원: ${Object.keys(data).length}개 검색어`);
+    }
+  } catch {}
+}
+_loadGovCache();
+
+function _saveGovCache() {
+  try {
+    sessionStorage.setItem(_GOV_CACHE_KEY, JSON.stringify({ ts: Date.now(), data: _govFoodCache }));
+  } catch {}
+}
+
 /**
  * 공공데이터포털 API로 식품 검색 (자연식품 + 가공식품 모두 포함)
  * CSV에 없는 원재료(우둔살, 닭가슴살 등) 검색 시 사용
+ * 결과는 메모리 + sessionStorage에 캐시 (같은 검색어 즉시 반환)
  */
 export async function searchGovFoodAPI(searchTerm) {
+  // 캐시 히트 → 즉시 반환
+  if (_govFoodCache[searchTerm]) {
+    console.log(`[공공API] 캐시 히트: "${searchTerm}" (${_govFoodCache[searchTerm].length}개)`);
+    return _govFoodCache[searchTerm];
+  }
+
   try {
     // data.go.kr 직접 호출 (CORS 허용됨)
     const params = new URLSearchParams({
@@ -205,8 +236,13 @@ export async function searchGovFoodAPI(searchTerm) {
 
     // 원재료(자연식품)를 상위에 배치
     results.sort((a, b) => b.score - a.score);
-    console.log(`[공공API] 결과: ${results.length}개`);
-    return results.slice(0, 10);
+    const sliced = results.slice(0, 10);
+
+    // 캐시 저장 (rawData 제외 — 용량 절약)
+    _govFoodCache[searchTerm] = sliced.map(({ rawData, ...rest }) => rest);
+    _saveGovCache();
+    console.log(`[공공API] 결과: ${sliced.length}개 (캐시 저장됨)`);
+    return sliced;
   } catch (err) {
     console.error('[공공API] 검색 실패:', err);
     return [];
