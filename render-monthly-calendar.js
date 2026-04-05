@@ -218,7 +218,7 @@ function _buildDayCell(info) {
   return cell;
 }
 
-// ── 이벤트 바 행 ─────────────────────────────────────────────────
+// ── 이벤트 바/화살표 행 ─────────────────────────────────────────
 function _buildEventsRow(week, events) {
   const validDays = week.filter(d => !d.empty);
   if (!validDays.length) return null;
@@ -228,11 +228,9 @@ function _buildEventsRow(week, events) {
   const overlap   = events.filter(ev => ev.start <= weekEnd && ev.end >= weekStart);
   if (!overlap.length) return null;
 
-  // 날짜 → 열 인덱스 (0-6)
   const dateToIdx = {};
   week.forEach((d, i) => { if (!d.empty) dateToIdx[d.dateStr] = i; });
 
-  // 트랙 배정 (겹치지 않게)
   const tracks = [];
   const evTracks = overlap.map(ev => {
     const s = ev.start > weekStart ? ev.start : weekStart;
@@ -245,7 +243,7 @@ function _buildEventsRow(week, events) {
     tracks.push([{s,e}]); return tracks.length - 1;
   });
 
-  const BAR_H = 22, BAR_GAP = 2;
+  const BAR_H = 20, BAR_GAP = 2;
   const totalH = tracks.length * (BAR_H + BAR_GAP);
 
   const row = document.createElement('div');
@@ -260,26 +258,40 @@ function _buildEventsRow(week, events) {
     const pctW   = ((colE - colS + 1) / 7) * 100;
     const isStart= ev.start >= weekStart;
     const isEnd  = ev.end   <= weekEnd;
+    const color  = ev.color || '#f59e0b';
+    const evMode = ev.displayMode || 'bar';
 
-    const bar = document.createElement('div');
-    bar.className = 'monthly-event-bar';
-    bar.style.cssText = [
-      `left:calc(${pctL}% + 1px)`,
-      `width:calc(${pctW}% - 2px)`,
-      `top:${track*(BAR_H+BAR_GAP)}px`,
-      `height:${BAR_H}px`,
-      `background:${ev.color||'#f59e0b'}`,
-      `border-radius:${isStart?'4px':'0'} ${isEnd?'4px':'0'} ${isEnd?'4px':'0'} ${isStart?'4px':'0'}`,
-    ].join(';');
+    if (evMode === 'arrow') {
+      const el = document.createElement('div');
+      el.className = 'monthly-event-arrow';
+      el.style.cssText = `left:calc(${pctL}% + 4px);width:calc(${pctW}% - 8px);top:${track*(BAR_H+BAR_GAP) + BAR_H/2 - 1}px;height:${BAR_H}px;align-items:center;`;
 
-    const prefix = !isStart ? '← ' : '';
-    const suffix = !isEnd   ? ' →' : '';
-    bar.innerHTML = `<span class="event-bar-title">${prefix}${ev.title}${suffix}</span>`;
-    bar.addEventListener('click', e => {
-      e.stopPropagation();
-      window.openCalEventModal(ev.start, ev.end, ev.id);
-    });
-    row.appendChild(bar);
+      let html = '';
+      if (isStart) html += `<div class="event-arrow-dot" style="background:${color}"></div>`;
+      html += `<div class="event-arrow-line" style="background:${color}"><span class="event-arrow-label" style="color:${color}">${ev.title}</span></div>`;
+      if (isEnd) html += `<div class="event-arrow-head" style="border-left:6px solid ${color}"></div>`;
+
+      el.innerHTML = html;
+      el.addEventListener('click', e => { e.stopPropagation(); window.openCalEventModal(ev.start, ev.end, ev.id); });
+      row.appendChild(el);
+    } else {
+      const bar = document.createElement('div');
+      bar.className = 'monthly-event-bar';
+      bar.style.cssText = [
+        `left:calc(${pctL}% + 1px)`,
+        `width:calc(${pctW}% - 2px)`,
+        `top:${track*(BAR_H+BAR_GAP)}px`,
+        `height:${BAR_H}px`,
+        `background:${color}`,
+        `border-radius:${isStart?'4px':'0'} ${isEnd?'4px':'0'} ${isEnd?'4px':'0'} ${isStart?'4px':'0'}`,
+      ].join(';');
+
+      const prefix = !isStart ? '← ' : '';
+      const suffix = !isEnd   ? ' →' : '';
+      bar.innerHTML = `<span class="event-bar-title">${prefix}${ev.title}${suffix}</span>`;
+      bar.addEventListener('click', e => { e.stopPropagation(); window.openCalEventModal(ev.start, ev.end, ev.id); });
+      row.appendChild(bar);
+    }
   });
 
   return row;
@@ -291,7 +303,7 @@ function _initDrag(calWrap) {
 
   function getDate(el) {
     const d = el?.closest?.('[data-date]')?.dataset?.date || null;
-    return (d && d <= todayStr) ? d : null;  // 미래 날짜 무시
+    return d || null;
   }
   function highlight(s, e) {
     const lo = s<=e?s:e, hi = s<=e?e:s;

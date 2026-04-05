@@ -278,31 +278,46 @@ function _scheduleRow(year, m, days) {
       const isRealStart = ev.start >= mStart;
       const isRealEnd   = ev.end <= mEnd;
 
-      bar.style.cssText = [
-        `position:absolute`,
-        `left:0`,
-        `width:calc(${span * 100}% + ${span}px)`,
-        `top:${BAR_GAP + track * (BAR_H + BAR_GAP)}px`,
-        `height:${BAR_H}px`,
-        `background:${ev.color || '#f59e0b'}`,
-        `border-radius:${isRealStart ? '4px' : '0'} ${isRealEnd ? '4px' : '0'} ${isRealEnd ? '4px' : '0'} ${isRealStart ? '4px' : '0'}`,
-        `pointer-events:auto`,
-        `cursor:pointer`,
-        `display:flex`,
-        `align-items:center`,
-        `overflow:hidden`,
-        `transition:opacity .12s`,
-        `z-index:2`,
-      ].join(';');
+      const color = ev.color || '#f59e0b';
+      const evMode = ev.displayMode || 'bar';
 
-      const prefix = !isRealStart ? '← ' : '';
-      const suffix = !isRealEnd ? ' →' : '';
-      bar.innerHTML = `<span class="event-bar-title" style="padding-left: 4px;">${prefix}${ev.title}${suffix}</span>`;
-      bar.addEventListener('click', e => {
-        e.stopPropagation();
-        window.openCalEventModal(ev.start, ev.end, ev.id);
-      });
-      container.appendChild(bar);
+      if (evMode === 'arrow') {
+        const arrow = document.createElement('div');
+        arrow.className = 'schedule-event-arrow';
+        arrow.style.cssText = [
+          `position:absolute`, `left:4px`,
+          `width:calc(${span * 100}% + ${span - 8}px)`,
+          `top:${BAR_GAP + track * (BAR_H + BAR_GAP) + BAR_H/2 - 1}px`,
+          `height:${BAR_H}px`, `display:flex`, `align-items:center`,
+          `pointer-events:auto`, `cursor:pointer`, `z-index:2`,
+        ].join(';');
+
+        let html = '';
+        if (isRealStart) html += `<div class="event-arrow-dot" style="background:${color}"></div>`;
+        html += `<div class="event-arrow-line" style="background:${color}"><span class="event-arrow-label" style="color:${color}">${ev.title}</span></div>`;
+        if (isRealEnd) html += `<div class="event-arrow-head" style="border-left:6px solid ${color}"></div>`;
+
+        arrow.innerHTML = html;
+        arrow.addEventListener('click', e => { e.stopPropagation(); window.openCalEventModal(ev.start, ev.end, ev.id); });
+        container.appendChild(arrow);
+      } else {
+        bar.style.cssText = [
+          `position:absolute`, `left:0`,
+          `width:calc(${span * 100}% + ${span}px)`,
+          `top:${BAR_GAP + track * (BAR_H + BAR_GAP)}px`,
+          `height:${BAR_H}px`,
+          `background:${color}`,
+          `border-radius:${isRealStart ? '4px' : '0'} ${isRealEnd ? '4px' : '0'} ${isRealEnd ? '4px' : '0'} ${isRealStart ? '4px' : '0'}`,
+          `pointer-events:auto`, `cursor:pointer`, `display:flex`,
+          `align-items:center`, `overflow:hidden`, `transition:opacity .12s`, `z-index:2`,
+        ].join(';');
+
+        const prefix = !isRealStart ? '← ' : '';
+        const suffix = !isRealEnd ? ' →' : '';
+        bar.innerHTML = `<span class="event-bar-title" style="padding-left: 4px;">${prefix}${ev.title}${suffix}</span>`;
+        bar.addEventListener('click', e => { e.stopPropagation(); window.openCalEventModal(ev.start, ev.end, ev.id); });
+        container.appendChild(bar);
+      }
     });
 
     td.appendChild(container);

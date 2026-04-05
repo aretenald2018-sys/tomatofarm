@@ -97,6 +97,9 @@ async function initializeApp() {
     .then(() => console.log('[app] CSV 데이터 백그라운드 로드 완료'))
     .catch(e => console.warn('[app] CSV 로드 실패:', e));
 
+  // 이벤트 표시 모드 토글 초기화
+  _updateEventViewToggle();
+
   // Google Calendar 자동 재연결
   tryAutoConnect().then(ok => {
     if (ok) { console.log('[app] Google Calendar 자동 연결 성공'); syncGCalNow(); }
@@ -125,7 +128,7 @@ function switchTab(tab) {
   if (panel) panel.classList.add('active');
   if (tab === 'home')     renderHome();
   if (tab === 'stats')    renderStats();
-  if (tab === 'calendar') renderCalendar();
+  if (tab === 'calendar') { renderCalendar(); if (isGCalConnected()) syncGCalNow(); }
   if (tab === 'wine')     renderWine();
   if (tab === 'dev')      renderDev();
   if (tab === 'cooking')  renderCooking();
@@ -514,15 +517,18 @@ async function deleteStockPurchaseFromModal() {
 // ── 캘린더 이벤트 모달 ───────────────────────────────────────────
 let _calEventId = null;
 let _calEventColor = '#f59e0b';
+let _calEventStyle = 'bar';
 
 function openCalEventModal(startDate, endDate, eventId) {
   _calEventId    = eventId || null;
   _calEventColor = '#f59e0b';
+  _calEventStyle = localStorage.getItem('event_view_mode') || 'bar'; // 신규 이벤트 기본값
 
   if (eventId) {
     const ev = getEvents().find(e => e.id === eventId);
     if (ev) {
       _calEventColor = ev.color || '#f59e0b';
+      _calEventStyle = ev.displayMode || 'bar';
       document.getElementById('cal-event-title').value = ev.title || '';
       document.getElementById('cal-event-start').value = ev.start || startDate;
       document.getElementById('cal-event-end').value   = ev.end   || endDate;
@@ -542,6 +548,7 @@ function openCalEventModal(startDate, endDate, eventId) {
     s.classList.toggle('selected', s.dataset.color === _calEventColor);
   });
   document.getElementById('cal-event-modal').classList.add('open');
+  _updateEventStyleBtns();
 }
 
 function closeCalEventModal(e) { _closeModal('cal-event-modal', e); }
@@ -563,9 +570,18 @@ async function saveCalEventFromModal() {
 
   const isNew = !_calEventId;
   const existing = isNew ? null : getEvents().find(e => e.id === _calEventId);
+
+  // 시간 정보 분리: "영화모임 다섯시반" → title:"영화모임", startTime:"17:30"
+  const { parseTimeFromTitle } = await import('./gcal-sync.js');
+  const timeParsed = parseTimeFromTitle(title);
+  const cleanTitle = timeParsed?.cleanTitle || title;
+  const startTime = timeParsed ? `${String(timeParsed.hour).padStart(2,'0')}:${String(timeParsed.minute).padStart(2,'0')}` : (existing?.startTime || null);
+
   const ev = {
     id:    _calEventId || `ev_${Date.now()}`,
-    title, start, end, color: _calEventColor,
+    title: cleanTitle, start, end, color: _calEventColor,
+    displayMode: _calEventStyle,
+    startTime,
     gcalId: existing?.gcalId || null,
   };
   await saveEvent(ev);
@@ -612,6 +628,38 @@ function openMonthlyCalendarModal(year, month) {
 }
 
 function closeMonthlyCalendarModal(e) { _closeModal('monthly-calendar-modal', e); }
+
+// ── 이벤트 표시 모드 전환 (바 ↔ 화살표) ─────────────────────────
+function toggleEventViewMode() {
+  const current = localStorage.getItem('event_view_mode') || 'bar';
+  const next = current === 'bar' ? 'arrow' : 'bar';
+  localStorage.setItem('event_view_mode', next);
+  _updateEventViewToggle();
+  renderCalendar();
+  renderMonthlyCalendar();
+}
+
+function _updateEventViewToggle() {
+  const btn = document.getElementById('event-view-toggle');
+  if (!btn) return;
+  const mode = localStorage.getItem('event_view_mode') || 'bar';
+  btn.textContent = mode === 'bar' ? '━ 바' : '→ 선';
+}
+
+function _updateEventStyleBtns() {
+  const barBtn = document.getElementById('evt-style-bar');
+  const arrowBtn = document.getElementById('evt-style-arrow');
+  if (barBtn) barBtn.style.borderColor = _calEventStyle === 'bar' ? 'var(--accent)' : 'var(--border)';
+  if (arrowBtn) arrowBtn.style.borderColor = _calEventStyle === 'arrow' ? 'var(--accent)' : 'var(--border)';
+}
+
+function setEventViewFromModal(mode) {
+  _calEventStyle = mode;
+  // 새 이벤트의 기본값도 업데이트
+  localStorage.setItem('event_view_mode', mode);
+  _updateEventStyleBtns();
+  _updateEventViewToggle();
+}
 
 // CSV 내보내기 ─────────────────────────────────────────────────
 function openExportModal() {
@@ -756,14 +804,24 @@ async function syncGCalNow() {
     const appEvents = getEvents();
 
     // Google Calendar에만 있는 이벤트 → 앱에 추가
+    // + 제목에 시간이 포함되어 있으면 cleanTitle로 GCal 제목도 업데이트
+    const { parseTimeFromTitle } = await import('./gcal-sync.js');
     for (const ge of gcalEvents) {
       const existing = appEvents.find(ae => ae.gcalId === ge.gcalId || ae.id === ge.id);
       if (!existing) {
         await saveEvent(ge);
+        // 제목에서 시간 파싱됐거나 시간 오버라이드 → GCal 제목+시간 정리
+        if (ge.gcalId && (ge._timeOverride || ge.startTime)) {
+          await syncUpdateToGCal(ge);
+        }
       } else {
-        // Google Calendar 쪽이 더 최신이면 업데이트
-        if (existing.title !== ge.title || existing.start !== ge.start || existing.end !== ge.end) {
-          await saveEvent({ ...existing, title: ge.title, start: ge.start, end: ge.end, color: ge.color, gcalId: ge.gcalId });
+        const changed = existing.title !== ge.title || existing.start !== ge.start || existing.end !== ge.end || existing.startTime !== ge.startTime;
+        if (changed) {
+          const updated = { ...existing, title: ge.title, start: ge.start, end: ge.end, color: ge.color, gcalId: ge.gcalId, startTime: ge.startTime || existing.startTime };
+          await saveEvent(updated);
+          if (ge.gcalId && (ge._timeOverride || ge.startTime)) {
+            await syncUpdateToGCal(updated);
+          }
         }
       }
     }
@@ -1753,6 +1811,8 @@ window.renderAll                = renderAll;
 window.renderHome               = renderHome;
 window.switchTab                = switchTab;
 window.changeYear               = changeYear;
+window.toggleEventViewMode      = toggleEventViewMode;
+window.setEventViewFromModal    = setEventViewFromModal;
 window.changeMonthlyMonth       = changeMonthlyMonth;
 window.setPeriod                = setPeriod;
 window.getDietRec               = getDietRec;
@@ -2072,23 +2132,16 @@ function installPWA() {
 
 // openSettingsModal에서 설치 버튼 표시 업데이트
 const _origOpenSettings = openSettingsModal;
-function _patchedOpenSettings() {
-  _origOpenSettings();
-  const section = document.getElementById('pwa-install-section');
-  if (section) {
-    // 이미 standalone 모드(설치됨)이면 숨김
-    const isInstalled = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
-    section.style.display = (_deferredInstallPrompt || !isInstalled) && !isInstalled ? 'none' : 'none';
-    // beforeinstallprompt가 캐치되었거나, 아직 standalone이 아니면 표시
-    if (_deferredInstallPrompt) {
-      section.style.display = 'block';
-    } else if (!isInstalled) {
-      // 프롬프트 없지만 미설치 → 수동 안내용으로 표시
-      section.style.display = 'block';
+window.openSettingsModal = function() {
+  try { _origOpenSettings(); } catch(e) { console.error(e); document.getElementById('settings-modal')?.classList.add('open'); }
+  try {
+    const section = document.getElementById('pwa-install-section');
+    if (section) {
+      const isInstalled = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+      section.style.display = _deferredInstallPrompt ? 'block' : (!isInstalled ? 'block' : 'none');
     }
-  }
-}
-window.openSettingsModal = _patchedOpenSettings;
+  } catch(e) { console.error(e); }
+};
 
 // ── 앱 초기화 ────────────────────────────────────────────────
 window.addEventListener('load', initializeApp);
