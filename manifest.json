@@ -1,10 +1,10 @@
 {
-  "id": "/dashboard3/",
+  "id": "/tomatofarm/",
   "name": "토마토 키우기",
   "short_name": "토마토",
   "description": "운동과 식단을 기록하고 토마토를 키우는 건강 관리 앱",
-  "start_url": "/dashboard3/",
-  "scope": "/dashboard3/",
+  "start_url": "/tomatofarm/",
+  "scope": "/tomatofarm/",
   "display": "standalone",
   "orientation": "portrait",
   "theme_color": "#ffffff",

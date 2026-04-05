@@ -1170,7 +1170,7 @@ function toggleMoreMenu() {
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     console.log('[PWA] Service Worker 등록 시도 중...');
-    navigator.serviceWorker.register('sw.js', { scope: '/dashboard3/' })
+    navigator.serviceWorker.register('sw.js', { scope: '/tomatofarm/' })
       .then(registration => {
         console.log('[PWA] Service Worker 등록 성공:', registration);
         console.log('[PWA] Service Worker 상태 - Active:', !!registration.active, 'Installing:', !!registration.installing, 'Waiting:', !!registration.waiting);

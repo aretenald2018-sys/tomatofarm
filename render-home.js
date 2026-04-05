@@ -1770,12 +1770,10 @@ async function _renderFriendFeed() {
       const name = nick; // 피드에는 별명만
       const ini = nick.charAt(0);
       const w = await getFriendWorkout(f.friendId, tk);
-      const fLikes = await getLikes(f.friendId, tk);
-      const fReactCnt = (field) => { const c = fLikes.filter(l => l.field === field).length; return c > 0 ? `<span style="font-size:10px;font-weight:600;color:var(--primary);margin-right:2px;">${c}</span>` : ''; };
       let items = '';
       if (w) {
         if ((w.muscles || []).length > 0) {
-          items += '<div class="friend-feed-item"><span>🏋️ ' + (w.muscles || []).slice(0, 3).join(', ') + '</span>' + fReactCnt('workout') + '<button class="friend-like-btn" onclick="showReactionPicker(this,\'' + f.friendId + '\',\'' + tk + '\',\'workout\')">🤍</button></div>';
+          items += '<div class="friend-feed-item"><span>🏋️ ' + (w.muscles || []).slice(0, 3).join(', ') + '</span></div>';
         }
         const diet = w.diet || {};
         ['breakfast','lunch','dinner','snack'].forEach(meal => {
@@ -1784,7 +1782,7 @@ async function _renderFriendFeed() {
             const foods = (md.foods || []).map(x => x.name).join(', ').slice(0, 30);
             const kcal = (md.foods || []).reduce((s, x) => s + (x.kcal || 0), 0);
             const lb = {breakfast:'🌅',lunch:'☀️',dinner:'🌙',snack:'🥤'}[meal];
-            items += '<div class="friend-feed-item"><span>' + lb + ' ' + (foods || md.memo || '') + (kcal ? ' (' + kcal + 'kcal)' : '') + '</span>' + fReactCnt('meal_' + meal) + '<button class="friend-like-btn" onclick="showReactionPicker(this,\'' + f.friendId + '\',\'' + tk + '\',\'meal_' + meal + '\')">🤍</button></div>';
+            items += '<div class="friend-feed-item"><span>' + lb + ' ' + (foods || md.memo || '') + (kcal ? ' (' + kcal + 'kcal)' : '') + '</span></div>';
           }
         });
       }

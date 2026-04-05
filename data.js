@@ -535,21 +535,42 @@ export async function loadAll() {
       }
     }
 
-    const snap = await getDocs(_col('workouts'));
+    // ── 모든 Firestore 쿼리를 병렬로 실행 ──
+    const [snap, exSnap, goalSnap, wineSnap, questSnap, eventSnap,
+           cookSnap, checkinSnap, nutritionSnap,
+           finBenchSnap, finActSnap, finLoanSnap, finPosSnap, finPlanSnap, finBudgetSnap,
+           movieSnap, tomatoSnap, settingsSnap] = await Promise.all([
+      getDocs(_col('workouts')),
+      getDocs(_col('exercises')),
+      getDocs(_col('goals')),
+      getDocs(_col('wines')),
+      getDocs(_col('quests')),
+      getDocs(_col('cal_events')),
+      getDocs(_col('cooking')),
+      getDocs(_col('body_checkins')),
+      getDocs(_col('nutrition_db')),
+      getDocs(_col('finance_benchmarks')),
+      getDocs(_col('finance_actuals')),
+      getDocs(_col('finance_loans')),
+      getDocs(_col('finance_positions')),
+      getDocs(_col('finance_plans')),
+      getDocs(_col('finance_budgets')),
+      getDocs(_col('movies')),
+      getDocs(_col('tomato_cycles')),
+      getDocs(_col('settings')),
+    ]);
+
     snap.forEach(d => { _cache[d.id] = d.data(); });
 
-    const exSnap = await getDocs(_col('exercises'));
     const custom = [];
     exSnap.forEach(d => custom.push(d.data()));
     const customIds = new Set(custom.map(e => e.id));
     const defaults  = CONFIG.DEFAULT_EXERCISES.filter(e => !customIds.has(e.id));
     _exList = _sortExList([...defaults, ...custom]);
 
-    const goalSnap = await getDocs(_col('goals'));
     _goals = [];
     goalSnap.forEach(d => _goals.push(d.data()));
 
-    const wineSnap = await getDocs(_col('wines'));
     _wines = [];
     wineSnap.forEach(d => _wines.push(d.data()));
     // 김_태우만 초기 와인 데이터 삽입 (다른 계정은 빈 상태로 시작)
@@ -558,28 +579,22 @@ export async function loadAll() {
       _wines = [...INITIAL_WINES];
     }
 
-    const questSnap = await getDocs(_col('quests'));
     _quests = [];
     questSnap.forEach(d => _quests.push(d.data()));
 
-    const eventSnap = await getDocs(_col('cal_events'));
     _events = [];
     eventSnap.forEach(d => _events.push(d.data()));
 
-    const cookSnap = await getDocs(_col('cooking'));
     _cooking = [];
     cookSnap.forEach(d => _cooking.push(d.data()));
 
-    const checkinSnap = await getDocs(_col('body_checkins'));
     _bodyCheckins = [];
     checkinSnap.forEach(d => _bodyCheckins.push(d.data()));
 
-    const nutritionSnap = await getDocs(_col('nutrition_db'));
     _nutritionDB = [];
     nutritionSnap.forEach(d => _nutritionDB.push(d.data()));
 
-    // ── 재무 데이터 로드 ──
-    const finBenchSnap = await getDocs(_col('finance_benchmarks'));
+    // ── 재무 데이터 처리 ──
     _finBenchmarks = [];
     finBenchSnap.forEach(d => _finBenchmarks.push(d.data()));
 
@@ -607,41 +622,31 @@ export async function loadAll() {
       if (b.annualContribution > 100000) { b.annualContribution = Math.round(b.annualContribution / 10000); }
     }
 
-    const finActSnap = await getDocs(_col('finance_actuals'));
     _finActuals = [];
     finActSnap.forEach(d => _finActuals.push(d.data()));
 
-    const finLoanSnap = await getDocs(_col('finance_loans'));
     _finLoans = [];
     finLoanSnap.forEach(d => _finLoans.push(d.data()));
 
-    const finPosSnap = await getDocs(_col('finance_positions'));
     _finPositions = [];
     finPosSnap.forEach(d => _finPositions.push(d.data()));
 
-    const finPlanSnap = await getDocs(_col('finance_plans'));
     _finPlans = [];
     finPlanSnap.forEach(d => _finPlans.push(d.data()));
 
-    const finBudgetSnap = await getDocs(_col('finance_budgets'));
     _finBudgets = [];
     finBudgetSnap.forEach(d => _finBudgets.push(d.data()));
 
-    // ── 영화 데이터 로드 ──
-    const movieSnap = await getDocs(_col('movies'));
+    // ── 영화 데이터 처리 ──
     _movies = {};
     movieSnap.forEach(d => {
       const data = d.data();
       _movies[d.id] = data;
     });
 
-    // ── 토마토 사이클 로드 ──
-    const tomatoSnap = await getDocs(_col('tomato_cycles'));
+    // ── 토마토 사이클 처리 ──
     _tomatoCycles = [];
     tomatoSnap.forEach(d => _tomatoCycles.push(d.data()));
-
-    // ── 설정 로드 (Firebase → localStorage 마이그레이션 포함) ──
-    const settingsSnap = await getDocs(_col('settings'));
     const fbMap = {};
     settingsSnap.forEach(d => { fbMap[d.id] = d.data().value; });
 

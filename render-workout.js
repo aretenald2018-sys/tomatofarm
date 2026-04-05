@@ -70,6 +70,14 @@ export function loadWorkoutDate(y, m, d) {
     bFoods:day.bFoods||[], lFoods:day.lFoods||[], dFoods:day.dFoods||[], sFoods:day.sFoods||[],
   };
 
+  // 저장된 사진 복원
+  window._mealPhotos = {};
+  if (day.bPhoto) window._mealPhotos.breakfast = day.bPhoto;
+  if (day.lPhoto) window._mealPhotos.lunch = day.lPhoto;
+  if (day.dPhoto) window._mealPhotos.dinner = day.dPhoto;
+  if (day.sPhoto) window._mealPhotos.snack = day.sPhoto;
+  if (day.workoutPhoto) window._mealPhotos.workout = day.workoutPhoto;
+
   _renderDateLabel();
   _renderGymStatusBtns();
   _renderCFStatusBtns();
@@ -83,6 +91,7 @@ export function loadWorkoutDate(y, m, d) {
   _renderMealFoodItems('dinner');
   _renderMealFoodItems('snack');
   _renderDietResults();
+  _renderMealPhotos();
 
   const memoEl = document.getElementById('wt-workout-memo');
   if (memoEl) memoEl.value = day.memo || '';
@@ -756,6 +765,24 @@ export function wtRemoveFoodItem(meal, idx) {
   _renderMealFoodItems(meal);
   _renderDietResults();
   _autoSaveDiet();
+}
+
+// ── 저장된 사진 표시 ────────────────────────────────────────────────
+function _renderMealPhotos() {
+  const meals = ['breakfast', 'lunch', 'dinner', 'snack', 'workout'];
+  for (const meal of meals) {
+    const wrap = document.getElementById('wt-photo-' + meal);
+    if (!wrap) continue;
+    const photo = window._mealPhotos?.[meal];
+    if (photo) {
+      wrap.innerHTML = `<div style="position:relative;display:inline-block;width:100%;">
+        <img src="${photo}" style="max-width:100%;max-height:200px;border-radius:12px;object-fit:contain;display:block;">
+        <button onclick="removeMealPhoto('${meal}')" style="position:absolute;top:4px;right:4px;width:24px;height:24px;border-radius:50%;background:rgba(0,0,0,0.5);color:#fff;border:none;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;">✕</button>
+      </div>`;
+    } else {
+      wrap.innerHTML = '';
+    }
+  }
 }
 
 // ── 식단 자동 저장 헬퍼 ────────────────────────────────────────────

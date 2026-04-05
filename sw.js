@@ -71,7 +71,7 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
 
   // HTML, CSS, JS (네트워크 우선)
-  if (url.pathname.endsWith('.html') || url.pathname.endsWith('.css') || url.pathname.endsWith('.js') || url.pathname === '/' || url.pathname === '/dashboard3/') {
+  if (url.pathname.endsWith('.html') || url.pathname.endsWith('.css') || url.pathname.endsWith('.js') || url.pathname === '/' || url.pathname === '/tomatofarm/') {
     event.respondWith(
       fetch(request, { cache: 'no-cache' })
         .then((response) => {

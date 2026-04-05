@@ -1775,6 +1775,8 @@ async function init() {
       document.querySelectorAll('.today-cell')[0]
         ?.scrollIntoView({ behavior:'smooth', block:'center' });
     }, 400);
+    // PWA 설치 안내 배너 (앱 미설치 + 이전에 닫지 않았으면)
+    _showPWAInstallBanner();
   }
 }
 
@@ -2100,6 +2102,66 @@ window.wtRemoveFoodItem         = wtRemoveFoodItem;
 
 // ── PWA 설치 (앱 다운로드) ────────────────────────────────────
 let _deferredInstallPrompt = null;
+
+function _showPWAInstallBanner() {
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+  if (isStandalone) return; // 이미 앱으로 실행 중
+  if (sessionStorage.getItem('pwa_banner_dismissed')) return; // 이번 세션에서 이미 닫음
+
+  setTimeout(() => {
+    const existing = document.getElementById('pwa-install-banner');
+    if (existing) return;
+
+    const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent);
+    const banner = document.createElement('div');
+    banner.id = 'pwa-install-banner';
+    banner.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:9999;background:var(--surface,#fff);border-top:1px solid var(--border,#e5e7eb);padding:16px 20px;box-shadow:0 -4px 20px rgba(0,0,0,0.1);animation:slideUp 0.3s ease;';
+    banner.innerHTML = `
+      <style>@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}</style>
+      <div style="display:flex;align-items:center;gap:14px;max-width:480px;margin:0 auto;">
+        <div style="width:48px;height:48px;border-radius:12px;background:var(--primary,#22c55e);color:#fff;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;">🍅</div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:14px;font-weight:700;color:var(--text,#111);">토마토 키우기 앱 설치</div>
+          <div style="font-size:12px;color:var(--text-tertiary,#888);margin-top:2px;">${isIOS
+            ? '홈 화면에 추가하면 앱처럼 사용할 수 있어요'
+            : '설치하면 더 빠르고 편하게 사용할 수 있어요'}</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-shrink:0;">
+          ${isIOS
+            ? `<button onclick="_showIOSInstallGuide()" style="padding:8px 16px;border:none;border-radius:999px;background:var(--primary,#22c55e);color:#fff;font-size:13px;font-weight:600;cursor:pointer;">방법 보기</button>`
+            : `<button onclick="installPWA();document.getElementById('pwa-install-banner')?.remove()" style="padding:8px 16px;border:none;border-radius:999px;background:var(--primary,#22c55e);color:#fff;font-size:13px;font-weight:600;cursor:pointer;">설치</button>`
+          }
+          <button onclick="sessionStorage.setItem('pwa_banner_dismissed','1');document.getElementById('pwa-install-banner')?.remove()" style="padding:8px 10px;border:none;background:none;color:var(--text-tertiary,#888);font-size:16px;cursor:pointer;">✕</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(banner);
+  }, 1500);
+}
+
+window._showIOSInstallGuide = function() {
+  const banner = document.getElementById('pwa-install-banner');
+  if (banner) banner.remove();
+  sessionStorage.setItem('pwa_banner_dismissed', '1');
+
+  const modal = document.createElement('div');
+  modal.id = 'ios-install-guide';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+  modal.innerHTML = `
+    <div style="background:var(--surface,#fff);border-radius:16px;padding:24px;max-width:320px;width:100%;text-align:center;" onclick="event.stopPropagation()">
+      <div style="font-size:40px;margin-bottom:12px;">🍅</div>
+      <div style="font-size:16px;font-weight:700;color:var(--text,#111);margin-bottom:16px;">홈 화면에 추가하기</div>
+      <div style="text-align:left;font-size:13px;color:var(--text-secondary,#555);line-height:1.8;">
+        <div style="padding:8px 0;border-bottom:1px solid var(--border,#e5e7eb);"><b>1.</b> 하단 Safari 메뉴에서 <span style="font-size:16px;vertical-align:middle;">⎋</span> <b>공유</b> 버튼 탭</div>
+        <div style="padding:8px 0;border-bottom:1px solid var(--border,#e5e7eb);"><b>2.</b> <b>"홈 화면에 추가"</b> 선택</div>
+        <div style="padding:8px 0;"><b>3.</b> 오른쪽 상단 <b>"추가"</b> 탭</div>
+      </div>
+      <button onclick="document.getElementById('ios-install-guide')?.remove()" style="margin-top:16px;width:100%;padding:12px;border:none;border-radius:999px;background:var(--primary,#22c55e);color:#fff;font-size:14px;font-weight:600;cursor:pointer;">확인</button>
+    </div>
+  `;
+  document.body.appendChild(modal);
+};
 
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
