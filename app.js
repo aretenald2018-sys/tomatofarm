@@ -1777,6 +1777,7 @@ async function init() {
     }, 400);
     // PWA 설치 안내 배너 (앱 미설치 + 이전에 닫지 않았으면)
     _showPWAInstallBanner();
+    _updateInstallBtn();
   }
 }
 
@@ -2163,18 +2164,28 @@ window._showIOSInstallGuide = function() {
   document.body.appendChild(modal);
 };
 
+function _updateInstallBtn() {
+  const btn = document.getElementById('pwa-install-btn');
+  if (!btn) return;
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+  btn.style.display = isStandalone ? 'none' : '';
+}
+
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
   _deferredInstallPrompt = e;
   // 설정 모달이 열려있으면 설치 버튼 표시
   const section = document.getElementById('pwa-install-section');
   if (section) section.style.display = 'block';
+  _updateInstallBtn();
 });
 
 window.addEventListener('appinstalled', () => {
   _deferredInstallPrompt = null;
   const section = document.getElementById('pwa-install-section');
   if (section) section.style.display = 'none';
+  const btn = document.getElementById('pwa-install-btn');
+  if (btn) btn.style.display = 'none';
 });
 
 function installPWA() {
