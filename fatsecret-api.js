@@ -65,6 +65,36 @@ function calculateSearchScore(foodName, searchTerm) {
 }
 
 /**
+ * 음식 이름에서 기본 1인분 중량(g) 추정
+ * CSV는 모두 100g 기준이므로, 실제 1인분 양을 매핑
+ */
+function _estimateServingSize(name) {
+  const n = (name || '').toLowerCase();
+  // 국/탕/찌개류: 400~600g
+  if (/국$|탕$|찌개|국밥|곰탕|설렁탕|해장|매운탕|미역국|된장국|김치국/.test(n)) return 500;
+  // 밥류: 200~300g
+  if (/밥$|비빔밥|볶음밥|덮밥|김밥|리조또/.test(n)) return 300;
+  // 면류: 400~500g
+  if (/면$|라면|우동|짜장|짬뽕|국수|냉면|파스타|스파게티/.test(n)) return 450;
+  // 죽: 300~400g
+  if (/죽$/.test(n)) return 350;
+  // 빵/과자: 30~80g
+  if (/빵$|빵\(|쿠키|과자|크래커|비스켓|케이크|머핀|도넛/.test(n)) return 60;
+  // 음료: 200~350ml
+  if (/주스|음료|우유|두유|커피|라떼|차$|스무디|에이드/.test(n)) return 250;
+  // 고기/구이류: 150~200g
+  if (/구이|스테이크|불고기|갈비|삼겹|닭가슴|치킨/.test(n)) return 180;
+  // 전/부침: 100~150g
+  if (/전$|전\(|부침|튀김/.test(n)) return 120;
+  // 찜류: 200~300g
+  if (/찜$|찜\(|조림/.test(n)) return 250;
+  // 샐러드: 150~200g
+  if (/샐러드|샐러드/.test(n)) return 180;
+  // 기본값
+  return 100;
+}
+
+/**
  * CSV에서 정확도 높은 순으로 검색 (중복 제거, 정렬)
  */
 export function searchCSVFood(searchTerm) {
@@ -95,17 +125,19 @@ export function searchCSVFood(searchTerm) {
       seen.add(key);
       // 안정적인 ID: 제품명과 제조사 조합 (검색 결과 개수와 무관)
       const stableId = `csv_${encodeURIComponent(food['제품명'])}_${encodeURIComponent(food['제조사'])}`;
+      const foodName = food['제품명'];
       results.push({
         id: stableId,
-        name: food['제품명'],
+        name: foodName,
         manufacturer: food['제조사'],
         energy: parseFloat(food['에너지(kcal)']) || 0,
         protein: parseFloat(food['단백질(g)']) || 0,
         fat: parseFloat(food['지방(g)']) || 0,
         carbs: parseFloat(food['탄수화물(g)']) || 0,
         sodium: parseFloat(food['나트륨(mg)']) || 0,
-        calcium: 0,  // CSV에 칼슘 데이터 없음
-        iron: 0,     // CSV에 철분 데이터 없음
+        calcium: 0,
+        iron: 0,
+        defaultWeight: _estimateServingSize(foodName),
         score: food.score,
         rawData: food,
       });

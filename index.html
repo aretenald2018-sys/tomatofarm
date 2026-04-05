@@ -5,22 +5,92 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="description" content="일일 운동, 식단, 건강을 추적하고 관리하는 개인 대시보드 앱">
-<meta name="theme-color" content="#1a1a1a">
+<meta name="theme-color" content="#ffffff">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Life Streak">
-<title>Life Streak</title>
+<meta name="apple-mobile-web-app-title" content="토마토 키우기">
+<title>토마토 키우기</title>
 <link rel="manifest" href="manifest.json">
-<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌱</text></svg>">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<div class="loading-overlay" id="loading">
+<!-- 로그인 화면 -->
+<div class="login-screen" id="login-screen">
+  <div class="login-card">
+    <div class="login-title">토마토 키우기</div>
+    <div class="login-subtitle">이름을 입력해주세요</div>
+
+    <div class="login-form">
+      <div style="display:flex;gap:8px;">
+        <input class="login-input" id="login-last-name" placeholder="성" style="flex:1;" maxlength="5">
+        <input class="login-input" id="login-first-name" placeholder="이름" style="flex:2;" maxlength="10">
+      </div>
+      <input class="login-input" id="login-nickname" placeholder="별명 (이웃에게 보여질 이름)" style="margin-top:8px;" maxlength="15">
+      <div class="login-nick-guide" style="display:none;"></div>
+
+      <!-- Admin/Guest 모드 선택 (김태우 전용) -->
+      <div id="login-mode-section" style="margin-top:12px;display:none;">
+        <div style="display:flex;gap:8px;">
+          <label style="flex:1;display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:var(--radius-md);background:var(--surface2);cursor:pointer;border:2px solid var(--primary);transition:border 0.15s;">
+            <input type="radio" name="login-mode" value="admin" checked style="accent-color:var(--primary);">
+            <div>
+              <div style="font-size:13px;font-weight:700;color:var(--text);">Admin</div>
+              <div style="font-size:10px;color:var(--text-tertiary);">전체 기능</div>
+            </div>
+          </label>
+          <label style="flex:1;display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:var(--radius-md);background:var(--surface2);cursor:pointer;border:2px solid transparent;transition:border 0.15s;">
+            <input type="radio" name="login-mode" value="guest" style="accent-color:var(--primary);">
+            <div>
+              <div style="font-size:13px;font-weight:700;color:var(--text);">Guest</div>
+              <div style="font-size:10px;color:var(--text-tertiary);">게스트 UX</div>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <!-- 비밀번호 (기존 계정이면 입력, 신규면 선택 설정) -->
+      <div id="login-pw-section" style="margin-top:12px;display:none;">
+        <input class="login-input" id="login-password" type="password" placeholder="비밀번호" onkeydown="if(event.key==='Enter')createAccountAndLogin()">
+      </div>
+
+      <div id="login-new-pw-section" style="margin-top:12px;display:none;">
+        <label class="login-pw-label">
+          <input type="checkbox" id="login-use-pw" onchange="document.getElementById('login-new-pw-field').style.display=this.checked?'block':'none'">
+          비밀번호 설정
+        </label>
+        <p class="login-pw-hint">설정하면 내 기록을 보호할 수 있어요. 설정하지 않아도 사용에는 문제없어요.</p>
+        <div id="login-new-pw-field" style="display:none;margin-top:8px;">
+          <input class="login-input" id="login-new-password" type="password" placeholder="비밀번호">
+        </div>
+      </div>
+
+      <div id="login-status" style="font-size:12px;color:var(--text-tertiary);margin-top:8px;min-height:18px;"></div>
+
+      <button class="login-btn" id="login-create-btn" onclick="createAccountAndLogin()">시작하기</button>
+    </div>
+  </div>
+</div>
+
+<!-- 비밀번호 입력 모달 -->
+<div class="login-pw-modal" id="login-pw-modal" style="display:none;">
+  <div class="login-card" style="max-width:320px;">
+    <div class="login-subtitle" id="login-pw-modal-name"></div>
+    <input class="login-input" id="login-pw-modal-input" type="password" placeholder="비밀번호를 입력하세요" style="margin-top:12px;" onkeydown="if(event.key==='Enter')verifyAndLogin()">
+    <div id="login-pw-modal-error" style="color:#ef4444;font-size:12px;margin-top:4px;display:none;">비밀번호가 맞지 않습니다</div>
+    <div style="display:flex;gap:8px;margin-top:12px;">
+      <button class="login-btn" style="flex:1;background:var(--surface3);color:var(--text);" onclick="closePasswordModal()">취소</button>
+      <button class="login-btn" style="flex:2;" onclick="verifyAndLogin()">확인</button>
+    </div>
+  </div>
+</div>
+
+<div class="loading-overlay" id="loading" style="display:none;">
   <div class="spinner"></div>
-  <div style="font-size:13px;color:var(--muted)">데이터 불러오는 중...</div>
+  <div style="font-size:13px;color:var(--text-secondary)">데이터 불러오는 중...</div>
 </div>
 
 <div class="sync-bar">
@@ -28,105 +98,157 @@
   <span id="sync-text">동기화 연결 중...</span>
 </div>
 
-<nav class="tab-nav" id="tab-nav">
-  <button class="tab-btn active" data-tab="home"     draggable="true" onclick="switchTab('home')">🏠 홈</button>
-  <button class="tab-btn"        data-tab="workout"  draggable="true" onclick="switchTab('workout')">💪 운동·식단</button>
-  <button class="tab-btn"        data-tab="cooking"  draggable="true" onclick="switchTab('cooking')">🍳 요리</button>
-  <button class="tab-btn"        data-tab="calendar" draggable="true" onclick="switchTab('calendar')">📆 Streak</button>
-  <button class="tab-btn"        data-tab="wine"     draggable="true" onclick="switchTab('wine')">🍷 와인</button>
-  <button class="tab-btn"        data-tab="movie"    draggable="true" onclick="switchTab('movie')">🎬 영화</button>
-  <button class="tab-btn"        data-tab="stats"    draggable="true" onclick="switchTab('stats')">📊 통계</button>
-  <button class="tab-btn"        data-tab="finance"  draggable="true" onclick="switchTab('finance')">💰 재무</button>
-  <button class="tab-btn"        data-tab="dev"      draggable="true" onclick="switchTab('dev')">🛠️ 개발</button>
-  <button class="tab-btn tab-btn-settings" onclick="openSettingsModal()">⚙️</button>
+<!-- 상단 네비게이션 -->
+<header class="top-nav">
+  <span class="top-nav-title">토마토 키우기</span>
+  <div style="display:flex;align-items:center;gap:8px;">
+    <button class="icon-btn notif-bell" id="notif-bell" onclick="toggleNotifCenter()" title="알림" style="display:none;">
+      🔔<span class="notif-badge" id="notif-badge" style="display:none;">0</span>
+    </button>
+    <button class="icon-btn" onclick="logoutAccount()" title="계정 전환">👤</button>
+  </div>
+</header>
+
+<!-- 알림센터 패널 -->
+<div class="notif-center" id="notif-center">
+  <div class="notif-center-header">
+    <span class="notif-center-title">알림</span>
+    <button class="notif-mark-all" id="notif-mark-all" onclick="markAllNotifsRead()">모두 읽음</button>
+  </div>
+  <div class="notif-center-list" id="notif-center-list">
+    <div class="notif-empty">알림이 없어요</div>
+  </div>
+</div>
+<div class="notif-center-backdrop" id="notif-center-backdrop" onclick="closeNotifCenter()"></div>
+
+<!-- 하단 탭 네비게이션 -->
+<nav class="bottom-tabs" id="tab-nav">
+  <button class="tab-btn active" data-tab="home" onclick="switchTab('home')">
+    <span class="tab-icon">🏠</span><span>홈</span>
+  </button>
+  <button class="tab-btn" data-tab="diet" onclick="switchTab('diet')">
+    <span class="tab-icon">🥗</span><span>식단</span>
+  </button>
+  <button class="tab-btn" data-tab="workout" onclick="switchTab('workout')">
+    <span class="tab-icon">💪</span><span>운동</span>
+  </button>
+  <button class="tab-btn" data-tab="calendar" onclick="switchTab('calendar')" style="display:none">
+    <span class="tab-icon">📆</span><span>캘린더</span>
+  </button>
+  <button class="tab-btn" data-tab="finance" onclick="switchTab('finance')" style="display:none">
+    <span class="tab-icon">💰</span><span>재무</span>
+  </button>
+  <button class="tab-btn" data-tab="stats" onclick="switchTab('stats')">
+    <span class="tab-icon">📊</span><span>통계</span>
+  </button>
+  <button class="tab-btn tab-more-btn" data-tab="more" onclick="toggleMoreMenu()">
+    <span class="tab-icon">⋯</span><span>더보기</span>
+  </button>
 </nav>
+
+<!-- 더보기 메뉴 -->
+<div class="more-menu" id="more-menu" style="display:none;">
+  <div class="more-menu-backdrop" onclick="toggleMoreMenu()"></div>
+  <div class="more-menu-sheet">
+    <div id="more-menu-dynamic-tabs"></div>
+    <button class="more-menu-item tab-btn" data-tab="cooking" onclick="switchTab('cooking');toggleMoreMenu()">🍳 요리</button>
+    <button class="more-menu-item tab-btn" data-tab="wine" onclick="switchTab('wine');toggleMoreMenu()">🍷 와인</button>
+    <button class="more-menu-item tab-btn" data-tab="movie" onclick="switchTab('movie');toggleMoreMenu()">🎬 영화</button>
+    <div style="border-top:1px solid var(--border);margin-top:4px;padding-top:4px">
+      <button class="more-menu-item" onclick="openTabSettingsModal();toggleMoreMenu()">⚙️ 탭 설정</button>
+    </div>
+  </div>
+</div>
+
+<!-- 탭 설정 모달 -->
+<div class="modal-backdrop" id="tab-settings-modal" onclick="closeTabSettingsModal(event)">
+  <div class="modal-sheet" onclick="event.stopPropagation()">
+    <div class="sheet-handle"></div>
+    <div class="modal-title">⚙️ 하단 탭 설정</div>
+    <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:12px;">하단 바에 표시할 탭을 선택하세요.</div>
+    <div id="tab-settings-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+    <button onclick="saveTabSettingsFromModal()" style="margin-top:16px;width:100%;padding:12px;border:none;border-radius:10px;background:var(--primary);color:#fff;font-size:14px;font-weight:700;cursor:pointer;">저장</button>
+  </div>
+</div>
 
 <!-- ═══ 홈 탭 ═══ -->
 <div id="tab-home" class="tab-panel active">
-
-  <!-- 홈 섹션 -->
   <div class="home-section">
 
-    <!-- 주간 스트릭 미니 캘린더 -->
-    <div class="home-card" id="card-weekly-streak">
-      <div class="section-title-row" style="align-items:center">
-        <div class="home-card-title" style="margin-bottom:0">📅 이번 주</div>
-        <div class="ws-stepper">
-          <button class="ws-stepper-btn" onclick="window.changeHomeStreakDays((window._homeStreakDays||6)-1)">◀</button>
-          <span class="ws-stepper-val" id="home-streak-days-label">7일</span>
-          <button class="ws-stepper-btn" onclick="window.changeHomeStreakDays((window._homeStreakDays||6)+1)">▶</button>
-        </div>
-      </div>
-      <div id="weekly-streak-grid"></div>
+    <!-- 히어로: 오늘의 스트릭 -->
+    <div class="home-hero" id="home-hero">
+      <div id="hero-content"></div>
     </div>
 
-    <!-- 단위 목표달성 정보 -->
+    <!-- 내 농장 (듀오링고 스타일) -->
+    <div class="home-card" id="card-farm-duolingo" style="overflow:hidden;padding:0;border:none;">
+      <div id="farm-duolingo-content"></div>
+    </div>
+
+
+    <!-- 오늘의 칼로리 -->
     <div class="home-card" id="card-unit-goal">
-      <div class="section-title-row" style="align-items:center">
-        <div class="home-card-title" style="margin-bottom:0">🎯 단위 목표달성</div>
-        <button class="section-title-edit-btn" onclick="openUnitGoalDatePicker()">✏️</button>
+      <div class="home-card-header">
+        <span class="home-card-title">목표 달성</span>
+        <button class="section-title-edit-btn" onclick="openUnitGoalDatePicker()">설정</button>
       </div>
       <div id="unit-goal-content"></div>
     </div>
 
-    <!-- 미니 메모 (체크리스트) -->
+    <!-- 할 일 -->
     <div class="home-card" id="card-mini-memo">
-      <div class="section-title-row">
-        <div class="home-card-title editable-title" id="title-mini_memo">미니 메모</div>
-        <button class="section-title-edit-btn" onclick="editSectionTitle('mini_memo')">✏️</button>
+      <div class="home-card-header">
+        <span class="home-card-title editable-title" id="title-mini_memo">할 일</span>
+        <button class="section-title-edit-btn" onclick="editSectionTitle('mini_memo')">관리</button>
       </div>
       <div id="mini-memo-list"></div>
       <div class="mini-memo-add-row">
-        <input class="mini-memo-new-input" id="mini-memo-new-input" placeholder="메모 추가"
+        <input class="mini-memo-new-input" id="mini-memo-new-input" placeholder="할 일 추가"
           onkeydown="if(event.key==='Enter') addMiniMemoItem()">
         <button class="mini-memo-add-btn" onclick="addMiniMemoItem()">+</button>
       </div>
     </div>
 
-    <!-- 목표 (마스터 목표) -->
+    <!-- 목표 -->
     <div class="home-card" id="card-goals">
-      <div class="section-title-row">
-        <div class="home-card-title editable-title" id="title-goals">🎯 목표</div>
-        <button class="section-title-edit-btn" onclick="editSectionTitle('goals')">✏️</button>
+      <div class="home-card-header">
+        <span class="home-card-title editable-title" id="title-goals">목표</span>
+        <button class="section-title-edit-btn" onclick="editSectionTitle('goals')">관리</button>
       </div>
       <div id="goals-section"></div>
     </div>
 
-    <!-- 퀘스트 보드 -->
+    <!-- 퀘스트 -->
     <div class="home-card quest-board-card" id="card-quests">
-      <div class="section-title-row" style="margin-bottom:8px">
-        <div class="home-card-title editable-title" id="title-quests">🗒️ 퀘스트 보드</div>
-        <button class="section-title-edit-btn" onclick="editSectionTitle('quests')">✏️</button>
+      <div class="home-card-header">
+        <span class="home-card-title editable-title" id="title-quests">퀘스트</span>
+        <button class="section-title-edit-btn" onclick="editSectionTitle('quests')">관리</button>
       </div>
       <div class="quest-board" id="quest-board">
-        <!-- 분기 퀘스트 -->
         <div class="quest-cell" data-type="quarterly" draggable="true">
           <div class="quest-cell-header">
-            <div class="quest-cell-title">분기 퀘스트<span class="quest-period-badge">분기 리셋</span></div>
+            <span class="quest-cell-title">분기</span>
             <button class="quest-add-btn" onclick="openQuestModal('quarterly')">+</button>
           </div>
           <div id="quarterly-quests"></div>
         </div>
-        <!-- 월간 퀘스트 -->
         <div class="quest-cell" data-type="monthly" draggable="true">
           <div class="quest-cell-header">
-            <div class="quest-cell-title">월간 퀘스트<span class="quest-period-badge">매월 리셋</span></div>
+            <span class="quest-cell-title">월간</span>
             <button class="quest-add-btn" onclick="openQuestModal('monthly')">+</button>
           </div>
           <div id="monthly-quests"></div>
         </div>
-        <!-- 주간 퀘스트 -->
         <div class="quest-cell" data-type="weekly" draggable="true">
           <div class="quest-cell-header">
-            <div class="quest-cell-title">주간 퀘스트<span class="quest-period-badge">매주 리셋</span></div>
+            <span class="quest-cell-title">주간</span>
             <button class="quest-add-btn" onclick="openQuestModal('weekly')">+</button>
           </div>
           <div id="weekly-quests"></div>
         </div>
-        <!-- 일간 퀘스트 -->
         <div class="quest-cell" data-type="daily" draggable="true">
           <div class="quest-cell-header">
-            <div class="quest-cell-title">일간 퀘스트<span class="quest-period-badge">매일 리셋</span></div>
+            <span class="quest-cell-title">오늘</span>
             <button class="quest-add-btn" onclick="openQuestModal('daily')">+</button>
           </div>
           <div id="daily-quests"></div>
@@ -134,23 +256,23 @@
       </div>
     </div>
 
-    <!-- 주식 -->
-    <div class="home-card" id="card-stocks">
-      <div class="section-title-row" style="margin-bottom:8px">
-        <div class="home-card-title editable-title" id="title-stocks">📈 주식 · RSI</div>
-        <button class="section-title-edit-btn" onclick="editSectionTitle('stocks')">✏️</button>
-      </div>
-      <div class="stock-row" id="stock-row"><div style="font-size:12px;color:var(--muted);padding:8px">주식 데이터 로딩 중...</div></div>
-      <div class="stock-updated" id="stock-updated"></div>
-    </div>
-
-    <!-- 다이어트 목표 카드 -->
+    <!-- 다이어트 목표 -->
     <div class="home-card" id="card-diet-goal">
-      <div class="section-title-row" style="margin-bottom:12px">
-        <div class="home-card-title">다이어트 목표</div>
-        <button class="section-title-edit-btn" onclick="openDietPlanModal()">✏️</button>
+      <div class="home-card-header">
+        <span class="home-card-title">다이어트</span>
+        <button class="section-title-edit-btn" onclick="openDietPlanModal()">설정</button>
       </div>
       <div id="diet-goal-content"></div>
+    </div>
+
+    <!-- 이웃 피드 -->
+    <div class="home-card" id="card-friends">
+      <div class="home-card-header">
+        <span class="home-card-title">이웃</span>
+        <button class="section-title-edit-btn" onclick="openFriendManager()">관리</button>
+      </div>
+      <div id="friend-notifications" style="display:none;"></div>
+      <div id="friend-feed"></div>
     </div>
 
   </div>
@@ -166,90 +288,112 @@
   </div>
   <div id="wt-future-notice" class="wt-future-notice" style="display:none">📅 미래 날짜에는 기록할 수 없습니다.</div>
   <div class="workout-tab-content">
-    <!-- ═════ 운동 카테고리 ═════ -->
-    <div class="sheet-section">
-      <div class="section-category-title">🏋️ 운동</div>
-      <div class="ex-list-header">
-        <span class="sheet-section-label" style="margin-bottom:0">💪 운동 종목</span>
-        <button class="ex-add-btn" onclick="wtOpenExercisePicker()">+ 종목 추가</button>
-      </div>
-      <div class="extra-toggle-row" style="margin-bottom:8px;border:none;padding:0;gap:16px;">
-        <div class="extra-toggle-item">
-          <span class="extra-toggle-label">🧘 스트레칭</span>
-          <div class="toggle-switch" id="wt-stretching-toggle" onclick="wtToggleStretching()"><div class="toggle-knob"></div></div>
+
+    <!-- 전체 운동 플로우 (CSS 전환) -->
+    <div class="wt-flow" id="wt-flow">
+
+      <!-- 질문 + CTA -->
+      <div class="wt-ask" id="wt-ask">
+        <div class="wt-question">오늘의 운동을 기록해보세요</div>
+        <button class="wt-cta-btn" id="wt-cta-workout" onclick="wtSelectStatus('workout')">운동 기록하기</button>
+        <div class="wt-alt-actions">
+          <button class="wt-alt-btn" id="wt-gym-btn-skip" onclick="wtSelectStatus('skip')">
+            오늘은 쉬었어요
+            <span class="wt-alt-desc">토마토가 적립되지 않아요</span>
+          </button>
+          <button class="wt-alt-btn" id="wt-gym-btn-health" onclick="wtSelectStatus('health')">
+            건강이슈가 있어요
+            <span class="wt-alt-desc">토마토는 계속 적립돼요</span>
+          </button>
         </div>
       </div>
-      <div class="activity-status-row">
-        <span class="activity-status-label">🏋️ 헬스장 상태</span>
-        <div class="activity-status-btns">
-          <button class="act-btn" id="wt-gym-btn-done"   onclick="wtSetGymStatus('done')">✅ 완료</button>
-          <button class="act-btn" id="wt-gym-btn-skip"   onclick="wtSetGymStatus('skip')">⏭️ 쉬었음</button>
-          <button class="act-btn" id="wt-gym-btn-health" onclick="wtSetGymStatus('health')">🩺 건강이슈</button>
+
+      <!-- 선택된 상태 뱃지 (처음엔 숨김) -->
+      <div class="wt-selected-badge" id="wt-selected-badge">
+        <span class="wt-status-badge" id="wt-badge-text"></span>
+        <button class="wt-link-btn" onclick="wtResetStatus()">변경</button>
+      </div>
+
+      <!-- 운동 유형 칩 (처음엔 숨김) -->
+      <div class="wt-type-section" id="wt-type-section">
+        <div class="wt-type-label">어떤 운동을 했나요?</div>
+        <div class="wt-type-chips">
+          <button class="wt-type-chip" id="wt-chip-gym" onclick="wtToggleType('gym')">🏋️ 헬스</button>
+          <button class="wt-type-chip" id="wt-chip-cf" onclick="wtToggleType('cf')">🔥 크로스핏</button>
+          <button class="wt-type-chip" id="wt-chip-stretch" onclick="wtToggleType('stretch')">🧘 스트레칭</button>
         </div>
       </div>
-      <div id="wt-exercise-list" style="margin-top:8px;"></div>
-      <textarea class="memo-input" id="wt-workout-memo" placeholder="운동 메모 (예: 벤치 컨디션 좋았음..)"></textarea>
-      <div class="activity-status-row" style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px">
-        <span class="activity-status-label">🔥 크로스핏 상태</span>
-        <div class="activity-status-btns">
-          <button class="act-btn" id="wt-cf-btn-done"   onclick="wtSetCFStatus('done')">✅ 완료</button>
-          <button class="act-btn" id="wt-cf-btn-skip"   onclick="wtSetCFStatus('skip')">⏭️ 쉬었음</button>
-          <button class="act-btn" id="wt-cf-btn-health" onclick="wtSetCFStatus('health')">🩺 건강이슈</button>
+
+      <!-- 헬스 종목 -->
+      <div class="wt-detail-section" id="wt-gym-section">
+        <div class="ex-list-header">
+          <span class="sheet-section-label" style="margin-bottom:0">헬스 종목</span>
+          <button class="ex-add-btn" onclick="wtOpenExercisePicker()">+ 종목 추가</button>
         </div>
+        <div id="wt-exercise-list" style="margin-top:8px;"></div>
       </div>
-    </div>
-    <!-- ═════ 식단기록 카테고리 ═════ -->
-    <div class="sheet-section">
-      <div class="section-category-title">🥗 식단기록</div>
-      <div class="sheet-section-label">식단 입력</div>
-      <div style="margin-bottom:10px;display:flex;gap:8px;border-bottom:1px solid var(--border);padding-bottom:10px" id="diet-input-buttons">
-        <button class="diet-db-btn" data-action="addFood" title="새 음식 수기 입력" style="flex:1;background:var(--accent);color:#fff">✏️ 음식 추가</button>
-        <button class="diet-db-btn" data-action="photoUpload" title="사진으로 영양정보 인식" style="flex:1;background:var(--accent);color:#fff">📷 사진 인식</button>
+
+      <!-- 메모 + 인증사진 -->
+      <div class="wt-detail-section" id="wt-memo-section">
+        <textarea class="memo-input" id="wt-workout-memo" placeholder="운동 메모 (예: 벤치 컨디션 좋았음..)"></textarea>
+        <div class="meal-photo-wrap" id="wt-photo-workout" style="margin-top:8px;"></div>
+        <button class="meal-photo-btn" onclick="document.getElementById('photo-input-workout').click()" style="margin-top:6px;">📷 운동 인증사진</button>
+        <input type="file" id="photo-input-workout" accept="image/*" style="display:none" onchange="uploadMealPhoto('workout',this)">
       </div>
-      <div class="diet-grid">
-        <div class="diet-meal-row">
-          <div class="diet-meal-label">🌅 아침</div>
-          <input class="diet-meal-input" id="wt-meal-breakfast" placeholder="메모 (선택)">
-          <button class="diet-db-btn" onclick="openNutritionSearch('breakfast')" title="음식 검색">🔍</button>
-          <button class="diet-skip-btn" id="wt-breakfast-skipped" title="아침 굶었음" onclick="wtToggleMealSkipped('breakfast')" style="font-size:14px;padding:6px 8px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);cursor:pointer">🚫</button>
-          <div class="meal-food-list" id="wt-foods-breakfast"></div>
-          <div class="diet-result" id="wt-result-breakfast"><span class="diet-badge pending">미분석</span></div>
-        </div>
-        <div class="diet-meal-row">
-          <div class="diet-meal-label">☀️ 점심</div>
-          <input class="diet-meal-input" id="wt-meal-lunch" placeholder="메모 (선택)">
-          <button class="diet-db-btn" onclick="openNutritionSearch('lunch')" title="음식 검색">🔍</button>
-          <button class="diet-skip-btn" id="wt-lunch-skipped" title="점심 굶었음" onclick="wtToggleMealSkipped('lunch')" style="font-size:14px;padding:6px 8px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);cursor:pointer">🚫</button>
-          <div class="meal-food-list" id="wt-foods-lunch"></div>
-          <div class="diet-result" id="wt-result-lunch"><span class="diet-badge pending">미분석</span></div>
-        </div>
-        <div class="diet-meal-row">
-          <div class="diet-meal-label">🌙 저녁</div>
-          <input class="diet-meal-input" id="wt-meal-dinner" placeholder="메모 (선택)">
-          <button class="diet-db-btn" onclick="openNutritionSearch('dinner')" title="음식 검색">🔍</button>
-          <button class="diet-skip-btn" id="wt-dinner-skipped" title="저녁 굶었음" onclick="wtToggleMealSkipped('dinner')" style="font-size:14px;padding:6px 8px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);cursor:pointer">🚫</button>
-          <div class="meal-food-list" id="wt-foods-dinner"></div>
-          <div class="diet-result" id="wt-result-dinner"><span class="diet-badge pending">미분석</span></div>
-        </div>
-        <div class="diet-meal-row">
-          <div class="diet-meal-label">🥤 음료/간식</div>
-          <input class="diet-meal-input" id="wt-meal-snack" placeholder="메모 (선택)">
-          <button class="diet-db-btn" onclick="openNutritionSearch('snack')" title="음식 검색">🔍</button>
-          <div class="meal-food-list" id="wt-foods-snack"></div>
-          <div class="diet-result" id="wt-result-snack"><span class="diet-badge pending">미분석</span></div>
-        </div>
-      </div>
-      <div class="extra-toggle-row" style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px;gap:16px;">
-        <div class="extra-toggle-item">
-          <span class="extra-toggle-label">🍷 와인 프리</span>
-          <div class="toggle-switch" id="wt-wine-free-toggle" onclick="wtToggleWineFree()"><div class="toggle-knob"></div></div>
-        </div>
+
+      <!-- 저장 -->
+      <div class="wt-detail-section" id="wt-save-section">
+        <button class="tds-btn fill md" id="wt-save-btn" onclick="saveWorkoutDay()" style="width:100%">저장</button>
       </div>
     </div>
 
-    <!-- 오늘의 칼로리 -->
+    <!-- 호환용 숨김 요소 -->
+    <div style="display:none">
+      <button id="wt-gym-btn-done"></button>
+      <button id="wt-cf-btn-done"></button>
+      <button id="wt-cf-btn-skip"></button>
+      <button id="wt-cf-btn-health"></button>
+      <div id="wt-stretching-toggle"></div>
+    </div>
+  </div>
+
+  <!-- ═══ 세트 간 휴식 타이머 (플로팅) ═══ -->
+  <div id="rest-timer-bar" class="rest-timer-bar" style="display:none">
+    <div class="rest-timer-main">
+      <div class="rest-timer-display">
+        <span class="rest-timer-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2"/><path d="M9 2h6"/><path d="M12 2v3"/></svg></span>
+        <span id="rest-timer-time" class="rest-timer-time">1:30</span>
+      </div>
+      <div class="rest-timer-presets">
+        <button class="rest-preset-btn" data-sec="60">1:00</button>
+        <button class="rest-preset-btn active" data-sec="90">1:30</button>
+        <button class="rest-preset-btn" data-sec="120">2:00</button>
+        <button class="rest-preset-btn" data-sec="180">3:00</button>
+      </div>
+      <div class="rest-timer-controls">
+        <button id="rest-timer-adj-down" class="rest-timer-adj" onclick="wtRestTimerAdjust(-15)">−15</button>
+        <div class="rest-timer-progress">
+          <div id="rest-timer-fill" class="rest-timer-fill"></div>
+        </div>
+        <button id="rest-timer-adj-up" class="rest-timer-adj" onclick="wtRestTimerAdjust(+15)">+15</button>
+        <button id="rest-timer-skip" class="rest-timer-skip" onclick="wtRestTimerSkip()">건너뛰기</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ 식단 탭 ═══ -->
+<div id="tab-diet" class="tab-panel">
+  <div class="workout-date-nav">
+    <button class="wt-date-nav-btn" onclick="changeWorkoutDate(-1)">◀</button>
+    <span id="wt-date-label-diet" class="workout-date-label"></span>
+    <button class="wt-date-nav-btn" onclick="changeWorkoutDate(1)">▶</button>
+    <button id="wt-today-btn-diet" class="wt-today-btn" onclick="goToTodayWorkout()" style="display:none">오늘</button>
+  </div>
+  <div class="workout-tab-content">
+    <!-- 오늘의 칼로리 (최상단) -->
     <div class="sheet-section" id="wt-calorie-tracker" style="display:none">
-      <div class="sheet-section-label">📊 오늘의 칼로리</div>
+      <div class="sheet-section-label">오늘의 칼로리</div>
       <div class="cal-tracker-header">
         <span id="wt-day-type-badge" class="cal-day-type"></span>
       </div>
@@ -268,32 +412,71 @@
       <div class="macro-bars" id="wt-macro-bars"></div>
     </div>
 
-    <div class="sheet-actions">
-      <button class="sheet-btn confirm" id="wt-save-btn" onclick="saveWorkoutDay()">💾 저장</button>
-    </div>
-  </div>
-
-  <!-- ═══ 세트 간 휴식 타이머 (플로팅) ═══ -->
-  <div id="rest-timer-bar" class="rest-timer-bar" style="display:none">
-    <div class="rest-timer-main">
-      <div class="rest-timer-display">
-        <span class="rest-timer-icon">⏱️</span>
-        <span id="rest-timer-time" class="rest-timer-time">1:30</span>
-      </div>
-      <div class="rest-timer-presets">
-        <button class="rest-preset-btn" data-sec="60">1:00</button>
-        <button class="rest-preset-btn active" data-sec="90">1:30</button>
-        <button class="rest-preset-btn" data-sec="120">2:00</button>
-        <button class="rest-preset-btn" data-sec="180">3:00</button>
-      </div>
-      <div class="rest-timer-controls">
-        <button id="rest-timer-adj-down" class="rest-timer-adj" onclick="wtRestTimerAdjust(-15)">−15</button>
-        <div class="rest-timer-progress">
-          <div id="rest-timer-fill" class="rest-timer-fill"></div>
+    <div class="sheet-section">
+      <div class="diet-grid">
+        <div class="diet-meal-row">
+          <div class="diet-meal-header">
+            <span class="diet-meal-label">아침</span>
+            <div class="diet-meal-actions">
+              <button class="diet-add-btn" onclick="openNutritionSearch('breakfast')">+ 음식 추가</button>
+              <button class="diet-skip-btn" id="wt-breakfast-skipped" onclick="wtSkipMeal('breakfast')">안 먹었어요</button>
+            </div>
+          </div>
+          <div class="meal-food-list" id="wt-foods-breakfast"></div>
+          <div class="meal-photo-wrap" id="wt-photo-breakfast"></div>
+          <button class="meal-photo-btn" onclick="document.getElementById('photo-input-breakfast').click()">📷 사진 추가</button>
+          <input type="file" id="photo-input-breakfast" accept="image/*" style="display:none" onchange="uploadMealPhoto('breakfast',this)">
+          <input class="diet-meal-input" id="wt-meal-breakfast" placeholder="메모 (선택)">
+          <div class="diet-result" id="wt-result-breakfast"></div>
         </div>
-        <button id="rest-timer-adj-up" class="rest-timer-adj" onclick="wtRestTimerAdjust(+15)">+15</button>
-        <button id="rest-timer-skip" class="rest-timer-skip" onclick="wtRestTimerSkip()">건너뛰기</button>
+        <div class="diet-meal-row">
+          <div class="diet-meal-header">
+            <span class="diet-meal-label">점심</span>
+            <div class="diet-meal-actions">
+              <button class="diet-add-btn" onclick="openNutritionSearch('lunch')">+ 음식 추가</button>
+              <button class="diet-skip-btn" id="wt-lunch-skipped" onclick="wtSkipMeal('lunch')">안 먹었어요</button>
+            </div>
+          </div>
+          <div class="meal-food-list" id="wt-foods-lunch"></div>
+          <div class="meal-photo-wrap" id="wt-photo-lunch"></div>
+          <button class="meal-photo-btn" onclick="document.getElementById('photo-input-lunch').click()">📷 사진 추가</button>
+          <input type="file" id="photo-input-lunch" accept="image/*" style="display:none" onchange="uploadMealPhoto('lunch',this)">
+          <input class="diet-meal-input" id="wt-meal-lunch" placeholder="메모 (선택)">
+          <div class="diet-result" id="wt-result-lunch"></div>
+        </div>
+        <div class="diet-meal-row">
+          <div class="diet-meal-header">
+            <span class="diet-meal-label">저녁</span>
+            <div class="diet-meal-actions">
+              <button class="diet-add-btn" onclick="openNutritionSearch('dinner')">+ 음식 추가</button>
+              <button class="diet-skip-btn" id="wt-dinner-skipped" onclick="wtSkipMeal('dinner')">안 먹었어요</button>
+            </div>
+          </div>
+          <div class="meal-food-list" id="wt-foods-dinner"></div>
+          <div class="meal-photo-wrap" id="wt-photo-dinner"></div>
+          <button class="meal-photo-btn" onclick="document.getElementById('photo-input-dinner').click()">📷 사진 추가</button>
+          <input type="file" id="photo-input-dinner" accept="image/*" style="display:none" onchange="uploadMealPhoto('dinner',this)">
+          <input class="diet-meal-input" id="wt-meal-dinner" placeholder="메모 (선택)">
+          <div class="diet-result" id="wt-result-dinner"></div>
+        </div>
+        <div class="diet-meal-row">
+          <div class="diet-meal-header">
+            <span class="diet-meal-label">음료/간식</span>
+            <div class="diet-meal-actions">
+              <button class="diet-add-btn" onclick="openNutritionSearch('snack')">+ 음식 추가</button>
+            </div>
+          </div>
+          <div class="meal-food-list" id="wt-foods-snack"></div>
+          <div class="meal-photo-wrap" id="wt-photo-snack"></div>
+          <button class="meal-photo-btn" onclick="document.getElementById('photo-input-snack').click()">📷 사진 추가</button>
+          <input type="file" id="photo-input-snack" accept="image/*" style="display:none" onchange="uploadMealPhoto('snack',this)">
+          <input class="diet-meal-input" id="wt-meal-snack" placeholder="메모 (선택)">
+          <div class="diet-result" id="wt-result-snack"></div>
+        </div>
       </div>
+    </div>
+    <div class="sheet-actions">
+      <button class="tds-btn fill md" onclick="saveWorkoutDay()">저장</button>
     </div>
   </div>
 </div>
@@ -373,16 +556,6 @@
 다이어트 목표 카드에서 체크인 해보세요!
 </div>
 </div>
-<div class="stats-block">
-<div class="stats-block-title">🔥 연간 트레이닝 맵 <span id="heatmap-year" style="color:var(--accent)"></span></div>
-<div style="display:flex;gap:4px;margin-bottom:6px;font-size:9px;color:var(--muted);">
-<span style="flex:1;text-align:center">월</span><span style="flex:1;text-align:center">화</span>
-<span style="flex:1;text-align:center">수</span><span style="flex:1;text-align:center">목</span>
-<span style="flex:1;text-align:center">금</span><span style="flex:1;text-align:center">토</span>
-<span style="flex:1;text-align:center">일</span>
-</div>
-<div class="heatmap-grid" id="heatmap"></div>
-</div>
 </div>
 </div>
 
@@ -390,7 +563,7 @@
 <div id="modals-container"></div>
 
 <!-- Streak 설정 모달 -->
-<div class="modal-overlay" id="streak-settings-modal" onclick="closeStreakSettingsModal(event)" style="display:none;z-index:1001">
+<div class="modal-backdrop" id="streak-settings-modal" onclick="closeStreakSettingsModal(event)" style="display:none;z-index:1001">
   <div class="modal-sheet">
     <div class="sheet-handle"></div>
     <div class="modal-title">Streak 탭 세팅</div>
@@ -430,8 +603,8 @@
         </div>
       </div>
       <div style="display:flex;gap:8px">
-        <button class="ex-editor-save" onclick="saveStreakSettingsAndClose()" style="flex:1">저장</button>
-        <button class="ex-editor-cancel" onclick="closeStreakSettingsModal()" style="flex:1">취소</button>
+        <button class="tds-btn fill md" onclick="saveStreakSettingsAndClose()" style="flex:1">저장</button>
+        <button class="tds-btn ghost md" onclick="closeStreakSettingsModal()" style="flex:1">취소</button>
       </div>
     </div>
   </div>
@@ -467,7 +640,7 @@ async function saveStreakSettingsAndClose() {
 </script>
 
 <!-- 월간 캘린더 모달 -->
-<div class="modal-overlay" id="monthly-calendar-modal" onclick="closeMonthlyCalendarModal(event)">
+<div class="modal-backdrop" id="monthly-calendar-modal" onclick="closeMonthlyCalendarModal(event)">
   <div class="modal-sheet" style="max-height:90vh;overflow-y:auto;max-width:600px;padding:12px;">
     <div class="sheet-handle"></div>
     <div id="monthly-calendar-modal-content" style="padding:12px 16px 80px;"></div>
@@ -508,6 +681,481 @@ async function saveStreakSettingsAndClose() {
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+// 테마 토글
+// ── 계정 시스템 ──
+let _pendingAccount = null;
+
+async function initLoginScreen() {
+  const { loadSavedUser, getAccountList, setCurrentUser, loadAll } = await import('./data.js');
+
+  // 이미 로그인된 사용자가 있으면 바로 진입
+  // 단, 김태우 계정(Admin/Guest)은 매번 비밀번호 필요
+  const saved = loadSavedUser();
+  if (saved) {
+    const isKimSaved = saved.id === '김_태우' || saved.id === '김_태우(guest)';
+    if (isKimSaved) {
+      // 김태우는 매번 비밀번호 필요 → 간편 잠금 화면
+      const { setCurrentUser, hashPassword, verifyPassword, getAccountList, saveAccount } = await import('./data.js');
+      const accounts = await getAccountList();
+      // 항상 Guest 계정으로 로그인 (데이터는 공유)
+      let kimAcc = accounts.find(a => a.id === '김_태우(guest)') || accounts.find(a => a.id === saved.id);
+      // 비밀번호가 설정 안 되어있으면 먼저 설정
+      if (kimAcc && (!kimAcc.hasPassword || !kimAcc.passwordHash)) {
+        kimAcc.hasPassword = true;
+        kimAcc.passwordHash = hashPassword('kimtw100');
+        await saveAccount(kimAcc);
+      }
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('login-screen').style.display = 'none';
+      // 잠금 화면 표시
+      const lockDiv = document.createElement('div');
+      lockDiv.id = 'kim-lock-screen';
+      lockDiv.style.cssText = 'position:fixed;inset:0;z-index:9999;background:var(--bg);display:flex;align-items:center;justify-content:center;';
+      lockDiv.innerHTML = `<div style="text-align:center;padding:24px;max-width:300px;width:100%;">
+        <div style="width:56px;height:56px;border-radius:50%;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;margin:0 auto 12px;">김</div>
+        <div style="font-size:16px;font-weight:600;color:var(--text);margin-bottom:4px;">${saved.nickname || '김태우'}</div>
+        <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:16px;">비밀번호를 입력해주세요</div>
+        <input type="password" id="kim-lock-pw" style="width:100%;padding:12px;border:1px solid var(--border);border-radius:999px;font-size:14px;text-align:center;background:var(--surface);color:var(--text);outline:none;" placeholder="비밀번호" autofocus onkeydown="if(event.key==='Enter')document.getElementById('kim-lock-btn').click()">
+        <div id="kim-lock-error" style="font-size:12px;color:#e53935;margin-top:6px;min-height:18px;"></div>
+        <button id="kim-lock-btn" style="width:100%;padding:12px;border:none;border-radius:999px;background:var(--primary);color:#fff;font-size:14px;font-weight:600;cursor:pointer;margin-top:8px;">확인</button>
+        <button id="kim-lock-other" style="width:100%;padding:10px;border:none;background:none;color:var(--text-tertiary);font-size:12px;cursor:pointer;margin-top:8px;">다른 계정으로 로그인</button>
+      </div>`;
+      document.body.appendChild(lockDiv);
+      document.getElementById('kim-lock-btn').onclick = () => {
+        const pw = document.getElementById('kim-lock-pw').value;
+        if (kimAcc && verifyPassword(kimAcc, pw)) {
+          setCurrentUser(kimAcc);
+          lockDiv.remove();
+          document.getElementById('loading').style.display = 'flex';
+          location.reload();
+        } else {
+          document.getElementById('kim-lock-error').textContent = '비밀번호가 맞지 않아요';
+        }
+      };
+      document.getElementById('kim-lock-other').onclick = () => {
+        setCurrentUser(null);
+        lockDiv.remove();
+        location.reload();
+      };
+      setTimeout(() => document.getElementById('kim-lock-pw')?.focus(), 100);
+      return;
+    } else {
+      document.getElementById('login-screen').style.display = 'none';
+      document.getElementById('loading').style.display = 'flex';
+      return;
+    }
+  }
+
+  // 이름 입력 시 실시간으로 기존 계정 체크
+  const lastNameEl = document.getElementById('login-last-name');
+  const firstNameEl = document.getElementById('login-first-name');
+  let _checkTimer = null;
+
+  async function checkAccountExists() {
+    const ln = lastNameEl.value.trim();
+    const fn = firstNameEl.value.trim();
+    const statusEl = document.getElementById('login-status');
+    const pwSection = document.getElementById('login-pw-section');
+    const newPwSection = document.getElementById('login-new-pw-section');
+    const nickSection = document.getElementById('login-nickname')?.parentElement;
+    const nickGuide = nickSection?.querySelector('.login-nick-guide');
+    if (!ln || !fn) {
+      pwSection.style.display = 'none';
+      newPwSection.style.display = 'none';
+      statusEl.textContent = '';
+      return;
+    }
+    const id = `${ln}_${fn}`.toLowerCase().replace(/\s/g, '');
+    const accounts = await getAccountList();
+    const found = accounts.find(a => a.id === id);
+
+    // 김/태우 입력 시 비밀번호만 (Guest UX 기본)
+    const modeSection = document.getElementById('login-mode-section');
+    if (modeSection) modeSection.style.display = 'none';
+    if (ln === '김' && fn === '태우') {
+      pwSection.style.display = 'block';
+      newPwSection.style.display = 'none';
+      document.getElementById('login-nickname').style.display = 'none';
+      document.querySelector('.login-nick-guide')?.style && (document.querySelector('.login-nick-guide').style.display = 'none');
+      statusEl.innerHTML = '<span style="color:var(--primary);">비밀번호를 입력해주세요.</span>';
+      return;
+    }
+
+    if (found) {
+      // 기존 계정: 별명 입력 숨김
+      document.getElementById('login-nickname').style.display = 'none';
+      document.querySelector('.login-nick-guide')?.style && (document.querySelector('.login-nick-guide').style.display = 'none');
+      if (found.hasPassword) {
+        pwSection.style.display = 'block';
+        newPwSection.style.display = 'none';
+        statusEl.innerHTML = '<span style="color:var(--primary);">기존 계정이에요. 비밀번호를 입력해주세요.</span>';
+      } else {
+        pwSection.style.display = 'none';
+        newPwSection.style.display = 'none';
+        statusEl.innerHTML = '<span style="color:var(--primary);">기존 계정이에요. 바로 시작할 수 있어요.</span>';
+      }
+    } else {
+      // 신규 계정: 별명 입력 표시
+      document.getElementById('login-nickname').style.display = '';
+      document.querySelector('.login-nick-guide')?.style && (document.querySelector('.login-nick-guide').style.display = '');
+      pwSection.style.display = 'none';
+      newPwSection.style.display = 'block';
+      statusEl.innerHTML = '<span style="color:var(--text-tertiary);">새 계정이 만들어져요.</span>';
+    }
+  }
+  window._checkAccountExists = checkAccountExists;
+
+  [lastNameEl, firstNameEl].forEach(el => {
+    el.addEventListener('input', () => {
+      clearTimeout(_checkTimer);
+      _checkTimer = setTimeout(checkAccountExists, 300);
+    });
+  });
+
+  // 김태우 계정(Admin/Guest) 비밀번호 통일 + 더미 계정 정리
+  try {
+    const accounts = await getAccountList();
+    const { hashPassword, deleteDoc: delDoc } = await import('./data.js');
+    const adminIds = ['김_태우', '김_태우(guest)'];
+
+    // 더미 계정 삭제 (1회)
+    const cleaned = localStorage.getItem('dummy_cleaned_v2');
+    if (!cleaned) {
+      const { doc, deleteDoc } = await import("https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js");
+      const { getFirestore } = await import("https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js");
+      const db = getFirestore();
+      for (const a of accounts) {
+        if (!adminIds.includes(a.id)) {
+          try { await deleteDoc(doc(db, '_accounts', a.id)); console.log('[cleanup] 삭제:', a.id); } catch(e) {}
+        }
+      }
+      localStorage.setItem('dummy_cleaned_v2', 'done');
+    }
+
+    // Admin/Guest 비밀번호 통일 + nickname 동기화
+    const freshAccounts = await getAccountList();
+    const adminAcc2 = freshAccounts.find(a => a.id === '김_태우');
+    const guestAcc2 = freshAccounts.find(a => a.id === '김_태우(guest)');
+    // Admin의 nickname을 SSOT로, Guest에 동기화
+    if (adminAcc2 && guestAcc2 && adminAcc2.nickname && adminAcc2.nickname !== guestAcc2.nickname) {
+      guestAcc2.nickname = adminAcc2.nickname;
+    } else if (guestAcc2 && guestAcc2.nickname && adminAcc2 && !adminAcc2.nickname) {
+      adminAcc2.nickname = guestAcc2.nickname;
+    }
+    for (const a of freshAccounts) {
+      if (adminIds.includes(a.id)) {
+        a.hasPassword = true;
+        a.passwordHash = hashPassword('kimtw100');
+        await saveAccount(a);
+      }
+    }
+    // 김태우(Guest) 계정이 없으면 자동 생성
+    if (!accounts.find(a => a.id === '김_태우(guest)')) {
+      const guestAccount = {
+        id: '김_태우(guest)',
+        lastName: '김',
+        firstName: '태우(Guest)',
+        hasPassword: true,
+        passwordHash: hashPassword('kimtw100'),
+        createdAt: Date.now(),
+      };
+      await saveAccount(guestAccount);
+      console.log('[login] 김태우(Guest) 계정 자동 생성');
+    }
+    // 김태우(Admin) 표시명 업데이트
+    const adminAcc = accounts.find(a => a.id === '김_태우');
+    if (adminAcc && adminAcc.firstName === '태우') {
+      adminAcc.firstName = '태우(Admin)';
+      await saveAccount(adminAcc);
+      console.log('[login] 김태우 → 김태우(Admin) 이름 업데이트');
+    }
+  } catch(e) { console.warn('[login] pw update err:', e); }
+
+  // 로딩 숨기기, 로그인 표시
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'flex';
+}
+
+async function selectAccount(accountId) {
+  const { getAccountList, verifyPassword, setCurrentUser } = await import('./data.js');
+  const accounts = await getAccountList();
+  const account = accounts.find(a => a.id === accountId);
+  if (!account) return;
+
+  if (account.hasPassword) {
+    _pendingAccount = account;
+    document.getElementById('login-pw-modal-name').textContent = `${account.lastName}${account.firstName}`;
+    document.getElementById('login-pw-modal').style.display = 'flex';
+    document.getElementById('login-pw-modal-error').style.display = 'none';
+    setTimeout(() => document.getElementById('login-pw-modal-input').focus(), 100);
+    return;
+  }
+
+  setCurrentUser(account);
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('loading').style.display = 'flex';
+  location.reload();
+}
+
+async function verifyAndLogin() {
+  if (!_pendingAccount) { console.error('[login] _pendingAccount is null'); return; }
+  const { verifyPassword, setCurrentUser, hashPassword } = await import('./data.js');
+  const pw = document.getElementById('login-pw-modal-input').value;
+
+  console.log('[login] 비밀번호 검증:', {
+    account: _pendingAccount.id,
+    hasPassword: _pendingAccount.hasPassword,
+    storedHash: _pendingAccount.passwordHash,
+    inputHash: hashPassword(pw),
+  });
+
+  if (!verifyPassword(_pendingAccount, pw)) {
+    document.getElementById('login-pw-modal-error').style.display = 'block';
+    return;
+  }
+
+  setCurrentUser(_pendingAccount);
+  document.getElementById('login-pw-modal').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('loading').style.display = 'flex';
+  location.reload();
+}
+
+function closePasswordModal() {
+  document.getElementById('login-pw-modal').style.display = 'none';
+  _pendingAccount = null;
+}
+
+// 모드 선택 라디오 하이라이트
+document.addEventListener('change', (e) => {
+  if (e.target.name !== 'login-mode') return;
+  document.querySelectorAll('#login-mode-section label').forEach(lbl => {
+    const radio = lbl.querySelector('input[type="radio"]');
+    lbl.style.borderColor = radio.checked ? 'var(--primary)' : 'transparent';
+  });
+});
+
+async function createAccountAndLogin() {
+  const lastName = document.getElementById('login-last-name').value.trim();
+  const firstName = document.getElementById('login-first-name').value.trim();
+  if (!lastName || !firstName) { alert('성과 이름을 입력해주세요.'); return; }
+
+  const { saveAccount, setCurrentUser, hashPassword, getAccountList, verifyPassword } = await import('./data.js');
+
+  // 김/태우 → 무조건 Guest 계정 (Guest UX 기본)
+  let newId;
+  if (lastName === '김' && firstName === '태우') {
+    newId = '김_태우(guest)';
+  } else {
+    newId = `${lastName}_${firstName}`.toLowerCase().replace(/\s/g, '');
+  }
+
+  // 같은 이름 계정이 이미 존재하는지 확인
+  const existing = await getAccountList();
+  const found = existing.find(a => a.id === newId);
+
+  if (found) {
+    if (found.hasPassword) {
+      // 비밀번호 보호 계정 → 인라인 비밀번호 필드에서 검증
+      const pw = document.getElementById('login-password')?.value || '';
+      if (!pw) { document.getElementById('login-password')?.focus(); return; }
+      if (!verifyPassword(found, pw)) {
+        document.getElementById('login-status').innerHTML = '<span style="color:#ef4444;">비밀번호가 맞지 않아요.</span>';
+        return;
+      }
+      setCurrentUser(found);
+      document.getElementById('login-screen').style.display = 'none';
+      document.getElementById('loading').style.display = 'flex';
+      location.reload();
+      return;
+    } else {
+      // 비밀번호 없는 기존 계정 → 바로 로그인
+      setCurrentUser(found);
+      document.getElementById('login-screen').style.display = 'none';
+      document.getElementById('loading').style.display = 'flex';
+      location.reload();
+      return;
+    }
+  }
+
+  // 새 계정 생성
+  const usePw = document.getElementById('login-use-pw')?.checked;
+  const pw = document.getElementById('login-new-password')?.value || '';
+
+  const nickname = document.getElementById('login-nickname')?.value.trim() || '';
+  const account = {
+    id: newId,
+    lastName,
+    firstName,
+    nickname: nickname || (lastName + firstName),
+    hasPassword: usePw && pw.length > 0,
+    passwordHash: usePw && pw.length > 0 ? hashPassword(pw) : null,
+    createdAt: Date.now(),
+  };
+
+  await saveAccount(account);
+  setCurrentUser(account);
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('loading').style.display = 'flex';
+  location.reload();
+}
+
+async function logoutAccount() {
+  const { getCurrentUser, setCurrentUser, isAdmin, isAdminGuest, getAccountList } = await import('./data.js');
+  const user = getCurrentUser();
+  const name = user ? `${user.lastName}${user.firstName}` : '';
+  const isKimTaewoo = isAdmin() || isAdminGuest();
+
+  // 김태우 계정이면 모드 전환 옵션 추가
+  let modeSwitch = '';
+  if (isKimTaewoo) {
+    const currentMode = isAdmin() ? 'Admin' : 'Guest';
+    const otherMode = isAdmin() ? 'Guest' : 'Admin';
+    const otherLabel = isAdmin() ? '게스트 모드로 전환' : '어드민 모드로 전환';
+    modeSwitch = `
+      <div style="border-top:1px solid var(--border);margin:16px -24px 0;padding:16px 24px 0;">
+        <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:8px;">현재: ${currentMode} 모드</div>
+        <button onclick="switchKimMode('${otherMode}')" style="width:100%;padding:12px;border-radius:var(--radius-md);border:1px solid var(--primary);background:var(--primary-bg);color:var(--primary);font-size:14px;font-weight:600;cursor:pointer;margin-bottom:8px;">${otherLabel}</button>
+      </div>
+    `;
+  }
+
+  document.getElementById('dynamic-modal')?.remove();
+  const modal = document.createElement('div'); modal.id = 'dynamic-modal'; document.body.appendChild(modal);
+  modal.innerHTML = `
+    <div class="modal-backdrop" style="display:flex;z-index:10000;" onclick="if(event.target===this){document.getElementById('dynamic-modal')?.remove();}">
+      <div class="modal-sheet" style="max-width:340px;padding:24px;text-align:center;">
+        <div style="width:48px;height:48px;border-radius:50%;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;margin:0 auto 12px;">${name.charAt(0) || '?'}</div>
+        <div style="font-size:16px;font-weight:600;margin-bottom:2px;">${name || '계정'}</div>
+        <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:12px;">별명: ${user?.nickname || name}</div>
+        <div style="display:flex;gap:6px;margin-bottom:8px;">
+          <button onclick="document.getElementById('dynamic-modal')?.remove();openFriendProfile('${user?.id}','${name}')" style="flex:1;padding:9px;border:1px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text);font-size:12px;font-weight:500;cursor:pointer;">🏡 내 프로필</button>
+          <button onclick="openNicknameEdit()" style="flex:1;padding:9px;border:1px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text);font-size:12px;font-weight:500;cursor:pointer;">✏️ 별명 변경</button>
+        </div>
+        ${modeSwitch}
+        <div style="display:flex;gap:8px;margin-top:12px;">
+          <button onclick="document.getElementById('dynamic-modal')?.remove();" style="flex:1;padding:12px;border-radius:999px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:14px;font-weight:600;cursor:pointer;">닫기</button>
+          <button onclick="confirmLogout()" style="flex:1;padding:12px;border-radius:999px;border:none;background:var(--surface2);color:var(--text-secondary);font-size:14px;font-weight:600;cursor:pointer;">계정 전환</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+async function confirmLogout() {
+  const { setCurrentUser } = await import('./data.js');
+  setCurrentUser(null);
+  location.reload();
+}
+
+async function switchKimMode(mode) {
+  const { setCurrentUser, getAccountList, hashPassword, saveAccount } = await import('./data.js');
+  const accounts = await getAccountList();
+  const targetId = mode === 'Admin' ? '김_태우' : '김_태우(guest)';
+  let target = accounts.find(a => a.id === targetId);
+  if (!target && mode === 'Guest') {
+    target = { id: '김_태우(guest)', lastName: '김', firstName: '태우(Guest)',
+               hasPassword: true, passwordHash: hashPassword('kimtw100'), createdAt: Date.now() };
+    await saveAccount(target);
+  }
+  if (target) {
+    setCurrentUser(target);
+    location.reload();
+  }
+}
+window.switchKimMode = switchKimMode;
+
+async function openNicknameEdit() {
+  const { getCurrentUser, saveAccount, setCurrentUser, isAdmin, isAdminGuest, getAccountList } = await import('./data.js');
+  const user = getCurrentUser();
+  if (!user) return;
+  const newNick = prompt('새 별명을 입력하세요', user.nickname || '');
+  if (newNick === null || !newNick.trim()) return;
+  user.nickname = newNick.trim();
+  await saveAccount(user);
+  setCurrentUser(user);
+  // Admin/Guest nickname 동기화 (SSOT)
+  if (isAdmin() || isAdminGuest()) {
+    const accounts = await getAccountList();
+    const otherId = isAdmin() ? '김_태우(guest)' : '김_태우';
+    const other = accounts.find(a => a.id === otherId);
+    if (other) {
+      other.nickname = newNick.trim();
+      await saveAccount(other);
+    }
+  }
+  document.getElementById('dynamic-modal')?.remove();
+  location.reload();
+}
+window.openNicknameEdit = openNicknameEdit;
+
+async function manageAccountPassword(accountId) {
+  const { getAccountList, saveAccount, hashPassword, verifyPassword } = await import('./data.js');
+  const accounts = await getAccountList();
+  const account = accounts.find(a => a.id === accountId);
+  if (!account) return;
+
+  if (account.hasPassword) {
+    // 기존 비밀번호 확인 후 변경/해제
+    const oldPw = prompt(`${account.lastName}${account.firstName} — 현재 비밀번호를 입력하세요`);
+    if (oldPw === null) return;
+    if (!verifyPassword(account, oldPw)) { alert('비밀번호가 맞지 않아요.'); return; }
+
+    const action = confirm('비밀번호를 변경하시겠어요?\n\n확인 = 새 비밀번호 설정\n취소 = 비밀번호 해제');
+    if (action) {
+      const newPw = prompt('새 비밀번호를 입력하세요');
+      if (!newPw) return;
+      account.passwordHash = hashPassword(newPw);
+      await saveAccount(account);
+      alert('비밀번호가 변경되었어요.');
+    } else {
+      account.hasPassword = false;
+      account.passwordHash = null;
+      await saveAccount(account);
+      alert('비밀번호가 해제되었어요.');
+    }
+  } else {
+    // 비밀번호 새로 설정
+    const newPw = prompt(`${account.lastName}${account.firstName} — 비밀번호를 설정하세요`);
+    if (!newPw) return;
+    account.hasPassword = true;
+    account.passwordHash = hashPassword(newPw);
+    await saveAccount(account);
+    alert('비밀번호가 설정되었어요.');
+  }
+  // 목록 갱신
+  initLoginScreen();
+}
+
+window.manageAccountPassword = manageAccountPassword;
+window.logoutAccount = logoutAccount;
+window.confirmLogout = confirmLogout;
+window.selectAccount = selectAccount;
+window.verifyAndLogin = verifyAndLogin;
+window.closePasswordModal = closePasswordModal;
+window.createAccountAndLogin = createAccountAndLogin;
+
+// 페이지 로드 시 로그인 초기화
+document.addEventListener('DOMContentLoaded', initLoginScreen);
+
+function toggleTheme() {
+  const root = document.documentElement;
+  const isLight = root.classList.toggle('light');
+  localStorage.setItem('theme', isLight ? 'light' : 'dark');
+  document.getElementById('theme-toggle').textContent = isLight ? '☀️' : '🌙';
+}
+// 밝은 모드 고정
+(function() {
+  document.documentElement.classList.add('light');
+})();
+
+// 더보기 메뉴
+function toggleMoreMenu() {
+  const menu = document.getElementById('more-menu');
+  menu.style.display = menu.style.display === 'none' ? 'flex' : 'none';
+}
+</script>
 <script type="module" src="app.js?v=20260403"></script>
 
 <!-- PWA Service Worker 등록 -->

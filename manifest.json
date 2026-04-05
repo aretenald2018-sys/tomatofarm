@@ -1,14 +1,14 @@
 {
   "id": "/dashboard3/",
-  "name": "Life Streak",
-  "short_name": "Streak",
-  "description": "일일 운동, 식단, 건강을 추적하고 관리하는 개인 대시보드 앱",
+  "name": "토마토 키우기",
+  "short_name": "토마토",
+  "description": "운동과 식단을 기록하고 토마토를 키우는 건강 관리 앱",
   "start_url": "/dashboard3/",
   "scope": "/dashboard3/",
   "display": "standalone",
   "orientation": "portrait",
-  "theme_color": "#1a1a1a",
-  "background_color": "#0a0e1a",
+  "theme_color": "#ffffff",
+  "background_color": "#f7f8fa",
   "icons": [
     {
       "src": "icon-192.png",

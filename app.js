@@ -11,11 +11,14 @@ import { loadAll, saveGoal, deleteGoal, getGoals,
          saveQuestOrder, getQuestOrder,
          saveEvent, deleteEvent, getEvents,
          getTabOrder, saveTabOrder,
+         getVisibleTabs, getRawVisibleTabs, saveVisibleTabs, DEFAULT_VIS_TABS,
+         isAdmin, isAdminGuest,
          getDietPlan, saveDietPlan, calcDietMetrics,
          saveBodyCheckin, deleteBodyCheckin, getBodyCheckins,
          saveNutritionItem, deleteNutritionItem, getNutritionDB, searchNutritionDB, getRecentNutritionItems,
          imageToBase64, getMovieData, saveMovieData, getAllMovieMonths,
-         getCookingRecords } from './data.js';
+         getCookingRecords,
+         getCalendarRows, saveCalendarRows } from './data.js';
 import { loadCSVDatabase, searchCSVFood } from './fatsecret-api.js';
 import { connectGoogleCalendar, disconnectGoogleCalendar, isGCalConnected,
          tryAutoConnect, syncCreateToGCal, syncUpdateToGCal, syncDeleteToGCal,
@@ -25,7 +28,7 @@ import { getDietRec, getWorkoutRec,
          analyzeGoalFeasibility }                 from './ai.js';
 import { renderCalendar, changeYear }             from './render-calendar.js';
 import { renderStats, setPeriod, exportCSV }      from './render-stats.js';
-import { renderHome }                             from './render-home.js';
+import { renderHome, refreshNotifCenter }          from './render-home.js';
 import { renderMonthlyCalendar, renderMonthlyCalendarInModal,
          changeMonthlyMonth }                     from './render-monthly-calendar.js';
 import { renderMovie, changeMovieMonth, startMovieCrawl, toggleMovieTagFilter }  from './render-movie.js';
@@ -129,6 +132,7 @@ function switchTab(tab) {
   if (tab === 'movie')    renderMovie();
   if (tab === 'finance')  renderFinance();
   if (tab === 'workout')  loadWorkoutDate(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
+  if (tab === 'diet')     loadWorkoutDate(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
 }
 
 function renderAll() {
@@ -340,12 +344,85 @@ function _initSwipeNavigation() {
 function _applyTabOrder(order) {
   const nav = document.getElementById('tab-nav');
   if (!nav || !order?.length) return;
+  // diet이 없으면 workout 앞에 삽입
+  if (!order.includes('diet')) {
+    const wIdx = order.indexOf('workout');
+    order.splice(wIdx >= 0 ? wIdx : 1, 0, 'diet');
+  }
   const settingsBtn = nav.querySelector('.tab-btn-settings');
   order.forEach(tabId => {
     const btn = nav.querySelector(`.tab-btn[data-tab="${tabId}"]`);
     if (btn) nav.insertBefore(btn, settingsBtn);
   });
 }
+
+// ── 하단 탭 가시성 ──────────────────────────────────────────────
+const ALL_CONFIGURABLE_TABS = [
+  { id: 'home',     icon: '🏠', label: '홈',      fixed: true },
+  { id: 'diet',     icon: '🥗', label: '식단' },
+  { id: 'workout',  icon: '💪', label: '운동' },
+  { id: 'calendar', icon: '📆', label: '캘린더' },
+  { id: 'finance',  icon: '💰', label: '재무' },
+  { id: 'stats',    icon: '📊', label: '통계' },
+];
+
+function _applyVisibleTabs(visibleTabs) {
+  const nav = document.getElementById('tab-nav');
+  if (!nav) return;
+  const dynamicContainer = document.getElementById('more-menu-dynamic-tabs');
+  if (dynamicContainer) dynamicContainer.innerHTML = '';
+
+  ALL_CONFIGURABLE_TABS.forEach(t => {
+    if (t.fixed) return; // 홈은 항상 표시
+    const btn = nav.querySelector(`.tab-btn[data-tab="${t.id}"]`);
+    if (!btn) return;
+    const isVisible = visibleTabs.includes(t.id);
+    btn.style.display = isVisible ? '' : 'none';
+
+    // 하단 탭에 없는 항목은 더보기 메뉴에 표시
+    if (!isVisible && dynamicContainer) {
+      const item = document.createElement('button');
+      item.className = 'more-menu-item tab-btn';
+      item.dataset.tab = t.id;
+      item.textContent = `${t.icon} ${t.label}`;
+      item.onclick = () => { switchTab(t.id); toggleMoreMenu(); };
+      dynamicContainer.appendChild(item);
+    }
+  });
+}
+
+function openTabSettingsModal() {
+  const list = document.getElementById('tab-settings-list');
+  if (!list) return;
+  const current = getVisibleTabs();
+  list.innerHTML = ALL_CONFIGURABLE_TABS.filter(t => !t.fixed).map(t => {
+    const checked = current.includes(t.id) ? 'checked' : '';
+    return `<label style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:var(--radius-md);background:var(--surface2);cursor:pointer;">
+      <input type="checkbox" data-tab-id="${t.id}" ${checked} style="width:18px;height:18px;accent-color:var(--primary);">
+      <span style="font-size:18px;">${t.icon}</span>
+      <span style="font-size:14px;font-weight:500;color:var(--text);">${t.label}</span>
+    </label>`;
+  }).join('');
+  document.getElementById('tab-settings-modal').classList.add('open');
+}
+
+function closeTabSettingsModal(e) {
+  if (e && e.target !== document.getElementById('tab-settings-modal')) return;
+  document.getElementById('tab-settings-modal').classList.remove('open');
+}
+
+async function saveTabSettingsFromModal() {
+  const checks = document.querySelectorAll('#tab-settings-list input[data-tab-id]');
+  const selected = ['home']; // 홈은 항상 포함
+  checks.forEach(c => { if (c.checked) selected.push(c.dataset.tabId); });
+  await saveVisibleTabs(selected);
+  _applyVisibleTabs(selected);
+  document.getElementById('tab-settings-modal').classList.remove('open');
+}
+
+window.openTabSettingsModal = openTabSettingsModal;
+window.closeTabSettingsModal = closeTabSettingsModal;
+window.saveTabSettingsFromModal = saveTabSettingsFromModal;
 
 // ── 목표 및 퀨스트 모달 함수는 app-modal-*.js에서 import됨 ───────────────
 
@@ -551,8 +628,45 @@ function openSettingsModal() {
   document.getElementById('cfg-anthropic').value = localStorage.getItem('cfg_anthropic') || '';
   _updateGCalStatus();
   _renderNutritionDBList();
+  _renderCalendarRowsSettings();
   document.getElementById('settings-modal').classList.add('open');
 }
+
+function _renderCalendarRowsSettings() {
+  const container = document.getElementById('settings-calendar-rows');
+  if (!container) return;
+  const rows = getCalendarRows();
+  container.innerHTML = rows.map((r, i) => `
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);">
+      <span style="font-size:16px;">${r.emoji || '📌'}</span>
+      <span style="flex:1;font-size:13px;font-weight:500;color:var(--text);">${r.label}</span>
+      ${['gym','diet'].includes(r.id)
+        ? '<span style="font-size:10px;color:var(--text-tertiary);">기본</span>'
+        : `<button onclick="removeCalendarRow(${i})" style="background:none;border:none;color:var(--text-tertiary);font-size:14px;cursor:pointer;">✕</button>`
+      }
+    </div>
+  `).join('');
+}
+
+window.addCalendarRow = async function() {
+  const label = prompt('활동 이름을 입력하세요 (예: 요가, 수영, 러닝)');
+  if (!label?.trim()) return;
+  const emoji = prompt('이모지를 입력하세요 (예: 🧘, 🏊, 🏃)', '📌') || '📌';
+  const rows = getCalendarRows();
+  rows.push({ id: 'custom_' + Date.now(), label: label.trim(), emoji });
+  await saveCalendarRows(rows);
+  _renderCalendarRowsSettings();
+  if (window.renderCalendar) renderCalendar();
+};
+
+window.removeCalendarRow = async function(index) {
+  const rows = getCalendarRows();
+  if (['gym','diet'].includes(rows[index]?.id)) return; // 기본 행 삭제 방지
+  rows.splice(index, 1);
+  await saveCalendarRows(rows);
+  _renderCalendarRowsSettings();
+  if (window.renderCalendar) renderCalendar();
+};
 
 function _renderNutritionDBList() {
   const container = document.getElementById('settings-nutrition-db-list');
@@ -673,15 +787,22 @@ async function syncGCalNow() {
 }
 
 // ── 다이어트 플랜 모달 ────────────────────────────────────────────
-function openDietPlanModal() {
+async function openDietPlanModal() {
+  if (!document.getElementById('dp-height')) {
+    const { loadAndInjectModals } = await import('./modal-manager.js');
+    await loadAndInjectModals();
+  }
+  if (!document.getElementById('dp-height')) { console.error('[diet] modal not found'); return; }
   const plan = getDietPlan();
-  document.getElementById('dp-height').value       = plan.height      || '';
-  document.getElementById('dp-age').value          = plan.age         || '';
-  document.getElementById('dp-weight').value       = plan.weight      || '';
-  document.getElementById('dp-bodyfat').value      = plan.bodyFatPct  || '';
-  document.getElementById('dp-target-weight').value= plan.targetWeight    || '';
-  document.getElementById('dp-target-bf').value    = plan.targetBodyFatPct|| '';
-  document.getElementById('dp-start-date').value   = plan.startDate   || '';
+  // 사용자가 직접 설정하지 않았으면 신체정보 비우기
+  const hasData = plan._userSet;
+  document.getElementById('dp-height').value       = hasData ? (plan.height || '') : '';
+  document.getElementById('dp-age').value          = hasData ? (plan.age || '') : '';
+  document.getElementById('dp-weight').value       = hasData ? (plan.weight || '') : '';
+  document.getElementById('dp-bodyfat').value      = hasData ? (plan.bodyFatPct || '') : '';
+  document.getElementById('dp-target-weight').value= hasData ? (plan.targetWeight || '') : '';
+  document.getElementById('dp-target-bf').value    = hasData ? (plan.targetBodyFatPct || '') : '';
+  document.getElementById('dp-start-date').value   = hasData ? (plan.startDate || '') : '';
   document.getElementById('dp-loss-rate').value    = plan.lossRatePerWeek || 0.009;
   document.getElementById('dp-activity').value     = plan.activityFactor  || 1.3;
   document.getElementById('dp-refeed-kcal').value  = plan.refeedKcal  || 5000;
@@ -839,13 +960,234 @@ async function openNutritionSearch(mealId) {
     }
   }
 
-  // 초기: 최근 항목만 표시 (검색어 입력 시 전체 결과 표시)
+  // 공공 식품DB + 농식품DB 백그라운드 로드
+  Promise.all([_loadPublicFoodDB(), _loadAgriFoodDB()]).then(() => {
+    const q = document.getElementById('nutrition-search-input')?.value?.trim();
+    if (q) renderNutritionSearchResults();
+  });
+
+  // 초��: 최근 항목만 표시
   renderNutritionSearchInitial();
   document.getElementById('nutrition-search-modal').classList.add('open');
   setTimeout(() => document.getElementById('nutrition-search-input').focus(), 100);
 }
 
 function closeNutritionSearch(e) { _closeModal('nutrition-search-modal', e); }
+
+// ── 공공데이터 식품영양성분 API ──────────────────────────────────────────
+const _PUBLIC_FOOD_API = 'https://api.data.go.kr/openapi/tn_pubr_public_nutri_food_info_api';
+const _PUBLIC_FOOD_KEY = 'e54c5a3ae4ee20df7abd68a1b14528ad309c2fbe25a9ab1128bf7e410414d59b';
+let _publicFoodCache = null; // 전체 데이터 캐시
+let _publicFoodLoading = false;
+
+async function _loadPublicFoodDB() {
+  if (_publicFoodCache) return _publicFoodCache;
+  if (_publicFoodLoading) return [];
+
+  // IndexedDB 캐시 확인
+  try {
+    const cached = localStorage.getItem('publicFoodDB');
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (parsed.ts && Date.now() - parsed.ts < 7 * 86400000) { // 7일 캐시
+        _publicFoodCache = parsed.data;
+        console.log(`[식품DB] 캐시 로드: ${_publicFoodCache.length}건`);
+        return _publicFoodCache;
+      }
+    }
+  } catch {}
+
+  _publicFoodLoading = true;
+  console.log('[식품DB] API에서 전체 데이터 로딩 중...');
+
+  try {
+    const allItems = [];
+    const pageSize = 1000;
+    // 첫 페이지로 totalCount 확인
+    const firstRes = await fetch(`${_PUBLIC_FOOD_API}?serviceKey=${_PUBLIC_FOOD_KEY}&pageNo=1&numOfRows=${pageSize}&type=json`);
+    const firstData = await firstRes.json();
+    const total = parseInt(firstData.response?.body?.totalCount || 0);
+    const firstItems = firstData.response?.body?.items || [];
+    firstItems.forEach(it => allItems.push(_parsePublicFoodItem(it)));
+
+    const totalPages = Math.ceil(total / pageSize);
+    console.log(`[식품DB] 총 ${total}건, ${totalPages}페이지`);
+
+    // 나머지 페이지 병렬 로드 (5개씩)
+    for (let batch = 2; batch <= totalPages; batch += 5) {
+      const promises = [];
+      for (let p = batch; p < batch + 5 && p <= totalPages; p++) {
+        promises.push(
+          fetch(`${_PUBLIC_FOOD_API}?serviceKey=${_PUBLIC_FOOD_KEY}&pageNo=${p}&numOfRows=${pageSize}&type=json`)
+            .then(r => r.json())
+            .then(d => (d.response?.body?.items || []).forEach(it => allItems.push(_parsePublicFoodItem(it))))
+            .catch(() => {})
+        );
+      }
+      await Promise.all(promises);
+    }
+
+    _publicFoodCache = allItems;
+    console.log(`[식품DB] 로드 완료: ${allItems.length}건`);
+
+    // localStorage 캐시 저장
+    try {
+      localStorage.setItem('publicFoodDB', JSON.stringify({ ts: Date.now(), data: allItems }));
+    } catch { /* storage full */ }
+  } catch (e) {
+    console.error('[식품DB] 로드 실패:', e);
+    _publicFoodCache = [];
+  } finally {
+    _publicFoodLoading = false;
+  }
+  return _publicFoodCache;
+}
+
+function _parsePublicFoodItem(raw) {
+  const baseUnit = raw.nutConSrtrQua || '100g'; // 영양정보 기준 (100g or 100ml)
+  const baseGrams = parseFloat(baseUnit) || 100;
+  const foodSize = parseFloat(raw.foodSize) || 0; // 실제 1인분 총중량(g)
+  const defaultWeight = foodSize > 0 && foodSize !== baseGrams ? foodSize : baseGrams;
+
+  return {
+    id: 'pub_' + (raw.foodCd || Math.random().toString(36).slice(2)),
+    name: raw.foodNm || '',
+    unit: baseUnit,
+    defaultWeight,  // 1인분 기본 중량 (weight 모달 디폴트값)
+    kcal: parseFloat(raw.enerc) || 0,
+    protein: parseFloat(raw.prot) || 0,
+    fat: parseFloat(raw.fatce) || 0,
+    carbs: parseFloat(raw.chocdf) || 0,
+    sugar: parseFloat(raw.sugar) || 0,
+    sodium: parseFloat(raw.nat) || 0,
+    fiber: parseFloat(raw.fibtg) || 0,
+    _source: 'public_api',
+  };
+}
+
+function searchPublicFoodDB(query) {
+  if (!_publicFoodCache || !query) return [];
+  const q = query.toLowerCase();
+  return _publicFoodCache
+    .filter(it => it.name && it.name.toLowerCase().includes(q))
+    .slice(0, 20);
+}
+
+// ── 농촌진흥청 메뉴젠 식품영양성분 API ──────────────────────────────
+const _AGRI_FOOD_API = 'https://apis.data.go.kr/1390803/AgriFood/MzenFoodNutri/getKoreanFoodIdntList';
+const _AGRI_FOOD_KEY = 'e54c5a3ae4ee20df7abd68a1b14528ad309c2fbe25a9ab1128bf7e410414d59b';
+let _agriFoodCache = null;
+let _agriFoodLoading = false;
+
+async function _loadAgriFoodDB() {
+  if (_agriFoodCache) return _agriFoodCache;
+  if (_agriFoodLoading) return [];
+
+  // localStorage 캐시 확인
+  try {
+    const cached = localStorage.getItem('agriFoodDB');
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (parsed.ts && Date.now() - parsed.ts < 7 * 86400000) {
+        _agriFoodCache = parsed.data;
+        console.log(`[농식품DB] 캐시 로드: ${_agriFoodCache.length}건`);
+        return _agriFoodCache;
+      }
+    }
+  } catch {}
+
+  _agriFoodLoading = true;
+  console.log('[농식품DB] API 로딩 중...');
+
+  try {
+    const allItems = [];
+    // XML API → json 파라미터 시도, 안되면 XML 파싱
+    const res = await fetch(`${_AGRI_FOOD_API}?serviceKey=${_AGRI_FOOD_KEY}&pageNo=1&numOfRows=1000&type=json`);
+    if (!res.ok) {
+      console.warn('[농식품DB] API 응답 에러:', res.status);
+      _agriFoodCache = [];
+      return [];
+    }
+
+    const text = await res.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      // XML 응답인 경우 파싱
+      const parser = new DOMParser();
+      const xml = parser.parseFromString(text, 'text/xml');
+      const items = xml.querySelectorAll('item');
+      items.forEach(item => {
+        const get = (tag) => item.querySelector(tag)?.textContent || '';
+        allItems.push({
+          id: 'agri_' + get('foodCd'),
+          name: get('foodNm'),
+          unit: '1인분',
+          defaultWeight: parseFloat(get('servSize')) || parseFloat(get('foodSize')) || 100,
+          kcal: parseFloat(get('enerc')) || 0,
+          protein: parseFloat(get('prot')) || 0,
+          fat: parseFloat(get('fatce')) || 0,
+          carbs: parseFloat(get('chocdf')) || 0,
+          _source: 'agri_api',
+        });
+      });
+      _agriFoodCache = allItems;
+      console.log(`[농식품DB] XML 파싱 완료: ${allItems.length}건`);
+      try { localStorage.setItem('agriFoodDB', JSON.stringify({ ts: Date.now(), data: allItems })); } catch {}
+      return allItems;
+    }
+
+    // JSON 응답 처리
+    const body = data?.response?.body;
+    const total = parseInt(body?.totalCount || 0);
+    const items = body?.items || [];
+    items.forEach(it => allItems.push(_parseAgriFoodItem(it)));
+
+    // 나머지 페이지 로드
+    const pageSize = 1000;
+    const totalPages = Math.ceil(total / pageSize);
+    for (let p = 2; p <= totalPages; p++) {
+      try {
+        const r = await fetch(`${_AGRI_FOOD_API}?serviceKey=${_AGRI_FOOD_KEY}&pageNo=${p}&numOfRows=${pageSize}&type=json`);
+        const d = await r.json();
+        (d?.response?.body?.items || []).forEach(it => allItems.push(_parseAgriFoodItem(it)));
+      } catch {}
+    }
+
+    _agriFoodCache = allItems;
+    console.log(`[농식품DB] 로드 완료: ${allItems.length}건`);
+    try { localStorage.setItem('agriFoodDB', JSON.stringify({ ts: Date.now(), data: allItems })); } catch {}
+  } catch (e) {
+    console.warn('[농식품DB] 로드 실패:', e.message);
+    _agriFoodCache = [];
+  } finally {
+    _agriFoodLoading = false;
+  }
+  return _agriFoodCache;
+}
+
+function _parseAgriFoodItem(raw) {
+  return {
+    id: 'agri_' + (raw.foodCd || raw.FOOD_CD || Math.random().toString(36).slice(2)),
+    name: raw.foodNm || raw.FOOD_NM_KR || '',
+    unit: '1인분',
+    defaultWeight: parseFloat(raw.servSize || raw.SERVING_SIZE || raw.foodSize) || 100,
+    kcal: parseFloat(raw.enerc || raw.AMT_NUM1) || 0,
+    protein: parseFloat(raw.prot || raw.AMT_NUM3) || 0,
+    fat: parseFloat(raw.fatce || raw.AMT_NUM4) || 0,
+    carbs: parseFloat(raw.chocdf || raw.AMT_NUM7) || 0,
+    _source: 'agri_api',
+  };
+}
+
+function searchAgriFoodDB(query) {
+  if (!_agriFoodCache || !query) return [];
+  const q = query.toLowerCase();
+  return _agriFoodCache
+    .filter(it => it.name && it.name.toLowerCase().includes(q))
+    .slice(0, 20);
+}
 
 // ── 검색 입력 디바운싱 (실시간 추천 유지 + 렌더링 최적화) ────────────────────
 let _nutritionSearchTimer = null;
@@ -885,8 +1227,7 @@ function _renderNutritionRow(item, { icon = '🏠', removable = false, isCSV = f
       <div onclick="selectNutritionItemFromCache('${itemDataKey}')" style="cursor:pointer;flex:1">
         <div class="nutrition-result-name">${icon} ${item.name}</div>
         <div class="nutrition-result-meta">
-          ${(!isCSV && item.unit) ? `<span>${item.unit}</span>` : ''}
-          <span>${kcal}kcal</span>
+          ${item.defaultWeight && item.defaultWeight !== 100 ? `<span style="color:var(--primary);font-weight:600">1인분 ${item.defaultWeight}g · ${Math.round(kcal * item.defaultWeight / 100)}kcal</span>` : `<span>${(!isCSV && item.unit) ? item.unit : '100g'}</span><span>${kcal}kcal</span>`}
           ${carbs != null ? `<span>탄${carbs}g</span>` : ''}
           ${protein != null ? `<span>단${protein}g</span>` : ''}
           ${fat != null ? `<span>지${fat}g</span>` : ''}
@@ -947,10 +1288,28 @@ function renderNutritionSearchResults() {
     const dedupedCsv = csvResults.filter(c => !dbNames.has(c.name?.toLowerCase()));
     html += _renderNutritionSection('📊 CSV 검색 결과', dedupedCsv.slice(0, 15), { icon: '📊', isCSV: true, marginTop: true });
 
+    // 공공데이터 API 검색 결과
+    const pubResults = searchPublicFoodDB(q);
+    const allNames = new Set([...dbNames, ...dedupedCsv.map(c => c.name?.toLowerCase())]);
+    const dedupedPub = pubResults.filter(p => !allNames.has(p.name?.toLowerCase()));
+    if (dedupedPub.length) {
+      html += _renderNutritionSection('🏛️ 공공 식품DB', dedupedPub.slice(0, 15), { icon: '🏛️', marginTop: true });
+    } else if (_publicFoodLoading) {
+      html += `<div style="font-size:11px;color:var(--text-tertiary);text-align:center;padding:12px">🏛️ 공공 식품DB 로딩 중...</div>`;
+    }
+
+    // 농촌진흥청 메뉴젠 검색 결과
+    const agriResults = searchAgriFoodDB(q);
+    const allNames2 = new Set([...allNames, ...dedupedPub.map(p => p.name?.toLowerCase())]);
+    const dedupedAgri = agriResults.filter(a => !allNames2.has(a.name?.toLowerCase()));
+    if (dedupedAgri.length) {
+      html += _renderNutritionSection('🌾 농식품 영양DB', dedupedAgri.slice(0, 10), { icon: '🌾', marginTop: true });
+    }
+
     html += _buildRecipeResultsHtml(q);
 
-    if (!recentFiltered.length && !dbResults.length && !dedupedCsv.length && !html.includes('🍳 내 요리')) {
-      html = `<div style="font-size:12px;color:var(--muted);text-align:center;padding:16px">검색 결과 없음</div>`;
+    if (!recentFiltered.length && !dbResults.length && !dedupedCsv.length && !dedupedPub.length && !dedupedAgri.length && !html.includes('🍳 내 요리')) {
+      html = `<div style="font-size:12px;color:var(--text-tertiary);text-align:center;padding:16px">검색 결과 없음</div>`;
     }
   }
 
@@ -1298,11 +1657,52 @@ function fatsecretBackToSearch() {
 // ── 초기화 ───────────────────────────────────────────────────────
 async function init() {
   try {
+    // 모달은 항상 로드 (로그인 전에도 필요할 수 있음)
+    await loadAndInjectModals();
+
+    // 로그인 안 되어있으면 대기 (login-screen에서 처리)
+    const { getCurrentUser, loadSavedUser } = await import('./data.js');
+    const user = loadSavedUser() || getCurrentUser();
+    if (!user) {
+      document.getElementById('loading').style.display = 'none';
+      return; // 로그인 화면이 표시됨
+    }
+
     await loadAll();
+    // localStorage 캐시를 Firebase 최신으로 동기화
+    const { refreshCurrentUserFromDB } = await import('./data.js');
+    await refreshCurrentUserFromDB();
     _applyTabOrder(getTabOrder());
+
+    // 하단 탭 가시성 적용
+    // 김태우(Guest)는 게스트 디폴트 강제 적용 (admin 설정 공유 무시)
+    let visTabs;
+    if (isAdminGuest()) {
+      visTabs = DEFAULT_VIS_TABS;
+    } else if (isAdmin()) {
+      visTabs = getRawVisibleTabs() || ['home','diet','workout','calendar','finance','stats'];
+    } else {
+      visTabs = getRawVisibleTabs() || DEFAULT_VIS_TABS;
+    }
+    // diet 탭이 기존 설정에 없으면 추가 + 순서 강제 (홈→식단→운동→나머지)
+    if (!visTabs.includes('diet')) {
+      visTabs.push('diet');
+    }
+    // 순서 강제: 원하는 순서대로 정렬
+    const TAB_ORDER = ['home','diet','workout','calendar','finance','stats'];
+    visTabs.sort((a, b) => {
+      const ai = TAB_ORDER.indexOf(a), bi = TAB_ORDER.indexOf(b);
+      return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+    });
+    _applyVisibleTabs(visTabs);
+
     _initTabDrag();
     _initSwipeNavigation();
     renderHome();
+    // 알림 벨 표시 및 배지 초기화
+    const bellBtn = document.getElementById('notif-bell');
+    if (bellBtn) bellBtn.style.display = '';
+    refreshNotifCenter();
     renderCalendar();
     loadWorkoutDate(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
     loadStocks();
@@ -1311,7 +1711,8 @@ async function init() {
     // 오류가 발생해도 로딩 화면 숨기고 기본 렌더링
     renderHome();
   } finally {
-    document.getElementById('loading').classList.add('hidden');
+    const loadEl = document.getElementById('loading');
+    if (loadEl) { loadEl.style.display = 'none'; loadEl.classList.add('hidden'); }
     setTimeout(() => {
       document.querySelectorAll('.today-cell')[0]
         ?.scrollIntoView({ behavior:'smooth', block:'center' });
@@ -1319,17 +1720,23 @@ async function init() {
   }
 }
 
-// ── 식단 입력 버튼 이벤트 위임 (모바일 터치 호환) ────────────────────
+// ── 식단 입력 버튼 이벤트 위임 (끼니별 버튼 지원) ──────────────────
 function _initDietInputButtons() {
-  const buttonContainer = document.getElementById('diet-input-buttons');
-  if (!buttonContainer) return;
+  // 식단 영역 전체에 이벤트 위임 (각 끼니별 addFood/photoUpload 버튼)
+  const dietGrid = document.querySelector('.diet-grid');
+  if (!dietGrid) return;
 
-  buttonContainer.addEventListener('click', (e) => {
+  dietGrid.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-action]');
     if (!btn) return;
     e.stopPropagation();
 
     const action = btn.dataset.action;
+    const meal = btn.dataset.meal; // 끼니 (breakfast/lunch/dinner/snack)
+
+    // meal이 있으면 해당 끼니를 미리 선택
+    if (meal) window._nutritionSearchMeal = meal;
+
     if (action === 'addFood') {
       openNutritionItemEditor(null);
     } else if (action === 'photoUpload') {
@@ -1359,8 +1766,115 @@ window.saveWorkoutDay           = saveWorkoutDay;
 window.wtSetGymStatus           = wtSetGymStatus;
 window.wtSetCFStatus            = wtSetCFStatus;
 window.wtToggleStretching       = wtToggleStretching;
+
+// ── 운동 탭 새 UX: 상태 먼저 선택 (CSS 전환) ────────────────────
+let _wtSelectedTypes = new Set();
+
+window.wtSelectStatus = function(status) {
+  const flow = document.getElementById('wt-flow');
+  const badge = document.getElementById('wt-badge-text');
+
+  flow.classList.add('wt-chosen');
+
+  if (status === 'skip') {
+    wtSetGymStatus('skip'); wtSetCFStatus('skip');
+    badge.className = 'wt-status-badge wt-skip';
+    badge.textContent = '오늘은 쉬었어요';
+    flow.classList.remove('wt-show-type');
+    document.getElementById('wt-memo-section').classList.add('wt-open');
+    document.getElementById('wt-save-section').classList.add('wt-open');
+    return;
+  }
+  if (status === 'health') {
+    wtSetGymStatus('health'); wtSetCFStatus('health');
+    badge.className = 'wt-status-badge wt-health';
+    badge.textContent = '건강 이슈가 있어요';
+    flow.classList.remove('wt-show-type');
+    document.getElementById('wt-memo-section').classList.add('wt-open');
+    document.getElementById('wt-save-section').classList.add('wt-open');
+    return;
+  }
+  // 운동했어요
+  badge.className = 'wt-status-badge wt-active';
+  badge.textContent = '운동했어요 💪';
+  flow.classList.add('wt-show-type');
+  document.getElementById('wt-memo-section').classList.add('wt-open');
+  document.getElementById('wt-save-section').classList.add('wt-open');
+  _wtSelectedTypes.clear();
+};
+
+window.wtToggleType = function(type) {
+  const chip = document.getElementById('wt-chip-' + type);
+  if (_wtSelectedTypes.has(type)) {
+    _wtSelectedTypes.delete(type);
+    if (chip) chip.classList.remove('active');
+  } else {
+    _wtSelectedTypes.add(type);
+    if (chip) chip.classList.add('active');
+  }
+  // 헬스 종목 영역
+  const gym = document.getElementById('wt-gym-section');
+  if (_wtSelectedTypes.has('gym')) gym.classList.add('wt-open');
+  else gym.classList.remove('wt-open');
+  // 상태 반영
+  wtSetGymStatus(_wtSelectedTypes.has('gym') ? 'done' : 'none');
+  wtSetCFStatus(_wtSelectedTypes.has('cf') ? 'done' : 'none');
+  if (type === 'stretch') wtToggleStretching();
+};
+
+window.wtResetStatus = function() {
+  _wtSelectedTypes.clear();
+  const flow = document.getElementById('wt-flow');
+  flow.classList.remove('wt-chosen', 'wt-show-type');
+  ['wt-gym-section','wt-memo-section','wt-save-section'].forEach(id =>
+    document.getElementById(id)?.classList.remove('wt-open'));
+  ['wt-chip-gym','wt-chip-cf','wt-chip-stretch'].forEach(id =>
+    document.getElementById(id)?.classList.remove('active'));
+  wtSetGymStatus('none'); wtSetCFStatus('none');
+};
 window.wtToggleWineFree         = wtToggleWineFree;
+
+// 식단/운동 사진 업로드
+window._mealPhotos = {}; // { breakfast: base64, lunch: base64, ... workout: base64 }
+window.uploadMealPhoto = async function(meal, input) {
+  const file = input.files?.[0];
+  if (!file) return;
+  const { imageToBase64 } = await import('./data.js');
+  try {
+    const b64 = await imageToBase64(file);
+    window._mealPhotos[meal] = 'data:image/jpeg;base64,' + b64;
+    const wrap = document.getElementById('wt-photo-' + meal);
+    if (wrap) {
+      wrap.innerHTML = `<div style="position:relative;display:inline-block;margin-top:6px;">
+        <img src="${window._mealPhotos[meal]}" style="max-width:100%;max-height:160px;border-radius:12px;object-fit:cover;display:block;">
+        <button onclick="removeMealPhoto('${meal}')" style="position:absolute;top:4px;right:4px;width:24px;height:24px;border-radius:50%;background:rgba(0,0,0,0.5);color:#fff;border:none;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;">✕</button>
+      </div>`;
+    }
+  } catch(e) { console.error('Photo upload error:', e); }
+  input.value = '';
+};
+window.removeMealPhoto = function(meal) {
+  delete window._mealPhotos[meal];
+  const wrap = document.getElementById('wt-photo-' + meal);
+  if (wrap) wrap.innerHTML = '';
+};
 window.wtToggleMealSkipped      = wtToggleMealSkipped;
+// "안 먹었어요" — 토글 + 기존 음식 삭제
+window.wtSkipMeal = function(meal) {
+  const btn = document.getElementById(`wt-${meal}-skipped`);
+  const wasActive = btn?.classList.contains('active');
+  wtToggleMealSkipped(meal);
+  // wtToggleMealSkipped 내부의 _renderMealSkippedToggles가 active를 설정
+  // 하지만 혹시 안 되면 직접 토글
+  if (btn) btn.classList.toggle('active', !wasActive);
+  // 스킵 활성화 시 음식 삭제
+  if (!wasActive) {
+    const foodList = document.getElementById(`wt-foods-${meal}`);
+    if (foodList) foodList.innerHTML = '';
+    const mealInput = document.getElementById(`wt-meal-${meal}`);
+    if (mealInput) mealInput.value = '';
+  }
+};
 window.wtOpenExercisePicker     = wtOpenExercisePicker;
 window.wtCloseExercisePicker    = wtCloseExercisePicker;
 window.wtOpenExerciseEditor     = wtOpenExerciseEditor;
@@ -1578,3 +2092,10 @@ window.openSettingsModal = _patchedOpenSettings;
 
 // ── 앱 초기화 ────────────────────────────────────────────────
 window.addEventListener('load', initializeApp);
+
+// 앱이 다시 포커스되면 홈탭 갱신 (이웃 데이터 최신화)
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && _currentTab === 'home') {
+    renderHome();
+  }
+});

@@ -27,14 +27,396 @@ const db  = getFirestore(app);
 // Firebase IndexedDB 오프라인 캐싱 설정
 enableIndexedDbPersistence(db).catch(err => {
   if (err.code === 'failed-precondition') {
-    // 멀티탭 환경: 이전 탭을 닫으면 해결됨
     console.warn('[data] 멀티탭 환경 감지 — 다른 탭의 대시보드를 닫아주세요');
   } else if (err.code === 'unimplemented') {
-    console.warn('[data] 브라우저가 오프라인 캐시 미지원 — 온라인 모드로 작동합니다');
+    console.warn('[data] 브라우저가 오프라인 캐시 미지원');
   } else {
     console.warn('[data] IndexedDB 초기화 실패:', err.code);
   }
 });
+
+// ── 계정 시스템 ──────────────────────────────────────────────────
+let _currentUser = null; // { id: 'kim_taewoo', lastName: '김', firstName: '태우', hasPassword: false }
+
+export function getCurrentUser() { return _currentUser; }
+
+// ── 역할 시스템 ──────────────────────────────────────────────────
+const ADMIN_ID = '김_태우';
+const ADMIN_GUEST_ID = '김_태우(guest)';
+
+export function isAdmin() {
+  return _currentUser?.id === ADMIN_ID;
+}
+
+// 김태우(Guest)는 admin의 데이터를 공유하되 게스트 UX를 사용
+export function isAdminGuest() {
+  return _currentUser?.id === ADMIN_GUEST_ID;
+}
+
+// 데이터 경로용 ID (김태우(Guest) → 김태우(Admin)의 데이터 사용)
+export function getDataOwnerId() {
+  if (!_currentUser) return null;
+  if (isAdminGuest()) return ADMIN_ID;
+  return _currentUser.id;
+}
+
+// 게스트 계정 UX 설정 (admin은 이 설정 무시 → 모든 것이 보임)
+export const GUEST_CONFIG = {
+  homeCards: {
+    hero: true,
+    unit_goal: true,
+    mini_memo: false,
+    goals: false,
+    quests: false,
+    diet_goal: true,
+    friends: true,
+    tomato_basket: true,
+  },
+};
+
+export function shouldShow(section, key) {
+  if (isAdmin()) return true;
+  return GUEST_CONFIG[section]?.[key] !== false;
+}
+
+export function setCurrentUser(user) {
+  _currentUser = user;
+  if (user) {
+    localStorage.setItem('currentUser', JSON.stringify(user));
+  } else {
+    localStorage.removeItem('currentUser');
+  }
+}
+
+export function loadSavedUser() {
+  try {
+    const saved = localStorage.getItem('currentUser');
+    if (saved) { _currentUser = JSON.parse(saved); return _currentUser; }
+  } catch {}
+  return null;
+}
+
+// localStorage 캐시를 Firebase 최신으로 갱신
+export async function refreshCurrentUserFromDB() {
+  if (!_currentUser) return;
+  const accounts = await getAccountList();
+  const fresh = accounts.find(a => a.id === _currentUser.id);
+  if (fresh) {
+    _currentUser = fresh;
+    localStorage.setItem('currentUser', JSON.stringify(fresh));
+  }
+}
+
+// 계정 목록 (Firestore의 _accounts 컬렉션)
+export async function getAccountList() {
+  try {
+    const snap = await getDocs(collection(db, '_accounts'));
+    const accounts = [];
+    snap.forEach(d => accounts.push(d.data()));
+    return accounts;
+  } catch { return []; }
+}
+
+export async function saveAccount(account) {
+  await setDoc(doc(db, '_accounts', account.id), account);
+}
+
+// 소셜 ID: AdminGuest는 Admin과 같은 소셜 ID 사용 (친구/알림 공유)
+function _socialId() {
+  if (!_currentUser) return null;
+  if (isAdminGuest()) return ADMIN_ID;
+  return _currentUser.id;
+}
+function _isMySocialId(id) {
+  if (!_currentUser) return false;
+  if (id === _currentUser.id) return true;
+  if (isAdminGuest() && id === ADMIN_ID) return true;
+  if (isAdmin() && id === ADMIN_GUEST_ID) return true;
+  return false;
+}
+
+// ── 친구 시스템 ──────────────────────────────────────────────────
+
+// 친구 요청 보내기
+export async function sendFriendRequest(fromId, toId) {
+  const reqId = `${fromId}_${toId}`;
+  const existing = await _getFriendDoc(reqId);
+  if (existing) return { error: '이미 요청했어요.' };
+  // 역방향 체크
+  const reverse = await _getFriendDoc(`${toId}_${fromId}`);
+  if (reverse && reverse.status === 'accepted') return { error: '이미 이웃이에요.' };
+  // 상대가 이미 요청을 보낸 경우 → 자동 수락
+  if (reverse && reverse.status === 'pending') {
+    await acceptFriendRequest(reverse.id);
+    return { ok: true, autoAccepted: true };
+  }
+
+  await setDoc(doc(db, '_friend_requests', reqId), {
+    id: reqId, from: fromId, to: toId, status: 'pending', createdAt: Date.now(),
+  });
+  // 상대에게 알림
+  await sendNotification(toId, {
+    type: 'friend_request', from: fromId, message: '이웃 요청을 보냈어요.',
+  });
+  return { ok: true };
+}
+
+// 친구 요청 수락
+export async function acceptFriendRequest(reqId) {
+  const reqDoc = await _getFriendDoc(reqId);
+  if (!reqDoc) return;
+  reqDoc.status = 'accepted';
+  reqDoc.acceptedAt = Date.now();
+  await setDoc(doc(db, '_friend_requests', reqId), reqDoc);
+  // 요청자에게 알림
+  await sendNotification(reqDoc.from, {
+    type: 'friend_accepted', from: reqDoc.to, message: '이웃 요청을 수락했어요.',
+  });
+}
+
+// 친구 요청 거절/삭제
+export async function removeFriend(reqId) {
+  await deleteDoc(doc(db, '_friend_requests', reqId));
+}
+
+// 내 친구 목록 가져오기
+export async function getMyFriends() {
+  if (!_currentUser) return [];
+  const snap = await getDocs(collection(db, '_friend_requests'));
+  const friends = [];
+  const seen = new Set();
+  snap.forEach(d => {
+    const data = d.data();
+    if (data.status === 'accepted') {
+      let fid = null;
+      if (_isMySocialId(data.from)) fid = data.to;
+      else if (_isMySocialId(data.to)) fid = data.from;
+      if (fid && !seen.has(fid)) {
+        seen.add(fid);
+        friends.push({ friendId: fid, reqId: data.id });
+      }
+    }
+  });
+  return friends;
+}
+
+// 받은 친구 요청 목록
+export async function getPendingRequests() {
+  if (!_currentUser) return [];
+  const snap = await getDocs(collection(db, '_friend_requests'));
+  const pending = [];
+  snap.forEach(d => {
+    const data = d.data();
+    if (data.status === 'pending' && _isMySocialId(data.to)) pending.push(data);
+  });
+  return pending;
+}
+
+async function _getFriendDoc(reqId) {
+  try {
+    const snap = await getDoc(doc(db, '_friend_requests', reqId));
+    return snap.exists() ? snap.data() : null;
+  } catch { return null; }
+}
+
+// 친구의 데이터 읽기 (읽기 전용)
+export async function getFriendData(friendId, colName) {
+  try {
+    const snap = await getDocs(collection(db, 'users', friendId, colName));
+    const items = [];
+    snap.forEach(d => items.push({ id: d.id, ...d.data() }));
+    return items;
+  } catch { return []; }
+}
+
+export async function getFriendWorkout(friendId, dateKey) {
+  try {
+    const snap = await getDoc(doc(db, 'users', friendId, 'workouts', dateKey));
+    return snap.exists() ? snap.data() : null;
+  } catch { return null; }
+}
+
+// ── 표시명 (이웃 여부에 따라 분기) ────────────────────────────────
+export function getDisplayName(account, isFriend = false) {
+  if (!account) return '익명';
+  const fullName = account.lastName + account.firstName;
+  const nick = account.nickname || fullName;
+  if (isFriend) return `${fullName} (${nick})`;
+  return nick;
+}
+
+// ── 방명록 시스템 ────────────────────────────────────────────────
+export async function getGuestbook(targetUserId) {
+  const snap = await getDocs(collection(db, '_guestbook'));
+  const entries = [];
+  snap.forEach(d => {
+    const data = d.data();
+    if (data.to === targetUserId) entries.push(data);
+  });
+  entries.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  return entries;
+}
+
+export async function writeGuestbook(targetUserId, message) {
+  if (!_currentUser || !message.trim()) return { error: '메시지를 입력해주세요.' };
+  const fromId = _socialId();
+  const entryId = `gb_${fromId}_${targetUserId}_${Date.now()}`;
+  const entry = {
+    id: entryId, to: targetUserId, from: fromId,
+    fromName: _currentUser.nickname || (_currentUser.lastName + _currentUser.firstName),
+    message: message.trim(), createdAt: Date.now(),
+  };
+  await setDoc(doc(db, '_guestbook', entryId), entry);
+  // 상대에게 알림
+  await sendNotification(targetUserId, {
+    type: 'guestbook', from: fromId,
+    message: '방명록을 남겼어요 📝',
+  });
+  return { ok: true };
+}
+
+export async function deleteGuestbookEntry(entryId) {
+  await deleteDoc(doc(db, '_guestbook', entryId));
+}
+
+// ── 친구 소개 시스템 ─────────────────────────────────────────────
+export async function introduceFriend(friendAId, friendBId, friendAName, friendBName) {
+  if (!_currentUser) return { error: '로그인이 필요해요.' };
+  const myName = _currentUser.lastName + _currentUser.firstName;
+  // A에게: "OO님이 B를 소개해줬어요"
+  await sendNotification(friendAId, {
+    type: 'introduce', from: _socialId(),
+    message: `${friendBName}님을 소개받았어요! 이웃이 되어보세요.`,
+    introducedId: friendBId, introducedName: friendBName,
+  });
+  // B에게: "OO님이 A를 소개해줬어요"
+  await sendNotification(friendBId, {
+    type: 'introduce', from: _socialId(),
+    message: `${friendAName}님을 소개받았어요! 이웃이 되어보세요.`,
+    introducedId: friendAId, introducedName: friendAName,
+  });
+  return { ok: true };
+}
+
+// ── 알림 시스템 ──────────────────────────────────────────────────
+
+export async function sendNotification(toUserId, data) {
+  const notifId = `${toUserId}_${Date.now()}`;
+  await setDoc(doc(db, '_notifications', notifId), {
+    id: notifId, to: toUserId, read: false, createdAt: Date.now(), ...data,
+  });
+}
+
+export async function getMyNotifications() {
+  if (!_currentUser) return [];
+  const snap = await getDocs(collection(db, '_notifications'));
+  const notifs = [];
+  snap.forEach(d => {
+    const data = d.data();
+    if (_isMySocialId(data.to)) notifs.push(data);
+  });
+  notifs.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  return notifs;
+}
+
+export async function markNotificationRead(notifId) {
+  await setDoc(doc(db, '_notifications', notifId), { read: true }, { merge: true });
+}
+
+// 좋아요
+export async function toggleLike(targetUserId, dateKey, field) {
+  // field: 'workout' | 'meal_breakfast' | 'meal_lunch' 등
+  if (!_currentUser) return;
+  const likeId = `${_currentUser.id}_${targetUserId}_${dateKey}_${field}`;
+  const likeDoc = doc(db, '_likes', likeId);
+  const snap = await getDoc(likeDoc);
+  if (snap.exists()) {
+    await deleteDoc(likeDoc);
+    return false; // unlike
+  } else {
+    await setDoc(likeDoc, {
+      id: likeId, from: _currentUser.id, to: targetUserId,
+      dateKey, field, createdAt: Date.now(),
+    });
+    // 상대에게 알림
+    await sendNotification(targetUserId, {
+      type: 'like', from: _currentUser.id, dateKey, field,
+      message: '좋아요를 눌렀어요.',
+    });
+    return true; // liked
+  }
+}
+
+export async function getLikes(targetUserId, dateKey) {
+  try {
+    const snap = await getDocs(collection(db, '_likes'));
+    const likes = [];
+    snap.forEach(d => {
+      const data = d.data();
+      if (data.to === targetUserId && data.dateKey === dateKey) likes.push(data);
+    });
+    return likes;
+  } catch { return []; }
+}
+
+// 비밀번호 검증 (단순 해시 비교)
+export function verifyPassword(account, input) {
+  if (!account.hasPassword || !account.passwordHash) return true;
+  return _simpleHash(input) === account.passwordHash;
+}
+
+export function hashPassword(pw) { return _simpleHash(pw); }
+
+function _simpleHash(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const c = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + c;
+    hash |= 0;
+  }
+  return 'h_' + Math.abs(hash).toString(36);
+}
+
+// 컬렉션 경로: users/{userId}/{collectionName}
+function _col(name) {
+  const ownerId = getDataOwnerId();
+  if (!ownerId) {
+    console.warn('[data] _col called without user! collection:', name);
+    return collection(db, '_orphan', name);
+  }
+  return collection(db, 'users', ownerId, name);
+}
+function _doc(name, id) {
+  const ownerId = getDataOwnerId();
+  if (!ownerId) {
+    console.warn('[data] _doc called without user! doc:', name, id);
+    return doc(db, '_orphan', name, id);
+  }
+  return doc(db, 'users', ownerId, name, id);
+}
+
+// 기존 데이터 마이그레이션 (루트 → users/kim_taewoo/)
+export async function migrateDataToUser(userId) {
+  const COLLECTIONS = ['workouts','exercises','goals','quests','wines','cal_events','cooking',
+    'body_checkins','nutrition_db','finance_benchmarks','finance_actuals','finance_loans',
+    'finance_positions','finance_plans','finance_budgets','settings'];
+
+  console.log(`[migrate] ${userId}로 데이터 마이그레이션 시작...`);
+  for (const colName of COLLECTIONS) {
+    try {
+      const snap = await getDocs(collection(db, colName));
+      let count = 0;
+      for (const d of snap.docs) {
+        await setDoc(doc(db, 'users', userId, colName, d.id), d.data());
+        count++;
+      }
+      if (count > 0) console.log(`  [migrate] ${colName}: ${count}건`);
+    } catch (e) {
+      console.warn(`  [migrate] ${colName} 실패:`, e.message);
+    }
+  }
+  console.log('[migrate] 완료');
+}
 
 let _cache        = {};
 let _exList       = [];
@@ -57,18 +439,18 @@ let _finBudgets    = []; // 가계부 [{id, year, groups: [{name, items: [{name,
 
 // ── 설정 캐시 (Firebase settings 컬렉션) ────────────────────────
 const DEFAULT_TAB_ORDER = ['home','workout','cooking','monthly','calendar','wine','movie','stats','finance','dev'];
+const DEFAULT_VISIBLE_TABS = ['home','diet','workout','stats']; // 기본 사용자: 홈, 식단, 운동, 통계
 
 const DEFAULT_DIET_PLAN = {
-  // 신체 정보
-  height: 175, weight: 75, bodyFatPct: 17, age: 32,
+  // 신체 정보 (null = 미입력 → 설정 안내 표시)
+  height: null, weight: null, bodyFatPct: null, age: null,
   // 목표
-  targetWeight: 68, targetBodyFatPct: 8,
+  targetWeight: null, targetBodyFatPct: null,
   // 운동과학 파라미터
-  activityFactor: 1.3,     // 유지대사량 활동계수 (고정값, 847 상수 기반)
-  lossRatePerWeek: 0.009,  // 주당 감량 비율 (트레이너 권장 0.9%, 조정 가능)
-  refeedKcal: 5000,        // 리피드 이틀 합계 kcal (조정 가능)
-  refeedDays: [0, 6],      // 0=일요일, 6=토요일
-  // 플랜 시작일
+  activityFactor: 1.3,
+  lossRatePerWeek: 0.009,
+  refeedKcal: 5000,
+  refeedDays: [0, 6],
   startDate: null,
 };
 
@@ -81,13 +463,16 @@ let _settings = {
   mini_memo_items:  [],   // [{id, text, checked}]
   weekly_memos:     {},
   tab_order:        DEFAULT_TAB_ORDER,
+  visible_tabs:     null, // null = 아직 설정 안 됨 → 로그인 시 기본값 적용
   diet_plan:        null,
   streak_settings:  {
     fontSizeMode: 'default',  // 'small' | 'default' | 'large'
     cellWidthMode: 'default'  // 'small' | 'default' | 'large'
   },
-  home_streak_days: 6,        // 0~6: 월요일 이후 추가 표시 일수 (6 = 일요일까지)
-  unit_goal_start: null,      // YYYY-MM-DD: 4일 단위 목표 시작일
+  home_streak_days: 6,
+  unit_goal_start: null,
+  calendar_rows: null,  // null = 기본값 사용, [{id:'gym',label:'헬스',emoji:'🏋️'}, ...]
+  tomato_state: { quarterlyTomatoes: {}, totalTomatoes: 0, giftedReceived: 0, giftedSent: 0 },
 };
 
 function _setSyncStatus(state) {
@@ -115,7 +500,7 @@ async function _fbOp(label, fn, { sync = true, rethrow = false } = {}) {
 // ── 설정 Firebase 저장 헬퍼 ──────────────────────────────────────
 async function _saveSetting(key, value) {
   _settings[key] = value;
-  return _fbOp(`saveSetting(${key})`, () => setDoc(doc(db, 'settings', key), { value }));
+  return _fbOp(`saveSetting(${key})`, () => setDoc(_doc('settings', key), { value }));
 }
 
 // ── localStorage 마이그레이션 헬퍼 ───────────────────────────────
@@ -129,83 +514,129 @@ function _migrateFromLS(key, fallback) {
 
 export async function loadAll() {
   try {
-    const snap = await getDocs(collection(db, 'workouts'));
+    // admin 계정만: 데이터가 비어있으면 루트에서 1회 마이그레이션
+    if (_currentUser && isAdmin()) {
+      const migrated = localStorage.getItem('migrated_김_태우');
+      if (!migrated) {
+        const testSnap = await getDocs(_col('workouts'));
+        if (testSnap.empty) {
+          const rootSnap = await getDocs(collection(db, 'workouts'));
+          if (!rootSnap.empty) {
+            console.log('[loadAll] 김_태우 마이그레이션 실행');
+            await migrateDataToUser(_currentUser.id);
+          }
+        }
+        localStorage.setItem('migrated_김_태우', 'done');
+      }
+    }
+
+    const snap = await getDocs(_col('workouts'));
     snap.forEach(d => { _cache[d.id] = d.data(); });
 
-    const exSnap = await getDocs(collection(db, 'exercises'));
+    const exSnap = await getDocs(_col('exercises'));
     const custom = [];
     exSnap.forEach(d => custom.push(d.data()));
     const customIds = new Set(custom.map(e => e.id));
     const defaults  = CONFIG.DEFAULT_EXERCISES.filter(e => !customIds.has(e.id));
     _exList = _sortExList([...defaults, ...custom]);
 
-    const goalSnap = await getDocs(collection(db, 'goals'));
+    const goalSnap = await getDocs(_col('goals'));
     _goals = [];
     goalSnap.forEach(d => _goals.push(d.data()));
 
-    const wineSnap = await getDocs(collection(db, 'wines'));
+    const wineSnap = await getDocs(_col('wines'));
     _wines = [];
     wineSnap.forEach(d => _wines.push(d.data()));
-    if (_wines.length === 0) {
-      for (const wine of INITIAL_WINES) await setDoc(doc(db, 'wines', wine.id), wine);
+    // 김_태우만 초기 와인 데이터 삽입 (다른 계정은 빈 상태로 시작)
+    if (_wines.length === 0 && _currentUser?.id === '김_태우') {
+      for (const wine of INITIAL_WINES) await setDoc(_doc('wines', wine.id), wine);
       _wines = [...INITIAL_WINES];
     }
 
-    const questSnap = await getDocs(collection(db, 'quests'));
+    const questSnap = await getDocs(_col('quests'));
     _quests = [];
     questSnap.forEach(d => _quests.push(d.data()));
 
-    const eventSnap = await getDocs(collection(db, 'cal_events'));
+    const eventSnap = await getDocs(_col('cal_events'));
     _events = [];
     eventSnap.forEach(d => _events.push(d.data()));
 
-    const cookSnap = await getDocs(collection(db, 'cooking'));
+    const cookSnap = await getDocs(_col('cooking'));
     _cooking = [];
     cookSnap.forEach(d => _cooking.push(d.data()));
 
-    const checkinSnap = await getDocs(collection(db, 'body_checkins'));
+    const checkinSnap = await getDocs(_col('body_checkins'));
     _bodyCheckins = [];
     checkinSnap.forEach(d => _bodyCheckins.push(d.data()));
 
-    const nutritionSnap = await getDocs(collection(db, 'nutrition_db'));
+    const nutritionSnap = await getDocs(_col('nutrition_db'));
     _nutritionDB = [];
     nutritionSnap.forEach(d => _nutritionDB.push(d.data()));
 
     // ── 재무 데이터 로드 ──
-    const finBenchSnap = await getDocs(collection(db, 'finance_benchmarks'));
+    const finBenchSnap = await getDocs(_col('finance_benchmarks'));
     _finBenchmarks = [];
     finBenchSnap.forEach(d => _finBenchmarks.push(d.data()));
 
-    const finActSnap = await getDocs(collection(db, 'finance_actuals'));
+    // 새 계정: 기본 벤치마크 샘플 자동 생성
+    if (_finBenchmarks.length === 0 && _currentUser) {
+      const curYear = new Date().getFullYear();
+      const defaultBench = {
+        id: 'bench_default_1',
+        name: '연 8% 복리 (매년 1,000만원 저축)',
+        initialPrincipal: 1000,      // 만원 단위: 1,000만원
+        annualRate: 8,
+        annualContribution: 1000,    // 만원 단위: 1,000만원/년
+        inflationRate: 2.5,
+        startYear: curYear,
+        periodYears: 30,
+      };
+      await setDoc(_doc('finance_benchmarks', defaultBench.id), defaultBench);
+      _finBenchmarks.push(defaultBench);
+    }
+    // 기존 잘못된 벤치마크 교정 (years→periodYears, startAge→startYear)
+    for (const b of _finBenchmarks) {
+      if (b.years && !b.periodYears) { b.periodYears = b.years; delete b.years; }
+      if (b.startAge && !b.startYear) { b.startYear = new Date().getFullYear(); delete b.startAge; }
+      if (b.initialPrincipal > 100000) { b.initialPrincipal = Math.round(b.initialPrincipal / 10000); } // 원→만원 변환
+      if (b.annualContribution > 100000) { b.annualContribution = Math.round(b.annualContribution / 10000); }
+    }
+
+    const finActSnap = await getDocs(_col('finance_actuals'));
     _finActuals = [];
     finActSnap.forEach(d => _finActuals.push(d.data()));
 
-    const finLoanSnap = await getDocs(collection(db, 'finance_loans'));
+    const finLoanSnap = await getDocs(_col('finance_loans'));
     _finLoans = [];
     finLoanSnap.forEach(d => _finLoans.push(d.data()));
 
-    const finPosSnap = await getDocs(collection(db, 'finance_positions'));
+    const finPosSnap = await getDocs(_col('finance_positions'));
     _finPositions = [];
     finPosSnap.forEach(d => _finPositions.push(d.data()));
 
-    const finPlanSnap = await getDocs(collection(db, 'finance_plans'));
+    const finPlanSnap = await getDocs(_col('finance_plans'));
     _finPlans = [];
     finPlanSnap.forEach(d => _finPlans.push(d.data()));
 
-    const finBudgetSnap = await getDocs(collection(db, 'finance_budgets'));
+    const finBudgetSnap = await getDocs(_col('finance_budgets'));
     _finBudgets = [];
     finBudgetSnap.forEach(d => _finBudgets.push(d.data()));
 
     // ── 영화 데이터 로드 ──
-    const movieSnap = await getDocs(collection(db, 'movies'));
+    const movieSnap = await getDocs(_col('movies'));
     _movies = {};
     movieSnap.forEach(d => {
       const data = d.data();
       _movies[d.id] = data;
     });
 
+    // ── 토마토 사이클 로드 ──
+    const tomatoSnap = await getDocs(_col('tomato_cycles'));
+    _tomatoCycles = [];
+    tomatoSnap.forEach(d => _tomatoCycles.push(d.data()));
+
     // ── 설정 로드 (Firebase → localStorage 마이그레이션 포함) ──
-    const settingsSnap = await getDocs(collection(db, 'settings'));
+    const settingsSnap = await getDocs(_col('settings'));
     const fbMap = {};
     settingsSnap.forEach(d => { fbMap[d.id] = d.data().value; });
 
@@ -215,10 +646,28 @@ export async function loadAll() {
     _settings.mini_memo_items= fbMap.mini_memo_items?? [];
     _settings.weekly_memos   = fbMap.weekly_memos   ?? _migrateFromLS('weekly_memos',   {});
     _settings.tab_order      = fbMap.tab_order      ?? DEFAULT_TAB_ORDER;
-    _settings.diet_plan      = fbMap.diet_plan      ?? null;
+    _settings.visible_tabs   = fbMap.visible_tabs   ?? null;
+    _settings.diet_plan = fbMap.diet_plan ?? null;
+    // 김태우 다이어트 플랜 복원 (삭제된 경우 1회, Admin/Guest 공유)
+    if ((isAdmin() || isAdminGuest()) && !_settings.diet_plan) {
+      const restored = localStorage.getItem('diet_restored_admin');
+      if (!restored) {
+        _settings.diet_plan = {
+          height: 175, weight: 75, bodyFatPct: 17, age: 32,
+          targetWeight: 68, targetBodyFatPct: 8,
+          activityFactor: 1.3, lossRatePerWeek: 0.009,
+          refeedKcal: 5000, refeedDays: [0, 6], startDate: null,
+        };
+        setDoc(_doc('settings', 'diet_plan'), { value: _settings.diet_plan }).catch(() => {});
+        localStorage.setItem('diet_restored_admin', 'done');
+      }
+    }
     _settings.streak_settings= fbMap.streak_settings ?? { fontSizeMode: 'default', cellWidthMode: 'default' };
     _settings.home_streak_days = fbMap.home_streak_days ?? 6;
     _settings.unit_goal_start  = fbMap.unit_goal_start  ?? null;
+    _settings.calendar_rows    = fbMap.calendar_rows    ?? null;
+    _settings.tomato_state     = fbMap.tomato_state     ?? { quarterlyTomatoes: {}, totalTomatoes: 0, giftedReceived: 0, giftedSent: 0 };
+    _settings.farm_state       = fbMap.farm_state       ?? null;
     if (_settings.diet_plan) Object.assign(_dietPlan, _settings.diet_plan);
 
     // localStorage 데이터를 Firebase로 마이그레이션 (최초 1회)
@@ -226,7 +675,7 @@ export async function loadAll() {
       if (!fbMap[key] && JSON.stringify(_settings[key]) !== JSON.stringify(
           key === 'quest_order' ? ['quarterly','monthly','weekly','daily'] : {}
       )) {
-        await setDoc(doc(db, 'settings', key), { value: _settings[key] }).catch(() => {});
+        await setDoc(_doc('settings', key), { value: _settings[key] }).catch(() => {});
       }
     }
 
@@ -255,14 +704,14 @@ export async function saveDay(key, data) {
     !data.bFoods?.length && !data.lFoods?.length && !data.dFoods?.length && !data.sFoods?.length
   );
   return _fbOp('saveDay', async () => {
-    if (isEmpty) { delete _cache[key]; await deleteDoc(doc(db, 'workouts', key)); }
-    else { _cache[key] = data; await setDoc(doc(db, 'workouts', key), data); }
+    if (isEmpty) { delete _cache[key]; await deleteDoc(_doc('workouts', key)); }
+    else { _cache[key] = data; await setDoc(_doc('workouts', key), data); }
   });
 }
 
 export async function saveExercise(ex) {
   return _fbOp('saveExercise', async () => {
-    await setDoc(doc(db, 'exercises', ex.id), ex);
+    await setDoc(_doc('exercises', ex.id), ex);
     const idx = _exList.findIndex(e => e.id === ex.id);
     if (idx >= 0) _exList[idx] = ex; else _exList.push(ex);
     _exList = _sortExList(_exList);
@@ -271,7 +720,7 @@ export async function saveExercise(ex) {
 
 export async function deleteExercise(id) {
   return _fbOp('deleteExercise', async () => {
-    await deleteDoc(doc(db, 'exercises', id));
+    await deleteDoc(_doc('exercises', id));
     _exList = _exList.filter(e => e.id !== id);
   }, { sync: false });
 }
@@ -280,13 +729,13 @@ export async function deleteExercise(id) {
 function _createCRUD(collectionName, getArray, setArray) {
   return {
     save: (item) => _fbOp(`save:${collectionName}`, async () => {
-      await setDoc(doc(db, collectionName, item.id), item);
+      await setDoc(_doc(collectionName, item.id), item);
       const arr = getArray();
       const idx = arr.findIndex(x => x.id === item.id);
       if (idx >= 0) arr[idx] = item; else arr.push(item);
     }, { sync: false }),
     delete: (id) => _fbOp(`delete:${collectionName}`, async () => {
-      await deleteDoc(doc(db, collectionName, id));
+      await deleteDoc(_doc(collectionName, id));
       setArray(getArray().filter(x => x.id !== id));
     }, { sync: false }),
     get: () => getArray(),
@@ -315,7 +764,7 @@ export const saveEvent   = (ev)    => _eventsCRUD.save(ev);
 export async function deleteEvent(id) {
   try {
     await _fbOp('delete:cal_events', async () => {
-      await deleteDoc(doc(db, 'cal_events', id));
+      await deleteDoc(_doc('cal_events', id));
       _events = _events.filter(e => e.id !== id);
     }, { sync: false, rethrow: true });
     return { success: true };
@@ -460,7 +909,7 @@ export async function saveNutritionItem(item) {
   item.createdAt = item.createdAt || new Date().toISOString();
   item.updatedAt = new Date().toISOString();
   return _fbOp('saveNutritionItem', async () => {
-    await setDoc(doc(db, 'nutrition_db', item.id), item);
+    await setDoc(_doc('nutrition_db', item.id), item);
     const idx = _nutritionDB.findIndex(n => n.id === item.id);
     if (idx >= 0) _nutritionDB[idx] = item; else _nutritionDB.push(item);
     return item;
@@ -469,7 +918,7 @@ export async function saveNutritionItem(item) {
 
 export async function deleteNutritionItem(id) {
   return _fbOp('deleteNutritionItem', async () => {
-    await deleteDoc(doc(db, 'nutrition_db', id));
+    await deleteDoc(_doc('nutrition_db', id));
     _nutritionDB = _nutritionDB.filter(n => n.id !== id);
   }, { sync: false });
 }
@@ -548,7 +997,14 @@ export function imageToBase64(file) {
 
 // ── 다이어트 플랜 (Firebase settings) ────────────────────────────
 // 활동계수 변경 시 847 상수도 자동 재계산: 7700 / 7 / activityFactor
-export const getDietPlan = () => ({ ...DEFAULT_DIET_PLAN, ..._settings.diet_plan });
+export const getDietPlan = () => {
+  const p = { ...DEFAULT_DIET_PLAN, ..._settings.diet_plan };
+  // Admin/AdminGuest는 데이터 공유 → 둘 다 userSet 동일하게 판정
+  p._userSet = !!(_settings.diet_plan && _settings.diet_plan.weight && _settings.diet_plan.height);
+  // AdminGuest도 Admin 데이터를 사용하므로 Admin이 설정했으면 userSet=true
+  if (isAdminGuest() && p.weight && p.height) p._userSet = true;
+  return p;
+};
 export const saveDietPlan = async (plan) => {
   const merged = { ...(getDietPlan()), ...plan };
   Object.assign(_dietPlan, merged);
@@ -644,6 +1100,12 @@ export const saveMiniMemoItems = (items) => _saveSetting('mini_memo_items', item
 export const getTabOrder  = () => _settings.tab_order || DEFAULT_TAB_ORDER;
 export const saveTabOrder = (order) => _saveSetting('tab_order', order);
 
+// ── 하단 탭 가시성 (Firebase) ────────────────────────────────────
+export const DEFAULT_VIS_TABS = DEFAULT_VISIBLE_TABS;
+export const getVisibleTabs  = () => _settings.visible_tabs || DEFAULT_VISIBLE_TABS;
+export const getRawVisibleTabs = () => _settings.visible_tabs; // null이면 아직 저장 안 됨
+export const saveVisibleTabs = (tabs) => _saveSetting('visible_tabs', tabs);
+
 // ── 주간 메모 (Firebase) ──────────────────────────────────────────
 export const getWeeklyMemos = () => _settings.weekly_memos || {};
 export const saveWeeklyMemo = async (weekKey, text) => {
@@ -689,10 +1151,166 @@ export async function saveHomeStreakDays(n) {
   await _saveSetting('home_streak_days', _settings.home_streak_days);
 }
 
+export const DEFAULT_CALENDAR_ROWS = [
+  { id: 'gym',  label: '헬스', emoji: '🏋️' },
+  { id: 'diet', label: '식단', emoji: '🥗' },
+];
+
+export function getCalendarRows() {
+  return _settings.calendar_rows || DEFAULT_CALENDAR_ROWS;
+}
+export async function saveCalendarRows(rows) {
+  _settings.calendar_rows = rows;
+  await _saveSetting('calendar_rows', rows);
+}
+
 export const getUnitGoalStart = () => _settings.unit_goal_start ?? null;
 export async function saveUnitGoalStart(dateStr) {
   _settings.unit_goal_start = dateStr;
   await _saveSetting('unit_goal_start', dateStr);
+}
+
+// ── 토마토 키우기 (Firebase) ─────────────────────────────────────
+let _tomatoCycles = []; // 완료된 사이클 캐시
+
+export const getTomatoState = () => _settings.tomato_state || { quarterlyTomatoes: {}, totalTomatoes: 0, giftedReceived: 0, giftedSent: 0 };
+export const saveTomatoState = (state) => { _settings.tomato_state = state; return _saveSetting('tomato_state', state); };
+
+export async function saveTomatoCycle(cycleResult) {
+  _tomatoCycles.push(cycleResult);
+  return _fbOp('saveTomatoCycle', () => setDoc(_doc('tomato_cycles', cycleResult.id), cycleResult));
+}
+
+export function getTomatoCycles(quarterKey) {
+  if (!quarterKey) return _tomatoCycles;
+  return _tomatoCycles.filter(c => c.quarter === quarterKey);
+}
+
+export function getAllTomatoCycles() { return _tomatoCycles; }
+
+export async function sendTomatoGift(toUserId, message) {
+  if (!_currentUser) return { error: '로그인이 필요해요.' };
+  const state = getTomatoState();
+  const available = state.totalTomatoes + state.giftedReceived - state.giftedSent;
+  if (available <= 0) return { error: '선물할 토마토가 없어요.' };
+  const giftId = `${_currentUser.id}_${toUserId}_${Date.now()}`;
+  await setDoc(doc(db, '_tomato_gifts', giftId), {
+    id: giftId, from: _currentUser.id, to: toUserId,
+    quarter: _getQuarterKeyNow(), message: message || '',
+    createdAt: Date.now(),
+  });
+  state.giftedSent++;
+  await saveTomatoState(state);
+  await sendNotification(toUserId, { type: 'tomato_gift', from: _currentUser.id, message: '토마토를 선물했어요! 🍅' });
+  return { ok: true };
+}
+
+export async function getReceivedTomatoGifts() {
+  if (!_currentUser) return [];
+  const snap = await getDocs(collection(db, '_tomato_gifts'));
+  const gifts = [];
+  snap.forEach(d => { const data = d.data(); if (data.to === _currentUser.id) gifts.push(data); });
+  gifts.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  return gifts;
+}
+
+// ── 농장 시스템 (Firebase) ────────────────────────────────────────
+const FARM_SHOP_ITEMS = [
+  // 자연
+  { id: 'tree1',     name: '나무',       emoji: '🌳', price: 3, category: 'nature' },
+  { id: 'tree2',     name: '소나무',     emoji: '🌲', price: 3, category: 'nature' },
+  { id: 'flower1',   name: '꽃',         emoji: '🌸', price: 1, category: 'nature' },
+  { id: 'flower2',   name: '해바라기',   emoji: '🌻', price: 1, category: 'nature' },
+  { id: 'flower3',   name: '튤립',       emoji: '🌷', price: 1, category: 'nature' },
+  { id: 'mushroom',  name: '버섯',       emoji: '🍄', price: 1, category: 'nature' },
+  { id: 'cactus',    name: '선인장',     emoji: '🌵', price: 2, category: 'nature' },
+  { id: 'herb',      name: '허브',       emoji: '🌿', price: 1, category: 'nature' },
+  // 건물/구조물
+  { id: 'house',     name: '집',         emoji: '🏡', price: 8, category: 'building' },
+  { id: 'barn',      name: '헛간',       emoji: '🏚️', price: 5, category: 'building' },
+  { id: 'fence',     name: '울타리',     emoji: '🪵', price: 1, category: 'building' },
+  { id: 'well',      name: '우물',       emoji: '⛲', price: 4, category: 'building' },
+  { id: 'bench',     name: '벤치',       emoji: '🪑', price: 2, category: 'building' },
+  { id: 'lamp',      name: '가로등',     emoji: '🏮', price: 2, category: 'building' },
+  // 동물
+  { id: 'cat',       name: '고양이',     emoji: '🐱', price: 5, category: 'animal' },
+  { id: 'dog',       name: '강아지',     emoji: '🐶', price: 5, category: 'animal' },
+  { id: 'chicken',   name: '닭',         emoji: '🐔', price: 3, category: 'animal' },
+  { id: 'rabbit',    name: '토끼',       emoji: '🐰', price: 4, category: 'animal' },
+  // 특별
+  { id: 'rainbow',   name: '무지개',     emoji: '🌈', price: 10, category: 'special' },
+  { id: 'star',      name: '별',         emoji: '⭐', price: 6, category: 'special' },
+];
+
+export const getFarmShopItems = () => FARM_SHOP_ITEMS;
+
+// 농장 상태: 6x4 타일맵 + 캐릭터 위치 + 소유 아이템
+const DEFAULT_FARM_STATE = {
+  tiles: Array(24).fill(null), // 6x4 = 24칸, 각 칸은 null 또는 { itemId, placedAt }
+  ownedItems: [],              // [{ itemId, quantity }]
+  characterPos: 7,             // 캐릭터 기본 위치 (인덱스)
+  characterDir: 'down',        // 방향
+};
+
+export function getFarmState() {
+  return _settings.farm_state || { ...DEFAULT_FARM_STATE, tiles: Array(24).fill(null), ownedItems: [] };
+}
+
+export async function saveFarmState(state) {
+  _settings.farm_state = state;
+  return _saveSetting('farm_state', state);
+}
+
+export async function buyFarmItem(itemId) {
+  const shop = FARM_SHOP_ITEMS.find(i => i.id === itemId);
+  if (!shop) return { error: '아이템을 찾을 수 없어요.' };
+  const tomato = getTomatoState();
+  const available = tomato.totalTomatoes + (tomato.giftedReceived || 0) - (tomato.giftedSent || 0);
+  // 이미 사용한 토마토 계산 (상점 구매용)
+  const farm = getFarmState();
+  const spent = (farm.ownedItems || []).reduce((sum, i) => {
+    const s = FARM_SHOP_ITEMS.find(x => x.id === i.itemId);
+    return sum + (s ? s.price * i.quantity : 0);
+  }, 0);
+  const balance = available - spent;
+  if (balance < shop.price) return { error: `토마토가 부족해요. (필요: ${shop.price}🍅, 보유: ${balance}🍅)` };
+
+  const owned = farm.ownedItems || [];
+  const existing = owned.find(i => i.itemId === itemId);
+  if (existing) { existing.quantity++; } else { owned.push({ itemId, quantity: 1 }); }
+  farm.ownedItems = owned;
+  await saveFarmState(farm);
+  return { ok: true, balance: balance - shop.price };
+}
+
+export async function placeFarmItem(tileIndex, itemId) {
+  const farm = getFarmState();
+  if (tileIndex < 0 || tileIndex >= 24) return;
+  // 인벤토리에서 차감 (배치 안 된 수량 확인)
+  const placedCount = farm.tiles.filter(t => t?.itemId === itemId).length;
+  const owned = (farm.ownedItems || []).find(i => i.itemId === itemId);
+  if (!owned || owned.quantity <= placedCount) return; // 배치 가능한 수량 없음
+  farm.tiles[tileIndex] = { itemId, placedAt: Date.now() };
+  await saveFarmState(farm);
+}
+
+export async function removeFarmItem(tileIndex) {
+  const farm = getFarmState();
+  if (tileIndex < 0 || tileIndex >= 24) return;
+  farm.tiles[tileIndex] = null;
+  await saveFarmState(farm);
+}
+
+export async function moveFarmCharacter(tileIndex) {
+  const farm = getFarmState();
+  farm.characterPos = tileIndex;
+  await saveFarmState(farm);
+}
+
+function _getQuarterKeyNow() {
+  const now = new Date();
+  const q = Math.floor(now.getMonth() / 3) + 1;
+  return `${now.getFullYear()}-Q${q}`;
 }
 
 function _sortExList(list) {
@@ -714,7 +1332,7 @@ export async function getMovieData(year, month) {
 
   // Firestore에서 로드 시도
   try {
-    const snap = await getDoc(doc(db, 'movies', key));
+    const snap = await getDoc(_doc('movies', key));
     if (snap.exists()) {
       const data = snap.data();
       _movies[key] = data;
@@ -745,7 +1363,7 @@ export async function refreshMovieData(year, month) {
   delete _movies[key]; // 캐시 삭제
 
   try {
-    const snap = await getDoc(doc(db, 'movies', key));
+    const snap = await getDoc(_doc('movies', key));
     if (snap.exists()) {
       const data = snap.data();
       _movies[key] = data;
@@ -762,7 +1380,7 @@ export async function refreshMovieData(year, month) {
 export async function saveMovieData(year, month, data) {
   const key = `${year}-${String(month + 1).padStart(2, '0')}`;
   _movies[key] = data;
-  return _fbOp('saveMovieData', () => setDoc(doc(db, 'movies', key), data));
+  return _fbOp('saveMovieData', () => setDoc(_doc('movies', key), data));
 }
 
 export function getAllMovieMonths() {

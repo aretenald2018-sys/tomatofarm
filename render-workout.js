@@ -208,16 +208,24 @@ export function wtRemoveExerciseEntry(entryIdx) {
 }
 
 // ── 종목 선택/에디터 ──────────────────────────────────────────────
-export function wtOpenExercisePicker() {
+export async function wtOpenExercisePicker() {
+  let modal = document.getElementById('ex-picker-modal');
+  if (!modal) {
+    // 모달이 아직 로드되지 않았으면 재시도
+    const { loadAndInjectModals } = await import('./modal-manager.js');
+    await loadAndInjectModals();
+    modal = document.getElementById('ex-picker-modal');
+  }
+  if (!modal) { console.error('[workout] ex-picker-modal not found'); return; }
   _renderPickerList();
-  document.getElementById('ex-picker-modal').classList.add('open');
+  modal.classList.add('open');
 }
 
 export function wtOpenExerciseEditor(exId, defaultMuscleId) {
   const editor       = document.getElementById('ex-editor-modal');
   const nameInput    = document.getElementById('ex-editor-name');
   const muscleSelect = document.getElementById('ex-editor-muscle');
-  const deleteBtn    = document.getElementById('ex-editor-delete');
+  const deleteBtn    = document.getElementById('tds-btn danger sm');
   const titleEl      = document.getElementById('ex-editor-title');
 
   muscleSelect.innerHTML = MUSCLES.map(m =>
@@ -320,9 +328,15 @@ export async function saveWorkoutDay() {
     dProtein:_diet.dProtein, dCarbs:_diet.dCarbs, dFat:_diet.dFat,
     sProtein:_diet.sProtein, sCarbs:_diet.sCarbs, sFat:_diet.sFat,
     bFoods:_diet.bFoods||[], lFoods:_diet.lFoods||[], dFoods:_diet.dFoods||[], sFoods:_diet.sFoods||[],
+    // 사진
+    bPhoto: window._mealPhotos?.breakfast || null,
+    lPhoto: window._mealPhotos?.lunch || null,
+    dPhoto: window._mealPhotos?.dinner || null,
+    sPhoto: window._mealPhotos?.snack || null,
+    workoutPhoto: window._mealPhotos?.workout || null,
   });
 
-  if (btn) { btn.disabled = false; btn.textContent = '✓ 저장됨'; setTimeout(() => { btn.textContent = '💾 저장'; }, 1500); }
+  if (btn) { btn.disabled = false; btn.textContent = '✓ 저장됨'; setTimeout(() => { btn.textContent = '저장'; }, 1500); }
   document.dispatchEvent(new CustomEvent('sheet:saved'));
 }
 
@@ -331,17 +345,19 @@ function _renderDateLabel() {
   if (!_date) return;
   const { y, m, d } = _date;
   const dow = new Date(y, m, d).getDay();
-  const label = document.getElementById('wt-date-label');
-  if (label) label.textContent = `${y}년 ${m+1}월 ${d}일 (${DAYS[dow]})`;
-
-  // 미래 날짜면 날짜 색상 변경
+  const dateText = `${y}년 ${m+1}월 ${d}일 (${DAYS[dow]})`;
   const isFutureDay = isFuture(y, m, d);
-  if (label) label.style.color = isFutureDay ? 'var(--muted)' : 'var(--text)';
-
-  // 오늘 버튼 표시/숨김
-  const todayBtn = document.getElementById('wt-today-btn');
   const isToday  = y === TODAY.getFullYear() && m === TODAY.getMonth() && d === TODAY.getDate();
-  if (todayBtn) todayBtn.style.display = isToday ? 'none' : 'inline-block';
+
+  // 운동탭 + 식단탭 양쪽 라벨 업데이트
+  ['wt-date-label', 'wt-date-label-diet'].forEach(id => {
+    const label = document.getElementById(id);
+    if (label) { label.textContent = dateText; label.style.color = isFutureDay ? 'var(--muted)' : 'var(--text)'; }
+  });
+  ['wt-today-btn', 'wt-today-btn-diet'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (btn) btn.style.display = isToday ? 'none' : 'inline-block';
+  });
 }
 
 function _renderGymStatusBtns() {
@@ -592,11 +608,11 @@ function _renderDietResults() {
     const kcal   = _diet[kcalKey];
     const reason = _diet[reasonKey] || '';
     if (ok === null) {
-      el.innerHTML = '<span class="diet-badge pending">미분석</span>';
+      el.innerHTML = '<span style="font-size:11px;color:var(--text-tertiary);">음식을 추가해주세요</span>';
     } else if (ok) {
-      el.innerHTML = `<span class="diet-badge ok">✓ OK</span><span class="diet-kcal">${kcal}kcal</span>${reason?`<span class="diet-reason">${reason}</span>`:''}`;
+      el.innerHTML = `<span class="diet-badge ok">달성</span><span class="diet-kcal">${kcal}kcal</span>${reason?`<span class="diet-reason">${reason}</span>`:''}`;
     } else {
-      el.innerHTML = `<span class="diet-badge bad">✗ NG</span><span class="diet-kcal">${kcal}kcal</span>${reason?`<span class="diet-reason bad">${reason}</span>`:''}`;
+      el.innerHTML = `<span class="diet-badge bad">초과</span><span class="diet-kcal">${kcal}kcal</span>${reason?`<span class="diet-reason bad">${reason}</span>`:''}`;
     }
   });
   _renderCalorieTracker();

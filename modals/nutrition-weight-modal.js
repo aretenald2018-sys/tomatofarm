@@ -3,7 +3,7 @@ import { wtAddFoodItem } from '../render-workout.js';
 import { saveNutritionItem } from '../data.js';
 
 export const WEIGHT_MODAL_HTML = `
-<div class="modal-overlay" id="nutrition-weight-modal" onclick="closeNutritionWeightModal(event)" style="display:none;z-index:1001">
+<div class="modal-backdrop" id="nutrition-weight-modal" onclick="closeNutritionWeightModal(event)" style="display:none;z-index:1001">
   <div class="modal-sheet">
     <div class="sheet-handle"></div>
     <div class="modal-title">중량 설정</div>
@@ -11,6 +11,11 @@ export const WEIGHT_MODAL_HTML = `
       <div id="nutrition-weight-item-info" style="padding:12px;background:var(--bg2);border-radius:4px;margin-bottom:12px;font-size:12px">
         <div style="font-weight:600;margin-bottom:4px" id="weight-item-name"></div>
         <div style="color:var(--muted);font-size:11px" id="weight-item-nutrition"></div>
+      </div>
+
+      <div style="display:flex;align-items:flex-start;gap:8px;padding:10px 12px;background:var(--primary-bg);border-radius:var(--radius-md);margin-bottom:12px;">
+        <span style="font-size:14px;flex-shrink:0;line-height:1.4;">ℹ️</span>
+        <span style="font-size:11px;color:var(--primary);line-height:1.4;font-weight:500;">기본 중량은 추정값이에요. 제품 포장의 실제 중량을 확인 후 입력해주세요.</span>
       </div>
 
       <div style="margin-bottom:12px">
@@ -29,8 +34,8 @@ export const WEIGHT_MODAL_HTML = `
       </div>
 
       <div style="display:flex;gap:8px">
-        <button class="ex-editor-save" onclick="confirmNutritionItemWithWeight()" style="flex:1">추가</button>
-        <button class="ex-editor-cancel" onclick="closeNutritionWeightModal()" style="flex:1">취소</button>
+        <button class="tds-btn fill md" onclick="confirmNutritionItemWithWeight()" style="flex:1">추가</button>
+        <button class="tds-btn cancel-btn ghost md" onclick="closeNutritionWeightModal()" style="flex:1">취소</button>
       </div>
     </div>
   </div>
@@ -44,9 +49,9 @@ window._nutritionWeightItem = null;
 export function openNutritionWeightModal(item) {
   window._nutritionWeightItem = item;
 
-  // 항목 정보 표시 (원래 저장된 단위 기준)
-  // servingSize는 DB/수기입력 데이터일 때만, CSV는 항상 100g 기준
-  const servingSize = item.servingSize || 100;
+  // 영양 수치 (원본 데이터 기준 — 100g 또는 servingSize)
+  const baseSize = item.servingSize || 100; // 영양값 기준 중량
+  const defaultInput = item.defaultWeight || item.servingSize || 100; // 입력 디폴트
   const kcal = item.nutrition?.kcal || item.kcal || item.energy || 0;
   const carbs = item.nutrition?.carbs || item.carbs || 0;
   const protein = item.nutrition?.protein || item.protein || 0;
@@ -54,10 +59,10 @@ export function openNutritionWeightModal(item) {
 
   document.getElementById('weight-item-name').textContent = item.name;
   document.getElementById('weight-item-nutrition').textContent =
-    `${servingSize}g 기준: ${kcal}kcal | 탄${carbs}g 단${protein}g 지${fat}g`;
+    `${baseSize}g 기준: ${kcal}kcal | 탄${carbs}g 단${protein}g 지${fat}g`;
 
-  // 중량 입력 초기화 (기존 저장된 servingSize가 있으면 그 값 사용)
-  document.getElementById('nutrition-weight-input').value = String(servingSize);
+  // 중량 입력: 1인분 추정 중량으로 초기화
+  document.getElementById('nutrition-weight-input').value = String(defaultInput);
 
   // 미리보기 업데이트
   updateNutritionWeightPreview();
