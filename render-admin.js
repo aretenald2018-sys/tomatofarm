@@ -390,47 +390,92 @@ window.publishPatchnote = async function() {
 };
 
 // 운영자 공지 에디터
-window.openAnnouncementEditor = function() {
+window.openAnnouncementEditor = async function() {
+  const accs = await getAccountList();
+  const myId = '김_태우';
+  const targets = accs.filter(a => a.id !== myId && !a.id.includes('(guest)'));
+  const userListHtml = targets.map(a => {
+    const nick = a.nickname || (a.lastName + a.firstName);
+    return `<label style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);cursor:pointer;">
+      <input type="checkbox" class="ann-user-cb" value="${a.id}" checked style="width:18px;height:18px;accent-color:#F97316;">
+      <span style="font-size:13px;color:var(--text);">${nick}</span>
+      <span style="font-size:11px;color:var(--text-tertiary);margin-left:auto;">${a.id}</span>
+    </label>`;
+  }).join('');
+
   document.getElementById('dynamic-modal')?.remove();
   const modal = document.createElement('div'); modal.id = 'dynamic-modal'; document.body.appendChild(modal);
   modal.innerHTML = `<div class="modal-backdrop" style="display:flex;z-index:10000;" onclick="if(event.target===this)document.getElementById('dynamic-modal')?.remove();">
-    <div class="modal-sheet" style="max-width:440px;padding:24px;" onclick="event.stopPropagation()">
+    <div class="modal-sheet" style="max-width:440px;padding:24px;max-height:90vh;overflow-y:auto;" onclick="event.stopPropagation()">
       <div class="sheet-handle"></div>
       <div style="font-size:17px;font-weight:700;color:var(--text);margin-bottom:16px;">📢 운영자 공지 발송</div>
       <div style="margin-bottom:12px;">
         <label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:6px;">제목</label>
         <input id="ann-title" type="text" placeholder="예: 서비스 점검 안내" style="width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;color:var(--text);background:var(--surface);outline:none;box-sizing:border-box;" onfocus="this.style.borderColor='#F97316'" onblur="this.style.borderColor='var(--border)'">
       </div>
-      <div style="margin-bottom:16px;">
+      <div style="margin-bottom:12px;">
         <label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:6px;">내용</label>
-        <textarea id="ann-body" style="width:100%;min-height:120px;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;color:var(--text);background:var(--surface);outline:none;resize:vertical;font-family:inherit;box-sizing:border-box;line-height:1.6;" placeholder="공지 내용을 적어주세요..." onfocus="this.style.borderColor='#F97316'" onblur="this.style.borderColor='var(--border)'"></textarea>
+        <textarea id="ann-body" style="width:100%;min-height:100px;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;color:var(--text);background:var(--surface);outline:none;resize:vertical;font-family:inherit;box-sizing:border-box;line-height:1.6;" placeholder="공지 내용을 적어주세요..." onfocus="this.style.borderColor='#F97316'" onblur="this.style.borderColor='var(--border)'"></textarea>
+      </div>
+      <div style="margin-bottom:12px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+          <label style="font-size:12px;font-weight:600;color:var(--text-secondary);">대상 선택</label>
+          <button onclick="toggleAllAnnUsers()" style="font-size:11px;padding:4px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--primary);cursor:pointer;font-weight:600;">전체 선택/해제</button>
+        </div>
+        <div id="ann-user-list" style="max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:10px;padding:4px 12px;">
+          ${userListHtml}
+        </div>
+        <div style="font-size:11px;color:var(--text-tertiary);margin-top:4px;">선택된 사용자: <span id="ann-selected-count">${targets.length}</span>명</div>
       </div>
       <div style="display:flex;gap:8px;">
         <button onclick="document.getElementById('dynamic-modal')?.remove()" style="flex:1;padding:14px;border:1px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text-secondary);font-size:14px;font-weight:600;cursor:pointer;">취소</button>
-        <button id="ann-publish-btn" onclick="publishAnnouncement()" style="flex:2;padding:14px;border:none;border-radius:12px;background:#F97316;color:#fff;font-size:14px;font-weight:600;cursor:pointer;">전체 발송</button>
+        <button id="ann-publish-btn" onclick="publishAnnouncement()" style="flex:2;padding:14px;border:none;border-radius:12px;background:#F97316;color:#fff;font-size:14px;font-weight:600;cursor:pointer;">발송</button>
       </div>
     </div>
   </div>`;
+
+  // 체크박스 변경 시 카운트 업데이트
+  document.getElementById('ann-user-list')?.addEventListener('change', () => {
+    const cnt = document.querySelectorAll('.ann-user-cb:checked').length;
+    const el = document.getElementById('ann-selected-count');
+    if (el) el.textContent = cnt;
+  });
+
   setTimeout(() => document.getElementById('ann-title')?.focus(), 200);
+};
+
+window.toggleAllAnnUsers = function() {
+  const cbs = document.querySelectorAll('.ann-user-cb');
+  const allChecked = [...cbs].every(c => c.checked);
+  cbs.forEach(c => c.checked = !allChecked);
+  const el = document.getElementById('ann-selected-count');
+  if (el) el.textContent = allChecked ? '0' : cbs.length;
 };
 
 window.publishAnnouncement = async function() {
   const title = document.getElementById('ann-title')?.value.trim();
   const body = document.getElementById('ann-body')?.value.trim();
   if (!title) { alert('제목을 입력해주세요.'); return; }
+  const selectedIds = [...document.querySelectorAll('.ann-user-cb:checked')].map(c => c.value);
+  if (selectedIds.length === 0) { alert('발송 대상을 선택해주세요.'); return; }
   const btn = document.getElementById('ann-publish-btn');
   btn.textContent = '발송 중...'; btn.disabled = true;
   try {
-    const { sendAnnouncement } = await import('./data.js');
-    const result = await sendAnnouncement(title, body || '');
-    if (result.error) throw new Error(result.error);
+    const { sendNotification } = await import('./data.js');
+    for (const userId of selectedIds) {
+      await sendNotification(userId, {
+        type: 'announcement', from: '김_태우',
+        title, body: body || '',
+        message: `📢 ${title}`,
+      });
+    }
     document.getElementById('dynamic-modal')?.remove();
-    alert('공지를 발송했어요!');
+    alert(`${selectedIds.length}명에게 공지를 발송했어요!`);
     renderAdmin();
   } catch(e) {
     console.error('[admin] announcement:', e);
     alert('발송 실패: ' + e.message);
-    btn.textContent = '전체 발송'; btn.disabled = false;
+    btn.textContent = '발송'; btn.disabled = false;
   }
 };
 
