@@ -572,14 +572,6 @@ export async function recordLogin() {
 }
 
 // ── FCM 토큰 관리 ──────────────────────────────────────────────────
-function _simpleHash(str) {
-  let h = 0;
-  for (let i = 0; i < str.length; i++) {
-    h = ((h << 5) - h + str.charCodeAt(i)) | 0;
-  }
-  return Math.abs(h).toString(36);
-}
-
 export async function saveFcmToken(token) {
   if (!_currentUser || !token) return;
   const userId = _socialId();
