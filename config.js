@@ -7,6 +7,7 @@
 export const CONFIG = {
   // API 키는 localStorage에서 로드 (앱 설정에서 입력)
   get ANTHROPIC_KEY()    { return localStorage.getItem('cfg_anthropic')    || ''; },
+  get GEMINI_KEY()       { return localStorage.getItem('cfg_gemini')       || ''; },
   get ALPHAVANTAGE_KEY() { return localStorage.getItem('cfg_alphavantage') || ''; },
 
   // 식품의약품안전처 식품영양성분 DB (data.go.kr 일반인증키) — 자연식품+가공식품 모두 포함
@@ -33,6 +34,7 @@ export const CONFIG = {
   STOCK_CACHE_HOURS: 8,
   DIET_KCAL_LIMIT:   500,
   CLAUDE_MODEL:      'claude-haiku-4-5-20251001',
+  GEMINI_MODEL:      'gemini-2.0-flash',
 
   DEFAULT_EXERCISES: [
     { muscleId:'chest',    id:'chest_1',    name:'바벨 벤치프레스' },

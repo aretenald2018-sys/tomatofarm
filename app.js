@@ -676,6 +676,13 @@ function runExportCSV(period) {
 // ── 설정 모달 ────────────────────────────────────────────────────
 function openSettingsModal() {
   document.getElementById('cfg-anthropic').value = localStorage.getItem('cfg_anthropic') || '';
+  const geminiInput = document.getElementById('cfg-gemini');
+  if (geminiInput) {
+    geminiInput.value = localStorage.getItem('cfg_gemini') || '';
+    const status = document.getElementById('gemini-status');
+    if (status) status.textContent = localStorage.getItem('cfg_gemini') ? '연결됨' : '미설정';
+    if (status) status.style.color = localStorage.getItem('cfg_gemini') ? 'var(--diet-ok)' : 'var(--muted)';
+  }
   _updateGCalStatus();
   _renderNutritionDBList();
   _renderCalendarRowsSettings();
@@ -748,6 +755,10 @@ function closeSettingsModal(e) { _closeModal('settings-modal', e); }
 function saveSettings() {
   const anthropic = document.getElementById('cfg-anthropic').value.trim();
   if (anthropic) localStorage.setItem('cfg_anthropic', anthropic);
+
+  const gemini = document.getElementById('cfg-gemini')?.value.trim();
+  if (gemini) localStorage.setItem('cfg_gemini', gemini);
+  else localStorage.removeItem('cfg_gemini');
 
   document.getElementById('settings-modal').classList.remove('open');
   showToast('설정이 저장되었습니다');

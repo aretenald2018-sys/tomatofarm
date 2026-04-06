@@ -1,33 +1,32 @@
 // ================================================================
 // ai.js
 // 의존성: config.js, data.js
-// 역할: Claude API 호출 (식단 추천, 운동 추천, 목표 실현가능성, 영양정보 파싱)
+// 역할: Gemini API 호출 (식단 추천, 운동 추천, 목표 실현가능성, 영양정보 파싱)
 // ================================================================
 
 import { CONFIG, MUSCLES }                    from './config.js';
 import { TODAY, getMemo, getExercises, getDiet, getExList,
          getMuscles, getCF, dietDayOk }        from './data.js';
 
-// ── 공통 Claude 호출 ─────────────────────────────────────────────
-export async function callClaude(prompt, maxTokens = 400) {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+// ── 공통 Gemini 호출 ─────────────────────────────────────────────
+export async function callGemini(prompt, maxTokens = 400) {
+  const key = CONFIG.GEMINI_KEY;
+  if (!key) throw new Error('Gemini API 키가 설정되지 않았습니다. 설정에서 입력해주세요.');
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${CONFIG.GEMINI_MODEL}:generateContent?key=${key}`, {
     method: 'POST',
-    headers: {
-      'Content-Type':   'application/json',
-      'x-api-key':      CONFIG.ANTHROPIC_KEY,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model:      CONFIG.CLAUDE_MODEL,
-      max_tokens: maxTokens,
-      messages:   [{ role:'user', content:prompt }],
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { maxOutputTokens: maxTokens },
     }),
   });
   const data = await res.json();
   if (data.error) throw new Error(data.error.message);
-  return data.content[0].text;
+  return data.candidates[0].content.parts[0].text;
 }
+
+// 하위 호환: 기존 callClaude 호출 코드 지원
+export const callClaude = callGemini;
 
 // ── 오늘의 식단 추천 ─────────────────────────────────────────────
 export async function getDietRec() {
@@ -50,7 +49,7 @@ export async function getDietRec() {
 형식: 세트1~3 각각 아침/점심/저녁과 총칼로리를 3줄로 간결하게.`;
 
   try {
-    bubble.textContent = await callClaude(prompt);
+    bubble.textContent = await callGemini(prompt);
   } catch(e) {
     bubble.textContent = '오류: ' + e.message;
   } finally {
@@ -84,7 +83,7 @@ export async function getWorkoutRec() {
 부족한 부위를 파악하고, 오늘 할 운동 루틴을 세트/횟수 포함해 구체적으로 추천해주세요. 3~4줄로 간결하게.`;
 
   try {
-    bubble.textContent = await callClaude(prompt);
+    bubble.textContent = await callGemini(prompt);
   } catch(e) {
     bubble.textContent = '오류: ' + e.message;
   } finally {
@@ -92,10 +91,12 @@ export async function getWorkoutRec() {
   }
 }
 
-// ── 영양성분표 이미지 파싱 (Claude Vision API) ────────────────────
+// ── 영양성분표 이미지 파싱 (Gemini Vision API) ────────────────────
 // 사진에서 영양정보 추출 후 JSON으로 변환
 // 단일 제품 → { name, ... }, 복수 제품(표 등) → { multiple: true, items: [...] }
 export async function parseNutritionFromImage(imageBase64, language = 'ko') {
+  const key = CONFIG.GEMINI_KEY;
+  if (!key) throw new Error('Gemini API 키가 설정되지 않았습니다. 설정에서 입력해주세요.');
   const langMap = { ko:'한국어', ja:'일본어', en:'영어' };
   const prompt = `다음 이미지에서 영양정보를 추출해주세요.
 
@@ -145,29 +146,22 @@ export async function parseNutritionFromImage(imageBase64, language = 'ko') {
 - 단위는 g로 통일 (mg는 /1000)
 - 반드시 JSON만 출력 (다른 텍스트 없이)`;
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${CONFIG.GEMINI_MODEL}:generateContent?key=${key}`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': CONFIG.ANTHROPIC_KEY,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: CONFIG.CLAUDE_MODEL,
-      max_tokens: 2000,
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'text', text: prompt },
-          { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: imageBase64 } }
+      contents: [{
+        parts: [
+          { text: prompt },
+          { inlineData: { mimeType: 'image/jpeg', data: imageBase64 } }
         ]
       }],
+      generationConfig: { maxOutputTokens: 2000 },
     }),
   });
   const data = await res.json();
   if (data.error) throw new Error(data.error.message);
-  const text = data.content[0].text;
+  const text = data.candidates[0].content.parts[0].text;
   const clean = text.trim().replace(/```json|```/g, '');
   return JSON.parse(clean);
 }
@@ -214,7 +208,7 @@ ${rawText}
 
 반드시 JSON만 출력 (다른 텍스트 없이)`;
 
-  const text = await callClaude(prompt, 2000);
+  const text = await callGemini(prompt, 2000);
   const clean = text.trim().replace(/```json|```/g, '');
   return JSON.parse(clean);
 }
@@ -228,7 +222,7 @@ export async function detectLanguage(text) {
 반드시 다음 형식으로만 (다른 텍스트 없이):
 {"language": "ko|ja|en|other", "confidence": 0.95}`;
 
-  const result = await callClaude(prompt, 100);
+  const result = await callGemini(prompt, 100);
   const clean = result.trim().replace(/```json|```/g, '');
   return JSON.parse(clean);
 }
@@ -271,7 +265,7 @@ feasibility: 0-100 정수 (현재 페이스 유지 시 목표일 내 달성 가�
 realisticDate: 현재 페이스를 유지했을 때 실제로 목표 달성 가능한 날짜 (YYYY-MM-DD)
 summary: 2-3문장 간결한 분석 및 개선 제안`;
 
-  const text  = await callClaude(prompt, 400);
+  const text  = await callGemini(prompt, 400);
   const clean = text.trim().replace(/```json|```/g, '');
   return JSON.parse(clean);
 }

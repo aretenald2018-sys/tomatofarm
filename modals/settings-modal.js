@@ -6,6 +6,14 @@ export const MODAL_HTML = `
     <div class="ex-editor-form">
       <input type="hidden" id="cfg-anthropic">
       <div style="border-top:1px solid var(--border);margin-top:16px;padding-top:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <span style="font-size:12px;font-weight:700;color:var(--text-secondary)">🤖 AI 기능 (Gemini)</span>
+          <span id="gemini-status" style="font-size:11px;font-weight:600;color:var(--muted)"></span>
+        </div>
+        <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:8px;">사진 인식, 텍스트 파싱, AI 추천에 사용됩니다.</div>
+        <input class="ex-editor-input" id="cfg-gemini" type="password" placeholder="Gemini API Key" style="font-size:12px;">
+      </div>
+      <div style="border-top:1px solid var(--border);margin-top:16px;padding-top:14px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
           <span style="font-size:12px;font-weight:700;color:var(--muted2)">📅 Google Calendar 연동</span>
           <span id="gcal-status" style="font-size:11px;font-weight:600;color:var(--muted)">미연결</span>

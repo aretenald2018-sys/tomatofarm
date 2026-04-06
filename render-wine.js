@@ -132,23 +132,12 @@ export async function analyzeWinePreference() {
   ).join('\n\n');
 
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{
-        'Content-Type':'application/json',
-        'x-api-key': CONFIG.ANTHROPIC_KEY,
-        'anthropic-version':'2023-06-01',
-        'anthropic-dangerous-direct-browser-access':'true',
-      },
-      body: JSON.stringify({
-        model: CONFIG.CLAUDE_MODEL, max_tokens:400,
-        messages:[{role:'user',content:
-          `다음은 내가 시음한 와인들의 감상 메모와 별점입니다.\n${summary}\n\n별점이 높은 와인들의 공통점을 중심으로, 현재 내가 선호하는 품종·지역·스타일을 3~4문장으로 간결하게 분석해주세요.`
-        }],
-      }),
-    });
-    const data=await res.json();
-    if(el) el.innerHTML=`<div style="font-size:12px;color:var(--muted2);line-height:1.7">${data.content[0].text}</div>
+    const { callGemini } = await import('./ai.js');
+    const result = await callGemini(
+      `다음은 내가 시음한 와인들의 감상 메모와 별점입니다.\n${summary}\n\n별점이 높은 와인들의 공통점을 중심으로, 현재 내가 선호하는 품종·지역·스타일을 3~4문장으로 간결하게 분석해주세요.`,
+      400
+    );
+    if(el) el.innerHTML=`<div style="font-size:12px;color:var(--muted2);line-height:1.7">${result}</div>
       <button class="wine-pref-btn" onclick="analyzeWinePreference()" style="margin-top:8px">🔄 재분석</button>`;
   } catch(e) {
     if(el) el.innerHTML=`<div style="font-size:12px;color:var(--diet-bad)">분석 실패</div>
