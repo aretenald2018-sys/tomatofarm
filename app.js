@@ -2548,7 +2548,66 @@ async function _initFCM() {
       await _initFCMCapacitor();
       return;
     }
-    // 웹 환경: Firebase Messaging
+
+    // 이미 권한이 있으면 바로 토큰 등록
+    if (Notification.permission === 'granted') {
+      await _registerFCMToken();
+      return;
+    }
+
+    // 이미 거부한 경우 재요청 불가
+    if (Notification.permission === 'denied') return;
+
+    // 이전에 "다음에" 눌렀으면 이번 세션에서는 안 물어봄
+    if (sessionStorage.getItem('fcm_ask_later')) return;
+
+    // 커스텀 안내 모달 표시 (soft ask)
+    setTimeout(() => _showPushPermissionModal(), 2000);
+  } catch(e) {
+    console.warn('[FCM] 초기화 실패:', e);
+  }
+}
+
+function _showPushPermissionModal() {
+  const existing = document.getElementById('push-permission-modal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'push-permission-modal';
+  modal.innerHTML = `<div style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:flex-end;justify-content:center;animation:tds-fade-in 0.2s ease;">
+    <div style="background:var(--surface);border-radius:20px 20px 0 0;width:100%;max-width:400px;padding:28px 24px 24px;animation:tds-slide-up 0.3s ease;">
+      <div style="text-align:center;margin-bottom:20px;">
+        <div style="font-size:48px;margin-bottom:12px;">🍅</div>
+        <div style="font-size:17px;font-weight:700;color:var(--text);margin-bottom:8px;">알림을 켜볼까요?</div>
+        <div style="font-size:13px;color:var(--text-secondary);line-height:1.6;">
+          이웃의 응원, 댓글, 리액션을<br>실시간으로 받아볼 수 있어요.<br>
+          <span style="font-size:12px;color:var(--text-tertiary);">귀찮게 하지 않을게요. 중요한 알림만 보내드려요!</span>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <button id="push-perm-allow" style="width:100%;padding:14px;border:none;border-radius:12px;background:var(--primary);color:#fff;font-size:15px;font-weight:700;cursor:pointer;">좋아요, 알림 받을래요</button>
+        <button id="push-perm-later" style="width:100%;padding:12px;border:none;border-radius:12px;background:var(--surface2);color:var(--text-tertiary);font-size:13px;font-weight:500;cursor:pointer;">다음에 할게요</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+
+  document.getElementById('push-perm-allow').onclick = async () => {
+    modal.remove();
+    const permission = await Notification.requestPermission();
+    if (permission === 'granted') {
+      await _registerFCMToken();
+    }
+  };
+
+  document.getElementById('push-perm-later').onclick = () => {
+    modal.remove();
+    sessionStorage.setItem('fcm_ask_later', '1');
+  };
+}
+
+async function _registerFCMToken() {
+  try {
     const { getMessaging, getToken, onMessage } = await import(
       "https://www.gstatic.com/firebasejs/11.6.0/firebase-messaging.js"
     );
@@ -2560,16 +2619,7 @@ async function _initFCM() {
     const app = apps.length ? apps[0] : initializeApp(CONFIG.FIREBASE);
     const messaging = getMessaging(app);
 
-    // 알림 권한 요청
-    const permission = await Notification.requestPermission();
-    if (permission !== 'granted') {
-      console.log('[FCM] 알림 권한 거부됨');
-      return;
-    }
-
-    // FCM 토큰 발급 (VAPID 키 필요 — Firebase Console에서 생성)
     const VAPID_KEY = 'BJDhMdCeKUGoXlAle3kS1BNQzdK-os-COSLftTtlWa-qilyv8C8Fc-TFQQNwXcIySZmIupicFsuH9cmjLY9gBZc';
-
     const token = await getToken(messaging, { vapidKey: VAPID_KEY });
     if (token) {
       await saveFcmToken(token);
@@ -2579,17 +2629,15 @@ async function _initFCM() {
     // 포그라운드 메시지 핸들러 (앱이 열려있을 때)
     onMessage(messaging, (payload) => {
       const body = payload.notification?.body || '새 알림이 도착했어요';
-      // 토스트 표시 + 알림 센터 갱신
       const toastEl = document.createElement('div');
       toastEl.className = 'tds-toast show';
       toastEl.textContent = body;
       document.body.appendChild(toastEl);
       setTimeout(() => { toastEl.classList.remove('show'); setTimeout(() => toastEl.remove(), 300); }, 3000);
-      // 알림 센터 갱신
       if (typeof refreshNotifCenter === 'function') refreshNotifCenter();
     });
   } catch(e) {
-    console.warn('[FCM] 초기화 실패:', e);
+    console.warn('[FCM] 토큰 등록 실패:', e);
   }
 }
 
