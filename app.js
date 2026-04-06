@@ -1944,6 +1944,9 @@ async function init() {
       loadWorkoutDate(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
       loadStocks();
     });
+
+    // FCM 푸시 알림 초기화 (백그라운드)
+    _initFCM();
   } catch (err) {
     console.error('[init] 초기화 오류:', err);
     // 오류가 발생해도 로딩 화면 숨기고 기본 렌더링
@@ -2537,6 +2540,101 @@ window.wtAddFoodItem            = wtAddFoodItem;
 window.wtRemoveFoodItem         = wtRemoveFoodItem;
 
 // ── PWA 설치 (앱 다운로드) ────────────────────────────────────
+// ── FCM 푸시 알림 초기화 ────────────────────────────────────────
+async function _initFCM() {
+  try {
+    // Capacitor 네이티브 환경 확인
+    if (window.Capacitor?.getPlatform?.() === 'android') {
+      await _initFCMCapacitor();
+      return;
+    }
+    // 웹 환경: Firebase Messaging
+    const { getMessaging, getToken, onMessage } = await import(
+      "https://www.gstatic.com/firebasejs/11.6.0/firebase-messaging.js"
+    );
+    const { saveFcmToken } = await import('./data.js');
+    const { initializeApp, getApps } = await import(
+      "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js"
+    );
+    const apps = getApps();
+    const app = apps.length ? apps[0] : initializeApp(CONFIG.FIREBASE);
+    const messaging = getMessaging(app);
+
+    // 알림 권한 요청
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') {
+      console.log('[FCM] 알림 권한 거부됨');
+      return;
+    }
+
+    // FCM 토큰 발급 (VAPID 키 필요 — Firebase Console에서 생성)
+    const VAPID_KEY = 'BJDhMdCeKUGoXlAle3kS1BNQzdK-os-COSLftTtlWa-qilyv8C8Fc-TFQQNwXcIySZmIupicFsuH9cmjLY9gBZc';
+
+    const token = await getToken(messaging, { vapidKey: VAPID_KEY });
+    if (token) {
+      await saveFcmToken(token);
+      console.log('[FCM] 토큰 등록 완료');
+    }
+
+    // 포그라운드 메시지 핸들러 (앱이 열려있을 때)
+    onMessage(messaging, (payload) => {
+      const body = payload.notification?.body || '새 알림이 도착했어요';
+      // 토스트 표시 + 알림 센터 갱신
+      const toastEl = document.createElement('div');
+      toastEl.className = 'tds-toast show';
+      toastEl.textContent = body;
+      document.body.appendChild(toastEl);
+      setTimeout(() => { toastEl.classList.remove('show'); setTimeout(() => toastEl.remove(), 300); }, 3000);
+      // 알림 센터 갱신
+      if (typeof refreshNotifCenter === 'function') refreshNotifCenter();
+    });
+  } catch(e) {
+    console.warn('[FCM] 초기화 실패:', e);
+  }
+}
+
+async function _initFCMCapacitor() {
+  try {
+    const { PushNotifications } = await import("@capacitor/push-notifications");
+    const { saveFcmToken } = await import('./data.js');
+
+    const permResult = await PushNotifications.requestPermissions();
+    if (permResult.receive !== 'granted') {
+      console.log('[FCM-Cap] 알림 권한 거부됨');
+      return;
+    }
+
+    await PushNotifications.register();
+
+    PushNotifications.addListener('registration', async (token) => {
+      await saveFcmToken(token.value);
+      console.log('[FCM-Cap] 토큰 등록 완료');
+    });
+
+    PushNotifications.addListener('registrationError', (err) => {
+      console.warn('[FCM-Cap] 등록 실패:', err);
+    });
+
+    PushNotifications.addListener('pushNotificationReceived', (notification) => {
+      // 앱 포그라운드에서 수신 시 토스트 표시
+      const body = notification.body || '새 알림이 도착했어요';
+      const toastEl = document.createElement('div');
+      toastEl.className = 'tds-toast show';
+      toastEl.textContent = body;
+      document.body.appendChild(toastEl);
+      setTimeout(() => { toastEl.classList.remove('show'); setTimeout(() => toastEl.remove(), 300); }, 3000);
+      if (typeof refreshNotifCenter === 'function') refreshNotifCenter();
+    });
+
+    PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+      // 알림 클릭 시 앱으로 포커스 (Capacitor가 자동 처리)
+      if (typeof refreshNotifCenter === 'function') refreshNotifCenter();
+    });
+  } catch(e) {
+    console.warn('[FCM-Cap] 초기화 실패:', e);
+  }
+}
+
 let _deferredInstallPrompt = null;
 
 function _showPWAInstallBanner() {

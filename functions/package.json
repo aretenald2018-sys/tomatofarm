@@ -1,0 +1,10 @@
+{
+  "name": "tomatofarm-functions",
+  "description": "Firebase Cloud Functions for Life Streak push notifications",
+  "engines": { "node": "20" },
+  "main": "index.js",
+  "dependencies": {
+    "firebase-admin": "^13.0.0",
+    "firebase-functions": "^6.3.0"
+  }
+}

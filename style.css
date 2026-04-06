@@ -535,6 +535,16 @@ body {
   font-size: 13px; color: var(--text-tertiary);
 }
 
+/* 운영자 공지 알림 */
+.notif-icon.announce { background: rgba(249, 115, 22, 0.15); }
+.notif-announce { border-left: 3px solid #F97316; }
+.notif-announce.unread { background: rgba(249, 115, 22, 0.08); }
+.notif-announce.unread:hover { background: rgba(249, 115, 22, 0.12); }
+
+/* 댓글 패널 */
+.comment-section-panel { max-height: 240px; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.comment-toggle-btn:hover { color: var(--primary) !important; }
+
 .theme-toggle {
   width: 36px; height: 36px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;

@@ -301,6 +301,15 @@ export async function renderAdmin() {
           `).join('')
         }
       </div>
+      <!-- 운영자 공지 -->
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:20px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+          <div style="font-size:13px;font-weight:600;color:var(--text);">📢 운영자 공지</div>
+          <button onclick="openAnnouncementEditor()" style="padding:6px 14px;border:none;border-radius:8px;background:#F97316;color:#fff;font-size:12px;font-weight:600;cursor:pointer;">+ 새 공지</button>
+        </div>
+        <div style="font-size:11px;color:var(--text-tertiary);">공지는 모든 사용자의 알림 목록에 표시됩니다.</div>
+      </div>
+
     </div>`;
 
     // 이벤트 바인딩
@@ -377,6 +386,51 @@ window.publishPatchnote = async function() {
     console.error('[admin] publish:', e);
     alert('발행 실패: ' + e.message);
     btn.textContent = '발행하기'; btn.disabled = false;
+  }
+};
+
+// 운영자 공지 에디터
+window.openAnnouncementEditor = function() {
+  document.getElementById('dynamic-modal')?.remove();
+  const modal = document.createElement('div'); modal.id = 'dynamic-modal'; document.body.appendChild(modal);
+  modal.innerHTML = `<div class="modal-backdrop" style="display:flex;z-index:10000;" onclick="if(event.target===this)document.getElementById('dynamic-modal')?.remove();">
+    <div class="modal-sheet" style="max-width:440px;padding:24px;" onclick="event.stopPropagation()">
+      <div class="sheet-handle"></div>
+      <div style="font-size:17px;font-weight:700;color:var(--text);margin-bottom:16px;">📢 운영자 공지 발송</div>
+      <div style="margin-bottom:12px;">
+        <label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:6px;">제목</label>
+        <input id="ann-title" type="text" placeholder="예: 서비스 점검 안내" style="width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;color:var(--text);background:var(--surface);outline:none;box-sizing:border-box;" onfocus="this.style.borderColor='#F97316'" onblur="this.style.borderColor='var(--border)'">
+      </div>
+      <div style="margin-bottom:16px;">
+        <label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:6px;">내용</label>
+        <textarea id="ann-body" style="width:100%;min-height:120px;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;color:var(--text);background:var(--surface);outline:none;resize:vertical;font-family:inherit;box-sizing:border-box;line-height:1.6;" placeholder="공지 내용을 적어주세요..." onfocus="this.style.borderColor='#F97316'" onblur="this.style.borderColor='var(--border)'"></textarea>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button onclick="document.getElementById('dynamic-modal')?.remove()" style="flex:1;padding:14px;border:1px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text-secondary);font-size:14px;font-weight:600;cursor:pointer;">취소</button>
+        <button id="ann-publish-btn" onclick="publishAnnouncement()" style="flex:2;padding:14px;border:none;border-radius:12px;background:#F97316;color:#fff;font-size:14px;font-weight:600;cursor:pointer;">전체 발송</button>
+      </div>
+    </div>
+  </div>`;
+  setTimeout(() => document.getElementById('ann-title')?.focus(), 200);
+};
+
+window.publishAnnouncement = async function() {
+  const title = document.getElementById('ann-title')?.value.trim();
+  const body = document.getElementById('ann-body')?.value.trim();
+  if (!title) { alert('제목을 입력해주세요.'); return; }
+  const btn = document.getElementById('ann-publish-btn');
+  btn.textContent = '발송 중...'; btn.disabled = true;
+  try {
+    const { sendAnnouncement } = await import('./data.js');
+    const result = await sendAnnouncement(title, body || '');
+    if (result.error) throw new Error(result.error);
+    document.getElementById('dynamic-modal')?.remove();
+    alert('공지를 발송했어요!');
+    renderAdmin();
+  } catch(e) {
+    console.error('[admin] announcement:', e);
+    alert('발송 실패: ' + e.message);
+    btn.textContent = '전체 발송'; btn.disabled = false;
   }
 };
 

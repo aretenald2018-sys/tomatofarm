@@ -290,8 +290,10 @@ export async function deleteUserAccount(userId) {
   const globalCols = [
     { name: '_friend_requests', fields: ['from','to'] },
     { name: '_guestbook',       fields: ['from','to'] },
+    { name: '_comments',        fields: ['from','to'] },
     { name: '_likes',           fields: ['from','to'] },
     { name: '_notifications',   fields: ['to'] },
+    { name: '_fcm_tokens',      fields: ['userId'] },
     { name: '_letters',         fields: ['from'] },
   ];
   for (const gc of globalCols) {
@@ -472,6 +474,75 @@ export async function deleteGuestbookEntry(entryId) {
   await deleteDoc(doc(db, '_guestbook', entryId));
 }
 
+// ── 댓글 시스템 ──────────────────────────────────────────────────
+export async function getComments(targetUserId, dateKey, section) {
+  const snap = await getDocs(collection(db, '_comments'));
+  const comments = [];
+  snap.forEach(d => {
+    const data = d.data();
+    if (data.to === targetUserId && data.dateKey === dateKey && data.section === section) {
+      comments.push(data);
+    }
+  });
+  comments.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  return comments;
+}
+
+export async function writeComment(targetUserId, dateKey, section, message, parentId = null) {
+  if (!_currentUser || !message.trim()) return { error: '메시지를 입력해주세요.' };
+  const fromId = _socialId();
+  const cmtId = `cmt_${fromId}_${targetUserId}_${Date.now()}`;
+  const comment = {
+    id: cmtId, to: targetUserId, from: fromId,
+    fromName: _currentUser.nickname || (_currentUser.lastName + _currentUser.firstName),
+    dateKey, section, message: message.trim(),
+    parentId: parentId || null,
+    createdAt: Date.now(), updatedAt: null,
+  };
+  await setDoc(doc(db, '_comments', cmtId), comment);
+  // 알림 발송 (자기 자신 스킵)
+  if (!_isMySocialId(targetUserId)) {
+    await sendNotification(targetUserId, {
+      type: parentId ? 'comment_reply' : 'comment',
+      from: fromId, dateKey, section,
+      message: parentId ? '댓글에 답글을 남겼어요 💬' : '댓글을 남겼어요 💬',
+    });
+  }
+  // 대댓글인 경우 원댓글 작성자에게도 알림
+  if (parentId) {
+    try {
+      const parentSnap = await getDoc(doc(db, '_comments', parentId));
+      if (parentSnap.exists()) {
+        const parentData = parentSnap.data();
+        if (parentData.from !== fromId && !_isMySocialId(parentData.from) && parentData.from !== targetUserId) {
+          await sendNotification(parentData.from, {
+            type: 'comment_reply', from: fromId, dateKey, section,
+            message: '댓글에 답글을 남겼어요 💬',
+          });
+        }
+      }
+    } catch(e) { console.warn('[comment] parent notif:', e); }
+  }
+  return { ok: true, comment };
+}
+
+export async function editComment(commentId, newMessage) {
+  if (!_currentUser || !newMessage.trim()) return { error: '메시지를 입력해주세요.' };
+  await setDoc(doc(db, '_comments', commentId), {
+    message: newMessage.trim(), updatedAt: Date.now(),
+  }, { merge: true });
+  return { ok: true };
+}
+
+export async function deleteComment(commentId) {
+  const snap = await getDocs(collection(db, '_comments'));
+  const toDelete = [commentId];
+  snap.forEach(d => {
+    if (d.data().parentId === commentId) toDelete.push(d.id);
+  });
+  await Promise.all(toDelete.map(id => deleteDoc(doc(db, '_comments', id))));
+}
+
 // ── 친구 소개 시스템 ─────────────────────────────────────────────
 export async function introduceFriend(friendAId, friendBId, friendAName, friendBName) {
   if (!_currentUser) return { error: '로그인이 필요해요.' };
@@ -498,6 +569,33 @@ export async function recordLogin() {
   try {
     await setDoc(doc(db, '_accounts', uid), { lastLoginAt: Date.now() }, { merge: true });
   } catch(e) { console.warn('[track] login:', e); }
+}
+
+// ── FCM 토큰 관리 ──────────────────────────────────────────────────
+function _simpleHash(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) {
+    h = ((h << 5) - h + str.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h).toString(36);
+}
+
+export async function saveFcmToken(token) {
+  if (!_currentUser || !token) return;
+  const userId = _socialId();
+  const tokenHash = _simpleHash(token);
+  const docId = `${userId}_${tokenHash}`;
+  await setDoc(doc(db, '_fcm_tokens', docId), {
+    userId, token, updatedAt: Date.now(),
+  });
+}
+
+export async function removeFcmToken(token) {
+  if (!_currentUser || !token) return;
+  const userId = _socialId();
+  const tokenHash = _simpleHash(token);
+  const docId = `${userId}_${tokenHash}`;
+  await deleteDoc(doc(db, '_fcm_tokens', docId));
 }
 
 export async function recordTutorialDone() {
@@ -558,6 +656,22 @@ export async function getMyNotifications() {
 
 export async function markNotificationRead(notifId) {
   await setDoc(doc(db, '_notifications', notifId), { read: true }, { merge: true });
+}
+
+// ── 운영자 공지 ──────────────────────────────────────────────────
+export async function sendAnnouncement(title, body) {
+  if (!_currentUser) return { error: '로그인 필요' };
+  const fromId = _socialId();
+  const accounts = await getAccountList();
+  for (const acc of accounts) {
+    if (acc.id === fromId || acc.id.includes('(guest)')) continue;
+    await sendNotification(acc.id, {
+      type: 'announcement', from: fromId,
+      title, body,
+      message: `📢 ${title}`,
+    });
+  }
+  return { ok: true };
 }
 
 // 좋아요

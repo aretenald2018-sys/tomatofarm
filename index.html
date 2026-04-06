@@ -1549,6 +1549,13 @@ if ('serviceWorker' in navigator) {
   console.warn('[PWA] Service Worker를 지원하지 않는 브라우저');
 }
 
+// Firebase Messaging 서비스워커 등록 (FCM 웹 푸시용)
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('firebase-messaging-sw.js', { scope: '/tomatofarm/' })
+    .then(() => console.log('[FCM] Messaging SW 등록 성공'))
+    .catch(e => console.warn('[FCM] Messaging SW 등록 실패:', e.message));
+}
+
 // 설치 프롬프트 처리 (PWA 설치 버튼)
 let deferredPrompt;
 window.addEventListener('beforeinstallprompt', (e) => {

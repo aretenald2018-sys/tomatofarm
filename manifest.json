@@ -49,5 +49,6 @@
       "form_factor": "wide"
     }
   ],
-  "categories": ["health", "productivity"]
+  "categories": ["health", "productivity"],
+  "gcm_sender_id": "867781711662"
 }

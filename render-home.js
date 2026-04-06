@@ -25,6 +25,7 @@ import { TODAY, getMuscles, getCF, getDiet, dietDayOk,
          getFarmState, saveFarmState, getFarmShopItems, buyFarmItem,
          placeFarmItem, removeFarmItem, moveFarmCharacter,
          getGuestbook, writeGuestbook, deleteGuestbookEntry,
+         getComments, writeComment, editComment, deleteComment,
          introduceFriend, getDisplayName,
          recordAction }  from './data.js';
 import { calcTomatoCycle, evaluateCycleResult, getQuarterKey,
@@ -1865,8 +1866,8 @@ async function _renderFriendFeed() {
         const a = accounts.find(x => x.id === n.from);
         const nm = a ? _resolveNickname(a, accounts) : (n.from || '').replace(/_/g, '');
         const fullNm = a ? a.lastName + a.firstName.replace(/\(.*\)/, '') : (n.from || '').replace(/_/g, '');
-        const ic = n.type === 'like' ? '❤️' : n.type === 'friend_accepted' ? '🤝' : n.type === 'guestbook' ? '📝' : '💬';
-        const scrollTarget = (n.type === 'like' || n.type === 'reaction') ? 'reactions' : (n.type === 'guestbook' || n.type === 'guestbook_reply') ? 'guestbook' : '';
+        const ic = n.type === 'like' ? '❤️' : n.type === 'friend_accepted' ? '🤝' : n.type === 'guestbook' ? '📝' : n.type === 'announcement' ? '📢' : n.type === 'comment' || n.type === 'comment_reply' ? '💬' : '💬';
+        const scrollTarget = (n.type === 'like' || n.type === 'reaction') ? 'reactions' : (n.type === 'guestbook' || n.type === 'guestbook_reply') ? 'guestbook' : (n.type === 'comment' || n.type === 'comment_reply') ? `comments_${n.section || ''}` : '';
         const fid = (n.from || '').replace(/"/g, '&quot;');
         const fnm = fullNm.replace(/"/g, '&quot;');
         nh += `<div class="friend-notif-row" data-notif-id="${n.id}" data-notif-fid="${fid}" data-notif-fname="${fnm}" data-notif-scroll="${scrollTarget}">
@@ -2259,13 +2260,16 @@ window.openFriendProfile = async function(friendId, friendName, scrollToSection)
         const emojiDisplay = mealEmojis.length > 0 ? mealEmojis.join('') : '';
         const reactBadge = mealReactCount > 0 ? `<span class="react-badge-detail" onclick="event.stopPropagation();showReactionDetail(this,'${friendId}','${tk}','${mealField}')" style="cursor:pointer;display:inline-flex;align-items:center;gap:2px;padding:2px 6px;border-radius:999px;background:var(--surface2);"><span style="font-size:12px;">${emojiDisplay}</span><span style="font-size:10px;font-weight:600;color:var(--primary);">${mealReactCount}</span></span>` : '';
         const reactionBtn = (isFriend && !isMyProfile) ? `${reactBadge}<button class="friend-like-btn" onclick="showReactionPicker(this,'${friendId}','${tk}','${mealField}')" style="flex-shrink:0;font-size:16px;background:none;border:none;cursor:pointer;padding:2px;">🤍</button>` : (mealReactCount > 0 ? `<span class="react-badge-detail" onclick="event.stopPropagation();showReactionDetail(this,'${friendId}','${tk}','${mealField}')" style="cursor:pointer;display:inline-flex;align-items:center;gap:2px;padding:2px 6px;border-radius:999px;background:var(--surface2);"><span style="font-size:12px;">${emojiDisplay}</span><span style="font-size:10px;font-weight:600;color:var(--primary);">${mealReactCount}</span></span>` : `<span style="font-size:14px;opacity:0.3;">🤍</span>`);
+        const mealCommentBtn = isFriend ? `<button class="comment-toggle-btn" onclick="toggleCommentSection('${normalizedFriendId}','${tk}','${m.memo}')" style="flex-shrink:0;font-size:13px;background:none;border:none;cursor:pointer;padding:2px 4px;color:var(--text-tertiary);">💬</button>` : '';
         todayDietHtml += `<div style="padding:6px 0;font-size:12px;border-bottom:1px solid var(--border);">
           <div style="display:flex;align-items:center;justify-content:space-between;">
             <span style="color:var(--text-secondary);flex-shrink:0;">${m.label}</span>
             <span style="color:var(--text);flex:1;text-align:right;margin:0 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${foodNames}${kcal ? ` <span style="color:var(--text-tertiary);">${kcal}kcal</span>` : ''}</span>
             ${reactionBtn}
+            ${mealCommentBtn}
           </div>
           ${photoHtml}
+          <div id="comments-${m.memo}" class="comment-section-panel" style="display:none;"></div>
         </div>`;
       }
     });
@@ -2390,6 +2394,8 @@ window.openFriendProfile = async function(friendId, friendName, scrollToSection)
           </div>
           ${todayW?.workoutPhoto ? `<img src="${todayW.workoutPhoto}" style="width:100%;max-height:240px;object-fit:contain;border-radius:8px;margin-top:8px;">` : ''}
         ` : '<div style="font-size:12px;color:var(--text-tertiary);">아직 기록이 없어요</div>'}
+        ${isFriend ? `<button class="comment-toggle-btn" onclick="toggleCommentSection('${normalizedFriendId}','${tk}','workout')" style="font-size:12px;background:none;border:1px solid var(--border);border-radius:999px;padding:4px 10px;cursor:pointer;color:var(--text-tertiary);margin-top:6px;">💬 댓글</button>
+        <div id="comments-workout" class="comment-section-panel" style="display:none;"></div>` : ''}
       </div>
 
       <!-- 오늘의 식단 -->
@@ -2445,12 +2451,20 @@ window.openFriendProfile = async function(friendId, friendName, scrollToSection)
 
   // 섹션 스크롤 (알림에서 연결된 경우)
   if (scrollToSection) {
-    setTimeout(() => {
-      const targetEl = scrollToSection === 'guestbook'
-        ? document.getElementById('guestbook-list')
-        : scrollToSection === 'reactions'
-        ? document.getElementById('guestbook-list')?.closest('div[style*="border-top"]')
-        : null;
+    setTimeout(async () => {
+      let targetEl = null;
+      if (scrollToSection === 'guestbook') {
+        targetEl = document.getElementById('guestbook-list');
+      } else if (scrollToSection === 'reactions') {
+        targetEl = document.getElementById('guestbook-list')?.closest('div[style*="border-top"]');
+      } else if (scrollToSection?.startsWith('comments_')) {
+        // 댓글 알림에서 연결: 해당 섹션 댓글 패널 자동 확장
+        const cmtSection = scrollToSection.replace('comments_', '');
+        if (cmtSection) {
+          await toggleCommentSection(normalizedFriendId, tk, cmtSection);
+          targetEl = document.getElementById(`comments-${cmtSection}`);
+        }
+      }
       if (targetEl) {
         targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
         targetEl.style.transition = 'background 0.3s';
@@ -2668,6 +2682,135 @@ window.deleteGb = async function(entryId, targetId) {
   _showToast('삭제했어요');
 };
 
+// ── 댓글 시스템 UI ──────────────────────────────────────────────
+let _commentReplyParentId = null;
+
+window.toggleCommentSection = async function(targetId, dateKey, section) {
+  const panel = document.getElementById(`comments-${section}`);
+  if (!panel) return;
+  if (panel.style.display === 'none') {
+    panel.style.display = 'block';
+    panel.innerHTML = '<div style="text-align:center;padding:8px;font-size:12px;color:var(--text-tertiary);">불러오는 중...</div>';
+    await _loadComments(targetId, dateKey, section);
+  } else {
+    panel.style.display = 'none';
+  }
+};
+
+async function _loadComments(targetId, dateKey, section) {
+  const panel = document.getElementById(`comments-${section}`);
+  if (!panel) return;
+  const comments = await getComments(targetId, dateKey, section);
+  const user = getCurrentUser();
+  const myId = user?.id;
+  const { getDataOwnerId } = await import('./data.js');
+  const myDataOwnerId = getDataOwnerId();
+
+  const topComments = comments.filter(c => !c.parentId);
+  const replies = comments.filter(c => c.parentId);
+  const replyMap = {};
+  replies.forEach(r => { (replyMap[r.parentId] = replyMap[r.parentId] || []).push(r); });
+
+  let html = '';
+  if (topComments.length === 0) {
+    html = '<div style="text-align:center;padding:10px;font-size:12px;color:var(--text-tertiary);">아직 댓글이 없어요</div>';
+  } else {
+    html = topComments.map(c => {
+      let h = _renderComment(c, false, myId, myDataOwnerId, targetId, dateKey, section);
+      (replyMap[c.id] || []).sort((a,b) => a.createdAt - b.createdAt).forEach(r => {
+        h += _renderComment(r, true, myId, myDataOwnerId, targetId, dateKey, section);
+      });
+      return h;
+    }).join('');
+  }
+
+  html += `<div style="display:flex;gap:6px;margin-top:8px;">
+    <input id="comment-input-${section}" style="flex:1;padding:7px 12px;border:1px solid var(--border);border-radius:999px;font-size:12px;color:var(--text);background:var(--surface2);outline:none;font-family:var(--font-sans);transition:border-color 0.15s;" placeholder="댓글 남기기" onfocus="this.style.borderColor='var(--primary)'" onblur="this.style.borderColor='var(--border)'" onkeydown="if(event.key==='Enter')submitComment('${targetId}','${dateKey}','${section}')">
+    <button onclick="submitComment('${targetId}','${dateKey}','${section}')" style="padding:6px 12px;border:none;border-radius:999px;background:var(--primary);color:#fff;font-size:12px;font-weight:600;cursor:pointer;flex-shrink:0;">등록</button>
+  </div>`;
+
+  panel.innerHTML = `<div style="margin-top:8px;padding:8px 0;border-top:1px dashed var(--border);">${html}</div>`;
+}
+
+function _renderComment(c, isReply, myId, myDataOwnerId, targetId, dateKey, section) {
+  const isMe = c.from === myId || (c.from === '김_태우' && myId === '김_태우(guest)') || (c.from === '김_태우(guest)' && myId === '김_태우');
+  const isOwner = targetId === myId || targetId === myDataOwnerId;
+  const timeAgo = _formatTimeAgo(c.createdAt);
+  const edited = c.updatedAt ? ' <span style="font-size:9px;color:var(--text-tertiary);">(수정됨)</span>' : '';
+  const delBtn = (isMe || isOwner) ? `<button onclick="deleteCommentUI('${c.id}','${targetId}','${dateKey}','${section}')" style="background:none;border:none;color:var(--text-tertiary);font-size:10px;cursor:pointer;padding:2px 4px;">삭제</button>` : '';
+  const editBtn = isMe ? `<button onclick="editCommentUI('${c.id}','${targetId}','${dateKey}','${section}')" style="background:none;border:none;color:var(--text-tertiary);font-size:10px;cursor:pointer;padding:2px 4px;">수정</button>` : '';
+  const replyBtn = !isReply ? `<button onclick="startCommentReply('${c.id}','${(c.fromName||'').replace(/'/g,"\\'")}','${section}')" style="background:none;border:none;color:var(--text-tertiary);font-size:10px;cursor:pointer;padding:2px 4px;">답글</button>` : '';
+
+  return `<div id="comment-${c.id}" style="padding:${isReply?'5':'7'}px 0;${isReply?'margin-left:32px;':''}border-bottom:1px solid var(--border);display:flex;align-items:flex-start;gap:7px;">
+    <div style="width:${isReply?'20':'26'}px;height:${isReply?'20':'26'}px;border-radius:50%;background:${isMe?'var(--primary)':'var(--surface3)'};color:${isMe?'#fff':'var(--text-secondary)'};display:flex;align-items:center;justify-content:center;font-size:${isReply?'8':'10'}px;font-weight:700;flex-shrink:0;">${(c.fromName||'?').charAt(0)}</div>
+    <div style="flex:1;min-width:0;">
+      <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
+        <span style="font-size:${isReply?'11':'12'}px;font-weight:600;color:var(--text);">${c.fromName || '익명'}</span>
+        <span style="font-size:10px;color:var(--text-tertiary);">${timeAgo}${edited}</span>
+        ${replyBtn}${editBtn}${delBtn}
+      </div>
+      <div class="comment-msg-${c.id}" style="font-size:${isReply?'11':'12'}px;color:var(--text-secondary);margin-top:2px;line-height:1.4;word-break:break-word;">${c.message}</div>
+    </div>
+  </div>`;
+}
+
+window.submitComment = async function(targetId, dateKey, section) {
+  const input = document.getElementById(`comment-input-${section}`);
+  if (!input || !input.value.trim()) return;
+  const isReply = !!_commentReplyParentId;
+  await writeComment(targetId, dateKey, section, input.value, _commentReplyParentId);
+  _commentReplyParentId = null;
+  input.value = '';
+  input.placeholder = '댓글 남기기';
+  document.getElementById(`comment-reply-cancel-${section}`)?.remove();
+  recordAction('댓글');
+  _showToast(isReply ? '답글을 남겼어요 💬' : '댓글을 남겼어요 💬');
+  await _loadComments(targetId, dateKey, section);
+};
+
+window.startCommentReply = function(parentId, fromName, section) {
+  _commentReplyParentId = parentId;
+  const input = document.getElementById(`comment-input-${section}`);
+  if (input) {
+    input.placeholder = `@${fromName}에게 답글`;
+    input.focus();
+  }
+  if (!document.getElementById(`comment-reply-cancel-${section}`)) {
+    const cancelBtn = document.createElement('button');
+    cancelBtn.id = `comment-reply-cancel-${section}`;
+    cancelBtn.textContent = '답글 취소 ✕';
+    cancelBtn.style.cssText = 'background:none;border:none;color:var(--primary);font-size:11px;cursor:pointer;padding:4px 0;margin-top:4px;display:block;';
+    cancelBtn.onclick = () => { _commentReplyParentId = null; cancelBtn.remove(); if (input) input.placeholder = '댓글 남기기'; };
+    input.parentElement.after(cancelBtn);
+  }
+};
+
+window.editCommentUI = function(commentId, targetId, dateKey, section) {
+  const msgEl = document.querySelector(`.comment-msg-${commentId}`);
+  if (!msgEl) return;
+  const oldText = msgEl.textContent;
+  msgEl.innerHTML = `<div style="display:flex;gap:4px;align-items:center;margin-top:2px;">
+    <input id="edit-${commentId}" value="${oldText.replace(/"/g,'&quot;')}" style="flex:1;padding:4px 8px;border:1px solid var(--primary);border-radius:6px;font-size:12px;color:var(--text);background:var(--surface2);outline:none;" onkeydown="if(event.key==='Enter')confirmEditComment('${commentId}','${targetId}','${dateKey}','${section}')">
+    <button onclick="confirmEditComment('${commentId}','${targetId}','${dateKey}','${section}')" style="font-size:10px;padding:3px 8px;border:none;border-radius:4px;background:var(--primary);color:#fff;cursor:pointer;flex-shrink:0;">저장</button>
+    <button onclick="_loadComments('${targetId}','${dateKey}','${section}')" style="font-size:10px;padding:3px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text-tertiary);cursor:pointer;flex-shrink:0;">취소</button>
+  </div>`;
+  document.getElementById(`edit-${commentId}`)?.focus();
+};
+
+window.confirmEditComment = async function(commentId, targetId, dateKey, section) {
+  const input = document.getElementById(`edit-${commentId}`);
+  if (!input || !input.value.trim()) return;
+  await editComment(commentId, input.value);
+  _showToast('댓글을 수정했어요');
+  await _loadComments(targetId, dateKey, section);
+};
+
+window.deleteCommentUI = async function(commentId, targetId, dateKey, section) {
+  await deleteComment(commentId);
+  _showToast('댓글을 삭제했어요');
+  await _loadComments(targetId, dateKey, section);
+};
+
 window.sendReaction = async function(tid, dk, field, emoji) {
   document.querySelectorAll('.reaction-picker').forEach(p => p.remove());
   const user = getCurrentUser();
@@ -2803,17 +2946,35 @@ async function refreshNotifCenter() {
     else if (n.type === 'tomato_gift')     { icon = '🍅'; iconClass = 'default'; }
     else if (n.type === 'reaction')        { icon = n.message?.match(/[👏🔥💪😍🍅]/)?.[0] || '💬'; iconClass = 'like'; }
     else if (n.type === 'guestbook')       { icon = '📝'; iconClass = 'default'; }
-    else if (n.type === 'introduce')      { icon = '👋'; iconClass = 'friend-req'; }
+    else if (n.type === 'introduce')       { icon = '👋'; iconClass = 'friend-req'; }
+    else if (n.type === 'announcement')    { icon = '📢'; iconClass = 'announce'; }
+    else if (n.type === 'comment')         { icon = '💬'; iconClass = 'default'; }
+    else if (n.type === 'comment_reply')   { icon = '💬'; iconClass = 'default'; }
     else                                   { icon = '💬'; iconClass = 'default'; }
     const unreadCls = n.read ? '' : ' unread';
     const introAction = (n.type === 'introduce' && n.introducedId && !n.read)
       ? `<div class="notif-actions" style="margin-top:6px;">
           <button class="notif-accept-btn" onclick="event.stopPropagation();sendFriendFromIntro('${n.introducedId}','${n.id}')">이웃 추가하기</button>
         </div>` : '';
+    // 운영자 공���는 별도 렌더링
+    if (n.type === 'announcement') {
+      const annBody = n.body ? `<div style="font-size:11px;color:var(--text-secondary);margin-top:3px;line-height:1.4;">${(n.body || '').slice(0, 100)}${(n.body || '').length > 100 ? '…' : ''}</div>` : '';
+      html += `<div class="notif-item${unreadCls} notif-announce" onclick="markNotifFromCenter('${n.id}',this)">
+        <div class="notif-icon announce">📢</div>
+        <div class="notif-body">
+          <div class="notif-message" style="font-weight:700;color:var(--primary);">${n.title || n.message}</div>
+          ${annBody}
+          <div class="notif-time">${_formatTimeAgo(n.createdAt)}</div>
+        </div>
+      </div>`;
+      continue;
+    }
     const clickAction = n.type === 'guestbook'
       ? `markNotifFromCenter('${n.id}',this);closeNotifCenter();openMyGuestbook()`
       : n.type === 'patchnote'
       ? `markNotifFromCenter('${n.id}',this);markPatchnoteReadFromNotif()`
+      : (n.type === 'comment' || n.type === 'comment_reply')
+      ? `markNotifFromCenter('${n.id}',this);closeNotifCenter();openFriendProfile('${user.id}','${user.nickname || user.lastName + user.firstName}','comments_${n.section || ''}')`
       : `markNotifFromCenter('${n.id}',this)`;
     html += `<div class="notif-item${unreadCls}" onclick="${clickAction}">
       <div class="notif-icon ${iconClass}">${icon}</div>
