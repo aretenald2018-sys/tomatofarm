@@ -2576,17 +2576,19 @@ function _showPushPermissionModal() {
   modal.id = 'push-permission-modal';
   modal.innerHTML = `<div style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:flex-end;justify-content:center;animation:tds-fade-in 0.2s ease;">
     <div style="background:var(--surface);border-radius:20px 20px 0 0;width:100%;max-width:400px;padding:28px 24px 24px;animation:tds-slide-up 0.3s ease;">
-      <div style="text-align:center;margin-bottom:20px;">
-        <div style="font-size:48px;margin-bottom:12px;">🍅</div>
-        <div style="font-size:17px;font-weight:700;color:var(--text);margin-bottom:8px;">알림을 켜볼까요?</div>
-        <div style="font-size:13px;color:var(--text-secondary);line-height:1.6;">
-          이웃의 응원, 댓글, 리액션을<br>실시간으로 받아볼 수 있어요.<br>
-          <span style="font-size:12px;color:var(--text-tertiary);">귀찮게 하지 않을게요. 중요한 알림만 보내드려요!</span>
+      <div style="text-align:center;margin-bottom:24px;">
+        <div style="font-size:48px;margin-bottom:14px;">🍅</div>
+        <div style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:10px;line-height:1.4;">친구들이 보내는 응원 메시지,<br>바로 받아보시겠어요?</div>
+        <div style="font-size:13px;color:var(--text-secondary);line-height:1.7;margin-bottom:6px;">
+          이웃이 남긴 댓글, 리액션, 방명록을<br>놓치지 않고 확인할 수 있어요.
+        </div>
+        <div style="display:inline-block;margin-top:8px;padding:6px 14px;border-radius:8px;background:var(--surface2);font-size:11px;color:var(--text-tertiary);line-height:1.5;">
+          친구들끼리만 쓰는 앱이라 광고나 스팸은 없어요
         </div>
       </div>
       <div style="display:flex;flex-direction:column;gap:8px;">
-        <button id="push-perm-allow" style="width:100%;padding:14px;border:none;border-radius:12px;background:var(--primary);color:#fff;font-size:15px;font-weight:700;cursor:pointer;">좋아요, 알림 받을래요</button>
-        <button id="push-perm-later" style="width:100%;padding:12px;border:none;border-radius:12px;background:var(--surface2);color:var(--text-tertiary);font-size:13px;font-weight:500;cursor:pointer;">다음에 할게요</button>
+        <button id="push-perm-allow" style="width:100%;padding:14px;border:none;border-radius:12px;background:var(--primary);color:#fff;font-size:15px;font-weight:700;cursor:pointer;">응원 알림 받기</button>
+        <button id="push-perm-later" style="width:100%;padding:12px;border:none;border-radius:12px;background:none;color:var(--text-tertiary);font-size:13px;font-weight:500;cursor:pointer;">나중에</button>
       </div>
     </div>
   </div>`;
