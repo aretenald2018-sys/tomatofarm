@@ -41,7 +41,9 @@ export async function callGemini(prompt, maxTokens = 400) {
   });
   const data = await res.json();
   if (data.error) throw new Error(data.error.message);
-  return data.candidates[0].content.parts[0].text;
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) throw new Error('Gemini 응답을 파싱할 수 없습니다.');
+  return text;
 }
 
 // ── 공통 Gemini 호출 (JSON 강제) ─────────────────────────────────
@@ -61,7 +63,8 @@ async function _callGeminiJSON(parts, maxTokens = 2000) {
   });
   const data = await res.json();
   if (data.error) throw new Error(data.error.message);
-  const text = data.candidates[0].content.parts[0].text;
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) throw new Error('Gemini 응답을 파싱할 수 없습니다.');
   return _cleanJSON(text);
 }
 

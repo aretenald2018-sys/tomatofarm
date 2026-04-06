@@ -106,13 +106,31 @@ async function initializeApp() {
 }
 
 // ── 모달 유틸리티 ────────────────────────────────────────────────
+let _openModalStack = [];
+
 function _openModal(id) {
-  document.getElementById(id)?.classList.add('open');
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.add('open');
+  _openModalStack.push(id);
+  document.body.style.overflow = 'hidden';
 }
 function _closeModal(id, e) {
   if (e && e.target !== document.getElementById(id)) return;
-  document.getElementById(id)?.classList.remove('open');
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.remove('open');
+  _openModalStack = _openModalStack.filter(x => x !== id);
+  if (_openModalStack.length === 0) document.body.style.overflow = '';
 }
+
+// ESC키로 최상위 모달 닫기
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && _openModalStack.length > 0) {
+    const topId = _openModalStack[_openModalStack.length - 1];
+    _closeModal(topId);
+  }
+});
 
 // ── 탭 전환 ──────────────────────────────────────────────────────
 let _currentTab = 'home';
@@ -2550,7 +2568,8 @@ window.wtRemoveFoodItem         = wtRemoveFoodItem;
 async function _initFCM() {
   try {
     // Capacitor 네이티브 환경 확인
-    if (window.Capacitor?.getPlatform?.() === 'android') {
+    if (window.Capacitor?.getPlatform?.() === 'android' ||
+        window.Capacitor?.getPlatform?.() === 'ios') {
       await _initFCMCapacitor();
       return;
     }
@@ -2653,6 +2672,19 @@ async function _initFCMCapacitor() {
   try {
     const { PushNotifications } = await import("@capacitor/push-notifications");
     const { saveFcmToken } = await import('./data.js');
+
+    // Android 8+ 알림 채널 생성 (채널 없으면 시스템 알림 무시됨)
+    if (window.Capacitor?.getPlatform?.() === 'android') {
+      await PushNotifications.createChannel({
+        id: 'tomatofarm_default',
+        name: '토마토팜 알림',
+        description: '토마토팜 앱 알림',
+        importance: 5,
+        visibility: 1,
+        sound: 'default',
+        vibration: true,
+      });
+    }
 
     const permResult = await PushNotifications.requestPermissions();
     if (permResult.receive !== 'granted') {

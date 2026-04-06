@@ -1922,13 +1922,16 @@ async function _renderFriendFeed() {
       return dateKey(d.getFullYear(), d.getMonth(), d.getDate());
     });
 
-    // 오늘 + 최근 3일 데이터 병렬 로딩
-    const friendWorkouts = await Promise.all(
+    // 오늘 + 최근 3일 데이터 병렬 로딩 (개별 실패 허용)
+    const friendResults = await Promise.allSettled(
       friends.map(f => getFriendWorkout(f.friendId, tk))
     );
-    const recentWorkouts = await Promise.all(
-      friends.map(f => Promise.all(recentKeys.map(k => getFriendWorkout(f.friendId, k))))
+    const friendWorkouts = friendResults.map(r => r.status === 'fulfilled' ? r.value : null);
+    const recentResults = await Promise.allSettled(
+      friends.map(f => Promise.allSettled(recentKeys.map(k => getFriendWorkout(f.friendId, k)))
+        .then(rs => rs.map(r => r.status === 'fulfilled' ? r.value : null)))
     );
+    const recentWorkouts = recentResults.map(r => r.status === 'fulfilled' ? r.value : [null, null, null]);
 
     let activeCount = 0;
     const FRIEND_PAGE_SIZE = 3;
@@ -2154,11 +2157,13 @@ window.showReactionPicker = function(btn, tid, dk, field) {
   btn.parentElement.style.position = 'relative';
   btn.parentElement.appendChild(picker);
   requestAnimationFrame(() => picker.classList.add('show'));
-  // 외부 클릭 시 닫기
-  setTimeout(() => {
-    const close = (e) => { if (!picker.contains(e.target)) { picker.remove(); document.removeEventListener('click', close); } };
-    document.addEventListener('click', close);
-  }, 10);
+  // 외부 클릭 시 닫기 (AbortController로 확실한 정리)
+  const ac = new AbortController();
+  requestAnimationFrame(() => {
+    document.addEventListener('click', (e) => {
+      if (!picker.contains(e.target)) { picker.remove(); ac.abort(); }
+    }, { signal: ac.signal });
+  });
 };
 
 // Teams 스타일 리액션 상세 팝오버
@@ -2182,10 +2187,12 @@ window.showReactionDetail = async function(btn, tid, dk, field) {
   popup.innerHTML = `<div style="font-size:11px;font-weight:600;color:var(--text-tertiary);margin-bottom:6px;">리액션 ${fieldLikes.length}개</div>${rows}`;
   btn.parentElement.style.position = 'relative';
   btn.parentElement.appendChild(popup);
-  setTimeout(() => {
-    const close = (e) => { if (!popup.contains(e.target) && e.target !== btn) { popup.remove(); document.removeEventListener('click', close); } };
-    document.addEventListener('click', close);
-  }, 10);
+  const ac2 = new AbortController();
+  requestAnimationFrame(() => {
+    document.addEventListener('click', (e) => {
+      if (!popup.contains(e.target) && e.target !== btn) { popup.remove(); ac2.abort(); }
+    }, { signal: ac2.signal });
+  });
 };
 
 // 친구 프로필 상세
@@ -2280,9 +2287,10 @@ window.openFriendProfile = async function(friendId, friendName, scrollToSection)
   const weekDates = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(TODAY); d.setDate(d.getDate() - i); return d;
   });
-  const weekWorkouts = await Promise.all(
+  const weekResults = await Promise.allSettled(
     weekDates.map(d => getFriendWorkout(lookupId, dk2(d.getFullYear(), d.getMonth(), d.getDate())))
   );
+  const weekWorkouts = weekResults.map(r => r.status === 'fulfilled' ? r.value : null);
 
   // 2. 운동 볼륨 성장 (오늘 vs 직전 운동일)
   let volumeGrowth = '';
@@ -2888,11 +2896,14 @@ async function refreshNotifCenter() {
   const user = getCurrentUser();
   if (!user) return;
 
-  const [pending, notifs, accounts] = await Promise.all([
+  const [pendingR, notifsR, accountsR] = await Promise.allSettled([
     getPendingRequests(),
     getMyNotifications(),
     getAccountList()
   ]);
+  const pending  = pendingR.status  === 'fulfilled' ? pendingR.value  : [];
+  const notifs   = notifsR.status   === 'fulfilled' ? notifsR.value   : [];
+  const accounts = accountsR.status === 'fulfilled' ? accountsR.value : [];
   const unread = notifs.filter(n => !n.read);
 
   // 배지 업데이트

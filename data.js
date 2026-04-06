@@ -963,9 +963,10 @@ export async function loadAll() {
         sharedSnap.forEach(d => sharedItems.push(d.data()));
         if (sharedItems.length > 0) {
           _nutritionDB = sharedItems;
-          Promise.all(sharedItems.map(item => setDoc(_doc('nutrition_db', item.id), item))).catch(() => {});
+          Promise.all(sharedItems.map(item => setDoc(_doc('nutrition_db', item.id), item)))
+            .catch(e => console.warn('[data] 영양DB 복사 실패:', e.message));
         }
-      }).catch(() => {});
+      }).catch(e => console.warn('[data] 관리자 영양DB 로드 실패:', e.message));
     }
 
     // ── 재무 데이터 처리 ──
@@ -1042,7 +1043,7 @@ export async function loadAll() {
           activityFactor: 1.3, lossRatePerWeek: 0.009,
           refeedKcal: 5000, refeedDays: [0, 6], startDate: null,
         };
-        setDoc(_doc('settings', 'diet_plan'), { value: _settings.diet_plan }).catch(() => {});
+        setDoc(_doc('settings', 'diet_plan'), { value: _settings.diet_plan }).catch(e => console.warn('[data] 식단 설정 저장 실패:', e.message));
         localStorage.setItem('diet_restored_admin', 'done');
       }
     }
@@ -1059,7 +1060,7 @@ export async function loadAll() {
       if (!fbMap[key] && JSON.stringify(_settings[key]) !== JSON.stringify(
           key === 'quest_order' ? ['quarterly','monthly','weekly','daily'] : {}
       )) {
-        await setDoc(_doc('settings', key), { value: _settings[key] }).catch(() => {});
+        await setDoc(_doc('settings', key), { value: _settings[key] }).catch(e => console.warn(`[data] 설정(${key}) 마이그레이션 실패:`, e.message));
       }
     }
 
