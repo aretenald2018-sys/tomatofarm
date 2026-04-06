@@ -135,13 +135,23 @@ export async function getWorkoutRec() {
 export async function parseNutritionFromImage(imageBase64, language = 'ko') {
   const prompt = `다음 이미지에서 영양정보를 추출하여 JSON으로 응답하세요.
 
-제품이 1개이면:
+이미지 유형:
+- 영양성분표 라벨 (제품 뒷면 등)
+- 표/테이블 형식 (엑셀, 스프레드시트 등 - 행에 음식명, 열에 칼로리/탄수화물/단백질/지방 등)
+- 메모, 텍스트, 손글씨 등
+
+음식이 1개이면:
 {"name":"음식명","unit":"100g","servingSize":100,"servingUnit":"g","nutrition":{"kcal":165,"protein":31,"carbs":0.4,"fat":3.6,"fiber":0,"sugar":0,"sodium":60},"brand":null,"language":"${language}","confidence":0.95}
 
-제품이 2개 이상이면:
+음식이 2개 이상이면 (표/테이블의 각 행도 개별 음식으로 처리):
 {"multiple":true,"items":[위와 같은 형식의 객체 배열]}
 
-규칙: 정확히 보이는 값만 추출, 없는 필드는 0, mg는 g로 변환(/1000), JSON만 출력`;
+규칙:
+- 표/테이블이면 각 행을 개별 음식 항목으로 추출
+- 열 헤더(칼로리, 탄수화물, 단백질, 지방, 식이섬유, 당류, 나트륨 등)를 매핑
+- 정확히 보이는 값만 추출, 없는 필드는 0
+- mg는 g로 변환(/1000)
+- JSON만 출력`;
 
   return _callGeminiJSON([
     { text: prompt },
