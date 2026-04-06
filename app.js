@@ -237,6 +237,7 @@ function _initSwipeNavigation() {
 
   function getSwipeableTabs() {
     return [...document.querySelectorAll('#tab-nav .tab-btn[data-tab]')]
+      .filter(b => b.style.display !== 'none' && !b.closest('.more-menu-dynamic-tabs'))
       .map(b => b.dataset.tab)
       .filter(t => document.getElementById('tab-' + t));
   }
@@ -255,7 +256,9 @@ function _initSwipeNavigation() {
     if (t.closest('.tab-nav') || t.closest('input[type="range"]') ||
         t.closest('canvas') || t.closest('textarea') ||
         t.closest('.dash-board') || t.closest('.stock-panel') ||
-        t.closest('.grid-wrap')) return;
+        t.closest('.grid-wrap') ||
+        t.closest('#neighbor-section') || t.closest('.friend-paging-controls') ||
+        t.closest('#friend-feed')) return;
     startX = e.touches[0].clientX;
     startY = e.touches[0].clientY;
     startTime = Date.now();
@@ -2580,8 +2583,14 @@ async function _initFCM() {
       return;
     }
 
-    // 이미 거부한 경우 재요청 불가
-    if (Notification.permission === 'denied') return;
+    // 이미 거부한 경우 — 설정 안내 모달 표시
+    if (Notification.permission === 'denied') {
+      if (!sessionStorage.getItem('fcm_denied_guide_shown') &&
+          !localStorage.getItem('fcm_denied_permanent')) {
+        setTimeout(() => _showPushDeniedGuideModal(), 2000);
+      }
+      return;
+    }
 
     // 이전에 "다음에" 눌렀으면 이번 세션에서는 안 물어봄
     if (sessionStorage.getItem('fcm_ask_later')) return;
@@ -2624,12 +2633,304 @@ function _showPushPermissionModal() {
     const permission = await Notification.requestPermission();
     if (permission === 'granted') {
       await _registerFCMToken();
+    } else if (permission === 'denied') {
+      // 사용자가 "허용"을 눌렀는데 denied → 브라우저/OS 레벨에서 알림이 차단된 상태
+      _showChromeNotifGuideModal();
     }
   };
 
   document.getElementById('push-perm-later').onclick = () => {
     modal.remove();
     sessionStorage.setItem('fcm_ask_later', '1');
+  };
+}
+
+function _showNativeNotifSettingsModal() {
+  if (sessionStorage.getItem('fcm_native_guide_shown')) return;
+  const existing = document.getElementById('native-notif-guide-modal');
+  if (existing) existing.remove();
+
+  const isIOS = window.Capacitor?.getPlatform?.() === 'ios';
+
+  const modal = document.createElement('div');
+  modal.id = 'native-notif-guide-modal';
+  modal.innerHTML = `<div style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:flex-end;justify-content:center;animation:tds-fade-in 0.2s ease;">
+    <div style="background:var(--surface);border-radius:20px 20px 0 0;width:100%;max-width:400px;padding:28px 24px 24px;animation:tds-slide-up 0.3s ease;">
+      <div style="text-align:center;margin-bottom:20px;">
+        <div style="font-size:48px;margin-bottom:14px;">🔔</div>
+        <div style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:10px;line-height:1.4;">알림 권한을 켜주세요</div>
+        <div style="font-size:13px;color:var(--text-secondary);line-height:1.7;margin-bottom:16px;">
+          친구들의 댓글, 리액션, 방명록 알림을 받으려면<br>앱 설정에서 알림을 허용해 주세요.
+        </div>
+        <div style="text-align:left;font-size:13px;color:var(--text-secondary);line-height:2;">
+          ${isIOS
+            ? `<b>①</b> 아래 <b>"알림 설정 열기"</b> 버튼을 눌러주세요<br>
+               <b>②</b> <b>알림 허용</b>을 켜주세요<br>
+               <b>③</b> 돌아오면 자동으로 적용돼요`
+            : `<b>①</b> 아래 <b>"알림 설정 열기"</b> 버튼을 눌러주세요<br>
+               <b>②</b> <b>알림 표시</b>를 켜주세요<br>
+               <b>③</b> 돌아오면 자동으로 적용돼요`}
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:20px;">
+        <button id="native-notif-open-settings" style="width:100%;padding:14px;border:none;border-radius:12px;background:var(--primary);color:#fff;font-size:15px;font-weight:700;cursor:pointer;">알림 설정 열기</button>
+        <button id="native-notif-dismiss" style="width:100%;padding:12px;border:none;border-radius:12px;background:none;color:var(--text-tertiary);font-size:13px;font-weight:500;cursor:pointer;">나중에 할게요</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+
+  document.getElementById('native-notif-open-settings').onclick = async () => {
+    try {
+      // Capacitor 네이티브 앱 설정 열기
+      const { PushNotifications } = await import("@capacitor/push-notifications");
+      // Android: 앱 알림 설정 직접 열기
+      if (window.Capacitor?.getPlatform?.() === 'android') {
+        // Capacitor 3+에서는 openNotificationSettings 사용 가능
+        if (typeof PushNotifications.openNotificationSettings === 'function') {
+          await PushNotifications.openNotificationSettings();
+        } else {
+          // fallback: Capacitor App plugin 또는 intent로 설정 열기
+          try {
+            const { App } = await import("@capacitor/app");
+            // 앱 상세 설정 페이지로 이동
+            await App.openUrl({ url: 'app-settings:' });
+          } catch {
+            // App 플러그인 없으면 window.open으로 시도
+            window.open('intent:#Intent;action=android.settings.APP_NOTIFICATION_SETTINGS;extra_android.provider.extra.APP_PACKAGE=' + (window.Capacitor?.config?.appId || 'com.tomatofarm.app') + ';end');
+          }
+        }
+      } else if (isIOS) {
+        // iOS: 앱 설정 열기
+        try {
+          const { App } = await import("@capacitor/app");
+          await App.openUrl({ url: 'app-settings:' });
+        } catch {
+          window.open('app-settings:');
+        }
+      }
+    } catch(e) {
+      console.warn('[FCM] 설정 열기 실패:', e);
+      // 실패 시 수동 안내 토스트
+      const toast = document.createElement('div');
+      toast.className = 'tds-toast show';
+      toast.textContent = '설정 → 앱 → 토마토팜 → 알림에서 허용해 주세요';
+      document.body.appendChild(toast);
+      setTimeout(() => { toast.classList.remove('show'); setTimeout(() => toast.remove(), 300); }, 4000);
+    }
+  };
+
+  // 앱으로 돌아왔을 때 자동으로 재시도
+  document.addEventListener('visibilitychange', async function _onReturn() {
+    if (document.visibilityState === 'visible') {
+      document.removeEventListener('visibilitychange', _onReturn);
+      const existingModal = document.getElementById('native-notif-guide-modal');
+      if (!existingModal) return;
+      try {
+        const { PushNotifications } = await import("@capacitor/push-notifications");
+        const check = await PushNotifications.checkPermissions();
+        if (check.receive === 'granted') {
+          existingModal.remove();
+          await PushNotifications.register();
+          const { saveFcmToken } = await import('./data.js');
+          PushNotifications.addListener('registration', async (token) => {
+            await saveFcmToken(token.value);
+            console.log('[FCM-Cap] 설정 변경 후 토큰 등록 완료');
+            const toast = document.createElement('div');
+            toast.className = 'tds-toast show';
+            toast.textContent = '알림이 설정되었어요! 🍅';
+            document.body.appendChild(toast);
+            setTimeout(() => { toast.classList.remove('show'); setTimeout(() => toast.remove(), 300); }, 3000);
+          });
+        }
+      } catch(e) {
+        console.warn('[FCM-Cap] 복귀 후 재확인 실패:', e);
+      }
+    }
+  });
+
+  document.getElementById('native-notif-dismiss').onclick = () => {
+    modal.remove();
+    sessionStorage.setItem('fcm_native_guide_shown', '1');
+  };
+}
+
+function _showChromeNotifGuideModal() {
+  const existing = document.getElementById('chrome-notif-guide-modal');
+  if (existing) existing.remove();
+
+  const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent);
+  const isAndroid = /android/i.test(navigator.userAgent);
+  const isPWA = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+
+  let title = '알림을 받으려면 한 단계가 더 필요해요';
+  let stepsHtml = '';
+
+  if (isIOS) {
+    stepsHtml = `
+      <div style="text-align:left;font-size:13px;color:var(--text-secondary);line-height:2;">
+        <b>①</b> 아이폰 <b>설정</b> 앱을 열어주세요<br>
+        <b>②</b> <b>알림</b> 탭으로 이동<br>
+        <b>③</b> 앱 목록에서 <b>토마토팜</b>${!isPWA ? ' (또는 사용 중인 브라우저)' : ''} 선택<br>
+        <b>④</b> <b>알림 허용</b>을 켜주세요<br>
+        <b>⑤</b> 돌아와서 <b>새로고침</b> 해주세요
+      </div>`;
+  } else if (isAndroid) {
+    stepsHtml = `
+      <div style="text-align:left;font-size:13px;color:var(--text-secondary);line-height:2;">
+        <b>①</b> 아래 <b>"알림 설정 열기"</b> 버튼을 눌러주세요<br>
+        <b>②</b> <b>알림 표시</b>를 켜주세요<br>
+        <b>③</b> 돌아와서 <b>새로고침</b> 해주세요
+      </div>
+      <div style="margin-top:12px;padding:10px 14px;border-radius:10px;background:var(--surface2);font-size:11px;color:var(--text-tertiary);line-height:1.6;">
+        💡 버튼이 안 되면: <b>설정</b> → <b>앱</b> → <b>${isPWA ? '토마토팜' : 'Chrome'}</b> → <b>알림</b> → 허용
+      </div>`;
+  } else {
+    // 데스크탑
+    stepsHtml = `
+      <div style="text-align:left;font-size:13px;color:var(--text-secondary);line-height:2;">
+        <b>①</b> 주소창 왼쪽의 <b>🔒 자물쇠</b> (또는 ⓘ) 아이콘을 클릭<br>
+        <b>②</b> <b>알림</b> 항목을 <b>허용</b>으로 변경<br>
+        <b>③</b> 페이지를 <b>새로고침</b> 해주세요
+      </div>`;
+  }
+
+  const modal = document.createElement('div');
+  modal.id = 'chrome-notif-guide-modal';
+  modal.innerHTML = `<div style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:flex-end;justify-content:center;animation:tds-fade-in 0.2s ease;">
+    <div style="background:var(--surface);border-radius:20px 20px 0 0;width:100%;max-width:400px;padding:28px 24px 24px;animation:tds-slide-up 0.3s ease;">
+      <div style="text-align:center;margin-bottom:20px;">
+        <div style="font-size:48px;margin-bottom:14px;">🔔</div>
+        <div style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:10px;line-height:1.4;">${title}</div>
+        <div style="font-size:13px;color:var(--text-secondary);line-height:1.7;margin-bottom:16px;">
+          ${isPWA
+            ? '앱의 알림 권한이 꺼져 있어서<br>친구들의 소식을 받을 수 없어요.'
+            : '브라우저의 알림 권한이 꺼져 있어서<br>친구들의 소식을 받을 수 없어요.'}
+        </div>
+        ${stepsHtml}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:20px;">
+        ${isAndroid ? `<button id="chrome-notif-open-settings" style="width:100%;padding:14px;border:none;border-radius:12px;background:var(--primary);color:#fff;font-size:15px;font-weight:700;cursor:pointer;">알림 설정 열기</button>` : ''}
+        <button id="chrome-notif-reload" style="width:100%;padding:14px;border:none;border-radius:12px;background:${isAndroid ? 'var(--surface2)' : 'var(--primary)'};color:${isAndroid ? 'var(--text)' : '#fff'};font-size:15px;font-weight:${isAndroid ? '600' : '700'};cursor:pointer;">설정 완료, 새로고침</button>
+        <button id="chrome-notif-dismiss" style="width:100%;padding:12px;border:none;border-radius:12px;background:none;color:var(--text-tertiary);font-size:13px;font-weight:500;cursor:pointer;">나중에 할게요</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+
+  // Android: "알림 설정 열기" 버튼 — 앱 알림 설정 페이지로 이동 시도
+  if (isAndroid) {
+    document.getElementById('chrome-notif-open-settings').onclick = () => {
+      // intent:// 스킴으로 앱 알림 설정 직접 열기 시도
+      const pkg = isPWA ? 'org.chromium.webapk' : 'com.android.chrome';
+      try {
+        // Android 인텐트로 앱 알림 설정 열기
+        window.location.href = `intent://settings/app_notification#Intent;scheme=android-app;package=com.android.settings;end`;
+      } catch(e) {
+        // 실패 시 일반 안내 유지
+      }
+    };
+  }
+
+  // 설정에서 돌아왔을 때 자동 감지 → 권한 확인 후 토큰 등록
+  document.addEventListener('visibilitychange', async function _onWebReturn() {
+    if (document.visibilityState === 'visible') {
+      document.removeEventListener('visibilitychange', _onWebReturn);
+      const existingModal = document.getElementById('chrome-notif-guide-modal');
+      if (!existingModal) return;
+      if (Notification.permission === 'granted') {
+        existingModal.remove();
+        await _registerFCMToken();
+        const toast = document.createElement('div');
+        toast.className = 'tds-toast show';
+        toast.textContent = '알림이 설정되었어요! 🍅';
+        document.body.appendChild(toast);
+        setTimeout(() => { toast.classList.remove('show'); setTimeout(() => toast.remove(), 300); }, 3000);
+      }
+    }
+  });
+
+  document.getElementById('chrome-notif-reload').onclick = () => {
+    modal.remove();
+    location.reload();
+  };
+
+  document.getElementById('chrome-notif-dismiss').onclick = () => {
+    modal.remove();
+    sessionStorage.setItem('fcm_denied_guide_shown', '1');
+  };
+}
+
+function _showPushDeniedGuideModal() {
+  const existing = document.getElementById('push-denied-guide-modal');
+  if (existing) existing.remove();
+
+  const isAndroid = /android/i.test(navigator.userAgent);
+  const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent);
+  const isSamsung = /SamsungBrowser/i.test(navigator.userAgent);
+
+  let steps = '';
+  if (isIOS) {
+    steps = `
+      <div style="text-align:left;font-size:13px;color:var(--text-secondary);line-height:1.8;">
+        <b>① 설정</b> 앱을 열어주세요<br>
+        <b>② Safari</b> (또는 사용 중인 브라우저) 선택<br>
+        <b>③ 알림</b> → <b>허용</b>으로 변경
+      </div>`;
+  } else if (isSamsung) {
+    steps = `
+      <div style="text-align:left;font-size:13px;color:var(--text-secondary);line-height:1.8;">
+        <b>①</b> 주소창 왼쪽의 <b>🔒 자물쇠</b> 아이콘 탭<br>
+        <b>②</b> <b>알림</b> → <b>허용</b>으로 변경<br>
+        <b>③</b> 페이지를 <b>새로고침</b> 해주세요
+      </div>`;
+  } else if (isAndroid) {
+    steps = `
+      <div style="text-align:left;font-size:13px;color:var(--text-secondary);line-height:1.8;">
+        <b>①</b> 주소창 오른쪽의 <b>⋮</b> 메뉴 탭<br>
+        <b>②</b> <b>설정</b> → <b>사이트 설정</b> → <b>알림</b><br>
+        <b>③</b> 이 사이트를 찾아 <b>허용</b>으로 변경<br>
+        <b>④</b> 페이지를 <b>새로고침</b> 해주세요
+      </div>`;
+  } else {
+    // 데스크탑 크롬 등
+    steps = `
+      <div style="text-align:left;font-size:13px;color:var(--text-secondary);line-height:1.8;">
+        <b>①</b> 주소창 왼쪽의 <b>🔒 자물쇠</b> (또는 ⓘ) 아이콘 클릭<br>
+        <b>②</b> <b>알림</b> → <b>허용</b>으로 변경<br>
+        <b>③</b> 페이지를 <b>새로고침</b> 해주세요
+      </div>`;
+  }
+
+  const modal = document.createElement('div');
+  modal.id = 'push-denied-guide-modal';
+  modal.innerHTML = `<div style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:flex-end;justify-content:center;animation:tds-fade-in 0.2s ease;">
+    <div style="background:var(--surface);border-radius:20px 20px 0 0;width:100%;max-width:400px;padding:28px 24px 24px;animation:tds-slide-up 0.3s ease;">
+      <div style="text-align:center;margin-bottom:20px;">
+        <div style="font-size:48px;margin-bottom:14px;">🔔</div>
+        <div style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:10px;line-height:1.4;">알림이 차단되어 있어요</div>
+        <div style="font-size:13px;color:var(--text-secondary);line-height:1.7;margin-bottom:16px;">
+          친구들의 댓글, 리액션, 방명록 알림을 받으려면<br>브라우저 설정에서 알림을 허용해 주세요.
+        </div>
+        ${steps}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <button id="push-denied-ok" style="width:100%;padding:14px;border:none;border-radius:12px;background:var(--primary);color:#fff;font-size:15px;font-weight:700;cursor:pointer;">확인했어요</button>
+        <button id="push-denied-dismiss" style="width:100%;padding:12px;border:none;border-radius:12px;background:none;color:var(--text-tertiary);font-size:13px;font-weight:500;cursor:pointer;">괜찮아요, 알림 안 받을게요</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+
+  document.getElementById('push-denied-ok').onclick = () => {
+    modal.remove();
+    sessionStorage.setItem('fcm_denied_guide_shown', '1');
+  };
+
+  document.getElementById('push-denied-dismiss').onclick = () => {
+    modal.remove();
+    sessionStorage.setItem('fcm_denied_guide_shown', '1');
+    localStorage.setItem('fcm_denied_permanent', '1');
   };
 }
 
@@ -2689,6 +2990,8 @@ async function _initFCMCapacitor() {
     const permResult = await PushNotifications.requestPermissions();
     if (permResult.receive !== 'granted') {
       console.log('[FCM-Cap] 알림 권한 거부됨');
+      // 네이티브 앱에서 권한 거부 → OS 앱 설정을 직접 열어주는 안내
+      _showNativeNotifSettingsModal();
       return;
     }
 

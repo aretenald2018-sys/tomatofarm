@@ -1259,6 +1259,19 @@ function _renderTomatoCard() {
   const stages = ['🌱','🌿','🌸','🍅'];
   const stageLabels = ['씨앗 심기','새싹 돌보기','꽃 피우기','수확하기'];
 
+  // Streak 넛지 계산
+  const streaks = calcStreaks();
+  const bestStreak = Math.max(streaks.workout, streaks.diet);
+  const streakType = streaks.workout >= streaks.diet ? '운동' : '식단';
+  const todayDk = dateKey(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
+  const todayDiet = getDiet(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
+  const todayExercises = getExercises(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
+  const hasRecordedToday = (todayExercises && todayExercises.length > 0) ||
+    (todayDiet && ((todayDiet.bKcal||0) + (todayDiet.lKcal||0) + (todayDiet.dKcal||0) > 0));
+  const now = new Date();
+  const hoursLeft = 23 - now.getHours();
+  const isEvening = now.getHours() >= 18;
+
   // D1-D4 데이터 수집
   const fmt = d => `${d.getMonth()+1}/${d.getDate()}`;
   const DOW = ['일','월','화','수','목','금','토'];
@@ -1357,6 +1370,15 @@ function _renderTomatoCard() {
           <div class="tf-hero-tomato">${stages[dayIndex]}</div>
         </div>
       </div>
+
+      ${bestStreak >= 2 ? `
+      <div class="tf-streak-nudge" style="margin:0 16px 12px;padding:10px 14px;border-radius:12px;background:${!hasRecordedToday && isEvening ? 'rgba(255,59,48,0.08)' : 'var(--primary-bg)'};display:flex;align-items:center;gap:10px;">
+        <span style="font-size:22px;">${bestStreak >= 7 ? '🔥' : '💪'}</span>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;font-weight:700;color:var(--text);line-height:1.4;">${streakType} ${bestStreak}일 연속 기록 중!</div>
+          <div style="font-size:11px;color:${!hasRecordedToday && isEvening ? '#FF3B30' : 'var(--text-tertiary)'};line-height:1.4;margin-top:1px;">${hasRecordedToday ? `오늘도 기록 완료 ✓ 내일이면 ${bestStreak + 1}일째` : isEvening ? `오늘 기록하면 ${bestStreak + 1}일째 · ${hoursLeft}시간 남음` : `오늘 기록하면 ${bestStreak + 1}일째`}</div>
+        </div>
+      </div>` : ''}
 
       <div class="tf-progress">
         <div class="tf-progress-header">
@@ -1897,7 +1919,27 @@ async function _renderFriendFeed() {
 
   // 피드 (병렬 로딩)
   try {
-    const [friends, accounts] = await Promise.all([getMyFriends(), getAccountList()]);
+    let [friends, accounts, allNotifs] = await Promise.all([getMyFriends(), getAccountList(), getMyNotifications()]);
+
+    // 최근 교류 순 정렬: 알림(보낸/받은)에서 각 이웃과의 마지막 교류 시점 추출
+    if (friends.length > 1) {
+      const myId = getCurrentUser()?.id;
+      const lastInteraction = {};
+      for (const n of allNotifs) {
+        // 내가 받은 알림 → n.from이 이웃
+        if (n.from && n.from !== myId) {
+          if (!lastInteraction[n.from] || n.createdAt > lastInteraction[n.from])
+            lastInteraction[n.from] = n.createdAt;
+        }
+      }
+      // 내가 보낸 알림은 상대의 알림이므로 별도 컬렉션 불필요 — 받은 것 기준 + acceptedAt fallback
+      friends.sort((a, b) => {
+        const ta = lastInteraction[a.friendId] || 0;
+        const tb = lastInteraction[b.friendId] || 0;
+        return tb - ta;
+      });
+    }
+
     if (!friends.length) {
       // 이웃 없어도 추천은 보여줌
       let emptyMsg = '<div style="text-align:center;padding:16px;color:var(--text-tertiary);font-size:13px;line-height:1.6;">이웃을 추가하고 함께 토마토를 키워보세요.<br>서로 응원하며 더 건강해질 수 있어요.</div>';
@@ -1967,7 +2009,8 @@ async function _renderFriendFeed() {
         });
       }
       if (items) activeCount++;
-      friendCards.push(`<div class="friend-card"><div class="friend-card-header"><span class="friend-avatar" style="font-size:18px;">🍅<span class="status-dot ${statusClass}"></span></span><span class="friend-name" data-fid="${f.friendId}" data-fname="${fullName.replace(/"/g,'&quot;')}" style="cursor:pointer;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;">${name}</span><button class="friend-gift-btn" data-gift-fid="${f.friendId}" data-gift-name="${fullName.replace(/"/g,'&quot;')}" title="토마토 선물">🍅</button></div>${items}</div>`);
+      const cheerBtn = hasToday ? `<button class="friend-cheer-btn" data-cheer-fid="${f.friendId}" data-cheer-name="${name.replace(/"/g,'&quot;')}" title="응원 보내기" style="padding:4px 10px;border:none;border-radius:999px;background:var(--primary-bg);color:var(--primary);font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;transition:all 0.15s;">👏 응원</button>` : '';
+      friendCards.push(`<div class="friend-card"><div class="friend-card-header"><span class="friend-avatar" style="font-size:18px;">🍅<span class="status-dot ${statusClass}"></span></span><span class="friend-name" data-fid="${f.friendId}" data-fname="${fullName.replace(/"/g,'&quot;')}" style="cursor:pointer;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;">${name}</span><div style="display:flex;gap:6px;align-items:center;">${cheerBtn}<button class="friend-gift-btn" data-gift-fid="${f.friendId}" data-gift-name="${fullName.replace(/"/g,'&quot;')}" title="토마토 선물">🍅</button></div></div>${items}</div>`);
     }
 
     // 활동 요약 배너
@@ -2005,21 +2048,53 @@ async function _renderFriendFeed() {
     feedEl.innerHTML = banner + pagedHtml + dotsHtml + suggestHtml;
     _bindNeighborPaging(feedEl, suggestList, accounts, friends);
 
-    // 이웃 페이징 이벤트
+    // 이웃 페이징 이벤트 (dot 클릭 + 스와이프)
+    let _friendPageCur = 0;
+    const _friendPageTotal = totalPages;
+
+    function _goFriendPage(page) {
+      if (page < 0 || page >= _friendPageTotal) return;
+      _friendPageCur = page;
+      feedEl.querySelectorAll('.friend-page').forEach(p => p.style.display = parseInt(p.dataset.page) === page ? '' : 'none');
+      feedEl.querySelectorAll('.friend-paging-dot').forEach(d => d.classList.toggle('active', parseInt(d.dataset.fp) === page));
+    }
+
     feedEl.querySelectorAll('.friend-paging-dot').forEach(dot => {
       dot.onclick = (e) => {
         e.stopPropagation();
-        const page = parseInt(dot.dataset.fp);
-        feedEl.querySelectorAll('.friend-page').forEach(p => p.style.display = parseInt(p.dataset.page) === page ? '' : 'none');
-        feedEl.querySelectorAll('.friend-paging-dot').forEach(d => d.classList.toggle('active', parseInt(d.dataset.fp) === page));
+        _goFriendPage(parseInt(dot.dataset.fp));
       };
     });
 
-    // 이벤트 위임: 이름 클릭→프로필, 선물 클릭→선물
+    // 이웃 카드 영역 스와이프로 페이징
+    if (_friendPageTotal > 1) {
+      let _fsx = 0, _fsy = 0, _fswiping = false;
+      feedEl.addEventListener('touchstart', e => {
+        _fsx = e.touches[0].clientX;
+        _fsy = e.touches[0].clientY;
+        _fswiping = false;
+      }, { passive: true });
+      feedEl.addEventListener('touchmove', e => {
+        const dx = e.touches[0].clientX - _fsx;
+        const dy = e.touches[0].clientY - _fsy;
+        if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 15) _fswiping = true;
+      }, { passive: true });
+      feedEl.addEventListener('touchend', e => {
+        if (!_fswiping) return;
+        const dx = e.changedTouches[0].clientX - _fsx;
+        if (Math.abs(dx) > 50) {
+          _goFriendPage(_friendPageCur + (dx < 0 ? 1 : -1));
+        }
+      });
+    }
+
+    // 이벤트 위임: 이름 클릭→프로필, 응원 클릭→응원, 선물 클릭→선물
     feedEl.onclick = (e) => {
       if (e.target.closest('.friend-paging-dot')) return;
       const nameEl = e.target.closest('.friend-name[data-fid]');
       if (nameEl) { e.preventDefault(); openFriendProfile(nameEl.dataset.fid, nameEl.dataset.fname); return; }
+      const cheerEl = e.target.closest('.friend-cheer-btn[data-cheer-fid]');
+      if (cheerEl) { _sendCheer(cheerEl); return; }
       const giftEl = e.target.closest('.friend-gift-btn[data-gift-fid]');
       if (giftEl) { openTomatoGiftModal(giftEl.dataset.giftFid, giftEl.dataset.giftName); return; }
     };
