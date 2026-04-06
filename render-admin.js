@@ -301,6 +301,14 @@ export async function renderAdmin() {
           `).join('')
         }
       </div>
+      <!-- 개별 푸시 메시지 -->
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:20px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+          <div style="font-size:13px;font-weight:600;color:var(--text);">📬 개별 푸시</div>
+          <button onclick="openDirectPushEditor()" style="padding:6px 14px;border:none;border-radius:8px;background:#6366F1;color:#fff;font-size:12px;font-weight:600;cursor:pointer;">+ 보내기</button>
+        </div>
+        <div style="font-size:11px;color:var(--text-tertiary);">특정 사용자에게 인앱 알림 + 폰 푸시를 보냅니다.</div>
+      </div>
       <!-- 운영자 공지 -->
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:20px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
@@ -393,7 +401,7 @@ window.publishPatchnote = async function() {
 window.openAnnouncementEditor = async function() {
   const accs = await getAccountList();
   const myId = '김_태우';
-  const targets = accs.filter(a => a.id !== myId && !a.id.includes('(guest)'));
+  const targets = accs.filter(a => a.id && a.id !== myId && !a.id.includes('(guest)'));
   const userListHtml = targets.map(a => {
     const nick = a.nickname || (a.lastName + a.firstName);
     return `<label style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);cursor:pointer;">
@@ -476,6 +484,73 @@ window.publishAnnouncement = async function() {
     console.error('[admin] announcement:', e);
     alert('발송 실패: ' + e.message);
     btn.textContent = '발송'; btn.disabled = false;
+  }
+};
+
+// 개별 푸시 메시지 에디터
+window.openDirectPushEditor = async function() {
+  const accs = await getAccountList();
+  const myId = '김_태우';
+  const targets = accs.filter(a => a.id && a.id !== myId && !a.id.includes('(guest)'));
+  targets.sort((a, b) => (a.nickname || a.lastName + a.firstName).localeCompare(b.nickname || b.lastName + b.firstName));
+
+  const userOptionsHtml = targets.map(a => {
+    const nick = a.nickname || (a.lastName + a.firstName);
+    return `<option value="${a.id}">${nick} (${a.id})</option>`;
+  }).join('');
+
+  document.getElementById('dynamic-modal')?.remove();
+  const modal = document.createElement('div'); modal.id = 'dynamic-modal'; document.body.appendChild(modal);
+  modal.innerHTML = `<div class="modal-backdrop" style="display:flex;z-index:10000;" onclick="if(event.target===this)document.getElementById('dynamic-modal')?.remove();">
+    <div class="modal-sheet" style="max-width:440px;padding:24px;max-height:90vh;overflow-y:auto;" onclick="event.stopPropagation()">
+      <div class="sheet-handle"></div>
+      <div style="font-size:17px;font-weight:700;color:var(--text);margin-bottom:16px;">📬 개별 푸시 메시지</div>
+      <div style="margin-bottom:12px;">
+        <label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:6px;">받는 사람</label>
+        <select id="dm-target" style="width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;color:var(--text);background:var(--surface);outline:none;box-sizing:border-box;" onfocus="this.style.borderColor='#6366F1'" onblur="this.style.borderColor='var(--border)'">
+          <option value="">-- 선택 --</option>
+          ${userOptionsHtml}
+        </select>
+      </div>
+      <div style="margin-bottom:12px;">
+        <label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:6px;">제목</label>
+        <input id="dm-title" type="text" placeholder="예: 안녕하세요!" style="width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;color:var(--text);background:var(--surface);outline:none;box-sizing:border-box;" onfocus="this.style.borderColor='#6366F1'" onblur="this.style.borderColor='var(--border)'">
+      </div>
+      <div style="margin-bottom:16px;">
+        <label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:6px;">내용</label>
+        <textarea id="dm-body" style="width:100%;min-height:100px;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;color:var(--text);background:var(--surface);outline:none;resize:vertical;font-family:inherit;box-sizing:border-box;line-height:1.6;" placeholder="메시지 내용을 적어주세요..." onfocus="this.style.borderColor='#6366F1'" onblur="this.style.borderColor='var(--border)'"></textarea>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button onclick="document.getElementById('dynamic-modal')?.remove()" style="flex:1;padding:14px;border:1px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text-secondary);font-size:14px;font-weight:600;cursor:pointer;">취소</button>
+        <button id="dm-send-btn" onclick="sendDirectPush()" style="flex:2;padding:14px;border:none;border-radius:12px;background:#6366F1;color:#fff;font-size:14px;font-weight:600;cursor:pointer;">보내기</button>
+      </div>
+    </div>
+  </div>`;
+
+  setTimeout(() => document.getElementById('dm-target')?.focus(), 200);
+};
+
+window.sendDirectPush = async function() {
+  const targetId = document.getElementById('dm-target')?.value;
+  const title = document.getElementById('dm-title')?.value.trim();
+  const body = document.getElementById('dm-body')?.value.trim();
+  if (!targetId) { alert('받는 사람을 선택해주세요.'); return; }
+  if (!title) { alert('제목을 입력해주세요.'); return; }
+  const btn = document.getElementById('dm-send-btn');
+  btn.textContent = '보내는 중...'; btn.disabled = true;
+  try {
+    const { sendNotification } = await import('./data.js');
+    await sendNotification(targetId, {
+      type: 'direct_message', from: '김_태우',
+      title, body: body || '',
+      message: `📬 ${title}`,
+    });
+    document.getElementById('dynamic-modal')?.remove();
+    alert('푸시 메시지를 보냈어요!');
+  } catch(e) {
+    console.error('[admin] direct push:', e);
+    alert('발송 실패: ' + e.message);
+    btn.textContent = '보내기'; btn.disabled = false;
   }
 };
 

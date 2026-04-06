@@ -96,6 +96,7 @@ function _buildTitle(data) {
     case "tomato_gift":     return "🍅 토마토 선물";
     case "patchnote":       return "📋 새 패치노트";
     case "announcement":    return "📢 운영자 공지";
+    case "direct_message":  return data.title || "📬 개별 메시지";
     case "introduce":       return "👋 이웃 소개";
     case "letter":          return "✉️ 새 편지";
     default:                return "🍅 토마토팜 알림";
