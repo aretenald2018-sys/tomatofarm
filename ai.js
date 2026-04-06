@@ -11,7 +11,7 @@ import { TODAY, getMemo, getExercises, getDiet, getExList,
 // ── 공통 Gemini 호출 ─────────────────────────────────────────────
 export async function callGemini(prompt, maxTokens = 400) {
   const key = CONFIG.GEMINI_KEY;
-  if (!key) throw new Error('Gemini API 키가 설정되지 않았습니다. 설정에서 입력해주세요.');
+  if (!key) throw new Error('Gemini API 키가 설정되지 않았습니다.');
   const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${CONFIG.GEMINI_MODEL}:generateContent?key=${key}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -96,7 +96,7 @@ export async function getWorkoutRec() {
 // 단일 제품 → { name, ... }, 복수 제품(표 등) → { multiple: true, items: [...] }
 export async function parseNutritionFromImage(imageBase64, language = 'ko') {
   const key = CONFIG.GEMINI_KEY;
-  if (!key) throw new Error('Gemini API 키가 설정되지 않았습니다. 설정에서 입력해주세요.');
+  if (!key) throw new Error('Gemini API 키가 설정되지 않았습니다.');
   const langMap = { ko:'한국어', ja:'일본어', en:'영어' };
   const prompt = `다음 이미지에서 영양정보를 추출해주세요.
 
