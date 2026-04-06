@@ -2525,7 +2525,7 @@ async function _loadGuestbook(targetId) {
         <div style="width:${isReply?'22':'28'}px;height:${isReply?'22':'28'}px;border-radius:50%;background:${isMe?'var(--primary)':'var(--surface3)'};color:${isMe?'#fff':'var(--text-secondary)'};display:flex;align-items:center;justify-content:center;font-size:${isReply?'9':'11'}px;font-weight:700;flex-shrink:0;">${(e.fromName||'?').charAt(0)}</div>
         <div style="flex:1;min-width:0;">
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-            <span style="font-size:${isReply?'11':'12'}px;font-weight:600;color:var(--text);">${e.fromName || '익명'}</span>
+            <span style="font-size:${isReply?'11':'12'}px;font-weight:600;color:var(--text);cursor:pointer;text-decoration:underline;" onclick="event.stopPropagation();document.getElementById('dynamic-modal')?.remove();openFriendProfile('${e.from}','${e.fromName || '익명'}')">${e.fromName || '익명'}</span>
             <span style="font-size:10px;color:var(--text-tertiary);">${timeAgo}</span>
             ${replyBtn}${delBtn}
           </div>
@@ -2623,7 +2623,7 @@ window.openMyGuestbook = async function() {
       return `<div style="padding:10px 0;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;gap:10px;">
         <div style="width:32px;height:32px;border-radius:50%;background:var(--surface3);color:var(--text-secondary);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0;">${(e.fromName||'?').charAt(0)}</div>
         <div style="flex:1;">
-          <div style="display:flex;align-items:center;gap:6px;"><span style="font-size:13px;font-weight:600;color:var(--text);">${e.fromName||'익명'}</span><span style="font-size:10px;color:var(--text-tertiary);">${timeAgo}</span></div>
+          <div style="display:flex;align-items:center;gap:6px;"><span style="font-size:13px;font-weight:600;color:var(--text);cursor:pointer;text-decoration:underline;" onclick="event.stopPropagation();document.getElementById('dynamic-modal')?.remove();openFriendProfile('${e.from}','${e.fromName||'익명'}')">${e.fromName||'익명'}</span><span style="font-size:10px;color:var(--text-tertiary);">${timeAgo}</span></div>
           <div style="font-size:13px;color:var(--text-secondary);margin-top:3px;line-height:1.4;">${e.message}</div>
         </div>
       </div>`;
@@ -2745,7 +2745,7 @@ function _renderComment(c, isReply, myId, myDataOwnerId, targetId, dateKey, sect
     <div style="width:${isReply?'20':'26'}px;height:${isReply?'20':'26'}px;border-radius:50%;background:${isMe?'var(--primary)':'var(--surface3)'};color:${isMe?'#fff':'var(--text-secondary)'};display:flex;align-items:center;justify-content:center;font-size:${isReply?'8':'10'}px;font-weight:700;flex-shrink:0;">${(c.fromName||'?').charAt(0)}</div>
     <div style="flex:1;min-width:0;">
       <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
-        <span style="font-size:${isReply?'11':'12'}px;font-weight:600;color:var(--text);">${c.fromName || '익명'}</span>
+        <span style="font-size:${isReply?'11':'12'}px;font-weight:600;color:var(--text);cursor:pointer;text-decoration:underline;" onclick="event.stopPropagation();document.getElementById('dynamic-modal')?.remove();openFriendProfile('${c.from}','${c.fromName || '익명'}')">${c.fromName || '익명'}</span>
         <span style="font-size:10px;color:var(--text-tertiary);">${timeAgo}${edited}</span>
         ${replyBtn}${editBtn}${delBtn}
       </div>
@@ -2979,7 +2979,7 @@ async function refreshNotifCenter() {
     html += `<div class="notif-item${unreadCls}" onclick="${clickAction}">
       <div class="notif-icon ${iconClass}">${icon}</div>
       <div class="notif-body">
-        <div class="notif-message"><b>${nm}</b>님이 ${n.message || ''}</div>
+        <div class="notif-message"><b style="cursor:pointer;text-decoration:underline;" onclick="event.stopPropagation();closeNotifCenter();openFriendProfile('${n.from}','${nm}')">${nm}</b>님이 ${n.message || ''}</div>
         <div class="notif-time">${_formatTimeAgo(n.createdAt)}</div>
         ${introAction}
       </div>
