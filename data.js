@@ -17,8 +17,9 @@ import {
   calcVolume       as _calcVolume,
   calcVolumeAll    as _calcVolumeAll,
   getVolumeHistory as _getVolumeHistory,
-  getLastSession   as _getLastSession,
-  getDayTargetKcal as _getDayTargetKcal,
+  getLastSession          as _getLastSession,
+  getDayTargetKcal        as _getDayTargetKcal,
+  calcExerciseCalorieCredit as _calcExerciseCalorieCredit,
 } from './calc.js';
 
 const app = initializeApp(CONFIG.FIREBASE);
@@ -457,11 +458,13 @@ export async function writeGuestbook(targetUserId, message, parentId = null) {
     ...(parentId ? { parentId } : {}),
   };
   await setDoc(doc(db, '_guestbook', entryId), entry);
-  // 상대에게 알림
-  await sendNotification(targetUserId, {
-    type: 'guestbook', from: fromId,
-    message: '방명록을 남겼어요 📝',
-  });
+  // 상대에게 알림 (자기 자신이면 스킵)
+  if (!_isMySocialId(targetUserId)) {
+    await sendNotification(targetUserId, {
+      type: 'guestbook', from: fromId,
+      message: '방명록을 남겼어요 📝',
+    });
+  }
   return { ok: true };
 }
 
@@ -577,11 +580,13 @@ export async function toggleLike(targetUserId, dateKey, field, emoji) {
       id: likeId, from: _currentUser.id, to: targetUserId,
       dateKey, field, emoji: emoji || '👏', createdAt: Date.now(),
     });
-    // 상대에게 알림
-    await sendNotification(targetUserId, {
-      type: 'like', from: _currentUser.id, dateKey, field,
-      message: `${emoji || '👏'} 리액션을 보냈어요.`,
-    });
+    // 상대에게 알림 (자기 자신이면 스킵)
+    if (!_isMySocialId(targetUserId)) {
+      await sendNotification(targetUserId, {
+        type: 'like', from: _currentUser.id, dateKey, field,
+        message: `${emoji || '👏'} 리액션을 보냈어요.`,
+      });
+    }
     return true; // liked
   }
 }
@@ -691,6 +696,24 @@ const DEFAULT_DIET_PLAN = {
   refeedKcal: 5000,
   refeedDays: [0, 6],
   startDate: null,
+  // ── 고급 모드 ──
+  advancedMode: false,
+  // 매크로 비율 (데피싯 데이, %)
+  deficitProteinPct: 41,
+  deficitCarbPct: 50,
+  deficitFatPct: 9,
+  // 매크로 비율 (리피드 데이, %)
+  refeedProteinPct: 29,
+  refeedCarbPct: 60,
+  refeedFatPct: 11,
+  // 허용 오차 (kcal)
+  dietTolerance: 50,
+  // 운동 칼로리 크레딧
+  exerciseCalorieCredit: false,
+  exerciseKcalGym: 250,
+  exerciseKcalCF: 300,
+  exerciseKcalSwimming: 200,
+  exerciseKcalRunning: 250,
 };
 
 let _dietPlan = { ...DEFAULT_DIET_PLAN };
@@ -1269,7 +1292,8 @@ export const saveDietPlan = async (plan) => {
 // 다이어트 계산 유틸 — 실제 로직은 calc.js에서 관리
 export const calcDietMetrics = _calcDietMetrics;
 export const isDietDaySuccess = _isDietDaySuccess;
-export const getDayTargetKcal = (plan, y, m, d) => _getDayTargetKcal(plan, y, m, d);
+export const getDayTargetKcal = (plan, y, m, d, dayData) => _getDayTargetKcal(plan, y, m, d, dayData);
+export const calcExerciseCalorieCredit = _calcExerciseCalorieCredit;
 
 export const getExList    = ()      => _exList;
 export const getCache     = ()      => _cache;

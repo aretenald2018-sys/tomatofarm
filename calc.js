@@ -10,6 +10,14 @@ const DEFAULT_DIET_PLAN = {
   refeedKcal: 5000,
   refeedDays: [0, 6],
   startDate: null,
+  // 고급 모드
+  advancedMode: false,
+  deficitProteinPct: 41, deficitCarbPct: 50, deficitFatPct: 9,
+  refeedProteinPct: 29, refeedCarbPct: 60, refeedFatPct: 11,
+  dietTolerance: 50,
+  exerciseCalorieCredit: false,
+  exerciseKcalGym: 250, exerciseKcalCF: 300,
+  exerciseKcalSwimming: 200, exerciseKcalRunning: 250,
 };
 
 /**
@@ -66,14 +74,20 @@ export function calcDietMetrics(plan) {
   const deficitDayCount = 7 - refeedDayCount;
   const deficitDayKcal = deficitDayCount > 0 ? Math.round((weeklyKcal - refeedTotal) / deficitDayCount) : Math.round(weeklyKcal / 7);
   const refeedDayKcal  = refeedDayCount > 0 ? Math.round(refeedTotal / refeedDayCount) : 0;
-  // 탄단지 — 데피싯 데이
-  const dProteinKcal = Math.round(deficitDayKcal * 0.41);
-  const dCarbKcal    = Math.round(deficitDayKcal * 0.50);
-  const dFatKcal     = Math.round(deficitDayKcal * 0.09);
-  // 탄단지 — 리피드 데이
-  const rProteinKcal = Math.round(refeedDayKcal * 0.29);
-  const rCarbKcal    = Math.round(refeedDayKcal * 0.60);
-  const rFatKcal     = Math.round(refeedDayKcal * 0.11);
+  // 탄단지 — 데피싯 데이 (고급 모드: 사용자 설정 비율 / 기본: 41-50-9)
+  const dPP = (p.deficitProteinPct || 41) / 100;
+  const dCP = (p.deficitCarbPct    || 50) / 100;
+  const dFP = (p.deficitFatPct     || 9)  / 100;
+  const dProteinKcal = Math.round(deficitDayKcal * dPP);
+  const dCarbKcal    = Math.round(deficitDayKcal * dCP);
+  const dFatKcal     = Math.round(deficitDayKcal * dFP);
+  // 탄단지 — 리피드 데이 (고급 모드: 사용자 설정 비율 / 기본: 29-60-11)
+  const rPP = (p.refeedProteinPct || 29) / 100;
+  const rCP = (p.refeedCarbPct    || 60) / 100;
+  const rFP = (p.refeedFatPct     || 11) / 100;
+  const rProteinKcal = Math.round(refeedDayKcal * rPP);
+  const rCarbKcal    = Math.round(refeedDayKcal * rCP);
+  const rFatKcal     = Math.round(refeedDayKcal * rFP);
   return {
     bmr, tdee, lbm, fatMass, fatToLose, totalWeightLoss, fatRatio,
     weeklyLossKg, weeklyLossG: Math.round(weeklyLossKg * 1000),
@@ -95,18 +109,38 @@ export function calcDietMetrics(plan) {
 }
 
 /**
+ * 운동 칼로리 크레딧 계산
+ * @param {object} plan - 다이어트 플랜
+ * @param {object} dayData - 해당 날짜 데이터
+ * @returns {number} 운동으로 소모한 추가 허용 칼로리
+ */
+export function calcExerciseCalorieCredit(plan, dayData) {
+  if (!plan.advancedMode || !plan.exerciseCalorieCredit || !dayData) return 0;
+  let credit = 0;
+  const hasGym = (dayData.exercises || []).length > 0 && !dayData.gym_skip;
+  if (hasGym)          credit += (plan.exerciseKcalGym      || 250);
+  if (dayData.cf)      credit += (plan.exerciseKcalCF       || 300);
+  if (dayData.swimming) credit += (plan.exerciseKcalSwimming || 200);
+  if (dayData.running)  credit += (plan.exerciseKcalRunning  || 250);
+  return credit;
+}
+
+/**
  * 해당 날짜의 목표 칼로리 산출
  * @param {object} plan - 다이어트 플랜
  * @param {number} y - 연도
  * @param {number} m - 월 (0-indexed)
  * @param {number} d - 일
+ * @param {object} [dayData] - 해당 날짜 데이터 (운동 칼로리 크레딧용)
  * @returns {number} 목표 칼로리
  */
-export function getDayTargetKcal(plan, y, m, d) {
+export function getDayTargetKcal(plan, y, m, d, dayData) {
   const metrics = calcDietMetrics(plan);
   const dow = new Date(y, m, d).getDay();
   const isRefeed = (plan.refeedDays || []).includes(dow);
-  return isRefeed ? metrics.refeed.kcal : metrics.deficit.kcal;
+  const base = isRefeed ? metrics.refeed.kcal : metrics.deficit.kcal;
+  const exerciseCredit = calcExerciseCalorieCredit(plan, dayData);
+  return base + exerciseCredit;
 }
 
 /**
@@ -116,8 +150,8 @@ export function getDayTargetKcal(plan, y, m, d) {
  * @param {number} limitKcal - 목표 칼로리
  * @returns {boolean}
  */
-export function isDietDaySuccess(totalKcal, limitKcal) {
-  return (totalKcal > 0) && (totalKcal <= limitKcal + 50);
+export function isDietDaySuccess(totalKcal, limitKcal, tolerance = 50) {
+  return (totalKcal > 0) && (totalKcal <= limitKcal + tolerance);
 }
 
 /**
@@ -138,8 +172,9 @@ export function dietDayOk(dayData, plan, y, m, d) {
     bFoods: r.bFoods || [], lFoods: r.lFoods || [], dFoods: r.dFoods || [], sFoods: r.sFoods || [],
   };
 
-  const limitKcal = getDayTargetKcal(plan, y, m, d);
+  const limitKcal = getDayTargetKcal(plan, y, m, d, dayData);
   const totalKcal = (dt.bKcal || 0) + (dt.lKcal || 0) + (dt.dKcal || 0) + (dt.sKcal || 0);
+  const tolerance = plan.advancedMode ? (plan.dietTolerance ?? 50) : 50;
 
   const bSkip = !!r.breakfast_skipped;
   const lSkip = !!r.lunch_skipped;
@@ -151,7 +186,7 @@ export function dietDayOk(dayData, plan, y, m, d) {
 
   if (!hasRecord && !bSkip && !lSkip && !dSkip) return null;
 
-  const calorieSuccess = isDietDaySuccess(totalKcal, limitKcal);
+  const calorieSuccess = isDietDaySuccess(totalKcal, limitKcal, tolerance);
 
   const bOk = bSkip || (dt.bOk ?? false);
   const lOk = lSkip || (dt.lOk ?? false);

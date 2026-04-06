@@ -2091,6 +2091,88 @@ body {
 .diet-calc-row { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--text-secondary); }
 .diet-calc-row strong { color: var(--text); font-family: var(--font-mono); }
 
+/* ── 고급 모드 (Advanced Mode) ── */
+.dp-advanced-toggle {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 16px; margin: 16px 0 0;
+  background: var(--seed-bg-fill); border-radius: var(--seed-r3);
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+  transition: background var(--seed-d4) var(--seed-ease);
+}
+.dp-advanced-toggle:active { background: var(--seed-bg-neutral-weak); }
+.dp-advanced-toggle-left { display: flex; align-items: center; gap: 10px; }
+.dp-advanced-toggle-title { font-size: var(--seed-t4); font-weight: 600; color: var(--seed-fg-neutral); display: block; }
+.dp-advanced-toggle-desc { font-size: var(--seed-t1); color: var(--seed-fg-subtle); display: block; margin-top: 1px; }
+
+.dp-advanced-body {
+  margin: 0; padding: 0 2px;
+  animation: dpAdvSlideIn var(--seed-d5) var(--seed-ease);
+}
+@keyframes dpAdvSlideIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.dp-adv-section {
+  padding: 14px 0; border-bottom: 1px solid var(--seed-stroke-neutral);
+}
+.dp-adv-section:last-child { border-bottom: none; }
+.dp-adv-section-title {
+  font-size: var(--seed-t2); font-weight: 700; color: var(--seed-fg-muted);
+  letter-spacing: 0.3px; margin-bottom: 6px;
+}
+.dp-adv-hint {
+  font-size: var(--seed-t1); color: var(--seed-fg-subtle); line-height: 1.5;
+  margin-bottom: 8px;
+}
+
+.dp-adv-macro-row {
+  display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;
+}
+.dp-adv-macro-item label {
+  font-size: var(--seed-t1); font-weight: 600; color: var(--seed-fg-subtle);
+  display: block; margin-bottom: 4px;
+}
+.dp-adv-input-wrap {
+  position: relative; display: flex; align-items: center;
+}
+.dp-adv-input-wrap .ex-editor-input {
+  padding-right: 32px; text-align: right;
+}
+.dp-adv-unit {
+  position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+  font-size: var(--seed-t1); color: var(--seed-fg-placeholder); pointer-events: none;
+  font-weight: 500;
+}
+.dp-adv-macro-sum {
+  font-size: var(--seed-t1); text-align: right; margin-top: 6px;
+  font-family: var(--font-mono); font-weight: 600;
+  transition: color var(--seed-d3) var(--seed-ease);
+}
+.dp-adv-macro-sum.ok { color: var(--seed-fg-positive); }
+.dp-adv-macro-sum.bad { color: var(--seed-fg-critical); }
+
+.dp-exercise-credit-toggle {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 4px 0;
+}
+.dp-exercise-kcal-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 4px;
+}
+.dp-exercise-kcal-item {
+  display: flex; flex-direction: column; gap: 4px;
+}
+.dp-exercise-kcal-label {
+  font-size: var(--seed-t2); font-weight: 600; color: var(--seed-fg-muted);
+}
+
+/* 운동 칼로리 크레딧 배지 (칼로리 트래커) */
+.cal-exercise-credit {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; color: var(--seed-green-700); font-weight: 600;
+  background: var(--seed-green-100); padding: 2px 8px; border-radius: var(--seed-r-full);
+}
+
 /* ── Nutrition DB Search ── */
 .nutrition-result-row {
   padding: 12px 14px; border-radius: var(--radius-sm); cursor: pointer;
@@ -2792,6 +2874,43 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
 .friend-gift-btn:active { transform: scale(1.3); }
 
 /* ── Meal Photo ── */
+/* ── 식단 사진 (TDS: 고정 비율 프레임) ── */
+.meal-photo-frame {
+  position: relative; width: 100%; padding-bottom: 75%; /* 4:3 비율 */
+  border-radius: var(--seed-r3); overflow: hidden;
+  background: var(--seed-bg-fill); margin-top: 6px; cursor: pointer;
+}
+.meal-photo-frame img {
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+  object-fit: cover; display: block;
+  transition: transform var(--seed-d4) var(--seed-ease);
+}
+.meal-photo-frame:active img { transform: scale(1.02); }
+.meal-photo-frame .meal-photo-delete {
+  position: absolute; top: 8px; right: 8px; z-index: 1;
+  width: 28px; height: 28px; border-radius: var(--seed-r-full);
+  background: rgba(0,0,0,0.45); backdrop-filter: blur(4px);
+  color: #fff; border: none; font-size: 14px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background var(--seed-d3);
+}
+.meal-photo-frame .meal-photo-delete:active { background: rgba(0,0,0,0.7); }
+
+/* 라이트박스 */
+.meal-photo-lightbox {
+  position: fixed; inset: 0; z-index: 10001;
+  background: rgba(0,0,0,0.85); backdrop-filter: blur(8px);
+  display: flex; align-items: center; justify-content: center;
+  animation: lbFadeIn var(--seed-d4) var(--seed-ease);
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.meal-photo-lightbox img {
+  max-width: 92vw; max-height: 88vh;
+  object-fit: contain; border-radius: var(--seed-r3);
+  box-shadow: var(--seed-s3);
+}
+@keyframes lbFadeIn { from { opacity: 0; } to { opacity: 1; } }
+
 .meal-photo-btn {
   display: block; width: 100%; padding: 6px;
   background: none; border: 1px dashed var(--border); border-radius: 8px;
@@ -2847,16 +2966,55 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
 
 /* == Friend Feed == */
 .friend-card { margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border); }
-.friend-card:last-child { border-bottom:none; }
+.friend-card:last-child { border-bottom:none; margin-bottom:0; padding-bottom:0; }
 .friend-card-header { display:flex;align-items:center;gap:10px;margin-bottom:8px; }
-.friend-avatar { width:32px;height:32px;border-radius:50%;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0; }
+.friend-avatar {
+  position:relative; width:36px;height:36px;border-radius:50%;
+  background:var(--primary);color:#fff;
+  display:flex;align-items:center;justify-content:center;
+  font-size:14px;font-weight:700;flex-shrink:0;
+}
+.friend-avatar .status-dot {
+  position:absolute; bottom:0; right:0;
+  width:10px; height:10px; border-radius:50%;
+  border:2px solid var(--surface, #fff);
+  transition: background var(--seed-d4);
+}
+.friend-avatar .status-dot.active   { background:#22c55e; } /* 초록: 오늘 활동 */
+.friend-avatar .status-dot.recent   { background:#f59e0b; } /* 주황: 최근 3일 */
+.friend-avatar .status-dot.inactive { background:var(--seed-gray-400); } /* 회색 */
 .friend-name { font-size:14px;font-weight:600;color:var(--text); }
 .friend-feed-item { display:flex;align-items:center;justify-content:space-between;padding:4px 0;font-size:12px;color:var(--text-secondary); }
 .friend-like-btn { background:none;border:none;font-size:16px;cursor:pointer;padding:2px 4px;transition:transform 0.15s; }
 .friend-like-btn:active { transform:scale(1.3); }
 .friend-like-btn.liked { color:#f04452; }
-.friend-notif-row { display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:12px;color:var(--text); }
+
+/* 이웃 피드 페이징 */
+.friend-paging-controls {
+  display:flex; align-items:center; justify-content:center; gap:6px;
+  padding:8px 0 4px;
+}
+.friend-paging-dot {
+  width:6px; height:6px; border-radius:50%;
+  background:var(--seed-gray-400); border:none; padding:0; cursor:pointer;
+  transition: all var(--seed-d3) var(--seed-ease);
+}
+.friend-paging-dot.active { width:16px; border-radius:3px; background:var(--primary); }
+
+/* 알림 행 (리디자인) */
+.friend-notif-row {
+  display:flex;align-items:center;justify-content:space-between;
+  padding:10px 0;border-bottom:1px solid var(--seed-stroke-neutral);
+  font-size:12px;color:var(--text);cursor:pointer;
+  transition:background var(--seed-d3);
+}
 .friend-notif-row:last-child { border-bottom:none; }
+.friend-notif-row:active { background:var(--seed-bg-neutral-weak); }
+.friend-notif-row .notif-name {
+  font-weight:600; color:var(--primary); cursor:pointer;
+  text-decoration:none;
+}
+.friend-notif-row .notif-name:active { text-decoration:underline; }
 
 /* ══════════════════════════════════════════════════════════════════
    Seed Design Override — 운동/식단 Tab

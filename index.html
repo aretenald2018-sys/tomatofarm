@@ -475,10 +475,11 @@
     <div class="sheet-section" id="wt-calorie-tracker" style="display:none">
       <div style="display:flex;align-items:center;justify-content:space-between;">
         <div class="sheet-section-label">오늘의 칼로리</div>
-        <button onclick="openDietSetupInline()" style="padding:4px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text-secondary);font-size:11px;font-weight:500;cursor:pointer;">설정</button>
+        <button onclick="openDietPlanModal()" style="padding:4px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text-secondary);font-size:11px;font-weight:500;cursor:pointer;">설정</button>
       </div>
       <div class="cal-tracker-header">
         <span id="wt-day-type-badge" class="cal-day-type"></span>
+        <span id="wt-exercise-credit-badge" style="display:none"></span>
       </div>
       <div class="cal-main-bar-wrap">
         <div class="cal-numbers">

@@ -9,6 +9,7 @@ import { saveDay, saveExercise, deleteExercise,
          getDietPlan, calcDietMetrics,
          getVolumeHistory, calcVolume,
          isDietDaySuccess, getDayTargetKcal,
+         calcExerciseCalorieCredit,
          getBodyCheckins }                     from './data.js';
 
 
@@ -326,9 +327,17 @@ export async function saveWorkoutDay() {
 
   // 🎯 목표 칼로리 vs 실제 섭취 칼로리 비교 (calc.js 단일 소스)
   const plan = getDietPlan();
-  const dayTarget = getDayTargetKcal(plan, y, m, d);
+  const _dayDataForSave = {
+    exercises: cleanEx,
+    cf: _cfStatus === 'done',
+    swimming: _swimming,
+    running: _running,
+    gym_skip: _gymStatus === 'skip',
+  };
+  const dayTarget = getDayTargetKcal(plan, y, m, d, _dayDataForSave);
   const totalKcal = (_diet.bKcal||0) + (_diet.lKcal||0) + (_diet.dKcal||0) + (_diet.sKcal||0);
-  const isDietSuccess = isDietDaySuccess(totalKcal, dayTarget);
+  const _tol = plan.advancedMode ? (plan.dietTolerance ?? 50) : 50;
+  const isDietSuccess = isDietDaySuccess(totalKcal, dayTarget, _tol);
 
   await saveDay(dateKey(y, m, d), {
     exercises:  cleanEx,
@@ -672,6 +681,17 @@ function _renderCalorieTracker() {
   const dayTarget   = isRefeed ? metrics.refeed : metrics.deficit;
   const macroTarget = dayTarget;
 
+  // 운동 칼로리 크레딧 계산
+  const dayData = {
+    exercises: _exercises,
+    cf: _cfStatus === 'done',
+    swimming: _swimming,
+    running: _running,
+    gym_skip: _gymStatus === 'skip',
+  };
+  const exerciseCredit = calcExerciseCalorieCredit(plan, dayData);
+  const adjustedGoalKcal = dayTarget.kcal + exerciseCredit;
+
   // 현재 섭취 kcal (분석된 식사 합산)
   const currentKcal = (_diet.bKcal || 0) + (_diet.lKcal || 0) + (_diet.dKcal || 0) + (_diet.sKcal || 0);
   const hasAnalysis = currentKcal > 0;
@@ -690,12 +710,23 @@ function _renderCalorieTracker() {
   const remainEl = document.getElementById('wt-cal-remain');
   const barEl    = document.getElementById('wt-cal-bar');
 
-  if (goalEl)   goalEl.textContent   = dayTarget.kcal.toLocaleString();
+  if (goalEl)   goalEl.textContent   = adjustedGoalKcal.toLocaleString();
   if (curEl)    curEl.textContent    = currentKcal.toLocaleString();
 
-  const pct     = Math.min(currentKcal / dayTarget.kcal * 100, 100);
-  const over    = currentKcal > dayTarget.kcal;
-  const remain  = dayTarget.kcal - currentKcal;
+  // 운동 칼로리 크레딧 배지 표시
+  const creditEl = document.getElementById('wt-exercise-credit-badge');
+  if (creditEl) {
+    if (exerciseCredit > 0) {
+      creditEl.innerHTML = `<span class="cal-exercise-credit">+${exerciseCredit} kcal 운동</span>`;
+      creditEl.style.display = '';
+    } else {
+      creditEl.style.display = 'none';
+    }
+  }
+
+  const pct     = Math.min(currentKcal / adjustedGoalKcal * 100, 100);
+  const over    = currentKcal > adjustedGoalKcal;
+  const remain  = adjustedGoalKcal - currentKcal;
 
   if (remainEl) {
     remainEl.textContent  = over
@@ -714,10 +745,12 @@ function _renderCalorieTracker() {
   const curProtein = (_diet.bProtein||0) + (_diet.lProtein||0) + (_diet.dProtein||0) + (_diet.sProtein||0);
   const curCarbs   = (_diet.bCarbs  ||0) + (_diet.lCarbs  ||0) + (_diet.dCarbs  ||0) + (_diet.sCarbs||0);
   const curFat     = (_diet.bFat    ||0) + (_diet.lFat    ||0) + (_diet.dFat    ||0) + (_diet.sFat||0);
+  // 운동 칼로리 크레딧이 있으면 매크로 목표도 비례 증가
+  const macroScale = exerciseCredit > 0 && dayTarget.kcal > 0 ? adjustedGoalKcal / dayTarget.kcal : 1;
   const macros = [
-    { label:'단', cur: curProtein, goal: macroTarget.proteinG, color:'var(--gym)' },
-    { label:'탄', cur: curCarbs,   goal: macroTarget.carbG,    color:'var(--cf)' },
-    { label:'지', cur: curFat,     goal: macroTarget.fatG,     color:'var(--accent)' },
+    { label:'단', cur: curProtein, goal: Math.round(macroTarget.proteinG * macroScale), color:'var(--gym)' },
+    { label:'탄', cur: curCarbs,   goal: Math.round(macroTarget.carbG * macroScale),    color:'var(--cf)' },
+    { label:'지', cur: curFat,     goal: Math.round(macroTarget.fatG * macroScale),     color:'var(--accent)' },
   ];
   macroEl.innerHTML = macros.map(({ label, cur, goal, color }) => {
     const pct  = goal > 0 ? Math.min(cur / goal * 100, 100) : 0;
@@ -805,9 +838,9 @@ function _renderMealPhotos() {
     if (!wrap) continue;
     const photo = window._mealPhotos?.[meal];
     if (photo) {
-      wrap.innerHTML = `<div style="position:relative;display:inline-block;width:100%;">
-        <img src="${photo}" style="max-width:100%;max-height:200px;border-radius:12px;object-fit:contain;display:block;">
-        <button onclick="removeMealPhoto('${meal}')" style="position:absolute;top:4px;right:4px;width:24px;height:24px;border-radius:50%;background:rgba(0,0,0,0.5);color:#fff;border:none;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;">✕</button>
+      wrap.innerHTML = `<div class="meal-photo-frame" onclick="openMealPhotoLightbox('${photo.replace(/'/g,"\\'")}')">
+        <img src="${photo}">
+        <button class="meal-photo-delete" onclick="event.stopPropagation();removeMealPhoto('${meal}')">✕</button>
       </div>`;
     } else {
       wrap.innerHTML = '';
@@ -837,9 +870,17 @@ async function _autoSaveDiet() {
 
   // 🎯 목표 칼로리 vs 실제 섭취 칼로리 비교 (calc.js 단일 소스)
   const plan = getDietPlan();
-  const dayTarget = getDayTargetKcal(plan, y, m, d);
+  const _autoSaveDayData = {
+    exercises: cleanEx,
+    cf: _cfStatus === 'done',
+    swimming: _swimming,
+    running: _running,
+    gym_skip: _gymStatus === 'skip',
+  };
+  const dayTarget = getDayTargetKcal(plan, y, m, d, _autoSaveDayData);
   const totalKcal = (_diet.bKcal||0) + (_diet.lKcal||0) + (_diet.dKcal||0) + (_diet.sKcal||0);
-  const isDietSuccess = isDietDaySuccess(totalKcal, dayTarget);
+  const _autoTol = plan.advancedMode ? (plan.dietTolerance ?? 50) : 50;
+  const isDietSuccess = isDietDaySuccess(totalKcal, dayTarget, _autoTol);
 
   try {
     await saveDay(dateKey(y, m, d), {

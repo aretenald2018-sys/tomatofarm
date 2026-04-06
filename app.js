@@ -28,7 +28,7 @@ import { getDietRec, getWorkoutRec,
          analyzeGoalFeasibility }                 from './ai.js';
 import { renderCalendar, changeYear }             from './render-calendar.js';
 import { renderStats, setPeriod, exportCSV }      from './render-stats.js';
-import { renderHome, refreshNotifCenter }          from './render-home.js';
+import { renderHome, refreshNotifCenter, showToast } from './render-home.js';
 import { renderMonthlyCalendar, renderMonthlyCalendarInModal,
          changeMonthlyMonth }                     from './render-monthly-calendar.js';
 import { renderMovie, changeMovieMonth, startMovieCrawl, toggleMovieTagFilter }  from './render-movie.js';
@@ -421,6 +421,7 @@ async function saveTabSettingsFromModal() {
   await saveVisibleTabs(selected);
   _applyVisibleTabs(selected);
   document.getElementById('tab-settings-modal').classList.remove('open');
+  showToast('탭 설정이 저장되었습니다');
 }
 
 window.openTabSettingsModal = openTabSettingsModal;
@@ -447,6 +448,7 @@ async function saveSectionTitleFromModal() {
   const el = document.getElementById(`title-${key}`);
   if (el) el.textContent = title;
   document.getElementById('section-title-modal').classList.remove('open');
+  showToast('저장되었습니다');
 }
 
 // ── 미니 메모 (체크리스트) ────────────────────────────────────────
@@ -748,6 +750,7 @@ function saveSettings() {
   if (anthropic) localStorage.setItem('cfg_anthropic', anthropic);
 
   document.getElementById('settings-modal').classList.remove('open');
+  showToast('설정이 저장되었습니다');
   loadStocks();
 }
 
@@ -861,9 +864,6 @@ async function openDietPlanModal() {
   document.getElementById('dp-target-weight').value= hasData ? (plan.targetWeight || '') : '';
   document.getElementById('dp-target-bf').value    = hasData ? (plan.targetBodyFatPct || '') : '';
   document.getElementById('dp-start-date').value   = hasData ? (plan.startDate || '') : '';
-  document.getElementById('dp-loss-rate').value    = plan.lossRatePerWeek || 0.009;
-  document.getElementById('dp-activity').value     = plan.activityFactor  || 1.3;
-  document.getElementById('dp-refeed-kcal').value  = plan.refeedKcal  || 5000;
 
   // 리피드 요일 버튼 초기화
   const refeedDays = plan.refeedDays || [0, 6];
@@ -875,21 +875,106 @@ async function openDietPlanModal() {
     };
   });
 
+  // ── 고급 모드 초기화 ──
+  const advSwitch = document.getElementById('dp-advanced-switch');
+  const advBody   = document.getElementById('dp-advanced-body');
+  const isAdv     = !!plan.advancedMode;
+  advSwitch.classList.toggle('on', isAdv);
+  advBody.style.display = isAdv ? '' : 'none';
+
+  // 고급 모드 토글 클릭
+  const toggleArea = document.getElementById('dp-advanced-toggle');
+  toggleArea.onclick = () => {
+    const on = advSwitch.classList.toggle('on');
+    advBody.style.display = on ? '' : 'none';
+  };
+
+  // 감량 속도, 활동 계수, 리피드 (고급 모드로 이동)
+  const dpLossRate = document.getElementById('dp-loss-rate');
+  if (dpLossRate) dpLossRate.value = plan.lossRatePerWeek || 0.009;
+  const actAdv = document.getElementById('dp-activity-adv');
+  if (actAdv) actAdv.value = plan.activityFactor || 1.3;
+  const dpRefeedKcal = document.getElementById('dp-refeed-kcal');
+  if (dpRefeedKcal) dpRefeedKcal.value = plan.refeedKcal || 5000;
+
+  // 매크로 비율 (데피싯)
+  const dpDefP = document.getElementById('dp-def-protein');
+  const dpDefC = document.getElementById('dp-def-carb');
+  const dpDefF = document.getElementById('dp-def-fat');
+  if (dpDefP) dpDefP.value = plan.deficitProteinPct ?? 41;
+  if (dpDefC) dpDefC.value = plan.deficitCarbPct ?? 50;
+  if (dpDefF) dpDefF.value = plan.deficitFatPct ?? 9;
+
+  // 매크로 비율 (리피드)
+  const dpRefP = document.getElementById('dp-ref-protein');
+  const dpRefC = document.getElementById('dp-ref-carb');
+  const dpRefF = document.getElementById('dp-ref-fat');
+  if (dpRefP) dpRefP.value = plan.refeedProteinPct ?? 29;
+  if (dpRefC) dpRefC.value = plan.refeedCarbPct ?? 60;
+  if (dpRefF) dpRefF.value = plan.refeedFatPct ?? 11;
+
+  // 허용 오차
+  const dpTol = document.getElementById('dp-tolerance');
+  if (dpTol) dpTol.value = plan.dietTolerance ?? 50;
+
+  // 운동 칼로리 크레딧
+  const exSwitch = document.getElementById('dp-exercise-credit-switch');
+  const exBody   = document.getElementById('dp-exercise-credit-body');
+  const isExOn   = !!plan.exerciseCalorieCredit;
+  exSwitch.classList.toggle('on', isExOn);
+  exBody.style.display = isExOn ? '' : 'none';
+  exSwitch.onclick = (ev) => {
+    ev.stopPropagation();
+    const on = exSwitch.classList.toggle('on');
+    exBody.style.display = on ? '' : 'none';
+  };
+
+  const dpExGym  = document.getElementById('dp-ex-gym');
+  const dpExCF   = document.getElementById('dp-ex-cf');
+  const dpExSwim = document.getElementById('dp-ex-swim');
+  const dpExRun  = document.getElementById('dp-ex-run');
+  if (dpExGym)  dpExGym.value  = plan.exerciseKcalGym ?? 250;
+  if (dpExCF)   dpExCF.value   = plan.exerciseKcalCF ?? 300;
+  if (dpExSwim) dpExSwim.value = plan.exerciseKcalSwimming ?? 200;
+  if (dpExRun)  dpExRun.value  = plan.exerciseKcalRunning ?? 250;
+
+  // 매크로 합계 검증 UI
+  _updateMacroSum('dp-def-protein', 'dp-def-carb', 'dp-def-fat', 'dp-def-macro-sum');
+  _updateMacroSum('dp-ref-protein', 'dp-ref-carb', 'dp-ref-fat', 'dp-ref-macro-sum');
+
   _updateDietCalcPreview();
 
   // 입력 변경 시 미리보기 자동 갱신
   ['dp-height','dp-age','dp-weight','dp-bodyfat','dp-target-weight','dp-target-bf',
-   'dp-loss-rate','dp-refeed-kcal'].forEach(id => {
+   'dp-loss-rate','dp-refeed-kcal','dp-activity-adv',
+   'dp-def-protein','dp-def-carb','dp-def-fat',
+   'dp-ref-protein','dp-ref-carb','dp-ref-fat'].forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.oninput = _updateDietCalcPreview;
+    if (el) el.oninput = () => {
+      _updateDietCalcPreview();
+      _updateMacroSum('dp-def-protein', 'dp-def-carb', 'dp-def-fat', 'dp-def-macro-sum');
+      _updateMacroSum('dp-ref-protein', 'dp-ref-carb', 'dp-ref-fat', 'dp-ref-macro-sum');
+    };
   });
 
   document.getElementById('diet-plan-modal').classList.add('open');
 }
 
+function _updateMacroSum(pId, cId, fId, sumId) {
+  const p = parseFloat(document.getElementById(pId)?.value) || 0;
+  const c = parseFloat(document.getElementById(cId)?.value) || 0;
+  const f = parseFloat(document.getElementById(fId)?.value) || 0;
+  const sum = p + c + f;
+  const el = document.getElementById(sumId);
+  if (!el) return;
+  el.textContent = `합계: ${sum}%`;
+  el.className = 'dp-adv-macro-sum ' + (sum === 100 ? 'ok' : 'bad');
+}
+
 function _updateDietCalcPreview() {
   const preview = document.getElementById('dp-calc-preview');
   if (!preview) return;
+  const isAdvanced = document.getElementById('dp-advanced-switch')?.classList.contains('on');
   const plan = {
     height:           parseFloat(document.getElementById('dp-height').value)       || 0,
     age:              parseFloat(document.getElementById('dp-age').value)          || 0,
@@ -898,8 +983,14 @@ function _updateDietCalcPreview() {
     targetWeight:     parseFloat(document.getElementById('dp-target-weight').value)|| 0,
     targetBodyFatPct: parseFloat(document.getElementById('dp-target-bf').value)    || 0,
     lossRatePerWeek:  parseFloat(document.getElementById('dp-loss-rate').value)    || 0.009,
-    activityFactor:   1.3,
+    activityFactor:   isAdvanced ? (parseFloat(document.getElementById('dp-activity-adv')?.value) || 1.3) : 1.3,
     refeedKcal:       parseFloat(document.getElementById('dp-refeed-kcal').value)  || 5000,
+    deficitProteinPct: isAdvanced ? (parseFloat(document.getElementById('dp-def-protein')?.value) || 41) : 41,
+    deficitCarbPct:    isAdvanced ? (parseFloat(document.getElementById('dp-def-carb')?.value) || 50) : 50,
+    deficitFatPct:     isAdvanced ? (parseFloat(document.getElementById('dp-def-fat')?.value) || 9) : 9,
+    refeedProteinPct:  isAdvanced ? (parseFloat(document.getElementById('dp-ref-protein')?.value) || 29) : 29,
+    refeedCarbPct:     isAdvanced ? (parseFloat(document.getElementById('dp-ref-carb')?.value) || 60) : 60,
+    refeedFatPct:      isAdvanced ? (parseFloat(document.getElementById('dp-ref-fat')?.value) || 11) : 11,
   };
   if (!plan.weight || !plan.height || !plan.age) { preview.innerHTML = ''; return; }
   try {
@@ -921,6 +1012,7 @@ function closeDietPlanModal(e) { _closeModal('diet-plan-modal', e); }
 async function saveDietPlanFromModal() {
   const refeedDays = [...document.querySelectorAll('.refeed-day-btn.active')]
     .map(b => parseInt(b.dataset.dow));
+  const isAdvanced = document.getElementById('dp-advanced-switch')?.classList.contains('on');
   const plan = {
     height:           parseFloat(document.getElementById('dp-height').value)       || null,
     age:              parseFloat(document.getElementById('dp-age').value)          || null,
@@ -930,13 +1022,37 @@ async function saveDietPlanFromModal() {
     targetBodyFatPct: parseFloat(document.getElementById('dp-target-bf').value)    || null,
     startDate:        document.getElementById('dp-start-date').value               || null,
     lossRatePerWeek:  parseFloat(document.getElementById('dp-loss-rate').value)    || 0.009,
-    activityFactor:   1.3,
+    activityFactor:   isAdvanced ? (parseFloat(document.getElementById('dp-activity-adv')?.value) || 1.3) : 1.3,
     refeedKcal:       parseFloat(document.getElementById('dp-refeed-kcal').value)  || 5000,
     refeedDays,
+    // 고급 모드 필드
+    advancedMode:       isAdvanced,
+    deficitProteinPct:  isAdvanced ? (parseFloat(document.getElementById('dp-def-protein')?.value) || 41) : 41,
+    deficitCarbPct:     isAdvanced ? (parseFloat(document.getElementById('dp-def-carb')?.value) || 50) : 50,
+    deficitFatPct:      isAdvanced ? (parseFloat(document.getElementById('dp-def-fat')?.value) || 9) : 9,
+    refeedProteinPct:   isAdvanced ? (parseFloat(document.getElementById('dp-ref-protein')?.value) || 29) : 29,
+    refeedCarbPct:      isAdvanced ? (parseFloat(document.getElementById('dp-ref-carb')?.value) || 60) : 60,
+    refeedFatPct:       isAdvanced ? (parseFloat(document.getElementById('dp-ref-fat')?.value) || 11) : 11,
+    dietTolerance:      isAdvanced ? (parseFloat(document.getElementById('dp-tolerance')?.value) ?? 50) : 50,
+    exerciseCalorieCredit: isAdvanced && document.getElementById('dp-exercise-credit-switch')?.classList.contains('on'),
+    exerciseKcalGym:    parseFloat(document.getElementById('dp-ex-gym')?.value) || 250,
+    exerciseKcalCF:     parseFloat(document.getElementById('dp-ex-cf')?.value) || 300,
+    exerciseKcalSwimming: parseFloat(document.getElementById('dp-ex-swim')?.value) || 200,
+    exerciseKcalRunning: parseFloat(document.getElementById('dp-ex-run')?.value) || 250,
   };
   if (!plan.weight || !plan.height) { alert('키와 체중을 입력해주세요.'); return; }
+  // 매크로 합계 검증
+  if (isAdvanced) {
+    const defSum = plan.deficitProteinPct + plan.deficitCarbPct + plan.deficitFatPct;
+    const refSum = plan.refeedProteinPct + plan.refeedCarbPct + plan.refeedFatPct;
+    if (defSum !== 100 || refSum !== 100) {
+      alert(`매크로 비율 합계가 100%가 아닙니다.\n데피싯: ${defSum}% / 리피드: ${refSum}%`);
+      return;
+    }
+  }
   await saveDietPlan(plan);
   document.getElementById('diet-plan-modal').classList.remove('open');
+  showToast('플랜이 저장되었습니다');
   renderAll();
 }
 
@@ -2219,9 +2335,10 @@ window.uploadMealPhoto = async function(meal, input) {
     window._mealPhotos[meal] = 'data:image/jpeg;base64,' + b64;
     const wrap = document.getElementById('wt-photo-' + meal);
     if (wrap) {
-      wrap.innerHTML = `<div style="position:relative;display:inline-block;margin-top:6px;">
-        <img src="${window._mealPhotos[meal]}" style="max-width:100%;max-height:160px;border-radius:12px;object-fit:cover;display:block;">
-        <button onclick="removeMealPhoto('${meal}')" style="position:absolute;top:4px;right:4px;width:24px;height:24px;border-radius:50%;background:rgba(0,0,0,0.5);color:#fff;border:none;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;">✕</button>
+      const src = window._mealPhotos[meal];
+      wrap.innerHTML = `<div class="meal-photo-frame" onclick="openMealPhotoLightbox(this.querySelector('img').src)">
+        <img src="${src}">
+        <button class="meal-photo-delete" onclick="event.stopPropagation();removeMealPhoto('${meal}')">✕</button>
       </div>`;
     }
   } catch(e) { console.error('Photo upload error:', e); }
@@ -2231,6 +2348,13 @@ window.removeMealPhoto = function(meal) {
   delete window._mealPhotos[meal];
   const wrap = document.getElementById('wt-photo-' + meal);
   if (wrap) wrap.innerHTML = '';
+};
+window.openMealPhotoLightbox = function(src) {
+  const lb = document.createElement('div');
+  lb.className = 'meal-photo-lightbox';
+  lb.innerHTML = `<img src="${src}">`;
+  lb.onclick = () => lb.remove();
+  document.body.appendChild(lb);
 };
 window.wtToggleMealSkipped      = wtToggleMealSkipped;
 // "안 먹었어요" — 토글 + 기존 음식 삭제

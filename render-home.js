@@ -1846,11 +1846,10 @@ async function _renderFriendFeed() {
   const user = getCurrentUser();
   if (!user) { feedEl.innerHTML = ''; return; }
 
-  // 알림
+  // 알림 (병렬 로딩)
   const notifEl = document.getElementById('friend-notifications');
   try {
-    const pending = await getPendingRequests();
-    const notifs = await getMyNotifications();
+    const [pending, notifs] = await Promise.all([getPendingRequests(), getMyNotifications()]);
     const unread = notifs.filter(n => !n.read);
     if (pending.length > 0 || unread.length > 0) {
       notifEl.style.display = 'block';
@@ -1865,17 +1864,39 @@ async function _renderFriendFeed() {
         if (n.type === 'friend_request') continue;
         const a = accounts.find(x => x.id === n.from);
         const nm = a ? _resolveNickname(a, accounts) : (n.from || '').replace(/_/g, '');
-        const ic = n.type === 'like' ? '❤️' : n.type === 'friend_accepted' ? '🤝' : '💬';
-        nh += '<div class="friend-notif-row" onclick="markNotifRead(\'' + n.id + '\')">' + ic + ' ' + nm + '님이 ' + n.message + '</div>';
+        const fullNm = a ? a.lastName + a.firstName.replace(/\(.*\)/, '') : (n.from || '').replace(/_/g, '');
+        const ic = n.type === 'like' ? '❤️' : n.type === 'friend_accepted' ? '🤝' : n.type === 'guestbook' ? '📝' : '💬';
+        const scrollTarget = (n.type === 'like' || n.type === 'reaction') ? 'reactions' : (n.type === 'guestbook' || n.type === 'guestbook_reply') ? 'guestbook' : '';
+        const fid = (n.from || '').replace(/"/g, '&quot;');
+        const fnm = fullNm.replace(/"/g, '&quot;');
+        nh += `<div class="friend-notif-row" data-notif-id="${n.id}" data-notif-fid="${fid}" data-notif-fname="${fnm}" data-notif-scroll="${scrollTarget}">
+          <span>${ic} <span class="notif-name" data-nfid="${fid}" data-nfname="${fnm}">${nm}</span>님이 ${n.message}</span>
+        </div>`;
       }
       notifEl.innerHTML = nh;
+      // 알림 이벤트 위임
+      notifEl.onclick = (e) => {
+        const nameEl = e.target.closest('.notif-name[data-nfid]');
+        const rowEl = e.target.closest('.friend-notif-row[data-notif-id]');
+        if (!rowEl) return;
+        // 읽음 처리
+        if (typeof markNotifRead === 'function') markNotifRead(rowEl.dataset.notifId);
+        if (nameEl) {
+          // 이름 클릭 → 프로필만 열기
+          e.stopPropagation();
+          openFriendProfile(nameEl.dataset.nfid, nameEl.dataset.nfname);
+        } else {
+          // 알림 자체 클릭 → 프로필 + 해당 섹션 스크롤
+          const scrollTo = rowEl.dataset.notifScroll;
+          openFriendProfile(rowEl.dataset.notifFid, rowEl.dataset.notifFname, scrollTo);
+        }
+      };
     } else if (notifEl) { notifEl.style.display = 'none'; }
   } catch(e) { console.warn('[friends] notif:', e); }
 
-  // 피드
+  // 피드 (병렬 로딩)
   try {
-    const friends = await getMyFriends();
-    const accounts = await getAccountList();
+    const [friends, accounts] = await Promise.all([getMyFriends(), getAccountList()]);
     if (!friends.length) {
       // 이웃 없어도 추천은 보여줌
       let emptyMsg = '<div style="text-align:center;padding:16px;color:var(--text-tertiary);font-size:13px;line-height:1.6;">이웃을 추가하고 함께 토마토를 키워보세요.<br>서로 응원하며 더 건강해질 수 있어요.</div>';
@@ -1894,15 +1915,37 @@ async function _renderFriendFeed() {
       return;
     }
     const tk = dateKey(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
-    let html = '';
+    // 최근 3일 dateKey (활동 상태 판정용)
+    const recentKeys = [1, 2, 3].map(i => {
+      const d = new Date(TODAY); d.setDate(d.getDate() - i);
+      return dateKey(d.getFullYear(), d.getMonth(), d.getDate());
+    });
+
+    // 오늘 + 최근 3일 데이터 병렬 로딩
+    const friendWorkouts = await Promise.all(
+      friends.map(f => getFriendWorkout(f.friendId, tk))
+    );
+    const recentWorkouts = await Promise.all(
+      friends.map(f => Promise.all(recentKeys.map(k => getFriendWorkout(f.friendId, k))))
+    );
+
     let activeCount = 0;
-    for (const f of friends) {
+    const FRIEND_PAGE_SIZE = 3;
+    const friendCards = [];
+
+    for (let fi = 0; fi < friends.length; fi++) {
+      const f = friends[fi];
       const acc = accounts.find(a => a.id === f.friendId);
       const nick = acc ? _resolveNickname(acc, accounts) : f.friendId.replace(/_/g, '');
       const fullName = acc ? acc.lastName + acc.firstName.replace(/\(.*\)/, '') : f.friendId.replace(/_/g, '');
-      const name = nick; // 피드에는 별명만
-      const ini = nick.charAt(0);
-      const w = await getFriendWorkout(f.friendId, tk);
+      const name = nick;
+      const w = friendWorkouts[fi];
+
+      // 활동 상태 판정
+      const hasToday = !!(w && ((w.muscles||[]).length || w.exercises?.length || w.breakfast || w.lunch || w.dinner || w.bFoods?.length || w.lFoods?.length || w.dFoods?.length));
+      const hasRecent = !hasToday && recentWorkouts[fi].some(rw => rw && ((rw.muscles||[]).length || rw.exercises?.length || rw.breakfast || rw.lunch || rw.dinner));
+      const statusClass = hasToday ? 'active' : hasRecent ? 'recent' : 'inactive';
+
       let items = '';
       if (w) {
         if ((w.muscles || []).length > 0) {
@@ -1919,13 +1962,24 @@ async function _renderFriendFeed() {
           }
         });
       }
-      if (!items) items = '<div class="friend-feed-item" style="color:var(--text-tertiary);">오늘 아직 기록이 없어요</div>';
-      else activeCount++;
-      html += `<div class="friend-card"><div class="friend-card-header"><span class="friend-avatar" style="font-size:18px;">🍅</span><span class="friend-name" data-fid="${f.friendId}" data-fname="${fullName.replace(/"/g,'&quot;')}" style="cursor:pointer;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;">${name}</span><button class="friend-gift-btn" data-gift-fid="${f.friendId}" data-gift-name="${fullName.replace(/"/g,'&quot;')}" title="토마토 선물">🍅</button></div>${items}</div>`;
+      if (items) activeCount++;
+      friendCards.push(`<div class="friend-card"><div class="friend-card-header"><span class="friend-avatar" style="font-size:18px;">🍅<span class="status-dot ${statusClass}"></span></span><span class="friend-name" data-fid="${f.friendId}" data-fname="${fullName.replace(/"/g,'&quot;')}" style="cursor:pointer;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;">${name}</span><button class="friend-gift-btn" data-gift-fid="${f.friendId}" data-gift-name="${fullName.replace(/"/g,'&quot;')}" title="토마토 선물">🍅</button></div>${items}</div>`);
     }
+
     // 활동 요약 배너
     const banner = activeCount > 0
       ? `<div style="padding:10px 12px;background:var(--primary-bg);border-radius:10px;font-size:12px;font-weight:500;color:var(--primary);margin-bottom:10px;text-align:center;">오늘 ${activeCount}명의 이웃이 기록했어요</div>`
+      : '';
+
+    // 페이징 HTML 생성
+    const totalPages = Math.ceil(friendCards.length / FRIEND_PAGE_SIZE);
+    let pagedHtml = '';
+    for (let p = 0; p < totalPages; p++) {
+      const pageCards = friendCards.slice(p * FRIEND_PAGE_SIZE, (p + 1) * FRIEND_PAGE_SIZE);
+      pagedHtml += `<div class="friend-page" data-page="${p}" style="${p > 0 ? 'display:none' : ''}">${pageCards.join('')}</div>`;
+    }
+    const dotsHtml = totalPages > 1
+      ? `<div class="friend-paging-controls">${Array.from({length:totalPages}, (_,i) => `<button class="friend-paging-dot${i===0?' active':''}" data-fp="${i}"></button>`).join('')}</div>`
       : '';
 
     // 새로운 이웃 (전체 목록 + 페이징)
@@ -1944,10 +1998,22 @@ async function _renderFriendFeed() {
       }
     } catch(e) { console.warn('[suggest]', e); }
 
-    feedEl.innerHTML = banner + html + suggestHtml;
+    feedEl.innerHTML = banner + pagedHtml + dotsHtml + suggestHtml;
     _bindNeighborPaging(feedEl, suggestList, accounts, friends);
+
+    // 이웃 페이징 이벤트
+    feedEl.querySelectorAll('.friend-paging-dot').forEach(dot => {
+      dot.onclick = (e) => {
+        e.stopPropagation();
+        const page = parseInt(dot.dataset.fp);
+        feedEl.querySelectorAll('.friend-page').forEach(p => p.style.display = parseInt(p.dataset.page) === page ? '' : 'none');
+        feedEl.querySelectorAll('.friend-paging-dot').forEach(d => d.classList.toggle('active', parseInt(d.dataset.fp) === page));
+      };
+    });
+
     // 이벤트 위임: 이름 클릭→프로필, 선물 클릭→선물
     feedEl.onclick = (e) => {
+      if (e.target.closest('.friend-paging-dot')) return;
       const nameEl = e.target.closest('.friend-name[data-fid]');
       if (nameEl) { e.preventDefault(); openFriendProfile(nameEl.dataset.fid, nameEl.dataset.fname); return; }
       const giftEl = e.target.closest('.friend-gift-btn[data-gift-fid]');
@@ -2122,7 +2188,7 @@ window.showReactionDetail = async function(btn, tid, dk, field) {
 };
 
 // 친구 프로필 상세
-window.openFriendProfile = async function(friendId, friendName) {
+window.openFriendProfile = async function(friendId, friendName, scrollToSection) {
   const { getFriendWorkout, dateKey: dk2, getAccountList, getMyFriends, getTomatoState: getTS, isAdmin: isA, isAdminGuest: isAG, getDataOwnerId: getOwnId } = await import('./data.js');
   const user = getCurrentUser();
   const myDataId = getOwnId();
@@ -2186,7 +2252,7 @@ window.openFriendProfile = async function(friendId, friendName) {
       if (foods.length || memoText || photo) {
         const foodNames = foods.map(f => f.name).join(', ') || memoText;
         const kcal = foods.reduce((s, f) => s + (f.kcal || 0), 0);
-        const photoHtml = photo ? `<img src="${photo}" style="width:100%;max-height:200px;object-fit:contain;border-radius:8px;margin-top:4px;">` : '';
+        const photoHtml = photo ? `<div class="meal-photo-frame" onclick="openMealPhotoLightbox(this.querySelector('img').src)"><img src="${photo}"></div>` : '';
         const mealField = 'meal_' + m.memo;
         const mealReactCount = getReactionCount(mealField);
         const mealEmojis = getReactionEmojis(mealField);
@@ -2204,17 +2270,23 @@ window.openFriendProfile = async function(friendId, friendName) {
       }
     });
   }
-  if (!todayDietHtml) todayDietHtml = '<div style="font-size:12px;color:var(--text-tertiary);text-align:center;padding:6px 0;">아직 기록이 없어요</div>';
+  if (!todayDietHtml) todayDietHtml = '';
+
+  // 2~3. 주간 운동 데이터 병렬 로딩 (볼륨 성장 + 스트릭 공용)
+  const weekDates = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(TODAY); d.setDate(d.getDate() - i); return d;
+  });
+  const weekWorkouts = await Promise.all(
+    weekDates.map(d => getFriendWorkout(lookupId, dk2(d.getFullYear(), d.getMonth(), d.getDate())))
+  );
 
   // 2. 운동 볼륨 성장 (오늘 vs 직전 운동일)
   let volumeGrowth = '';
   if (todayW?.exercises?.length) {
     const todayVol = (todayW.exercises || []).reduce((s, e) => s + (e.sets || []).reduce((ss, set) => ss + (set.kg||0)*(set.reps||0), 0), 0);
-    // 직전 운동일 찾기 (최대 7일 전까지)
     let prevVol = 0;
-    for (let di = 1; di <= 7; di++) {
-      const pd = new Date(TODAY); pd.setDate(pd.getDate() - di);
-      const pw = await getFriendWorkout(lookupId, dk2(pd.getFullYear(), pd.getMonth(), pd.getDate()));
+    for (let di = 1; di < weekWorkouts.length; di++) {
+      const pw = weekWorkouts[di];
       if (pw?.exercises?.length) {
         prevVol = pw.exercises.reduce((s, e) => s + (e.sets || []).reduce((ss, set) => ss + (set.kg||0)*(set.reps||0), 0), 0);
         break;
@@ -2234,8 +2306,7 @@ window.openFriendProfile = async function(friendId, friendName) {
   // 3. 주간 운동일수 + 스트릭 (연속 기록)
   let workoutDays = 0, streak = 0, streakCounting = true;
   for (let i = 0; i < 7; i++) {
-    const d = new Date(TODAY); d.setDate(d.getDate() - i);
-    const w = await getFriendWorkout(lookupId, dk2(d.getFullYear(), d.getMonth(), d.getDate()));
+    const w = weekWorkouts[i];
     const has = (w?.muscles?.length || w?.exercises?.length) ? true : false;
     if (has) workoutDays++;
     if (streakCounting && has) streak++;
@@ -2371,6 +2442,23 @@ window.openFriendProfile = async function(friendId, friendName) {
 
   // 방명록 로드
   _loadGuestbook(normalizedFriendId);
+
+  // 섹션 스크롤 (알림에서 연결된 경우)
+  if (scrollToSection) {
+    setTimeout(() => {
+      const targetEl = scrollToSection === 'guestbook'
+        ? document.getElementById('guestbook-list')
+        : scrollToSection === 'reactions'
+        ? document.getElementById('guestbook-list')?.closest('div[style*="border-top"]')
+        : null;
+      if (targetEl) {
+        targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        targetEl.style.transition = 'background 0.3s';
+        targetEl.style.background = 'var(--seed-bg-brand-weak)';
+        setTimeout(() => { targetEl.style.background = ''; }, 1500);
+      }
+    }, 400);
+  }
 };
 
 // 토마토 상자 비주얼
@@ -2806,7 +2894,7 @@ window.markNotifFromCenter = async function(id, el) {
 };
 
 // 앱 init 시 호출 가능하게 export
-export { refreshNotifCenter };
+export { refreshNotifCenter, _showToast as showToast };
 
 // ── TDS 토스트 알림 ──────────────────────────────────────────────
 function _showToast(message, duration = 2500) {
