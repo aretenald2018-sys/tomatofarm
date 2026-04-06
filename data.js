@@ -1085,7 +1085,8 @@ export async function saveDay(key, data) {
     !data.stretching && !data.wine_free &&
     !data.breakfast_skipped && !data.lunch_skipped && !data.dinner_skipped &&
     !data.bKcal && !data.lKcal && !data.dKcal && !data.sKcal &&
-    !data.bFoods?.length && !data.lFoods?.length && !data.dFoods?.length && !data.sFoods?.length
+    !data.bFoods?.length && !data.lFoods?.length && !data.dFoods?.length && !data.sFoods?.length &&
+    !data.bPhoto && !data.lPhoto && !data.dPhoto && !data.sPhoto && !data.workoutPhoto
   );
   return _fbOp('saveDay', async () => {
     if (isEmpty) { delete _cache[key]; await deleteDoc(_doc('workouts', key)); }

@@ -576,7 +576,7 @@ body {
 
 /* ── Tab Panel ── */
 .tab-panel {
-  display: none; position: relative; will-change: transform; overflow-x: hidden;
+  display: none; position: relative; overflow-x: hidden;
   padding-top: 52px; /* top-nav 높이 */
   padding-bottom: 60px; /* bottom-tabs 높이 */
   min-height: 100dvh;
@@ -3485,7 +3485,7 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
   transition: all 0.3s ease;
 }
 .wt-detail-section.wt-open {
-  max-height: 2000px; opacity: 1; overflow: visible;
+  max-height: none; opacity: 1; overflow: visible;
   padding: 4px 0;
 }
 

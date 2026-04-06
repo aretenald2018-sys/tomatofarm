@@ -2344,13 +2344,19 @@ window.uploadMealPhoto = async function(meal, input) {
         <button class="meal-photo-delete" onclick="event.stopPropagation();removeMealPhoto('${meal}')">✕</button>
       </div>`;
     }
+    // 사진 업로드 후 자동 저장
+    const { saveWorkoutDay } = await import('./render-workout.js');
+    saveWorkoutDay().catch(e => console.error('Auto-save after photo:', e));
   } catch(e) { console.error('Photo upload error:', e); }
   input.value = '';
 };
-window.removeMealPhoto = function(meal) {
+window.removeMealPhoto = async function(meal) {
   delete window._mealPhotos[meal];
   const wrap = document.getElementById('wt-photo-' + meal);
   if (wrap) wrap.innerHTML = '';
+  // 사진 삭제 후 자동 저장
+  const { saveWorkoutDay } = await import('./render-workout.js');
+  saveWorkoutDay().catch(e => console.error('Auto-save after photo remove:', e));
 };
 window.openMealPhotoLightbox = function(src) {
   const lb = document.createElement('div');
