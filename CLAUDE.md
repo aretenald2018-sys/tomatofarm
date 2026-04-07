@@ -15,6 +15,8 @@
 - `window.*`에 함수를 노출하지 않으면 HTML의 `onclick="함수명()"` 이 작동 안 함. render-workout.js 하단의 `window.xxx = xxx` 블록 확인.
 - `app.js`에서 `import { ... } from './render-workout.js'`에 새 함수를 추가하지 않으면 다른 모듈에서 호출 불가.
 - 사진 필드(`bPhoto`, `lPhoto`, `dPhoto`, `sPhoto`, `workoutPhoto`)를 저장 객체에 빠뜨리면 setDoc 전체 덮어쓰기로 인해 사진이 삭제됨.
+- **레이지 로드 모듈의 함수를 즉시 실행 코드에서 직접 호출하면 `ReferenceError`** — `render-cooking.js` 등 `_lazy()`로 로드되는 모듈의 export 함수(`calcPerServing` 등)를 `app.js`의 동기 함수(`_buildRecipeResultsHtml` 등)에서 바로 쓰면 모듈 로드 전이라 에러. 해결: app.js에 로컬 헬퍼로 복사하거나, 호출부를 async로 바꿔 `await _lazy()`로 가져올 것.
+- **이벤트 위임(`document.addEventListener`)과 HTML `onclick`이 같은 버튼에 동시 등록되면 핸들러가 2번 실행됨** — 토글 함수가 2번 호출되면 원복되어 "안 눌리는" 증상. 하나의 버튼에는 **이벤트 위임 또는 onclick 중 하나만** 사용할 것. 새 버튼 추가 시 기존 이벤트 위임 블록(`_initButtonEventListeners`)에 동일 ID가 등록되어 있지 않은지 반드시 확인.
 
 ## 📋 레시피: 운동 종류 추가 (예: swimming, running)
 

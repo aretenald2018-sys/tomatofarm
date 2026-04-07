@@ -528,10 +528,7 @@ function _initButtonEventListeners() {
     else if (target.closest('#wt-cf-btn-skip')) { e.stopPropagation(); wtSetCFStatus('skip'); }
     else if (target.closest('#wt-cf-btn-health')) { e.stopPropagation(); wtSetCFStatus('health'); }
 
-    // 🚫 굶었음 상태 토글 버튼
-    else if (target.closest('#wt-breakfast-skipped')) { e.stopPropagation(); wtToggleMealSkipped('breakfast'); }
-    else if (target.closest('#wt-lunch-skipped')) { e.stopPropagation(); wtToggleMealSkipped('lunch'); }
-    else if (target.closest('#wt-dinner-skipped')) { e.stopPropagation(); wtToggleMealSkipped('dinner'); }
+    // 🚫 굶었음 상태 토글 — HTML onclick="wtSkipMeal()" 에서 처리 (이벤트 위임 제거: 중복 호출 방지)
   });
 }
 
@@ -1284,3 +1281,5 @@ window.wtFinishWorkout = wtFinishWorkout;
 window.wtRestTimerStart = wtRestTimerStart;
 window.wtRestTimerSkip = wtRestTimerSkip;
 window.wtRestTimerAdjust = wtRestTimerAdjust;
+window.wtAddFoodItem = wtAddFoodItem;
+window.wtRemoveFoodItem = wtRemoveFoodItem;

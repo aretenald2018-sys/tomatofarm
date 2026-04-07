@@ -1570,11 +1570,27 @@ async function removeFromFavorites(itemId) {
   }
 }
 
+// ── 1인분 영양정보 계산 (render-cooking.js 레이지 로드 전에도 사용 가능하도록 로컬 정의) ──
+function _calcPerServing(recipe) {
+  const ings = recipe.ingredients || [];
+  if (!ings.length) return null;
+  const servings = recipe.servings || 1;
+  let kcal=0, protein=0, carbs=0, fat=0, totalGrams=0;
+  ings.forEach(i => { kcal+=i.kcal; protein+=i.protein; carbs+=i.carbs; fat+=i.fat; totalGrams+=i.grams; });
+  return {
+    kcal: Math.round(kcal / servings),
+    protein: Math.round(protein / servings * 10) / 10,
+    carbs: Math.round(carbs / servings * 10) / 10,
+    fat: Math.round(fat / servings * 10) / 10,
+    grams: Math.round(totalGrams / servings),
+  };
+}
+
 // ── 내 요리 → 식단에 추가 ──────────────────────────────────────────
 function selectCookingRecipeForDiet(recipeId) {
   const recipe = getCookingRecords().find(r => r.id === recipeId);
   if (!recipe || !_nutritionSearchMeal) return;
-  const ps = calcPerServing(recipe);
+  const ps = _calcPerServing(recipe);
   if (!ps) return;
 
   const foodItem = {
@@ -1600,7 +1616,7 @@ function _buildRecipeResultsHtml(q) {
 
   let html = `<div style="font-size:12px;font-weight:600;color:var(--text);padding:12px 8px;border-bottom:1px solid var(--border);margin-top:8px">🍳 내 요리</div>`;
   html += recipes.slice(0, 10).map(r => {
-    const ps = calcPerServing(r);
+    const ps = _calcPerServing(r);
     if (!ps) return '';
     return `
       <div class="nutrition-result-row" onclick="selectCookingRecipeForDiet('${r.id}')" style="cursor:pointer">
