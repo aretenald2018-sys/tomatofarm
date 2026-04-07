@@ -1119,11 +1119,8 @@ async function saveCheckinFromModal() {
   };
   await saveBodyCheckin(rec);
 
-  // 식단 플랜의 현재 체중도 동기화
-  const plan = getDietPlan();
-  if (plan._userSet && plan.weight) {
-    await saveDietPlan({ weight });
-  }
+  // plan.weight는 덮어쓰지 않음 (시작 체중 보존 — 게이지 진척률 기준)
+  // TDEE 계산은 렌더링 시 최신 체크인 체중을 주입하여 처리
 
   document.getElementById('checkin-modal').classList.remove('open');
   renderAll();

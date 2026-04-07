@@ -669,7 +669,9 @@ function _renderCalorieTracker() {
   if (!tracker) return;
 
   const plan    = getDietPlan();
-  const metrics = calcDietMetrics(plan);
+  const _chkW = getBodyCheckins();
+  const _lwW = _chkW.length ? _chkW[_chkW.length - 1].weight : null;
+  const metrics = calcDietMetrics(_lwW ? { ...plan, weight: _lwW } : plan);
   if (!plan._userSet || !plan.weight) {
     tracker.style.display = 'none';
     // 인라인 설정 폼 표시
@@ -742,7 +744,7 @@ function _renderCalorieTracker() {
   }
   if (barEl) {
     barEl.style.width     = pct + '%';
-    barEl.style.background = over ? 'var(--diet-bad)' : (isRefeed ? 'var(--cf)' : 'var(--diet-ok)');
+    barEl.style.background = over ? 'var(--diet-bad)' : 'linear-gradient(90deg, #fa342c, #fc6a66)';
   }
 
   // 탄단지 바 (분석 데이터 있으면 현재값 / 목표값 표시)
@@ -754,9 +756,9 @@ function _renderCalorieTracker() {
   // 운동 칼로리 크레딧이 있으면 매크로 목표도 비례 증가
   const macroScale = exerciseCredit > 0 && dayTarget.kcal > 0 ? adjustedGoalKcal / dayTarget.kcal : 1;
   const macros = [
-    { label:'단', cur: curProtein, goal: Math.round(macroTarget.proteinG * macroScale), color:'var(--gym)' },
-    { label:'탄', cur: curCarbs,   goal: Math.round(macroTarget.carbG * macroScale),    color:'var(--cf)' },
-    { label:'지', cur: curFat,     goal: Math.round(macroTarget.fatG * macroScale),     color:'var(--accent)' },
+    { label:'단', cur: curProtein, goal: Math.round(macroTarget.proteinG * macroScale), color:'#fa342c' },
+    { label:'탄', cur: curCarbs,   goal: Math.round(macroTarget.carbG * macroScale),    color:'#fc6a66' },
+    { label:'지', cur: curFat,     goal: Math.round(macroTarget.fatG * macroScale),     color:'#fed4d2' },
   ];
   macroEl.innerHTML = macros.map(({ label, cur, goal, color }) => {
     const pct  = goal > 0 ? Math.min(cur / goal * 100, 100) : 0;

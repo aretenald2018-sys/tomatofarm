@@ -160,7 +160,7 @@ function _renderWeeklyStreak() {
   let html = '<table class="weekly-streak-table"><thead><tr><th></th>';
   dates.forEach(d => {
     const dow = d.getDay();
-    const col = dow === 0 ? '#f87171' : dow === 6 ? '#60a5fa' : 'var(--muted2)';
+    const col = dow === 0 ? '#f87171' : dow === 6 ? '#fc6a66' : 'var(--muted2)';
     const today = isToday(d.getFullYear(), d.getMonth(), d.getDate());
     html += `<th class="${today ? 'ws-today-col' : ''}"><span style="color:${col};font-size:9px;display:block">${DAYS[dow]}</span><span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:${col}">${d.getDate()}</span></th>`;
   });
@@ -239,7 +239,9 @@ function _renderUnitGoal() {
   if (!container) return;
 
   const plan = getDietPlan();
-  const metrics = calcDietMetrics(plan);
+  const _chk0 = getBodyCheckins();
+  const _lw0 = _chk0.length ? _chk0[_chk0.length - 1].weight : null;
+  const metrics = calcDietMetrics(_lw0 ? { ...plan, weight: _lw0 } : plan);
 
   // 시작일 결정: 저장된 값 → 없으면 오늘
   let startStr = getUnitGoalStart();
@@ -364,14 +366,14 @@ function _renderUnitGoal() {
       html += `<td class="ug-cell"><span class="ug-pct muted">—</span></td>`;
     } else {
       const cls = pct >= 100 ? 'perfect' : pct >= 90 ? 'good' : pct >= 70 ? 'warn' : 'bad';
-      const icon = pct >= 100 ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3182f6" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>' : pct >= 90 ? '⚠️' : '❌';
+      const icon = pct >= 100 ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fa342c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>' : pct >= 90 ? '⚠️' : '❌';
       html += `<td class="ug-cell"><span class="ug-pct ${cls}">${pct}%</span><span class="ug-icon">${icon}</span></td>`;
     }
   });
   // 합계 달성률
   if (totalSuccess !== null) {
     const cls = totalSuccess >= 100 ? 'perfect' : totalSuccess >= 90 ? 'good' : totalSuccess >= 70 ? 'warn' : 'bad';
-    const icon = totalSuccess >= 100 ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3182f6" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>' : totalSuccess >= 90 ? '⚠️' : '❌';
+    const icon = totalSuccess >= 100 ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fa342c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>' : totalSuccess >= 90 ? '⚠️' : '❌';
     html += `<td class="ug-cell ug-total-col"><span class="ug-pct ${cls}">${totalSuccess}%</span><span class="ug-icon">${icon}</span></td>`;
   } else {
     html += `<td class="ug-cell ug-total-col"><span class="ug-pct muted">—</span></td>`;
@@ -733,7 +735,6 @@ function _renderDietGoalCard() {
     return;
   }
 
-  const metrics = calcDietMetrics(plan);
   const checkins = getBodyCheckins();
   const latest   = checkins.length ? checkins[checkins.length - 1] : null;
 
@@ -741,7 +742,10 @@ function _renderDietGoalCard() {
   const curWeight = latest?.weight     ?? plan.weight;
   const curBF     = latest?.bodyFatPct ?? plan.bodyFatPct;
 
-  // 체중 진행률
+  // TDEE 계산에는 현재 체중 반영
+  const metrics = calcDietMetrics({ ...plan, weight: curWeight });
+
+  // 체중 진행률 (시작 체중: plan.weight = 식단 설정 원래값)
   const wStart    = plan.weight;
   const wTarget   = plan.targetWeight ?? (plan.weight - metrics.totalWeightLoss);
   const wProgress = wStart > wTarget
@@ -1201,7 +1205,7 @@ function _buildDietStatusHtml(plan, metrics) {
     <div class="tf-diet-section">
       <div class="tf-kcal-header">
         <span class="tf-kcal-label">다이어트 현황</span>
-        <button onclick="openCheckinModal()" style="font-size:11px;color:#3182F6;font-weight:600;background:none;border:none;cursor:pointer;padding:0;">몸무게 입력 →</button>
+        <button onclick="openCheckinModal()" style="font-size:11px;color:#fa342c;font-weight:600;background:none;border:none;cursor:pointer;padding:0;">몸무게 입력 →</button>
       </div>
       <div class="tf-diet-body">
         <div class="tf-diet-stats">
@@ -1242,7 +1246,9 @@ function _renderTomatoCard() {
   if (!heroEl) return;
 
   const plan = getDietPlan();
-  const metrics = calcDietMetrics(plan);
+  const _chk = getBodyCheckins();
+  const _latestW = _chk.length ? _chk[_chk.length - 1].weight : null;
+  const metrics = calcDietMetrics(_latestW ? { ...plan, weight: _latestW } : plan);
   const tomatoState = getTomatoState();
   const qKey = getQuarterKey(TODAY);
   const qCount = tomatoState.quarterlyTomatoes[qKey] || 0;
@@ -1272,64 +1278,13 @@ function _renderTomatoCard() {
   const hoursLeft = 23 - now.getHours();
   const isEvening = now.getHours() >= 18;
 
-  // D1-D4 데이터 수집
-  const fmt = d => `${d.getMonth()+1}/${d.getDate()}`;
-  const DOW = ['일','월','화','수','목','금','토'];
-  const days = cycle.days.map(dk => {
-    const [y,m,d] = dk.split('-').map(Number);
-    return new Date(y, m-1, d);
-  });
-
-  const dayData = days.map(d => {
-    const y = d.getFullYear(), m = d.getMonth(), dd = d.getDate();
-    const future = isFuture(y, m, dd);
-    const diet = getDiet(y, m, dd);
-    const intake = (diet.bKcal||0) + (diet.lKcal||0) + (diet.dKcal||0) + (diet.sKcal||0);
-    const target = getDayTargetKcal(plan, y, m, dd);
-    // 매크로
-    const mealMacro = (prefix, prop) => {
-      const foods = diet[`${prefix}Foods`] || [];
-      if (foods.length > 0) return foods.reduce((s, f) => s + (f[prop] || 0), 0);
-      const fm = { protein: 'Protein', carbs: 'Carbs', fat: 'Fat' };
-      return diet[`${prefix}${fm[prop]}`] || 0;
-    };
-    const pxs = ['b','l','d','s'];
-    const actP = Math.round(pxs.reduce((s, p) => s + mealMacro(p, 'protein'), 0)*10)/10;
-    const actC = Math.round(pxs.reduce((s, p) => s + mealMacro(p, 'carbs'), 0)*10)/10;
-    const actF = Math.round(pxs.reduce((s, p) => s + mealMacro(p, 'fat'), 0)*10)/10;
-    const dow = new Date(y, m, dd).getDay();
-    const isRefeed = (plan.refeedDays || []).includes(dow);
-    const mt = isRefeed ? metrics.refeed : metrics.deficit;
-    return { date: d, y, m, dd, intake, target, future,
-             actP, actC, actF, tgtP: mt.proteinG, tgtC: mt.carbG, tgtF: mt.fatG };
-  });
-
-  // 오늘 칼로리
-  const todayData = dayData.find(d => isToday(d.y, d.m, d.dd));
-  const todayKcal = todayData ? todayData.intake : 0;
-  const todayTarget = todayData ? todayData.target : 0;
-  const kcalOk = todayKcal > 0 && todayKcal <= todayTarget + 50;
-
-  // 진행 단계 dots
-  const dots = [0,1,2,3].map(i => {
-    const d = dayData[i];
-    let status = 'pending';
-    if (!d.future && d.intake > 0) {
-      status = d.intake <= d.target + 50 ? 'done' : 'fail';
-    } else if (i < dayIndex && !d.future) {
-      status = 'fail';
-    }
-    let cls = 'tf-step';
-    if (status === 'done') cls += ' tf-done';
-    else if (status === 'fail') cls += ' tf-fail';
-    if (i === dayIndex) cls += ' tf-current';
-    const stageNote = (i === dayIndex) ? `<span class="tf-step-stage">${stageLabels[i]}</span>` : '';
-    return `<div class="${cls}">
-      <span class="tf-step-icon">${stages[i]}</span>
-      <span class="tf-step-label">${fmt(days[i])}(${DOW[days[i].getDay()]})</span>
-      ${stageNote}
-    </div>`;
-  }).join('<div class="tf-step-line"></div>');
+  // 오늘 칼로리 (칼로리 카드용)
+  const todayDietForKcal = getDiet(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
+  const todayKcal = (todayDietForKcal.bKcal||0) + (todayDietForKcal.lKcal||0) + (todayDietForKcal.dKcal||0) + (todayDietForKcal.sKcal||0);
+  const dow = TODAY.getDay();
+  const isRefeed = (plan.refeedDays || []).includes(dow);
+  const dayTarget = isRefeed ? metrics.refeed : metrics.deficit;
+  const todayTarget = dayTarget.kcal || 0;
 
   // ── 듀오링고 스타일 동적 히어로 라벨 ──
   let heroLabel, heroCount, heroSub, heroEmoji;
@@ -1373,7 +1328,7 @@ function _renderTomatoCard() {
 
   heroEl.innerHTML = `
     <div class="tf-card">
-      <div class="tf-hero" style="background:linear-gradient(135deg, ${['hsl(100,40%,94%)','hsl(45,60%,93%)','hsl(20,65%,93%)','hsl(8,70%,93%)'][dayIndex]} 0%, transparent 100%);">
+      <div class="tf-hero" style="background:linear-gradient(135deg, #fdf0f0, #fff8f7);">
         <div class="tf-hero-left">
           <div class="tf-hero-label">${heroLabel}</div>
           <div class="tf-hero-count">${heroCount}</div>
@@ -1382,13 +1337,6 @@ function _renderTomatoCard() {
         <div class="tf-hero-right">
           <div class="tf-hero-tomato">${heroEmoji}</div>
         </div>
-      </div>
-
-      <div class="tf-progress">
-        <div class="tf-progress-header">
-          <button class="tf-settings-btn" onclick="openUnitGoalDatePicker()">시작일 설정</button>
-        </div>
-        <div class="tf-steps">${dots}</div>
       </div>
     </div>
   `;
@@ -1443,7 +1391,7 @@ function _renderTomatoCard() {
   `;
   homeHero.after(mealCard);
 
-  // ── 체중 여정 카드 (시작 → 현재 → 목표) ──
+  // ── 체중 카드 (color-test.html 디자인) ──
   if (plan._userSet && plan.weight) {
     const checkins = getBodyCheckins();
     const latest = checkins.length ? checkins[checkins.length - 1] : null;
@@ -1452,9 +1400,9 @@ function _renderTomatoCard() {
     const wStart = plan.weight;
     const lost = Math.max(wStart - curWeight, 0);
     const wRange = wStart - wTarget;
-    const wProgress = wRange > 0 ? Math.min(Math.round((wStart - curWeight) / wRange * 100), 100) : 0;
-    // 작은 변화도 시각적으로 보이도록 최소 5% 보장
-    const wProgressVisual = wProgress > 0 ? Math.max(wProgress, 5) : 0;
+    const wProgress = wRange > 0 ? Math.min(Math.round(Math.max(wStart - curWeight, 0) / wRange * 100), 100) : 0;
+    // 감량이 시작되었으면 최소 8% 보장 (시각적으로 움직임 보이도록)
+    const wProgressVisual = (wStart - curWeight) > 0 ? Math.max(wProgress, 8) : 0;
 
     const weightCard = document.createElement('div');
     weightCard.id = 'tf-weight-card';
@@ -1477,25 +1425,19 @@ function _renderTomatoCard() {
       <div class="tf-wt-journey">
         <div class="tf-wt-journey-bar">
           <div class="tf-wt-journey-fill tf-wt-animate" data-width="${wProgressVisual}"></div>
-          <div class="tf-wt-journey-marker tf-wt-animate-marker" data-left="${wProgressVisual}">
-            <span class="tf-wt-marker-label">${curWeight.toFixed(1)}</span>
-          </div>
-        </div>
-        <div class="tf-wt-journey-labels">
-          <span class="tf-wt-journey-lbl">${wStart.toFixed(1)}</span>
-          <span class="tf-wt-journey-lbl">${wTarget.toFixed(1)}kg</span>
+          <div class="tf-wt-journey-marker tf-wt-animate-marker" data-left="${wProgressVisual}"></div>
         </div>
       </div>
     `;
     mealCard.after(weightCard);
 
-    // 등장 애니메이션: 0 → 실제 값으로 채워지는 효과
-    requestAnimationFrame(() => {
+    // DOM 렌더 후 애니메이션 시작 (50ms 딜레이로 레이아웃 완료 보장)
+    setTimeout(() => {
       const fill = weightCard.querySelector('.tf-wt-animate');
       const marker = weightCard.querySelector('.tf-wt-animate-marker');
       if (fill) { fill.style.width = fill.dataset.width + '%'; }
       if (marker) { marker.style.left = marker.dataset.left + '%'; }
-    });
+    }, 50);
   }
 }
 
@@ -1829,7 +1771,7 @@ function _resolveNickname(a, accounts) {
 }
 
 // ── 새로운 이웃 섹션 (Seed Design 스타일 페이징) ─────────────────
-const _NEIGHBOR_PAGE_SIZE = 5;
+const _NEIGHBOR_PAGE_SIZE = 3;
 let _neighborPage = 0;
 
 function _buildNeighborSection(suggestList, accounts, friends) {
@@ -1843,11 +1785,11 @@ function _buildNeighborSection(suggestList, accounts, friends) {
   const rows = pageItems.map(a => {
     const nick = _resolveNickname(a, accounts);
     return `<div class="neighbor-row" style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);" data-nid="${a.id}" data-nnick="${nick.replace(/"/g,'&quot;')}">
-      <div style="width:40px;height:40px;border-radius:50%;background:#EBF4FF;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;cursor:pointer;">🍅</div>
+      <div style="width:40px;height:40px;border-radius:50%;background:#fdf0f0;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;cursor:pointer;">🍅</div>
       <div style="flex:1;min-width:0;cursor:pointer;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;">
         <div style="font-size:14px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${nick}</div>
       </div>
-      <button onclick="event.stopPropagation();quickAddNeighbor('${a.id}')" style="padding:7px 16px;border:none;border-radius:999px;background:#3182F6;color:#fff;font-size:12px;font-weight:600;cursor:pointer;flex-shrink:0;transition:background 0.15s;">이웃 추가</button>
+      <button onclick="event.stopPropagation();quickAddNeighbor('${a.id}')" style="padding:7px 16px;border:none;border-radius:999px;background:#fa342c;color:#fff;font-size:12px;font-weight:600;cursor:pointer;flex-shrink:0;transition:background 0.15s;">이웃 추가</button>
     </div>`;
   }).join('');
 
@@ -1855,18 +1797,18 @@ function _buildNeighborSection(suggestList, accounts, friends) {
   let paging = '';
   if (totalPages > 1) {
     const dots = Array.from({length: totalPages}, (_, i) =>
-      `<button class="nb-page-dot" data-nbpage="${i}" style="width:${i === page ? '20px' : '8px'};height:8px;border-radius:4px;border:none;background:${i === page ? '#3182F6' : '#D1D6DB'};cursor:pointer;padding:0;transition:all 0.2s;"></button>`
+      `<button class="nb-page-dot" data-nbpage="${i}" style="width:${i === page ? '20px' : '8px'};height:8px;border-radius:4px;border:none;background:${i === page ? '#fa342c' : '#D1D6DB'};cursor:pointer;padding:0;transition:all 0.2s;"></button>`
     ).join('');
     paging = `<div style="display:flex;align-items:center;justify-content:center;gap:6px;padding:12px 0 4px;">${dots}</div>`;
     paging += `<div style="text-align:center;font-size:11px;color:#8B95A1;margin-top:2px;">${page + 1} / ${totalPages}</div>`;
   }
 
-  return `<div id="neighbor-section" style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-      <div style="font-size:14px;font-weight:700;color:var(--text);">새로운 이웃</div>
-      <span style="font-size:12px;color:#8B95A1;">${total}명</span>
+  return `<div id="neighbor-section" style="margin-top:12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px 10px;background:#fdf0f0;">
+      <div style="font-size:14px;font-weight:700;color:#ca1d13;">🍅 새로운 이웃</div>
+      <span style="font-size:12px;color:#fe928d;">${total}명</span>
     </div>
-    <div id="neighbor-list">${rows}</div>
+    <div id="neighbor-list" style="padding:0 16px;">${rows}</div>
     ${paging}
   </div>`;
 }
@@ -1973,20 +1915,7 @@ async function _renderFriendFeed() {
     }
 
     if (!friends.length) {
-      // 이웃 없어도 추천은 보여줌
-      let emptyMsg = '<div style="text-align:center;padding:16px;color:var(--text-tertiary);font-size:13px;line-height:1.6;">이웃을 추가하고 함께 토마토를 키워보세요.<br>서로 응원하며 더 건강해질 수 있어요.</div>';
-      // 새로운 이웃 (전체 목록 + 페이징)
-      const user = getCurrentUser();
-      const { isAdminGuest: isAG2 } = await import('./data.js');
-      const myId2 = isAG2() ? '김_태우' : user?.id;
-      const excludeIds = new Set([myId2, '김_태우(guest)']);
-      if (isAG2()) excludeIds.add('김_태우');
-      const sug = accounts.filter(a => a.id && !excludeIds.has(a.id) && !a.id.includes('(guest)'));
-      if (sug.length) {
-        emptyMsg += _buildNeighborSection(sug, accounts, []);
-      }
-      feedEl.innerHTML = emptyMsg;
-      _bindNeighborPaging(feedEl, sug, accounts, []);
+      feedEl.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-tertiary);font-size:13px;line-height:1.6;">이웃을 추가하고 함께 토마토를 키워보세요.<br>서로 응원하며 더 건강해질 수 있어요.</div>';
       return;
     }
     const tk = dateKey(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
@@ -2061,24 +1990,7 @@ async function _renderFriendFeed() {
       ? `<div class="friend-paging-controls">${Array.from({length:totalPages}, (_,i) => `<button class="friend-paging-dot${i===0?' active':''}" data-fp="${i}"></button>`).join('')}</div>`
       : '';
 
-    // 새로운 이웃 (전체 목록 + 페이징)
-    let suggestHtml = '';
-    let suggestList = [];
-    try {
-      const user = getCurrentUser();
-      const { isAdminGuest: isAG } = await import('./data.js');
-      const myId = isAG() ? '김_태우' : user?.id;
-      const friendIds = new Set(friends.map(f => f.friendId));
-      friendIds.add(myId);
-      if (isAG()) { friendIds.add('김_태우(guest)'); friendIds.add('김_태우'); }
-      suggestList = accounts.filter(a => a.id && !friendIds.has(a.id) && !a.id.includes('(guest)'));
-      if (suggestList.length > 0) {
-        suggestHtml = _buildNeighborSection(suggestList, accounts, friends);
-      }
-    } catch(e) { console.warn('[suggest]', e); }
-
-    feedEl.innerHTML = banner + pagedHtml + dotsHtml + suggestHtml;
-    _bindNeighborPaging(feedEl, suggestList, accounts, friends);
+    feedEl.innerHTML = banner + pagedHtml + dotsHtml;
 
     // 이웃 페이징 이벤트 (dot 클릭 + 스와이프)
     let _friendPageCur = 0;
@@ -2178,11 +2090,38 @@ window.openFriendManager = async function() {
         <div style="font-size:14px;font-weight:500;">${nick}</div>
         ${nick !== realName ? `<div style="font-size:11px;color:var(--text-tertiary);">${realName}</div>` : ''}
       </div>
-      <button onclick="event.stopPropagation();openIntroduceFriend('${f.friendId}','${nick.replace(/'/g,"&#39;")}')" style="background:none;border:none;color:var(--seed-blue-600,#5e98fe);font-size:12px;cursor:pointer;padding:4px 8px;">소개</button>
+      <button onclick="event.stopPropagation();openIntroduceFriend('${f.friendId}','${nick.replace(/'/g,"&#39;")}')" style="background:none;border:none;color:var(--seed-red-600,#fc6a66);font-size:12px;cursor:pointer;padding:4px 8px;">소개</button>
       <button onclick="event.stopPropagation();editFriendNickname('${f.friendId}')" style="background:none;border:none;color:var(--primary);font-size:12px;cursor:pointer;padding:4px 8px;${!isAdmin() ? 'display:none;' : ''}">별명</button>
       <button onclick="event.stopPropagation();deleteFriend('${f.reqId}')" style="background:none;border:none;color:var(--text-tertiary);font-size:12px;cursor:pointer;">삭제</button>
     </div>`;
   }).join('');
+
+  // 새로운 이웃 추천 목록 생성
+  let neighborHtml = '';
+  try {
+    const user = getCurrentUser();
+    const { isAdminGuest: isAG } = await import('./data.js');
+    const myId = isAG() ? '김_태우' : user?.id;
+    const friendIds = new Set(friends.map(f => f.friendId));
+    friendIds.add(myId);
+    if (isAG()) { friendIds.add('김_태우(guest)'); friendIds.add('김_태우'); }
+    const suggestList = accounts.filter(a => a.id && !friendIds.has(a.id) && !a.id.includes('(guest)'));
+    if (suggestList.length > 0) {
+      const rows = suggestList.map(a => {
+        const nick = _resolveNickname(a, accounts);
+        return `<div class="neighbor-row" style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);" data-nid="${a.id}" data-nnick="${nick.replace(/"/g,'&quot;')}">
+          <div style="width:40px;height:40px;border-radius:50%;background:#fdf0f0;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;cursor:pointer;">🍅</div>
+          <div style="flex:1;min-width:0;cursor:pointer;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;">
+            <div style="font-size:14px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${nick}</div>
+          </div>
+          <button onclick="event.stopPropagation();quickAddNeighbor('${a.id}')" style="padding:7px 16px;border:none;border-radius:999px;background:#fa342c;color:#fff;font-size:12px;font-weight:600;cursor:pointer;flex-shrink:0;transition:background 0.15s;">이웃 추가</button>
+        </div>`;
+      }).join('');
+      neighborHtml = `
+        <div style="font-size:13px;font-weight:600;color:var(--text-secondary);margin-bottom:8px;margin-top:16px;">새로운 이웃</div>
+        <div id="modal-neighbor-list">${rows}</div>`;
+    }
+  } catch(e) { console.warn('[suggest]', e); }
 
   document.getElementById('dynamic-modal')?.remove();
   const modal = document.createElement('div'); modal.id = 'dynamic-modal'; document.body.appendChild(modal);
@@ -2201,6 +2140,7 @@ window.openFriendManager = async function() {
       </div>
       <div style="font-size:13px;font-weight:600;color:var(--text-secondary);margin-bottom:8px;">내 이웃</div>
       <div id="friend-manager-list">${fl}</div>
+      ${neighborHtml}
       <button onclick="document.getElementById('dynamic-modal')?.remove()" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text-secondary);font-size:13px;font-weight:600;cursor:pointer;margin-top:12px;">닫기</button>
     </div>
   </div>`;
@@ -2212,6 +2152,13 @@ window.openFriendManager = async function() {
     const fname = row.dataset.fname;
     document.getElementById('dynamic-modal')?.remove();
     openFriendProfile(fid, fname);
+  });
+  // 새로운 이웃 행 클릭 → 프로필 열기
+  modal.addEventListener('click', e => {
+    const nrow = e.target.closest('.neighbor-row');
+    if (!nrow || e.target.closest('button')) return;
+    document.getElementById('dynamic-modal')?.remove();
+    openFriendProfile(nrow.dataset.nid, nrow.dataset.nnick);
   });
 };
 
@@ -2677,7 +2624,7 @@ async function _loadGuestbook(targetId) {
       const delBtn = (isMe || isOwner) ? `<button onclick="deleteGb('${e.id}','${targetId}')" style="background:none;border:none;color:var(--text-tertiary);font-size:10px;cursor:pointer;padding:2px 4px;">삭제</button>` : '';
       const replyBtn = !isReply ? `<button onclick="startGbReply('${e.id}','${(e.fromName||'').replace(/'/g,"\\'")}')" style="background:none;border:none;color:var(--text-tertiary);font-size:10px;cursor:pointer;padding:2px 4px;">답글</button>` : '';
       return `<div style="padding:${isReply?'6':'8'}px 0;${isReply?'margin-left:36px;':''}border-bottom:1px solid var(--border);display:flex;align-items:flex-start;gap:8px;">
-        <div style="width:${isReply?'22':'28'}px;height:${isReply?'22':'28'}px;border-radius:50%;background:${isMe?'var(--primary)':'var(--surface3)'};color:${isMe?'#fff':'var(--text-secondary)'};display:flex;align-items:center;justify-content:center;font-size:${isReply?'9':'11'}px;font-weight:700;flex-shrink:0;">${(e.fromName||'?').charAt(0)}</div>
+        <div style="width:${isReply?'22':'28'}px;height:${isReply?'22':'28'}px;border-radius:50%;background:${isMe?'#fdf0f0':'var(--surface3)'};color:${isMe?'var(--primary)':'var(--text-secondary)'};display:flex;align-items:center;justify-content:center;font-size:${isReply?'9':'11'}px;font-weight:700;flex-shrink:0;">${(e.fromName||'?').charAt(0)}</div>
         <div style="flex:1;min-width:0;">
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
             <span style="font-size:${isReply?'11':'12'}px;font-weight:600;color:var(--text);cursor:pointer;text-decoration:underline;" onclick="event.stopPropagation();document.getElementById('dynamic-modal')?.remove();openFriendProfile('${e.from}','${e.fromName || '익명'}')">${e.fromName || '익명'}</span>
@@ -2897,7 +2844,7 @@ function _renderComment(c, isReply, myId, myDataOwnerId, targetId, dateKey, sect
   const replyBtn = !isReply ? `<button onclick="startCommentReply('${c.id}','${(c.fromName||'').replace(/'/g,"\\'")}','${section}')" style="background:none;border:none;color:var(--text-tertiary);font-size:10px;cursor:pointer;padding:2px 4px;">답글</button>` : '';
 
   return `<div id="comment-${c.id}" style="padding:${isReply?'5':'7'}px 0;${isReply?'margin-left:32px;':''}border-bottom:1px solid var(--border);display:flex;align-items:flex-start;gap:7px;">
-    <div style="width:${isReply?'20':'26'}px;height:${isReply?'20':'26'}px;border-radius:50%;background:${isMe?'var(--primary)':'var(--surface3)'};color:${isMe?'#fff':'var(--text-secondary)'};display:flex;align-items:center;justify-content:center;font-size:${isReply?'8':'10'}px;font-weight:700;flex-shrink:0;">${(c.fromName||'?').charAt(0)}</div>
+    <div style="width:${isReply?'20':'26'}px;height:${isReply?'20':'26'}px;border-radius:50%;background:${isMe?'#fdf0f0':'var(--surface3)'};color:${isMe?'var(--primary)':'var(--text-secondary)'};display:flex;align-items:center;justify-content:center;font-size:${isReply?'8':'10'}px;font-weight:700;flex-shrink:0;">${(c.fromName||'?').charAt(0)}</div>
     <div style="flex:1;min-width:0;">
       <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
         <span style="font-size:${isReply?'11':'12'}px;font-weight:600;color:var(--text);cursor:pointer;text-decoration:underline;" onclick="event.stopPropagation();document.getElementById('dynamic-modal')?.remove();openFriendProfile('${c.from}','${c.fromName || '익명'}')">${c.fromName || '익명'}</span>
