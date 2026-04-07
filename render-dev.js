@@ -146,7 +146,7 @@ window.deleteDevTask = async function(id) {
 function _statusInfo(s) {
   const m = {
     pending:    { label: '대기 중',  color: '#f59e0b' },
-    processing: { label: '처리 중',  color: '#3b82f6' },
+    processing: { label: '처리 중',  color: '#fa342c' },
     done:       { label: '완료',     color: '#10b981' },
     error:      { label: '오류',     color: '#ef4444' },
   };

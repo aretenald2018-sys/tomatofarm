@@ -157,7 +157,7 @@ export async function renderAdmin() {
     el.innerHTML = `
     <div style="padding:16px 16px 100px;">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;">
-        <div style="width:40px;height:40px;border-radius:12px;background:#3182F6;display:flex;align-items:center;justify-content:center;font-size:20px;color:#fff;font-weight:800;">🍅</div>
+        <div style="width:40px;height:40px;border-radius:12px;background:#fa342c;display:flex;align-items:center;justify-content:center;font-size:20px;color:#fff;font-weight:800;">🍅</div>
         <div>
           <div style="font-size:17px;font-weight:700;color:var(--text);">토마토어드민</div>
           <div style="font-size:12px;color:var(--text-tertiary);">농장 현황 대시보드</div>
@@ -168,7 +168,7 @@ export async function renderAdmin() {
       <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:20px;">
         ${[
           { label: '전체 사용자', value: totalUsers, unit: '명', color: 'var(--text)' },
-          { label: '오늘 활동', value: activeToday.size, unit: '명', color: '#3182F6' },
+          { label: '오늘 활동', value: activeToday.size, unit: '명', color: '#fa342c' },
           { label: '이웃 관계', value: friendships, unit: '쌍', color: 'var(--text)', sub: pendingReqs > 0 ? `대기 ${pendingReqs}건` : '' },
           { label: '오늘 상호작용', value: todayLikes + todayGb, unit: '', color: 'var(--text)', sub: `리액션 ${todayLikes} · 방명록 ${todayGb}` },
         ].map(m => `
@@ -186,8 +186,8 @@ export async function renderAdmin() {
         <div style="display:flex;align-items:flex-end;gap:6px;height:80px;">
           ${dailyActive.map(d => `
             <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;">
-              <div style="font-size:10px;font-weight:600;color:${d.count > 0 ? '#3182F6' : 'var(--text-tertiary)'};">${d.count}</div>
-              <div style="width:100%;border-radius:6px;background:${d.count > 0 ? '#3182F6' : 'var(--border)'};height:${Math.max((d.count / barMax) * 56, 4)}px;transition:height 0.3s;"></div>
+              <div style="font-size:10px;font-weight:600;color:${d.count > 0 ? '#fa342c' : 'var(--text-tertiary)'};">${d.count}</div>
+              <div style="width:100%;border-radius:6px;background:${d.count > 0 ? '#fa342c' : 'var(--border)'};height:${Math.max((d.count / barMax) * 56, 4)}px;transition:height 0.3s;"></div>
               <div style="font-size:9px;color:var(--text-tertiary);white-space:nowrap;">${d.label.split('(')[0]}</div>
             </div>
           `).join('')}
@@ -200,7 +200,7 @@ export async function renderAdmin() {
         ${userStats.map(u => `
           <div style="padding:10px 0;border-bottom:1px solid var(--border);">
             <div style="display:flex;align-items:center;gap:10px;">
-              <div style="width:32px;height:32px;border-radius:50%;background:${u.isActive ? '#E8F3FF' : 'var(--surface2,#F2F4F6)'};color:${u.isActive ? '#3182F6' : 'var(--text-tertiary)'};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;flex-shrink:0;">${u.nick.charAt(0)}</div>
+              <div style="width:32px;height:32px;border-radius:50%;background:${u.isActive ? '#E8F3FF' : 'var(--surface2,#F2F4F6)'};color:${u.isActive ? '#fa342c' : 'var(--text-tertiary)'};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;flex-shrink:0;">${u.nick.charAt(0)}</div>
               <div style="flex:1;min-width:0;">
                 <div style="display:flex;align-items:center;gap:6px;">
                   <span style="font-size:13px;font-weight:600;color:var(--text);">${u.nick}</span>
@@ -215,7 +215,7 @@ export async function renderAdmin() {
               <button onclick="confirmDeleteUser('${u.uid}','${u.nick}')" style="flex-shrink:0;padding:6px 10px;border:1px solid #fecaca;border-radius:8px;background:#fff5f5;color:#ef4444;font-size:11px;font-weight:600;cursor:pointer;transition:all 0.15s;" onmouseover="this.style.background='#fee2e2'" onmouseout="this.style.background='#fff5f5'">삭제</button>
             </div>
             <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;margin-left:42px;">
-              <span style="font-size:10px;padding:2px 8px;border-radius:999px;background:${u.lastLoginAt ? '#E8F3FF' : 'var(--surface2,#F2F4F6)'};color:${u.lastLoginAt ? '#3182F6' : 'var(--text-tertiary)'};">접속 ${u.lastLoginAt ? _fmtDate(u.lastLoginAt) : '기록없음'}</span>
+              <span style="font-size:10px;padding:2px 8px;border-radius:999px;background:${u.lastLoginAt ? '#E8F3FF' : 'var(--surface2,#F2F4F6)'};color:${u.lastLoginAt ? '#fa342c' : 'var(--text-tertiary)'};">접속 ${u.lastLoginAt ? _fmtDate(u.lastLoginAt) : '기록없음'}</span>
               <span style="font-size:10px;padding:2px 8px;border-radius:999px;background:${u.tutorialDoneAt ? '#ECFDF5' : '#FEF2F2'};color:${u.tutorialDoneAt ? '#059669' : '#DC2626'};">${u.tutorialDoneAt ? '코칭완료' : '코칭미완'}</span>
               <span style="font-size:10px;padding:2px 8px;border-radius:999px;background:${u.patchRead ? '#ECFDF5' : '#FEF2F2'};color:${u.patchRead ? '#059669' : '#DC2626'};">${u.patchRead ? '패치읽음' : '패치안읽음'}</span>
             </div>
@@ -271,7 +271,7 @@ export async function renderAdmin() {
           letters.slice(0, 15).map(l => `
             <div style="padding:10px 0;border-bottom:1px solid var(--border);${!l.read ? 'background:rgba(49,130,246,0.04);margin:0 -16px;padding-left:16px;padding-right:16px;' : ''}" data-letter-id="${l.id}">
               <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-                ${!l.read ? '<span style="width:7px;height:7px;border-radius:50%;background:#3182F6;flex-shrink:0;"></span>' : ''}
+                ${!l.read ? '<span style="width:7px;height:7px;border-radius:50%;background:#fa342c;flex-shrink:0;"></span>' : ''}
                 <span style="font-size:13px;font-weight:600;color:var(--text);">${l.fromName || _name(l.from)}</span>
                 <span style="font-size:10px;color:var(--text-tertiary);margin-left:auto;">${_fmtDate(l.createdAt)}</span>
               </div>
@@ -286,7 +286,7 @@ export async function renderAdmin() {
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:20px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
           <div style="font-size:13px;font-weight:600;color:var(--text);">📋 패치노트 발행</div>
-          <button onclick="openPatchnoteEditor()" style="padding:6px 14px;border:none;border-radius:8px;background:#3182F6;color:#fff;font-size:12px;font-weight:600;cursor:pointer;">+ 새 패치노트</button>
+          <button onclick="openPatchnoteEditor()" style="padding:6px 14px;border:none;border-radius:8px;background:#fa342c;color:#fff;font-size:12px;font-weight:600;cursor:pointer;">+ 새 패치노트</button>
         </div>
         ${patchnotes.length === 0 ? '<div style="font-size:12px;color:var(--text-tertiary);text-align:center;padding:12px;">발행된 패치노트가 없어요</div>' :
           patchnotes.slice(0, 10).map(p => `
@@ -352,15 +352,15 @@ window.openPatchnoteEditor = function() {
       <div style="font-size:17px;font-weight:700;color:var(--text);margin-bottom:16px;">새 패치노트 발행</div>
       <div style="margin-bottom:12px;">
         <label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:6px;">제목</label>
-        <input id="pn-title" type="text" placeholder="예: v1.2 업데이트" style="width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;color:var(--text);background:var(--surface);outline:none;box-sizing:border-box;" onfocus="this.style.borderColor='#3182F6'" onblur="this.style.borderColor='var(--border)'">
+        <input id="pn-title" type="text" placeholder="예: v1.2 업데이트" style="width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;color:var(--text);background:var(--surface);outline:none;box-sizing:border-box;" onfocus="this.style.borderColor='#fa342c'" onblur="this.style.borderColor='var(--border)'">
       </div>
       <div style="margin-bottom:16px;">
         <label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:6px;">내용</label>
-        <textarea id="pn-body" style="width:100%;min-height:140px;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;color:var(--text);background:var(--surface);outline:none;resize:vertical;font-family:inherit;box-sizing:border-box;line-height:1.6;" placeholder="변경 사항을 적어주세요..." onfocus="this.style.borderColor='#3182F6'" onblur="this.style.borderColor='var(--border)'"></textarea>
+        <textarea id="pn-body" style="width:100%;min-height:140px;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;color:var(--text);background:var(--surface);outline:none;resize:vertical;font-family:inherit;box-sizing:border-box;line-height:1.6;" placeholder="변경 사항을 적어주세요..." onfocus="this.style.borderColor='#fa342c'" onblur="this.style.borderColor='var(--border)'"></textarea>
       </div>
       <div style="display:flex;gap:8px;">
         <button onclick="document.getElementById('dynamic-modal')?.remove()" style="flex:1;padding:14px;border:1px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text-secondary);font-size:14px;font-weight:600;cursor:pointer;">취소</button>
-        <button id="pn-publish-btn" onclick="publishPatchnote()" style="flex:2;padding:14px;border:none;border-radius:12px;background:#3182F6;color:#fff;font-size:14px;font-weight:600;cursor:pointer;">발행하기</button>
+        <button id="pn-publish-btn" onclick="publishPatchnote()" style="flex:2;padding:14px;border:none;border-radius:12px;background:#fa342c;color:#fff;font-size:14px;font-weight:600;cursor:pointer;">발행하기</button>
       </div>
     </div>
   </div>`;

@@ -76,7 +76,7 @@ function _makeHead(year, m, days) {
       continue;
     }
     const dow      = new Date(year, m, d).getDay();
-    const col      = dow===0?'#f87171':dow===6?'#60a5fa':'#6b7280';
+    const col      = dow===0?'#f87171':dow===6?'#fc6a66':'#6b7280';
     const cfHealth = getCFHealth(year, m, d);
     const gymHealth= getGymHealth(year, m, d);
 

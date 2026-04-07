@@ -16,7 +16,7 @@ let _accessToken = null;
 const COLOR_TO_GCAL = {
   '#f59e0b': '5',  // banana (yellow)
   '#ef4444': '11', // tomato (red)
-  '#3b82f6': '9',  // blueberry (blue)
+  '#fa342c': '9',  // blueberry (blue)
   '#10b981': '2',  // sage (green)
   '#8b5cf6': '3',  // grape (purple)
   '#ec4899': '4',  // flamingo (pink)
@@ -33,7 +33,7 @@ const GCAL_TO_COLOR = {
   '6':  '#f59e0b', // tangerine → amber
   '7':  '#6b7280', // peacock → gray
   '8':  '#6b7280', // graphite → gray
-  '9':  '#3b82f6', // blueberry → blue
+  '9':  '#fa342c', // blueberry → blue
   '10': '#10b981', // basil → green
   '11': '#ef4444', // tomato → red
 };
@@ -222,7 +222,7 @@ function fromGCalEvent(gcalEv) {
     title: parsed?.cleanTitle || rawTitle,
     start,
     end,
-    color: GCAL_TO_COLOR[gcalEv.colorId] || '#3b82f6',
+    color: GCAL_TO_COLOR[gcalEv.colorId] || '#fa342c',
   };
 
   // 시간 정보: 제목에서 파싱한 시간이 슬롯 시간보다 우선

@@ -1,26 +1,46 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
-  
-  <!-- 토마토 본체 -->
-  <ellipse cx="32" cy="34.56" rx="23.04" ry="21.1968" fill="#e53935"/>
-  <ellipse cx="32" cy="34.56" rx="23.04" ry="21.1968" fill="url(#tg64)"/>
-  <!-- 토마토 하이라이트 -->
-  <ellipse cx="26.240000000000002" cy="27.648000000000003" rx="8.064" ry="5.76" fill="rgba(255,255,255,0.18)" transform="rotate(-20 26.240000000000002 27.648000000000003)"/>
-  <!-- 꼭지 -->
-  <path d="M28.544 15.667200000000005 Q32 8.064000000000004 35.456 15.667200000000005" stroke="#2e7d32" stroke-width="1.6" fill="none" stroke-linecap="round"/>
-  <path d="M30.1568 14.976000000000003 Q25.088 6.912000000000003 23.936 11.520000000000003" stroke="#388e3c" stroke-width="1.28" fill="none" stroke-linecap="round"/>
-  <path d="M33.8432 14.976000000000003 Q38.912 6.912000000000003 40.064 11.520000000000003" stroke="#388e3c" stroke-width="1.28" fill="none" stroke-linecap="round"/>
-  <!-- 잎 -->
-  <ellipse cx="32" cy="14.284800000000004" rx="2.7647999999999997" ry="1.3823999999999999" fill="#43a047"/>
-  <ellipse cx="28.544" cy="15.206400000000002" rx="2.9952" ry="1.3823999999999999" fill="#388e3c" transform="rotate(-30 28.544 15.206400000000002)"/>
-  <ellipse cx="35.456" cy="15.206400000000002" rx="2.9952" ry="1.3823999999999999" fill="#388e3c" transform="rotate(30 35.456 15.206400000000002)"/>
-  <!-- 토마토 골 (세로선) -->
-  <path d="M32 14.976000000000003 Q30.1568 34.56 32 54.8352" stroke="rgba(0,0,0,0.06)" stroke-width="0.512" fill="none"/>
-  <path d="M22.784 18.432000000000002 Q20.48 34.56 23.936 51.84" stroke="rgba(0,0,0,0.04)" stroke-width="0.384" fill="none"/>
-  <path d="M41.216 18.432000000000002 Q43.519999999999996 34.56 40.064 51.84" stroke="rgba(0,0,0,0.04)" stroke-width="0.384" fill="none"/>
   <defs>
-    <radialGradient id="tg64" cx="40%" cy="35%" r="60%">
-      <stop offset="0%" stop-color="#ff7043" stop-opacity="0.4"/>
-      <stop offset="100%" stop-color="#c62828" stop-opacity="0.3"/>
+    <radialGradient id="bg64" cx="35%" cy="30%" r="65%">
+      <stop offset="0%" stop-color="#fc6a66" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#ca1d13" stop-opacity="0.3"/>
     </radialGradient>
   </defs>
+
+  <!-- 몸체 -->
+  <ellipse cx="32" cy="40" rx="21.5" ry="21" fill="#fa342c"/>
+  <ellipse cx="32" cy="40" rx="21.5" ry="21" fill="url(#bg64)"/>
+
+  <!-- 광택 -->
+  <ellipse cx="26" cy="33" rx="7" ry="4.5" fill="white" opacity="0.16"
+           transform="rotate(-20 26 33)"/>
+
+  <!-- 이파리 (몸체 위에 얹힘) -->
+  <path d="M32,24 C28,25 22,26.5 21,25 C20,24 21,22 23,22.5 C26,23.5 30,24 32,24Z"
+        fill="#2E7D32"/>
+  <path d="M32,24 C36,25 42,26.5 43,25 C44,24 43,22 41,22.5 C38,23.5 34,24 32,24Z"
+        fill="#2E7D32"/>
+  <path d="M32,24 C29.5,22 26,18 27,16 C27.8,15 29.5,15 31,16.5 C32,18 32,22 32,24Z"
+        fill="#43a047"/>
+  <path d="M32,24 C34.5,22 38,18 37,16 C36.2,15 34.5,15 33,16.5 C32,18 32,22 32,24Z"
+        fill="#43a047"/>
+  <path d="M32,23.5 C31,20 30.5,15 31.5,13.5 C32,13 32.5,13 33,13.5 C33.5,15 33,20 32,23.5Z"
+        fill="#43a047"/>
+  <!-- 줄기 -->
+  <path d="M31.5,17 Q31.8,14 32.3,13 Q32.8,14 32.8,17" fill="#2E7D32"/>
+
+  <!-- 볼터치 -->
+  <ellipse cx="19" cy="44" rx="3.8" ry="2.2" fill="#fed4d2" opacity="0.5"/>
+  <ellipse cx="45" cy="44" rx="3.8" ry="2.2" fill="#fed4d2" opacity="0.5"/>
+
+  <!-- 왼쪽 눈 -->
+  <circle cx="26.5" cy="39" r="3.3" fill="#921708"/>
+  <circle cx="27.7" cy="37.7" r="1.2" fill="white"/>
+
+  <!-- 오른쪽 눈 -->
+  <circle cx="37.5" cy="39" r="3.3" fill="#921708"/>
+  <circle cx="38.7" cy="37.7" r="1.2" fill="white"/>
+
+  <!-- 입 -->
+  <path d="M30,44.5 Q32,47 34,44.5" stroke="#921708" stroke-width="1.1"
+        fill="none" stroke-linecap="round"/>
 </svg>

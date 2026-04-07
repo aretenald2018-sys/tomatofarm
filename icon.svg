@@ -1,67 +1,54 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <defs>
-    <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#f5d680"/>
-      <stop offset="50%" stop-color="#d4a843"/>
-      <stop offset="100%" stop-color="#b8860b"/>
-    </linearGradient>
-    <linearGradient id="g2" x1="0.5" y1="0" x2="0.5" y2="1">
-      <stop offset="0%" stop-color="#ffe4a0"/>
-      <stop offset="100%" stop-color="#c49530"/>
-    </linearGradient>
+    <radialGradient id="bodyGrad" cx="35%" cy="30%" r="65%">
+      <stop offset="0%" stop-color="#fc6a66" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#ca1d13" stop-opacity="0.35"/>
+    </radialGradient>
   </defs>
 
-  <!-- 배경 -->
-  <rect width="512" height="512" rx="96" fill="#0a0e1a"/>
+  <!-- ===== 몸체 (먼저 그려서 뒤로) ===== -->
+  <ellipse cx="256" cy="320" rx="170" ry="165" fill="#fa342c"/>
+  <ellipse cx="256" cy="320" rx="170" ry="165" fill="url(#bodyGrad)"/>
 
-  <!-- 외곽 가몬 원 -->
-  <circle cx="256" cy="256" r="224" fill="none" stroke="url(#g1)" stroke-width="2.5"/>
-  <circle cx="256" cy="256" r="212" fill="none" stroke="url(#g1)" stroke-width="0.8" opacity="0.4"/>
+  <!-- 광택 -->
+  <ellipse cx="210" cy="270" rx="55" ry="38" fill="white" opacity="0.16"
+           transform="rotate(-20 210 270)"/>
 
-  <!-- 내곽 팔각형 프레임 -->
-  <polygon points="256,68 393,130 430,268 393,405 256,462 119,405 82,268 119,130"
-           fill="none" stroke="url(#g1)" stroke-width="1" opacity="0.2"/>
+  <!-- ===== 이파리 (몸체 위에 얹힘, 별 모양 5갈래) ===== -->
+  <!-- 왼쪽 아래 -->
+  <path d="M256,195 C232,198 190,208 172,200 C165,190 172,178 186,182 C208,188 244,194 256,195Z"
+        fill="#2E7D32"/>
+  <!-- 오른쪽 아래 -->
+  <path d="M256,195 C280,198 322,208 340,200 C347,190 340,178 326,182 C304,188 268,194 256,195Z"
+        fill="#2E7D32"/>
+  <!-- 왼쪽 위 -->
+  <path d="M256,192 C236,182 205,162 195,145 C198,132 210,128 218,136 C232,150 250,180 256,192Z"
+        fill="#43a047"/>
+  <!-- 오른쪽 위 -->
+  <path d="M256,192 C276,182 307,162 317,145 C314,132 302,128 294,136 C280,150 262,180 256,192Z"
+        fill="#43a047"/>
+  <!-- 가운데 위 -->
+  <path d="M256,190 C248,172 240,140 246,122 C252,115 260,115 266,122 C272,140 264,172 256,190Z"
+        fill="#43a047"/>
 
-  <!-- T: 토리이(鳥居) 문 형상 — 상단 가로보 + 중심 기둥 -->
-  <!-- 상단 가로보 (지붕처럼 살짝 곡선) -->
-  <path d="M148,155 Q256,135 364,155" fill="none" stroke="url(#g2)" stroke-width="10" stroke-linecap="round"/>
-  <!-- 가로보 아래 받침선 -->
-  <path d="M165,172 Q256,160 347,172" fill="none" stroke="url(#g2)" stroke-width="5" stroke-linecap="round"/>
-  <!-- 중심 기둥 -->
-  <line x1="256" y1="172" x2="256" y2="295" stroke="url(#g2)" stroke-width="9" stroke-linecap="round"/>
+  <!-- 꼭지 줄기 -->
+  <path d="M253,165 Q254,148 258,140 Q262,148 261,165" fill="#2E7D32"/>
 
-  <!-- W: 산(山) 봉우리 3개 형상 — 기둥 아래에서 갈라짐 -->
-  <!-- 왼쪽 봉우리 -->
-  <path d="M256,295 L175,410" fill="none" stroke="url(#g2)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
-  <!-- 왼쪽 되돌아옴 -->
-  <path d="M175,410 L216,340" fill="none" stroke="url(#g2)" stroke-width="7" stroke-linecap="round"/>
-  <!-- 중앙 봉우리 -->
-  <path d="M216,340 L256,420" fill="none" stroke="url(#g2)" stroke-width="7" stroke-linecap="round"/>
-  <!-- 오른쪽 되돌아옴 -->
-  <path d="M256,420 L296,340" fill="none" stroke="url(#g2)" stroke-width="7" stroke-linecap="round"/>
-  <!-- 오른쪽 봉우리 -->
-  <path d="M296,340 L337,410" fill="none" stroke="url(#g2)" stroke-width="8" stroke-linecap="round"/>
+  <!-- ===== 얼굴 ===== -->
+  <ellipse cx="150" cy="350" rx="32" ry="18" fill="#fed4d2" opacity="0.55"/>
+  <ellipse cx="362" cy="350" rx="32" ry="18" fill="#fed4d2" opacity="0.55"/>
 
-  <!-- 장식: T 양쪽 끝 마루가와라(丸瓦) 느낌의 원 -->
-  <circle cx="148" cy="155" r="8" fill="url(#g1)" opacity="0.6"/>
-  <circle cx="364" cy="155" r="8" fill="url(#g1)" opacity="0.6"/>
+  <!-- 왼쪽 눈 -->
+  <circle cx="216" cy="315" r="26" fill="#921708"/>
+  <circle cx="225" cy="305" r="9.5" fill="white"/>
+  <circle cx="220" cy="311" r="4.2" fill="white" opacity="0.4"/>
 
-  <!-- 장식: T-W 연결부 다이아몬드 -->
-  <polygon points="256,282 268,295 256,308 244,295" fill="url(#g1)" opacity="0.5"/>
+  <!-- 오른쪽 눈 -->
+  <circle cx="296" cy="315" r="26" fill="#921708"/>
+  <circle cx="305" cy="305" r="9.5" fill="white"/>
+  <circle cx="300" cy="311" r="4.2" fill="white" opacity="0.4"/>
 
-  <!-- 장식: 4방향 작은 꽃잎 (가몬 느낌) -->
-  <g opacity="0.25" fill="url(#g1)">
-    <ellipse cx="256" cy="55" rx="4" ry="10"/>
-    <ellipse cx="256" cy="462" rx="4" ry="10"/>
-    <ellipse cx="55" cy="256" rx="10" ry="4"/>
-    <ellipse cx="457" cy="256" rx="10" ry="4"/>
-  </g>
-
-  <!-- 장식: 대각선 작은 점 (팔방) -->
-  <g fill="url(#g1)" opacity="0.15">
-    <circle cx="108" cy="108" r="3"/>
-    <circle cx="404" cy="108" r="3"/>
-    <circle cx="108" cy="404" r="3"/>
-    <circle cx="404" cy="404" r="3"/>
-  </g>
+  <!-- 입 -->
+  <path d="M242,358 Q256,376 270,358" stroke="#921708" stroke-width="5"
+        fill="none" stroke-linecap="round"/>
 </svg>

@@ -396,7 +396,7 @@ export async function refreshFinMarketData() {
 function _renderContextLine() {
   const el = document.getElementById('fin-context-line');
   if (!el) return;
-  const UP = '#ef4444', DN = '#3b82f6';
+  const UP = '#ef4444', DN = '#fa342c';
   const parts = [];
   // F&G
   if (_fngData?.score != null) {
@@ -435,7 +435,7 @@ function _renderPortfolioSummary() {
   const pnl = totalVal - totalCost;
   const pnlPct = totalCost > 0 ? (pnl / totalCost * 100) : 0;
   const pnlKrw = pnl * _fxRate;
-  const UP = '#ef4444', DN = '#3b82f6';
+  const UP = '#ef4444', DN = '#fa342c';
   const c = pnl >= 0 ? UP : DN;
   const sign = pnl >= 0 ? '+' : '';
 
@@ -454,7 +454,7 @@ function _renderStockList() {
     el.innerHTML = '<div style="color:var(--muted);font-size:11px;padding:20px;text-align:center">M7 데이터 로딩 중...</div>';
     return;
   }
-  const UP = '#ef4444', DN = '#3b82f6';
+  const UP = '#ef4444', DN = '#fa342c';
   const swingPos = _getSwingPositions();
   const pbPos = _getPbPositions();
 
@@ -501,8 +501,8 @@ function _compactBadge(consensus, label) {
     'STRONGLY BUY': {bg:'rgba(239,68,68,0.15)',c:'#ef4444',t:'S.BUY'},
     'BUY': {bg:'rgba(239,68,68,0.12)',c:'#ef4444',t:'BUY'},
     'NEUTRAL': {bg:'rgba(148,163,184,0.15)',c:'var(--text-secondary)',t:'HOLD'},
-    'SELL': {bg:'rgba(59,130,246,0.12)',c:'#3b82f6',t:'SELL'},
-    'STRONGLY SELL': {bg:'rgba(59,130,246,0.15)',c:'#3b82f6',t:'S.SELL'},
+    'SELL': {bg:'rgba(59,130,246,0.12)',c:'#fa342c',t:'SELL'},
+    'STRONGLY SELL': {bg:'rgba(59,130,246,0.15)',c:'#fa342c',t:'S.SELL'},
     'OFF': {bg:'rgba(148,163,184,0.1)',c:'var(--text-tertiary)',t:'OFF'},
   };
   const s = m[consensus] || m['NEUTRAL'];
@@ -521,7 +521,7 @@ export async function openStockDetail(sym) {
   modal.style.display = 'flex';
   const t = M7.find(x => x.sym === sym) || { sym, name: '' };
   const d = _swingData[sym];
-  const UP = '#ef4444', DN = '#3b82f6';
+  const UP = '#ef4444', DN = '#fa342c';
   const chg = d?.change || 0;
   const chgC = chg > 0 ? UP : chg < 0 ? DN : 'var(--muted)';
   document.getElementById('sd-header').innerHTML = `
@@ -647,7 +647,7 @@ function _renderDetailStratA(sym, el) {
       <div class="fin-ind-val">${bbSig.val} ${_dirBadge(bbSig.dir)}</div>
     </div>
     <div class="fin-ind-row">
-      <div><div class="fin-ind-label">Stochastic (14,3,3)</div>${stochSig.cross ? `<div class="fin-ind-sub" style="color:${stochSig.dir==='B'?'#ef4444':'#3b82f6'};font-weight:600">${stochSig.cross}</div>` : ''}</div>
+      <div><div class="fin-ind-label">Stochastic (14,3,3)</div>${stochSig.cross ? `<div class="fin-ind-sub" style="color:${stochSig.dir==='B'?'#ef4444':'#fa342c'};font-weight:600">${stochSig.cross}</div>` : ''}</div>
       <div class="fin-ind-val">${stochSig.val} ${_dirBadge(stochSig.dir)}</div>
     </div>
     ${_renderPosCard(sym, pos, 'swing')}`;
@@ -709,7 +709,7 @@ function _renderDetailStratB(sym, el) {
 }
 
 function _renderPosCard(sym, pos, type) {
-  const UP = '#ef4444', DN = '#3b82f6';
+  const UP = '#ef4444', DN = '#fa342c';
   const buyFn = type === 'swing' ? 'openSwingBuy' : 'openPbBuy';
   const editFn = type === 'swing' ? 'editSwingPosition' : 'editPbPosition';
   const closeFn = type === 'swing' ? 'closeSwingPosition' : 'closePbPosition';
@@ -796,7 +796,7 @@ function _updateTooltipBar(idx) {
   if (c == null) { bar.style.display = 'none'; return; }
   const prev = idx > 0 ? d.closes[idx - 1] : o;
   const chg = prev ? ((c - prev) / prev * 100) : 0;
-  const UP = '#ef4444', DN = '#3b82f6';
+  const UP = '#ef4444', DN = '#fa342c';
   const col = chg >= 0 ? UP : DN;
   const sign = chg >= 0 ? '+' : '';
   const rsi = d.rsiValues[idx];
@@ -903,7 +903,7 @@ async function _loadStockChart(sym, range) {
     const firstClose = closes.find(c => c != null) || 0;
     const lastClose = closes.filter(c => c != null).pop() || 0;
     const isUp = lastClose >= firstClose;
-    const UP = '#ef4444', DN = '#3b82f6';
+    const UP = '#ef4444', DN = '#fa342c';
     const lineColor = isUp ? UP : DN;
 
     // 공통: X축 패딩 (오른쪽에 여유 공간 → 오늘 터치 가능)
@@ -1203,7 +1203,7 @@ async function _loadLiveChart(sym, showLoading = true, rangeOverride) {
     // 가격 변동 계산
     const change = prevClose ? ((curPrice - prevClose) / prevClose * 100) : 0;
     const changeDollar = prevClose ? (curPrice - prevClose) : 0;
-    const UP = '#ef4444', DN = '#3b82f6';
+    const UP = '#ef4444', DN = '#fa342c';
     const chgC = change >= 0 ? UP : DN;
     const sign = change >= 0 ? '+' : '';
 
@@ -1611,7 +1611,7 @@ function _signalBadge(signal) {
     'BUY': { bg: '#4c0519', color: '#f87171', text: 'BUY' },
     'NEUTRAL': { bg: '#1e293b', color: '#94a3b8', text: 'HOLD' },
     'SELL': { bg: '#172554', color: '#93c5fd', text: 'SELL' },
-    'STRONGLY SELL': { bg: '#172554', color: '#60a5fa', text: 'S.SELL' },
+    'STRONGLY SELL': { bg: '#172554', color: '#fc6a66', text: 'S.SELL' },
   };
   const c = colors[signal] || colors['NEUTRAL'];
   return `<span style="display:inline-block;padding:2px 6px;border-radius:4px;font-size:9px;font-weight:700;font-family:'JetBrains Mono',monospace;background:${c.bg};color:${c.color};white-space:nowrap">${c.text}</span>`;
@@ -1619,7 +1619,7 @@ function _signalBadge(signal) {
 
 function _dirBadge(dir) {
   // B=빨강, S=파랑, N=회색
-  const m = { B: { bg: '#4c0519', c: '#f87171' }, S: { bg: '#172554', c: '#60a5fa' }, N: { bg: '#1e293b', c: '#94a3b8' } };
+  const m = { B: { bg: '#4c0519', c: '#f87171' }, S: { bg: '#172554', c: '#fc6a66' }, N: { bg: '#1e293b', c: '#94a3b8' } };
   const d = m[dir] || m.N;
   return `<span style="display:inline-block;width:18px;height:18px;line-height:18px;text-align:center;border-radius:4px;font-size:10px;font-weight:700;font-family:'JetBrains Mono',monospace;background:${d.bg};color:${d.c}">${dir}</span>`;
 }
@@ -1637,7 +1637,7 @@ function _renderSwingJudge() {
   const positions = _getSwingPositions();
   // 주가색상: 상승=빨강, 하락=파랑 (한국식)
   const UP = '#ef4444';
-  const DN = '#3b82f6';
+  const DN = '#fa342c';
   const _chgColor = v => v > 0 ? UP : v < 0 ? DN : 'var(--muted)';
 
   // 각 종목별 지표 계산
@@ -1946,7 +1946,7 @@ function _renderPullbackJudge() {
 
   const positions = _getPbPositions();
   const UP = '#ef4444';
-  const DN = '#3b82f6';
+  const DN = '#fa342c';
   const _chgColor = v => v > 0 ? UP : v < 0 ? DN : 'var(--muted)';
 
   const results = M7.map(t => {
@@ -2347,7 +2347,7 @@ function _renderRecent5Chart() {
   const xLabels = [];
   for (let y = startYear; y <= currentYear; y++) xLabels.push(y);
 
-  const benchColors = ['#f59e0b', '#3b82f6', '#a855f7', '#ec4899', '#06b6d4'];
+  const benchColors = ['#f59e0b', '#fa342c', '#a855f7', '#ec4899', '#06b6d4'];
   const planColors = ['#8b5cf6', '#d946ef', '#14b8a6', '#f97316', '#64748b'];
   const datasets = [];
 
@@ -2479,7 +2479,7 @@ function _renderMainChart() {
   const xLabels = _buildXAxisLabels([...allYears]);
   if (xLabels.length === 0) return;
 
-  const benchColors = ['#f59e0b', '#3b82f6', '#a855f7', '#ec4899', '#06b6d4'];
+  const benchColors = ['#f59e0b', '#fa342c', '#a855f7', '#ec4899', '#06b6d4'];
   const planColors = ['#8b5cf6', '#d946ef', '#14b8a6', '#f97316', '#64748b'];
   const datasets = [];
 
@@ -2722,7 +2722,7 @@ function _renderFlowChart() {
           label: '가처분여력',
           data: discretionaryData,
           backgroundColor: 'rgba(59, 130, 246, 0.5)',
-          borderColor: '#3b82f6',
+          borderColor: '#fa342c',
           borderWidth: 1,
           barPercentage: 0.6,
         },

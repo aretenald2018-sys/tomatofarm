@@ -15,7 +15,7 @@ const MOVIE_TAGS = [
   { id: 'gv', label: 'GV', color: '#f472b6' },
   { id: 'screening', label: '상영회', color: '#06b6d4' },
   { id: 'release', label: '개봉일', color: '#fb923c' },
-  { id: 'rerelease', label: '재개봉', color: '#3b82f6' },
+  { id: 'rerelease', label: '재개봉', color: '#fa342c' },
   { id: 'vip', label: '우대인사', color: '#10b981' },
   { id: 'festival', label: '영화제', color: '#f59e0b' },
 ];
