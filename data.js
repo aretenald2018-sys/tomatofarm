@@ -841,6 +841,8 @@ let _settings = {
   unit_goal_start: null,
   calendar_rows: null,  // null = 기본값 사용, [{id:'gym',label:'헬스',emoji:'🏋️'}, ...]
   tomato_state: { quarterlyTomatoes: {}, totalTomatoes: 0, giftedReceived: 0, giftedSent: 0 },
+  milestone_shown: {},     // { workout_7: true, diet_30: true, ... }
+  streak_freezes: [],      // [{ date, type, usedAt }]
 };
 
 function _setSyncStatus(state) {
@@ -1089,6 +1091,35 @@ export async function saveDay(key, data) {
     !data.bFoods?.length && !data.lFoods?.length && !data.dFoods?.length && !data.sFoods?.length &&
     !data.bPhoto && !data.lPhoto && !data.dPhoto && !data.sPhoto && !data.workoutPhoto
   );
+  // 사진 데이터가 너무 크면 자동 제거하여 1MB 제한 방지
+  if (!isEmpty) {
+    const json = JSON.stringify(data);
+    if (json.length > 900000) {
+      console.warn('[data] 문서 크기 초과 위험 (' + Math.round(json.length/1024) + 'KB) — 사진 품질 축소');
+      const photoKeys = ['bPhoto','lPhoto','dPhoto','sPhoto','workoutPhoto'];
+      for (const pk of photoKeys) {
+        if (data[pk] && data[pk].length > 100000) {
+          // 기존 사진을 더 작게 재압축
+          try {
+            const img = new Image();
+            const loaded = new Promise((res, rej) => { img.onload = res; img.onerror = rej; });
+            img.src = data[pk];
+            await loaded;
+            const c = document.createElement('canvas');
+            const MAX = 320;
+            let w = img.width, h = img.height;
+            if (w > MAX || h > MAX) {
+              if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+              else { w = Math.round(w * MAX / h); h = MAX; }
+            }
+            c.width = w; c.height = h;
+            c.getContext('2d').drawImage(img, 0, 0, w, h);
+            data[pk] = c.toDataURL('image/jpeg', 0.4);
+          } catch { data[pk] = null; }
+        }
+      }
+    }
+  }
   return _fbOp('saveDay', async () => {
     if (isEmpty) { delete _cache[key]; await deleteDoc(_doc('workouts', key)); }
     else { _cache[key] = data; await setDoc(_doc('workouts', key), data); }
@@ -1360,8 +1391,8 @@ export function imageToBase64(file) {
     reader.onload = () => {
       const img = new Image();
       img.onload = () => {
-        // 최대 1024px로 리사이징 (Anthropic API 권장 + fetch 안정성)
-        const MAX = 1024;
+        // 최대 512px로 리사이징 (Firestore 1MB 문서 제한 대응)
+        const MAX = 512;
         let { width, height } = img;
         if (width > MAX || height > MAX) {
           if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
@@ -1370,7 +1401,7 @@ export function imageToBase64(file) {
         const canvas = document.createElement('canvas');
         canvas.width = width; canvas.height = height;
         canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
         resolve(dataUrl.split(',')[1]);
       };
       img.onerror = reject;
@@ -1568,6 +1599,30 @@ let _tomatoCycles = []; // 완료된 사이클 캐시
 
 export const getTomatoState = () => _settings.tomato_state || { quarterlyTomatoes: {}, totalTomatoes: 0, giftedReceived: 0, giftedSent: 0 };
 export const saveTomatoState = (state) => { _settings.tomato_state = state; return _saveSetting('tomato_state', state); };
+
+// ── 마일스톤 기록 ───────────────────────────────────────────────
+export const getMilestoneShown = () => _settings.milestone_shown || {};
+export const saveMilestoneShown = (obj) => { _settings.milestone_shown = obj; return _saveSetting('milestone_shown', obj); };
+
+// ── Streak Freeze ───────────────────────────────────────────────
+export function getStreakFreezes() { return _settings.streak_freezes || []; }
+export async function useStreakFreeze(type) {
+  const state = getTomatoState();
+  const available = state.totalTomatoes + state.giftedReceived - state.giftedSent;
+  if (available <= 0) return { error: '토마토가 부족해요.' };
+  const freezes = getStreakFreezes();
+  const now = Date.now();
+  const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
+  const recentFreeze = freezes.find(f => f.type === type && f.usedAt > weekAgo);
+  if (recentFreeze) return { error: '이번 주에는 이미 사용했어요. (주 1회)' };
+  const today = new Date();
+  const dateStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+  freezes.push({ date: dateStr, type, usedAt: now });
+  state.giftedSent = (state.giftedSent || 0) + 1; // 토마토 1개 차감 (giftedSent로 차감)
+  await _saveSetting('streak_freezes', freezes);
+  await saveTomatoState(state);
+  return { ok: true };
+}
 
 export async function saveTomatoCycle(cycleResult) {
   _tomatoCycles.push(cycleResult);

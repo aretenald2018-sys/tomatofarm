@@ -27,6 +27,8 @@ import { TODAY, getMuscles, getCF, getDiet, dietDayOk,
          getGuestbook, writeGuestbook, deleteGuestbookEntry,
          getComments, writeComment, editComment, deleteComment,
          introduceFriend, getDisplayName,
+         getMilestoneShown, saveMilestoneShown,
+         getStreakFreezes, useStreakFreeze,
          recordAction }  from './data.js';
 import { calcTomatoCycle, evaluateCycleResult, getQuarterKey,
          isDietDaySuccess, getDayTargetKcal as calcDayTarget }  from './calc.js';
@@ -52,6 +54,7 @@ export function renderHome() {
     const dietGoalEl = document.getElementById('card-diet-goal');
     if (dietGoalEl) dietGoalEl.style.display = 'none';
     _renderFriendFeed();
+    _renderLeaderboard();
   } catch(e) {
     console.error('[renderHome] 렌더링 오류:', e);
   }
@@ -107,7 +110,151 @@ function _renderHero() {
       <span class="hero-sub-dot">·</span>
       <span class="hero-sub">🥗 식단 ${diet}일</span>
     </div>
+    <div class="streak-freeze-row" id="streak-freeze-row"></div>
+    <div class="hero-social-proof" id="hero-social-proof" style="display:none;"></div>
   `;
+
+  // 마일스톤 체크
+  _checkStreakMilestone('workout', workout);
+  _checkStreakMilestone('diet', diet);
+  _renderStreakFreeze();
+}
+
+// ── 마일스톤 체크 ────────────────────────────────────────────────
+function _checkStreakMilestone(type, days) {
+  const milestones = [100, 50, 30, 14, 7];
+  const shown = getMilestoneShown();
+  for (const m of milestones) {
+    if (days >= m && !shown[`${type}_${m}`]) {
+      shown[`${type}_${m}`] = true;
+      saveMilestoneShown(shown);
+      setTimeout(() => {
+        if (window.openStreakMilestone) window.openStreakMilestone(type, m);
+      }, 500);
+      break; // 가장 높은 미달성 마일스톤만 표시
+    }
+  }
+}
+
+// ── 소셜 히어로 업데이트 ─────────────────────────────────────────
+function _updateHeroSocialProof(activeNames) {
+  const el = document.getElementById('hero-social-proof');
+  if (!el || !activeNames.length) return;
+  let text = '';
+  if (activeNames.length === 1) text = `${activeNames[0]}님도 오늘 달리고 있어요`;
+  else if (activeNames.length === 2) text = `${activeNames[0]}, ${activeNames[1]}님도 함께하고 있어요`;
+  else text = `${activeNames[0]}, ${activeNames[1]} 외 ${activeNames.length - 2}명이 함께하고 있어요`;
+  el.textContent = text;
+  el.style.display = '';
+}
+
+// ── Streak Freeze UI ─────────────────────────────────────────────
+function _renderStreakFreeze() {
+  const el = document.getElementById('streak-freeze-row');
+  if (!el) return;
+  const freezes = getStreakFreezes();
+  const now = Date.now();
+  const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
+  const usedThisWeek = freezes.filter(f => f.usedAt > weekAgo);
+  const tomatoState = getTomatoState();
+  const available = tomatoState.totalTomatoes + tomatoState.giftedReceived - tomatoState.giftedSent;
+  const canUse = available > 0 && usedThisWeek.length === 0;
+  el.innerHTML = `<button class="streak-freeze-btn${canUse ? '' : ' disabled'}" onclick="useStreakFreezeUI()" ${canUse ? '' : 'disabled'}>
+    🧊 Streak Freeze <span style="font-weight:400;opacity:0.7;">(🍅1개 · 주1회)</span>
+  </button>`;
+}
+
+window.useStreakFreezeUI = async function() {
+  if (!confirm('토마토 1개를 사용하여 오늘의 스트릭을 보호할까요?')) return;
+  const result = await useStreakFreeze('workout');
+  if (result.error) { _showToast(result.error, 2500, 'error'); return; }
+  _haptic('success');
+  _showToast('🧊 스트릭이 보호됐어요!', 2500, 'success');
+  _renderStreakFreeze();
+  renderHome();
+};
+
+// ── 주간 리더보드 ────────────────────────────────────────────────
+async function _renderLeaderboard() {
+  const cardEl = document.getElementById('card-leaderboard');
+  const contentEl = document.getElementById('leaderboard-content');
+  if (!cardEl || !contentEl) return;
+
+  try {
+    const friends = await getMyFriends();
+    if (!friends.length) { cardEl.style.display = 'none'; return; }
+    const accounts = await getAccountList();
+    const user = getCurrentUser();
+    if (!user) return;
+
+    // 이번 주 월~일 dateKey 생성
+    const weekKeys = [];
+    const now = new Date(TODAY);
+    const dayOfWeek = now.getDay() || 7; // 일요일=7
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - dayOfWeek + 1);
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      weekKeys.push(dateKey(d.getFullYear(), d.getMonth(), d.getDate()));
+    }
+
+    // 나 + 친구들의 주간 활동일수 계산
+    const participants = [{ id: user.id, name: '나', isMe: true }];
+    for (const f of friends) {
+      const acc = accounts.find(a => a.id === f.friendId);
+      const name = acc ? _resolveNickname(acc, accounts) : f.friendId.replace(/_/g, '');
+      participants.push({ id: f.friendId, name, isMe: false });
+    }
+
+    // 병렬 로딩
+    const results = await Promise.allSettled(
+      participants.map(async p => {
+        if (p.isMe) {
+          // 내 데이터는 로컬에서
+          let days = 0;
+          for (const wk of weekKeys) {
+            const [y, m, d] = wk.split('-').map(Number);
+            const muscles = getMuscles(y, m - 1, d);
+            const diet = getDiet(y, m - 1, d);
+            const hasDiet = diet.bKcal || diet.lKcal || diet.dKcal;
+            if ((muscles || []).length > 0 || hasDiet) days++;
+          }
+          return { ...p, days };
+        } else {
+          let days = 0;
+          const dayResults = await Promise.allSettled(weekKeys.map(k => getFriendWorkout(p.id, k)));
+          for (const r of dayResults) {
+            if (r.status !== 'fulfilled' || !r.value) continue;
+            const w = r.value;
+            if ((w.muscles||[]).length || w.exercises?.length || w.breakfast || w.lunch || w.dinner || w.bFoods?.length || w.lFoods?.length || w.dFoods?.length) days++;
+          }
+          return { ...p, days };
+        }
+      })
+    );
+
+    const board = results.filter(r => r.status === 'fulfilled').map(r => r.value).sort((a, b) => b.days - a.days);
+
+    if (board.length <= 1) { cardEl.style.display = 'none'; return; }
+
+    const rankIcons = ['🥇', '🥈', '🥉'];
+    let html = '';
+    for (let i = 0; i < board.length; i++) {
+      const p = board[i];
+      const rank = rankIcons[i] || `${i + 1}`;
+      const pct = Math.round((p.days / 7) * 100);
+      const isMe = p.isMe;
+      html += `<div class="lb-row${isMe ? ' lb-me' : ''}">
+        <span class="lb-rank">${rank}</span>
+        <span class="lb-name">${p.name}</span>
+        <div class="lb-bar-track"><div class="lb-bar-fill" style="width:${pct}%"></div></div>
+        <span class="lb-days">${p.days}일</span>
+      </div>`;
+    }
+    contentEl.innerHTML = html;
+    cardEl.style.display = '';
+  } catch(e) { console.warn('[leaderboard]', e); }
 }
 
 // ── 스트릭 대시보드 ──────────────────────────────────────────────
@@ -1016,8 +1163,11 @@ function _renderTomatoHero(el) {
         <span style="color:var(--border);">·</span>
         <span>누적: ${totalCount}개</span>
       </div>
+      <div class="streak-freeze-row" id="streak-freeze-row"></div>
+      <div class="hero-social-proof" id="hero-social-proof" style="display:none;"></div>
     </div>
   `;
+  _renderStreakFreeze();
 }
 
 // ── 토마토 사이클 정산 ──────────────────────────────────────────
@@ -1675,8 +1825,8 @@ window.openFarmShop = function() {
 
 window.farmBuyItem = async function(itemId) {
   const result = await buyFarmItem(itemId);
-  if (result.error) { _showToast(result.error); return; }
-  _showToast('구매 완료!');
+  if (result.error) { _showToast(result.error, 2500, 'error'); return; }
+  _showToast('구매 완료!', 2500, 'success');
   _renderFarmDuolingo();
   window.openFarmShop(); // 상점 새로고침
 };
@@ -1939,6 +2089,8 @@ async function _renderFriendFeed() {
     let activeCount = 0;
     const FRIEND_PAGE_SIZE = 3;
     const friendCards = [];
+    const activeNames = [];     // 소셜 증거용 활성 이웃 이름
+    const avatarEntries = [];   // Activity Bar용
 
     for (let fi = 0; fi < friends.length; fi++) {
       const f = friends[fi];
@@ -1953,44 +2105,96 @@ async function _renderFriendFeed() {
       const hasRecent = !hasToday && recentWorkouts[fi].some(rw => rw && ((rw.muscles||[]).length || rw.exercises?.length || rw.breakfast || rw.lunch || rw.dinner));
       const statusClass = hasToday ? 'active' : hasRecent ? 'recent' : 'inactive';
 
+      // Activity Bar 데이터 수집
+      avatarEntries.push({ name, statusClass, fid: f.friendId, fullName });
+
       let items = '';
       if (w) {
         if ((w.muscles || []).length > 0) {
           items += '<div class="friend-feed-item"><span>🏋️ ' + (w.muscles || []).slice(0, 3).join(', ') + '</span></div>';
         }
-        const diet = w.diet || {};
+        const feedMealMap = {breakfast:{foods:'bFoods',memo:'breakfast',photo:'bPhoto'},lunch:{foods:'lFoods',memo:'lunch',photo:'lPhoto'},dinner:{foods:'dFoods',memo:'dinner',photo:'dPhoto'},snack:{foods:'sFoods',memo:'snack',photo:'sPhoto'}};
         ['breakfast','lunch','dinner','snack'].forEach(meal => {
-          const md = diet[meal];
-          if (md && (md.foods?.length || md.memo)) {
-            const foods = (md.foods || []).map(x => x.name).join(', ').slice(0, 30);
-            const kcal = (md.foods || []).reduce((s, x) => s + (x.kcal || 0), 0);
+          const mk = feedMealMap[meal];
+          const foods = w[mk.foods] || [];
+          const memo = w[mk.memo] || '';
+          const photo = w[mk.photo];
+          if (foods.length || memo || photo) {
+            const foodText = foods.map(x => x.name).join(', ').slice(0, 30) || memo;
+            const kcal = foods.reduce((s, x) => s + (x.kcal || 0), 0);
             const lb = {breakfast:'🌅',lunch:'☀️',dinner:'🌙',snack:'🥤'}[meal];
-            items += '<div class="friend-feed-item"><span>' + lb + ' ' + (foods || md.memo || '') + (kcal ? ' (' + kcal + 'kcal)' : '') + '</span></div>';
+            const photoThumb = photo ? '<div class="meal-photo-frame" style="padding-bottom:50%;margin-top:4px;" onclick="openMealPhotoLightbox(this.querySelector(\'img\').src)"><img src="' + photo + '"></div>' : '';
+            items += '<div class="friend-feed-item"><span>' + lb + ' ' + (foodText) + (kcal ? ' (' + kcal + 'kcal)' : '') + '</span>' + photoThumb + '</div>';
           }
         });
       }
-      if (items) activeCount++;
+      if (items || hasToday) { activeCount++; if (!activeNames.includes(name)) activeNames.push(name); }
       const cheerBtn = hasToday ? `<button class="friend-cheer-btn" data-cheer-fid="${f.friendId}" data-cheer-name="${name.replace(/"/g,'&quot;')}" title="응원 보내기" style="padding:4px 10px;border:none;border-radius:999px;background:var(--primary-bg);color:var(--primary);font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;transition:all 0.15s;">👏 응원</button>` : '';
-      friendCards.push(`<div class="friend-card"><div class="friend-card-header"><span class="friend-avatar" style="font-size:18px;">🍅<span class="status-dot ${statusClass}"></span></span><span class="friend-name" data-fid="${f.friendId}" data-fname="${fullName.replace(/"/g,'&quot;')}" style="cursor:pointer;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;">${name}</span><div style="display:flex;gap:6px;align-items:center;">${cheerBtn}<button class="friend-gift-btn" data-gift-fid="${f.friendId}" data-gift-name="${fullName.replace(/"/g,'&quot;')}" title="토마토 선물">🍅</button></div></div>${items}</div>`);
+      friendCards.push({ statusClass, html: `<div class="friend-card"><div class="friend-card-header"><span class="friend-avatar" style="font-size:18px;">🍅<span class="status-dot ${statusClass}"></span></span><span class="friend-name" data-fid="${f.friendId}" data-fname="${fullName.replace(/"/g,'&quot;')}" style="cursor:pointer;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;">${name}</span><div style="display:flex;gap:6px;align-items:center;">${cheerBtn}<button class="friend-gift-btn" data-gift-fid="${f.friendId}" data-gift-name="${fullName.replace(/"/g,'&quot;')}" title="토마토 선물">🍅</button></div></div>${items}</div>` });
     }
 
-    // 활동 요약 배너
-    const banner = activeCount > 0
-      ? `<div style="padding:10px 12px;background:var(--primary-bg);border-radius:10px;font-size:12px;font-weight:500;color:var(--primary);margin-bottom:10px;text-align:center;">오늘 ${activeCount}명의 이웃이 기록했어요</div>`
+    // ── 카드 정렬: active > recent > inactive ──
+    const statusOrder = { active: 0, recent: 1, inactive: 2 };
+    friendCards.sort((a, b) => statusOrder[a.statusClass] - statusOrder[b.statusClass]);
+
+    // ── 저참여 카드 분리 ──
+    const visibleCards = friendCards.filter(c => c.statusClass !== 'inactive');
+    const hiddenCards = friendCards.filter(c => c.statusClass === 'inactive');
+
+    // ── 배너: 이웃 이름 표시 ──
+    let bannerText = '';
+    if (activeNames.length === 1) bannerText = `${activeNames[0]}님이 오늘 기록했어요`;
+    else if (activeNames.length === 2) bannerText = `${activeNames[0]}, ${activeNames[1]}님이 오늘 기록했어요`;
+    else if (activeNames.length > 2) bannerText = `${activeNames[0]}, ${activeNames[1]} 외 ${activeNames.length - 2}명이 오늘 기록했어요`;
+    const banner = bannerText
+      ? `<div style="padding:10px 12px;background:var(--primary-bg);border-radius:10px;font-size:12px;font-weight:500;color:var(--primary);margin-bottom:10px;text-align:center;">${bannerText}</div>`
       : '';
 
-    // 페이징 HTML 생성
-    const totalPages = Math.ceil(friendCards.length / FRIEND_PAGE_SIZE);
+    // ── Friend Activity Bar (횡스크롤 아바타) ──
+    // active → recent → inactive 순서
+    avatarEntries.sort((a, b) => statusOrder[a.statusClass] - statusOrder[b.statusClass]);
+    let activityBarHtml = '';
+    if (avatarEntries.length > 0) {
+      const avatars = avatarEntries.map(e => {
+        const initial = e.name.charAt(0);
+        return `<div class="activity-avatar-item" data-fid="${e.fid}" data-fname="${e.fullName.replace(/"/g,'&quot;')}">
+          <div class="activity-avatar ${e.statusClass}">${initial}</div>
+          <div class="activity-avatar-name">${e.name}</div>
+        </div>`;
+      }).join('');
+      activityBarHtml = `<div class="activity-avatar-bar">${avatars}</div>`;
+    }
+
+    // ── 페이징 HTML (visible만) ──
+    const allVisibleHtml = visibleCards.map(c => c.html);
+    const totalPages = Math.ceil(allVisibleHtml.length / FRIEND_PAGE_SIZE);
     let pagedHtml = '';
     for (let p = 0; p < totalPages; p++) {
-      const pageCards = friendCards.slice(p * FRIEND_PAGE_SIZE, (p + 1) * FRIEND_PAGE_SIZE);
+      const pageCards = allVisibleHtml.slice(p * FRIEND_PAGE_SIZE, (p + 1) * FRIEND_PAGE_SIZE);
       pagedHtml += `<div class="friend-page" data-page="${p}" style="${p > 0 ? 'display:none' : ''}">${pageCards.join('')}</div>`;
     }
     const dotsHtml = totalPages > 1
       ? `<div class="friend-paging-controls">${Array.from({length:totalPages}, (_,i) => `<button class="friend-paging-dot${i===0?' active':''}" data-fp="${i}"></button>`).join('')}</div>`
       : '';
 
-    feedEl.innerHTML = banner + pagedHtml + dotsHtml;
+    // ── 저참여 접힘 섹션 ──
+    let hiddenSection = '';
+    if (hiddenCards.length > 0) {
+      hiddenSection = `<div class="inactive-friends-section">
+        <button class="inactive-friends-toggle" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'':'none';this.textContent=this.nextElementSibling.style.display==='none'?'비활성 이웃 ${hiddenCards.length}명 보기 ▾':'접기 ▴'">비활성 이웃 ${hiddenCards.length}명 보기 ▾</button>
+        <div style="display:none">${hiddenCards.map(c => c.html).join('')}</div>
+      </div>`;
+    }
+
+    feedEl.innerHTML = banner + activityBarHtml + pagedHtml + dotsHtml + hiddenSection;
+
+    // ── 소셜 히어로 업데이트 ──
+    _updateHeroSocialProof(activeNames);
+
+    // ── Activity Bar 클릭 → 프로필 ──
+    feedEl.querySelectorAll('.activity-avatar-item').forEach(el => {
+      el.addEventListener('click', () => openFriendProfile(el.dataset.fid, el.dataset.fname));
+    });
 
     // 이웃 페이징 이벤트 (dot 클릭 + 스와이프)
     let _friendPageCur = 0;
@@ -2044,9 +2248,11 @@ async function _renderFriendFeed() {
         const dk = dateKey(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
         const liked = await toggleLike(fid, dk, 'cheer', '👏');
         if (liked) {
-          btnEl.textContent = '✅ 응원 완료';
-          btnEl.style.background = 'var(--success-bg, rgba(52,199,89,0.1))';
-          btnEl.style.color = 'var(--success, #34C759)';
+          _haptic('success');
+          btnEl.textContent = '✓ 응원 완료';
+          btnEl.style.background = 'var(--primary-bg, #fdf0f0)';
+          btnEl.style.color = 'var(--primary, #fa342c)';
+          btnEl.style.opacity = '0.7';
         } else {
           // 이미 응원한 상태에서 다시 누르면 취소
           btnEl.textContent = '👏 응원';
@@ -2184,7 +2390,8 @@ window.sendFriendReq = async function() {
 window.acceptFriendReq = async function(id) {
   await acceptFriendRequest(id);
   recordAction('이웃수락');
-  _showToast('🤝 이제 이웃이 되었어요!');
+  _showToast('🤝 이제 이웃이 되었어요!', 2500, 'success');
+  _haptic('success');
   renderHome();
 };
 window.rejectFriendReq = async function(id) { await removeFriend(id); renderHome(); };
@@ -2196,25 +2403,25 @@ window.quickAddNeighbor = async function(targetId) {
   const { isAdminGuest: isAG } = await import('./data.js');
   const myId = isAG() ? '김_태우' : user.id;
   const r = await sendFriendRequest(myId, targetId);
-  if (r.error) { _showToast(r.error); }
-  else { _showToast('이웃 요청을 보냈어요!'); }
+  if (r.error) { _showToast(r.error, 2500, 'error'); }
+  else { _showToast('이웃 요청을 보냈어요!', 2500, 'success'); }
   _renderFriendFeed();
 };
 
 // 이웃 별명 편집 (관리자 전용)
 window.editFriendNickname = async function(friendId) {
-  if (!isAdmin()) { _showToast('별명 변경은 관리자만 가능해요'); return; }
+  if (!isAdmin()) { _showToast('별명 변경은 관리자만 가능해요', 2500, 'warning'); return; }
   const { getAccountList, saveAccount } = await import('./data.js');
   const accounts = await getAccountList();
   const acc = accounts.find(a => a.id === friendId);
-  if (!acc) { _showToast('계정을 찾을 수 없어요'); return; }
+  if (!acc) { _showToast('계정을 찾을 수 없어요', 2500, 'error'); return; }
   const realName = acc.lastName + acc.firstName.replace(/\(.*\)/, '');
   const current = acc.nickname || realName;
   const newNick = prompt(`${realName}의 별명을 입력하세요`, current === realName ? '' : current);
   if (newNick === null) return;
   acc.nickname = newNick.trim() || realName;
   await saveAccount(acc);
-  _showToast(`별명이 "${acc.nickname}"(으)로 변경되었어요`);
+  _showToast(`별명이 "${acc.nickname}"(으)로 변경되었어요`, 2500, 'success');
   window.openFriendManager();
 };
 
@@ -2654,7 +2861,7 @@ window.openIntroduceFriend = async function(friendId, friendName) {
   // 소개 대상: 내 친구 중 friendId가 아닌 사람
   const others = friends.filter(f => f.friendId !== friendId);
   if (!others.length) {
-    _showToast('소개할 다른 이웃이 없어요');
+    _showToast('소개할 다른 이웃이 없어요', 2500, 'warning');
     return;
   }
   let listHtml = others.map(f => {
@@ -2688,8 +2895,8 @@ window.sendFriendFromIntro = async function(targetId, notifId) {
   const { isAdminGuest: isAG } = await import('./data.js');
   const myId = isAG() ? '김_태우' : user.id;
   const r = await sendFriendRequest(myId, targetId);
-  if (r.error) { _showToast(r.error); }
-  else { _showToast('이웃 요청을 보냈어요!'); }
+  if (r.error) { _showToast(r.error, 2500, 'error'); }
+  else { _showToast('이웃 요청을 보냈어요!', 2500, 'success'); }
   await markNotificationRead(notifId);
   refreshNotifCenter();
 };
@@ -2697,9 +2904,9 @@ window.sendFriendFromIntro = async function(targetId, notifId) {
 window.confirmIntroduce = async function(idA, idB, nameA, nameB) {
   document.getElementById('introduce-modal')?.remove();
   const result = await introduceFriend(idA, idB, nameA, nameB);
-  if (result.error) { _showToast(result.error); return; }
+  if (result.error) { _showToast(result.error, 2500, 'error'); return; }
   recordAction('이웃소개');
-  _showToast(`${nameA}님과 ${nameB}님을 소개했어요! 👋`);
+  _showToast(`${nameA}님과 ${nameB}님을 소개했어요! 👋`, 2500, 'success');
 };
 
 // 내 방명록 보기
@@ -2768,20 +2975,20 @@ window.submitGuestbook = async function(targetId) {
   if (!input || !input.value.trim()) return;
   const isReply = !!_gbReplyParentId;
   const result = await writeGuestbook(targetId, input.value, _gbReplyParentId);
-  if (result.error) { _showToast(result.error); return; }
+  if (result.error) { _showToast(result.error, 2500, 'error'); return; }
   recordAction('방명록');
   input.value = '';
   input.placeholder = '응원 한마디 남기기';
   _gbReplyParentId = null;
   document.getElementById('gb-reply-cancel')?.remove();
-  _showToast(isReply ? '답글을 남겼어요 💬' : '방명록을 남겼어요 📝');
+  _showToast(isReply ? '답글을 남겼어요 💬' : '방명록을 남겼어요 📝', 2500, 'success');
   _loadGuestbook(targetId);
 };
 
 window.deleteGb = async function(entryId, targetId) {
   await deleteGuestbookEntry(entryId);
   _loadGuestbook(targetId);
-  _showToast('삭제했어요');
+  _showToast('삭제했어요', 2500, 'info');
 };
 
 // ── 댓글 시스템 UI ──────────────────────────────────────────────
@@ -2866,7 +3073,7 @@ window.submitComment = async function(targetId, dateKey, section) {
   input.placeholder = '댓글 남기기';
   document.getElementById(`comment-reply-cancel-${section}`)?.remove();
   recordAction('댓글');
-  _showToast(isReply ? '답글을 남겼어요 💬' : '댓글을 남겼어요 💬');
+  _showToast(isReply ? '답글을 남겼어요 💬' : '댓글을 남겼어요 💬', 2500, 'success');
   await _loadComments(targetId, dateKey, section);
 };
 
@@ -2903,13 +3110,13 @@ window.confirmEditComment = async function(commentId, targetId, dateKey, section
   const input = document.getElementById(`edit-${commentId}`);
   if (!input || !input.value.trim()) return;
   await editComment(commentId, input.value);
-  _showToast('댓글을 수정했어요');
+  _showToast('댓글을 수정했어요', 2500, 'success');
   await _loadComments(targetId, dateKey, section);
 };
 
 window.deleteCommentUI = async function(commentId, targetId, dateKey, section) {
   await deleteComment(commentId);
-  _showToast('댓글을 삭제했어요');
+  _showToast('댓글을 삭제했어요', 2500, 'info');
   await _loadComments(targetId, dateKey, section);
 };
 
@@ -2917,10 +3124,10 @@ window.sendReaction = async function(tid, dk, field, emoji) {
   document.querySelectorAll('.reaction-picker').forEach(p => p.remove());
   const user = getCurrentUser();
   if (!user) return;
-  // 리액션을 _likes에 저장 (이모지 포함)
   await toggleLike(tid, dk, field, emoji);
   recordAction('리액션');
-  _showToast(`${emoji} 리액션을 보냈어요!`);
+  _haptic('light');
+  _showToast(`${emoji} 리액션을 보냈어요!`, 2500, 'success');
   // 프로필 모달이 열려있으면 갱신
   if (document.getElementById('dynamic-modal')) {
     const accounts = await getAccountList();
@@ -3116,12 +3323,13 @@ window.markAllNotifsRead = async function() {
   await Promise.all(notifs.map(n => deleteDoc(doc(db, '_notifications', n.id)).catch(() => {})));
   refreshNotifCenter();
   _renderFriendFeed();
-  _showToast('알림을 모두 지웠어요');
+  _showToast('알림을 모두 지웠어요', 2500, 'info');
 };
 
 window.acceptFriendFromNotif = async function(id) {
   await acceptFriendRequest(id);
-  _showToast('🤝 이제 이웃이 되었어요!');
+  _haptic('success');
+  _showToast('🤝 이제 이웃이 되었어요!', 2500, 'success');
   refreshNotifCenter();
   _renderFriendFeed();
 };
@@ -3162,20 +3370,58 @@ window.markNotifFromCenter = async function(id, el) {
 // 앱 init 시 호출 가능하게 export
 export { refreshNotifCenter, _showToast as showToast };
 
-// ── TDS 토스트 알림 ──────────────────────────────────────────────
-function _showToast(message, duration = 2500) {
+// ── TDS 토스트 알림 (타입별 색상) ────────────────────────────────
+function _showToast(message, duration = 2500, type = 'default') {
   const existing = document.getElementById('tds-toast');
   if (existing) existing.remove();
   const toast = document.createElement('div');
   toast.id = 'tds-toast';
   toast.className = 'tds-toast';
-  toast.textContent = message;
+  toast.dataset.type = type;
+  const icons = { success: '✓ ', error: '✕ ', warning: '⚠ ', info: 'ℹ ', default: '' };
+  toast.textContent = (icons[type] || '') + message;
   document.body.appendChild(toast);
   requestAnimationFrame(() => toast.classList.add('show'));
   setTimeout(() => {
     toast.classList.remove('show');
     setTimeout(() => toast.remove(), 300);
   }, duration);
+}
+
+// ── Confetti 축하 애니메이션 ─────────────────────────────────────
+function _showConfetti(duration = 3000) {
+  const container = document.createElement('div');
+  container.className = 'confetti-container';
+  const colors = ['#fa342c','#fc6a66','#fe928d','#fed4d2','#ca1d13','#fdf0f0'];
+  for (let i = 0; i < 40; i++) {
+    const p = document.createElement('div');
+    p.className = 'confetti-particle';
+    p.style.left = Math.random() * 100 + '%';
+    p.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+    p.style.animationDelay = (Math.random() * 0.6) + 's';
+    p.style.animationDuration = (1.5 + Math.random() * 1.5) + 's';
+    p.style.width = (6 + Math.random() * 6) + 'px';
+    p.style.height = (6 + Math.random() * 6) + 'px';
+    if (Math.random() > 0.5) p.style.borderRadius = '50%';
+    container.appendChild(p);
+  }
+  document.body.appendChild(container);
+  setTimeout(() => container.remove(), duration);
+}
+
+// window에 노출 (콘솔/마일스톤 모달에서 호출 가능)
+window._showConfetti = _showConfetti;
+
+// ── 햅틱 피드백 ─────────────────────────────────────────────────
+function _haptic(pattern = 'light') {
+  if (!navigator.vibrate) return;
+  const patterns = {
+    light: [10],
+    medium: [30],
+    success: [10, 50, 20],
+    celebration: [50, 30, 50, 30, 100],
+  };
+  navigator.vibrate(patterns[pattern] || patterns.light);
 }
 
 // ── 유틸 ──────────────────────────────────────────────────────────

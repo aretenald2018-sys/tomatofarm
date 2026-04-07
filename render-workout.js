@@ -846,7 +846,7 @@ function _renderMealPhotos() {
     if (!wrap) continue;
     const photo = window._mealPhotos?.[meal];
     if (photo) {
-      wrap.innerHTML = `<div class="meal-photo-frame" onclick="openMealPhotoLightbox('${photo.replace(/'/g,"\\'")}')">
+      wrap.innerHTML = `<div class="meal-photo-frame" onclick="openMealPhotoLightbox(this.querySelector('img').src)">
         <img src="${photo}">
         <button class="meal-photo-delete" onclick="event.stopPropagation();removeMealPhoto('${meal}')">✕</button>
       </div>`;
