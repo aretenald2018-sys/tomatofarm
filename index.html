@@ -343,6 +343,18 @@
         </div>
       </div>
 
+      <!-- 운동 타이머 + 컨트롤 -->
+      <div class="wt-workout-timer-bar" id="wt-workout-timer-bar">
+        <span class="wt-timer-icon">⏱️</span>
+        <span class="wt-timer-text" id="wt-workout-timer">0초</span>
+        <span class="wt-workout-duration-result" id="wt-workout-duration-result" style="display:none"></span>
+        <div class="wt-timer-controls">
+          <button class="wt-timer-ctrl-btn" id="wt-timer-pause-btn" onclick="wtTogglePauseWorkoutTimer()" style="display:none">일시정지</button>
+          <button class="wt-timer-ctrl-btn wt-timer-ctrl-btn--ghost" id="wt-timer-reset-btn" onclick="wtResetWorkoutTimer()" style="display:none">초기화</button>
+          <button class="wt-finish-btn" id="wt-finish-workout-btn" onclick="wtFinishWorkout()" style="display:none">운동 끝내기</button>
+        </div>
+      </div>
+
       <!-- 헬스 종목 -->
       <div class="wt-detail-section" id="wt-gym-section">
         <div class="ex-list-header">
@@ -350,6 +362,39 @@
           <button class="ex-add-btn" onclick="wtOpenExercisePicker()">+ 종목 추가(선택)</button>
         </div>
         <div id="wt-exercise-list" style="margin-top:8px;"></div>
+      </div>
+
+      <!-- 런닝 상세 -->
+      <div class="wt-detail-section" id="wt-running-section">
+        <div class="ex-list-header">
+          <span class="sheet-section-label" style="margin-bottom:0">🏃 런닝 기록</span>
+        </div>
+        <div class="wt-running-form">
+          <div class="wt-running-row">
+            <label class="wt-running-label">거리</label>
+            <div class="wt-running-input-wrap">
+              <input type="number" id="wt-run-distance" class="wt-running-input" step="0.1" min="0" placeholder="0.0">
+              <span class="wt-running-unit">km</span>
+            </div>
+          </div>
+          <div class="wt-running-row">
+            <label class="wt-running-label">시간</label>
+            <div class="wt-running-input-wrap">
+              <input type="number" id="wt-run-duration-min" class="wt-running-input wt-running-input--sm" min="0" placeholder="0">
+              <span class="wt-running-unit">분</span>
+              <input type="number" id="wt-run-duration-sec" class="wt-running-input wt-running-input--sm" min="0" max="59" placeholder="0">
+              <span class="wt-running-unit">초</span>
+            </div>
+          </div>
+          <div class="wt-running-row">
+            <label class="wt-running-label">평균 페이스</label>
+            <div class="wt-running-pace" id="wt-run-pace">--'--"</div>
+          </div>
+          <div class="wt-running-row">
+            <label class="wt-running-label">메모</label>
+            <input type="text" id="wt-run-memo" class="wt-running-input wt-running-input--full" placeholder="예: 한강 10km, 인터벌 훈련...">
+          </div>
+        </div>
       </div>
 
       <!-- 메모 + 인증사진 -->
@@ -360,8 +405,8 @@
         <input type="file" id="photo-input-workout" accept="image/*" style="display:none" onchange="uploadMealPhoto('workout',this)">
       </div>
 
-      <!-- 저장 -->
-      <div class="wt-detail-section" id="wt-save-section">
+      <!-- 저장 (자동 저장으로 대체 — 숨김) -->
+      <div class="wt-detail-section" id="wt-save-section" style="display:none">
         <button class="tds-btn fill md" id="wt-save-btn" onclick="saveWorkoutDay()" style="width:100%">저장</button>
       </div>
     </div>
@@ -376,18 +421,21 @@
     </div>
   </div>
 
-  <!-- ═══ 세트 간 휴식 타이머 (플로팅) ═══ -->
+  <!-- ═══ 세트 간 휴식 타이머 (플로팅 · Seed) ═══ -->
   <div id="rest-timer-bar" class="rest-timer-bar" style="display:none">
     <div class="rest-timer-main">
-      <div class="rest-timer-display">
-        <span class="rest-timer-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2"/><path d="M9 2h6"/><path d="M12 2v3"/></svg></span>
-        <span id="rest-timer-time" class="rest-timer-time">1:30</span>
-      </div>
-      <div class="rest-timer-presets">
-        <button class="rest-preset-btn" data-sec="60">1:00</button>
-        <button class="rest-preset-btn active" data-sec="90">1:30</button>
-        <button class="rest-preset-btn" data-sec="120">2:00</button>
-        <button class="rest-preset-btn" data-sec="180">3:00</button>
+      <div class="rest-timer-row-top">
+        <div class="rest-timer-display">
+          <span class="rest-timer-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2"/><path d="M9 2h6"/><path d="M12 2v3"/></svg></span>
+          <span id="rest-timer-time" class="rest-timer-time">1:30</span>
+        </div>
+        <div class="rest-timer-presets">
+          <button class="rest-preset-btn" data-sec="60">1:00</button>
+          <button class="rest-preset-btn active" data-sec="90">1:30</button>
+          <button class="rest-preset-btn" data-sec="120">2:00</button>
+          <button class="rest-preset-btn" data-sec="180">3:00</button>
+        </div>
+        <button id="rest-timer-skip" class="rest-timer-skip" onclick="wtRestTimerSkip()">건너뛰기</button>
       </div>
       <div class="rest-timer-controls">
         <button id="rest-timer-adj-down" class="rest-timer-adj" onclick="wtRestTimerAdjust(-15)">−15</button>
@@ -395,7 +443,6 @@
           <div id="rest-timer-fill" class="rest-timer-fill"></div>
         </div>
         <button id="rest-timer-adj-up" class="rest-timer-adj" onclick="wtRestTimerAdjust(+15)">+15</button>
-        <button id="rest-timer-skip" class="rest-timer-skip" onclick="wtRestTimerSkip()">건너뛰기</button>
       </div>
     </div>
   </div>
@@ -587,9 +634,6 @@
         </div>
 
       </div>
-    </div>
-    <div class="sheet-actions">
-      <button class="tds-btn fill md" onclick="saveWorkoutDay()">저장</button>
     </div>
   </div>
 </div>

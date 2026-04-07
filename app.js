@@ -37,6 +37,7 @@ import {
   wtAddSet, wtRemoveSet, wtUpdateSet, wtToggleSetDone, wtUpdateSetType, wtRemoveExerciseEntry,
   wtAddFoodItem, wtRemoveFoodItem,
   openNutritionPhotoUpload,
+  wtStartWorkoutTimer, wtTogglePauseWorkoutTimer, wtResetWorkoutTimer, wtFinishWorkout,
 } from './render-workout.js';
 
 // ── 레이지 로딩 탭 캐시 ──
@@ -2301,6 +2302,9 @@ window.wtSelectStatus = function(status) {
   flow.classList.add('wt-show-type');
   document.getElementById('wt-memo-section').classList.add('wt-open');
   document.getElementById('wt-save-section').classList.add('wt-open');
+  // 운동 타이머 시작
+  document.getElementById('wt-workout-timer-bar')?.classList.add('wt-open');
+  wtStartWorkoutTimer();
   _wtSelectedTypes.clear();
 };
 
@@ -2317,6 +2321,10 @@ window.wtToggleType = function(type) {
   const gym = document.getElementById('wt-gym-section');
   if (_wtSelectedTypes.has('gym')) gym.classList.add('wt-open');
   else gym.classList.remove('wt-open');
+  // 런닝 상세 영역
+  const runSec = document.getElementById('wt-running-section');
+  if (_wtSelectedTypes.has('running')) runSec?.classList.add('wt-open');
+  else runSec?.classList.remove('wt-open');
   // 상태 반영
   wtSetGymStatus(_wtSelectedTypes.has('gym') ? 'done' : 'none');
   wtSetCFStatus(_wtSelectedTypes.has('cf') ? 'done' : 'none');
@@ -2329,8 +2337,9 @@ window.wtResetStatus = function() {
   _wtSelectedTypes.clear();
   const flow = document.getElementById('wt-flow');
   flow.classList.remove('wt-chosen', 'wt-show-type');
-  ['wt-gym-section','wt-memo-section','wt-save-section'].forEach(id =>
+  ['wt-gym-section','wt-running-section','wt-memo-section','wt-save-section'].forEach(id =>
     document.getElementById(id)?.classList.remove('wt-open'));
+  document.getElementById('wt-workout-timer-bar')?.classList.remove('wt-open');
   ['wt-chip-gym','wt-chip-cf','wt-chip-stretch','wt-chip-swimming','wt-chip-running'].forEach(id =>
     document.getElementById(id)?.classList.remove('active'));
   wtSetGymStatus('none'); wtSetCFStatus('none');

@@ -106,6 +106,7 @@ export function loadWorkoutDate(y, m, d) {
   document.getElementById('wt-chip-swimming')?.classList.toggle('active', _swimming);
   document.getElementById('wt-chip-running')?.classList.toggle('active', _running);
   _renderRunningForm();
+  _renderWorkoutTimer();
   _renderWineFreeToggle();
   _renderMealSkippedToggles();
   _initButtonEventListeners();
@@ -131,6 +132,55 @@ export function loadWorkoutDate(y, m, d) {
   // 미래 날짜면 입력 비활성화
   const isFutureDay = isFuture(y, m, d);
   _setInputsDisabled(isFutureDay);
+
+  // ── flow 상태 복원: 기존 데이터가 있으면 카드를 펼쳐둠 ──
+  _restoreFlowState(day);
+}
+
+function _restoreFlowState(day) {
+  const flow       = document.getElementById('wt-flow');
+  const badge      = document.getElementById('wt-badge-text');
+  const timerBar   = document.getElementById('wt-workout-timer-bar');
+  if (!flow) return;
+
+  const hasExercises = (day.exercises || []).length > 0;
+  const hasCf        = !!day.cf;
+  const hasSwimming  = !!day.swimming;
+  const hasRunning   = !!day.running;
+  const isSkip       = !!day.gym_skip;
+  const isHealth     = !!day.gym_health;
+  const hasWorkout   = hasExercises || hasCf || hasSwimming || hasRunning;
+
+  if (!hasWorkout && !isSkip && !isHealth) return; // 데이터 없으면 초기 상태 유지
+
+  flow.classList.add('wt-chosen');
+
+  if (isSkip && !hasWorkout) {
+    if (badge) { badge.className = 'wt-status-badge wt-skip'; badge.textContent = '오늘은 쉬었어요'; }
+    flow.classList.remove('wt-show-type');
+  } else if (isHealth && !hasWorkout) {
+    if (badge) { badge.className = 'wt-status-badge wt-health'; badge.textContent = '건강 이슈가 있어요'; }
+    flow.classList.remove('wt-show-type');
+  } else {
+    if (badge) { badge.className = 'wt-status-badge wt-active'; badge.textContent = '운동했어요 💪'; }
+    flow.classList.add('wt-show-type');
+    // 칩 활성화 + 섹션 열기
+    if (hasExercises) {
+      document.getElementById('wt-chip-gym')?.classList.add('active');
+      document.getElementById('wt-gym-section')?.classList.add('wt-open');
+    }
+    if (hasCf) document.getElementById('wt-chip-cf')?.classList.add('active');
+    if (day.stretching) document.getElementById('wt-chip-stretch')?.classList.add('active');
+    if (hasSwimming) document.getElementById('wt-chip-swimming')?.classList.add('active');
+    if (hasRunning) {
+      document.getElementById('wt-chip-running')?.classList.add('active');
+      document.getElementById('wt-running-section')?.classList.add('wt-open');
+    }
+    // 타이머 바 표시
+    if (timerBar) timerBar.classList.add('wt-open');
+  }
+  document.getElementById('wt-memo-section')?.classList.add('wt-open');
+  _renderTimerControls();
 }
 
 function _setInputsDisabled(disabled) {
@@ -986,25 +1036,57 @@ export function openNutritionPhotoUpload() {
 
 // ── 운동 시간 측정 ───────────────────────────────────────────────
 export function wtStartWorkoutTimer() {
-  if (_workoutStartTime) return; // 이미 시작됨
+  if (_workoutStartTime) return; // 이미 진행 중
   _workoutStartTime = Date.now();
-  _renderWorkoutTimer();
   _workoutTimerInterval = setInterval(_renderWorkoutTimer, 1000);
+  _renderWorkoutTimer();
+  _renderTimerControls();
+}
+
+export function wtPauseWorkoutTimer() {
+  if (!_workoutStartTime) return;
+  _workoutDuration += Math.floor((Date.now() - _workoutStartTime) / 1000);
+  _workoutStartTime = null;
+  if (_workoutTimerInterval) { clearInterval(_workoutTimerInterval); _workoutTimerInterval = null; }
+  _renderWorkoutTimer();
+  _renderTimerControls();
+  saveWorkoutDay().catch(e => console.error('Save error:', e));
+}
+
+export function wtResetWorkoutTimer() {
+  _workoutDuration = 0;
+  _workoutStartTime = null;
+  if (_workoutTimerInterval) { clearInterval(_workoutTimerInterval); _workoutTimerInterval = null; }
+  _renderWorkoutTimer();
+  _renderTimerControls();
+  saveWorkoutDay().catch(e => console.error('Save error:', e));
 }
 
 function _renderWorkoutTimer() {
   const el = document.getElementById('wt-workout-timer');
   if (!el) return;
-  if (_workoutStartTime) {
-    const elapsed = Math.floor((Date.now() - _workoutStartTime) / 1000) + _workoutDuration;
-    el.textContent = _fmtDuration(elapsed);
-    el.style.display = '';
-  } else if (_workoutDuration > 0) {
-    el.textContent = _fmtDuration(_workoutDuration);
-    el.style.display = '';
-  } else {
-    el.style.display = 'none';
+  const elapsed = _workoutStartTime
+    ? Math.floor((Date.now() - _workoutStartTime) / 1000) + _workoutDuration
+    : _workoutDuration;
+  el.textContent = _fmtDuration(elapsed);
+  el.style.display = '';
+}
+
+function _renderTimerControls() {
+  const isRunning = !!_workoutStartTime;
+  const hasTime   = _workoutDuration > 0 || isRunning;
+  const pauseBtn  = document.getElementById('wt-timer-pause-btn');
+  const resetBtn  = document.getElementById('wt-timer-reset-btn');
+  const finBtn    = document.getElementById('wt-finish-workout-btn');
+  const resultEl  = document.getElementById('wt-workout-duration-result');
+
+  if (pauseBtn) {
+    pauseBtn.textContent = isRunning ? '일시정지' : '재개';
+    pauseBtn.style.display = hasTime ? '' : 'none';
   }
+  if (resetBtn) resetBtn.style.display = hasTime ? '' : 'none';
+  if (finBtn)   finBtn.style.display = hasTime ? '' : 'none';
+  if (resultEl) resultEl.style.display = 'none';
 }
 
 function _fmtDuration(sec) {
@@ -1016,6 +1098,14 @@ function _fmtDuration(sec) {
   return `${s}초`;
 }
 
+export function wtTogglePauseWorkoutTimer() {
+  if (_workoutStartTime) {
+    wtPauseWorkoutTimer();
+  } else {
+    wtStartWorkoutTimer();
+  }
+}
+
 export function wtFinishWorkout() {
   if (_workoutStartTime) {
     _workoutDuration += Math.floor((Date.now() - _workoutStartTime) / 1000);
@@ -1023,10 +1113,14 @@ export function wtFinishWorkout() {
   }
   if (_workoutTimerInterval) { clearInterval(_workoutTimerInterval); _workoutTimerInterval = null; }
   _renderWorkoutTimer();
-  // 운동끝내기 버튼 숨기고 결과 표시
-  const finBtn = document.getElementById('wt-finish-workout-btn');
-  if (finBtn) finBtn.style.display = 'none';
+  // 운동끝내기 — 결과 표시
+  const pauseBtn = document.getElementById('wt-timer-pause-btn');
+  const resetBtn = document.getElementById('wt-timer-reset-btn');
+  const finBtn   = document.getElementById('wt-finish-workout-btn');
   const resultEl = document.getElementById('wt-workout-duration-result');
+  if (pauseBtn) pauseBtn.style.display = 'none';
+  if (resetBtn) resetBtn.style.display = 'none';
+  if (finBtn)   finBtn.style.display = 'none';
   if (resultEl) {
     resultEl.textContent = `운동 시간: ${_fmtDuration(_workoutDuration)}`;
     resultEl.style.display = '';
@@ -1184,6 +1278,8 @@ window.wtCloseExerciseEditor = wtCloseExerciseEditor;
 window.wtSaveExerciseFromEditor = wtSaveExerciseFromEditor;
 window.wtDeleteExerciseFromEditor = wtDeleteExerciseFromEditor;
 window.wtStartWorkoutTimer = wtStartWorkoutTimer;
+window.wtTogglePauseWorkoutTimer = wtTogglePauseWorkoutTimer;
+window.wtResetWorkoutTimer = wtResetWorkoutTimer;
 window.wtFinishWorkout = wtFinishWorkout;
 window.wtRestTimerStart = wtRestTimerStart;
 window.wtRestTimerSkip = wtRestTimerSkip;
