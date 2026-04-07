@@ -1360,25 +1360,24 @@ function _renderTomatoCard() {
 
   heroEl.innerHTML = `
     <div class="tf-card">
-      <div class="tf-hero">
+      <div class="tf-hero" style="background:linear-gradient(135deg, ${['hsl(100,40%,94%)','hsl(45,60%,93%)','hsl(20,65%,93%)','hsl(8,70%,93%)'][dayIndex]} 0%, transparent 100%);">
         <div class="tf-hero-left">
-          <div class="tf-hero-label">내 토마토</div>
-          <div class="tf-hero-count">${totalCount}<span class="tf-hero-unit">개</span></div>
-          <div class="tf-hero-sub">이번 분기 <b>${qCount}개</b> 수확</div>
+          <div class="tf-hero-label">${bestStreak >= 2 ? '연속 기록' : '내 토마토'}</div>
+          <div class="tf-hero-count">${bestStreak >= 2
+            ? `${bestStreak}<span class="tf-hero-unit">일</span>`
+            : `${totalCount}<span class="tf-hero-unit">개</span>`}</div>
+          <div class="tf-hero-sub">${bestStreak >= 2
+            ? (!hasRecordedToday
+              ? (isEvening
+                ? `<span style="color:#FF3B30;font-weight:600;">오늘 기록하면 ${bestStreak + 1}일째 · ${hoursLeft}시간 남음</span>`
+                : `<span style="color:var(--primary);font-weight:600;">오늘 기록하면 ${bestStreak + 1}일째</span>`)
+              : `🍅 ${totalCount}개 · 이번 분기 <b>${qCount}개</b>`)
+            : `이번 분기 <b>${qCount}개</b> 수확`}</div>
         </div>
         <div class="tf-hero-right">
-          <div class="tf-hero-tomato">${stages[dayIndex]}</div>
+          <div class="tf-hero-tomato">${bestStreak >= 2 ? '🔥' : stages[dayIndex]}</div>
         </div>
       </div>
-
-      ${bestStreak >= 2 ? `
-      <div class="tf-streak-nudge" style="margin:0 16px 12px;padding:10px 14px;border-radius:12px;background:${!hasRecordedToday && isEvening ? 'rgba(255,59,48,0.08)' : 'var(--primary-bg)'};display:flex;align-items:center;gap:10px;">
-        <span style="font-size:22px;">${bestStreak >= 7 ? '🔥' : '💪'}</span>
-        <div style="flex:1;min-width:0;">
-          <div style="font-size:13px;font-weight:700;color:var(--text);line-height:1.4;">${streakType} ${bestStreak}일 연속 기록 중!</div>
-          <div style="font-size:11px;color:${!hasRecordedToday && isEvening ? '#FF3B30' : 'var(--text-tertiary)'};line-height:1.4;margin-top:1px;">${hasRecordedToday ? `오늘도 기록 완료 ✓ 내일이면 ${bestStreak + 1}일째` : isEvening ? `오늘 기록하면 ${bestStreak + 1}일째 · ${hoursLeft}시간 남음` : `오늘 기록하면 ${bestStreak + 1}일째`}</div>
-        </div>
-      </div>` : ''}
 
       <div class="tf-progress">
         <div class="tf-progress-header">
@@ -2086,6 +2085,35 @@ async function _renderFriendFeed() {
           _goFriendPage(_friendPageCur + (dx < 0 ? 1 : -1));
         }
       });
+    }
+
+    // 응원 보내기 함수
+    async function _sendCheer(btnEl) {
+      const fid = btnEl.dataset.cheerFid;
+      const fname = btnEl.dataset.cheerName;
+      if (btnEl.disabled) return;
+      btnEl.disabled = true;
+      btnEl.style.opacity = '0.5';
+      btnEl.textContent = '보내는 중...';
+      try {
+        const dk = dateKey(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
+        const liked = await toggleLike(fid, dk, 'cheer', '👏');
+        if (liked) {
+          btnEl.textContent = '✅ 응원 완료';
+          btnEl.style.background = 'var(--success-bg, rgba(52,199,89,0.1))';
+          btnEl.style.color = 'var(--success, #34C759)';
+        } else {
+          // 이미 응원한 상태에서 다시 누르면 취소
+          btnEl.textContent = '👏 응원';
+          btnEl.style.background = 'var(--primary-bg)';
+          btnEl.style.color = 'var(--primary)';
+        }
+      } catch (e) {
+        console.warn('[cheer] error:', e);
+        btnEl.textContent = '👏 응원';
+      }
+      btnEl.disabled = false;
+      btnEl.style.opacity = '1';
     }
 
     // 이벤트 위임: 이름 클릭→프로필, 응원 클릭→응원, 선물 클릭→선물
