@@ -160,7 +160,7 @@ function _renderStreakFreeze() {
   const available = tomatoState.totalTomatoes + tomatoState.giftedReceived - tomatoState.giftedSent;
   const canUse = available > 0 && usedThisWeek.length === 0;
   el.innerHTML = `<button class="streak-freeze-btn${canUse ? '' : ' disabled'}" onclick="useStreakFreezeUI()" ${canUse ? '' : 'disabled'}>
-    🧊 Streak Freeze <span style="font-weight:400;opacity:0.7;">(🍅1개 · 주1회)</span>
+    스트릭 보호<span class="streak-freeze-sub">토마토 1개 · 주 1회</span>
   </button>`;
 }
 
@@ -1488,8 +1488,15 @@ function _renderTomatoCard() {
           <div class="tf-hero-tomato">${heroEmoji}</div>
         </div>
       </div>
+      <div class="streak-freeze-row" id="streak-freeze-row" style="padding:0 16px;"></div>
+      <div class="hero-social-proof" id="hero-social-proof" style="display:none;padding:0 16px 12px;"></div>
     </div>
   `;
+  _renderStreakFreeze();
+
+  // 마일스톤 체크
+  _checkStreakMilestone('workout', streaks.workout);
+  _checkStreakMilestone('diet', streaks.diet);
 
   // 게스트는 unit-goal 카드를 숨김 (통합되었으므로)
   const unitCard = document.getElementById('card-unit-goal');
@@ -1993,12 +2000,11 @@ async function _renderFriendFeed() {
   const user = getCurrentUser();
   if (!user) { feedEl.innerHTML = ''; return; }
 
-  // 알림 (병렬 로딩)
+  // 이웃 요청만 표시 (리액션/댓글 등은 알림 탭에서 확인)
   const notifEl = document.getElementById('friend-notifications');
   try {
-    const [pending, notifs] = await Promise.all([getPendingRequests(), getMyNotifications()]);
-    const unread = notifs.filter(n => !n.read);
-    if (pending.length > 0 || unread.length > 0) {
+    const pending = await getPendingRequests();
+    if (pending.length > 0) {
       notifEl.style.display = 'block';
       const accounts = await getAccountList();
       let nh = '';
@@ -2007,37 +2013,7 @@ async function _renderFriendFeed() {
         const nm = a ? _resolveNickname(a, accounts) : req.from.replace(/_/g, '');
         nh += '<div class="friend-notif-row"><span>' + nm + '님이 이웃 요청을 보냈어요</span><div style="display:flex;gap:6px;"><button onclick="acceptFriendReq(\'' + req.id + '\')" style="background:var(--primary);color:#fff;border:none;border-radius:var(--radius-sm);padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;">수락</button><button onclick="rejectFriendReq(\'' + req.id + '\')" style="background:var(--surface3);color:var(--text-secondary);border:none;border-radius:var(--radius-sm);padding:6px 12px;font-size:12px;cursor:pointer;">거절</button></div></div>';
       }
-      for (const n of unread.slice(0, 3)) {
-        if (n.type === 'friend_request') continue;
-        const a = accounts.find(x => x.id === n.from);
-        const nm = a ? _resolveNickname(a, accounts) : (n.from || '').replace(/_/g, '');
-        const fullNm = a ? a.lastName + a.firstName.replace(/\(.*\)/, '') : (n.from || '').replace(/_/g, '');
-        const ic = n.type === 'like' ? '❤️' : n.type === 'friend_accepted' ? '🤝' : n.type === 'guestbook' ? '📝' : n.type === 'announcement' ? '📢' : n.type === 'comment' || n.type === 'comment_reply' ? '💬' : '💬';
-        const scrollTarget = (n.type === 'like' || n.type === 'reaction') ? 'reactions' : (n.type === 'guestbook' || n.type === 'guestbook_reply') ? 'guestbook' : (n.type === 'comment' || n.type === 'comment_reply') ? `comments_${n.section || ''}` : '';
-        const fid = (n.from || '').replace(/"/g, '&quot;');
-        const fnm = fullNm.replace(/"/g, '&quot;');
-        nh += `<div class="friend-notif-row" data-notif-id="${n.id}" data-notif-fid="${fid}" data-notif-fname="${fnm}" data-notif-scroll="${scrollTarget}">
-          <span>${ic} <span class="notif-name" data-nfid="${fid}" data-nfname="${fnm}">${nm}</span>님이 ${n.message}</span>
-        </div>`;
-      }
       notifEl.innerHTML = nh;
-      // 알림 이벤트 위임
-      notifEl.onclick = (e) => {
-        const nameEl = e.target.closest('.notif-name[data-nfid]');
-        const rowEl = e.target.closest('.friend-notif-row[data-notif-id]');
-        if (!rowEl) return;
-        // 읽음 처리
-        if (typeof markNotifRead === 'function') markNotifRead(rowEl.dataset.notifId);
-        if (nameEl) {
-          // 이름 클릭 → 프로필만 열기
-          e.stopPropagation();
-          openFriendProfile(nameEl.dataset.nfid, nameEl.dataset.nfname);
-        } else {
-          // 알림 자체 클릭 → 프로필 + 해당 섹션 스크롤
-          const scrollTo = rowEl.dataset.notifScroll;
-          openFriendProfile(rowEl.dataset.notifFid, rowEl.dataset.notifFname, scrollTo);
-        }
-      };
     } else if (notifEl) { notifEl.style.display = 'none'; }
   } catch(e) { console.warn('[friends] notif:', e); }
 
@@ -2113,18 +2089,16 @@ async function _renderFriendFeed() {
         if ((w.muscles || []).length > 0) {
           items += '<div class="friend-feed-item"><span>🏋️ ' + (w.muscles || []).slice(0, 3).join(', ') + '</span></div>';
         }
-        const feedMealMap = {breakfast:{foods:'bFoods',memo:'breakfast',photo:'bPhoto'},lunch:{foods:'lFoods',memo:'lunch',photo:'lPhoto'},dinner:{foods:'dFoods',memo:'dinner',photo:'dPhoto'},snack:{foods:'sFoods',memo:'snack',photo:'sPhoto'}};
+        const feedMealMap = {breakfast:{foods:'bFoods',memo:'breakfast'},lunch:{foods:'lFoods',memo:'lunch'},dinner:{foods:'dFoods',memo:'dinner'},snack:{foods:'sFoods',memo:'snack'}};
         ['breakfast','lunch','dinner','snack'].forEach(meal => {
           const mk = feedMealMap[meal];
           const foods = w[mk.foods] || [];
           const memo = w[mk.memo] || '';
-          const photo = w[mk.photo];
-          if (foods.length || memo || photo) {
+          if (foods.length || memo) {
             const foodText = foods.map(x => x.name).join(', ').slice(0, 30) || memo;
             const kcal = foods.reduce((s, x) => s + (x.kcal || 0), 0);
             const lb = {breakfast:'🌅',lunch:'☀️',dinner:'🌙',snack:'🥤'}[meal];
-            const photoThumb = photo ? '<div class="meal-photo-frame" style="padding-bottom:50%;margin-top:4px;" onclick="openMealPhotoLightbox(this.querySelector(\'img\').src)"><img src="' + photo + '"></div>' : '';
-            items += '<div class="friend-feed-item"><span>' + lb + ' ' + (foodText) + (kcal ? ' (' + kcal + 'kcal)' : '') + '</span>' + photoThumb + '</div>';
+            items += '<div class="friend-feed-item"><span>' + lb + ' ' + (foodText) + (kcal ? ' (' + kcal + 'kcal)' : '') + '</span></div>';
           }
         });
       }
@@ -2143,9 +2117,9 @@ async function _renderFriendFeed() {
 
     // ── 배너: 이웃 이름 표시 ──
     let bannerText = '';
-    if (activeNames.length === 1) bannerText = `${activeNames[0]}님이 오늘 기록했어요`;
-    else if (activeNames.length === 2) bannerText = `${activeNames[0]}, ${activeNames[1]}님이 오늘 기록했어요`;
-    else if (activeNames.length > 2) bannerText = `${activeNames[0]}, ${activeNames[1]} 외 ${activeNames.length - 2}명이 오늘 기록했어요`;
+    if (activeNames.length === 1) bannerText = `${activeNames[0]}님이 오늘 달리고 있어요 🔥`;
+    else if (activeNames.length === 2) bannerText = `${activeNames[0]}, ${activeNames[1]}님이 함께 달리는 중! 🔥`;
+    else if (activeNames.length > 2) bannerText = `${activeNames[0]}, ${activeNames[1]} 외 ${activeNames.length - 2}명이 함께 달리는 중! 🔥`;
     const banner = bannerText
       ? `<div style="padding:10px 12px;background:var(--primary-bg);border-radius:10px;font-size:12px;font-weight:500;color:var(--primary);margin-bottom:10px;text-align:center;">${bannerText}</div>`
       : '';
