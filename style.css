@@ -3815,6 +3815,118 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
   padding-bottom: 4px; -webkit-overflow-scrolling: touch;
 }
 
+/* ── 오늘의 식단 카드 (토스 스타일 리스트) ── */
+.tf-meal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 20px 0;
+}
+.tf-meal-title { font-size: 15px; font-weight: 700; color: var(--text); }
+.tf-meal-total { font-size: 12px; font-weight: 600; color: var(--text-tertiary); }
+.tf-meal-total.tf-ok { color: var(--primary); }
+.tf-meal-total.tf-over { color: #e53935; }
+
+.tf-meal-bar {
+  height: 4px; background: var(--surface2); border-radius: 2px;
+  margin: 12px 20px 0; overflow: hidden;
+}
+.tf-meal-bar-fill {
+  height: 100%; border-radius: 2px; transition: width 0.5s ease;
+  background: var(--primary);
+}
+.tf-meal-bar-fill.over { background: #e53935; }
+
+.tf-meal-list { padding: 4px 0 8px; }
+
+.tf-meal-row {
+  padding: 14px 20px; transition: background 0.15s;
+}
+.tf-meal-row + .tf-meal-row { border-top: 1px solid var(--border); }
+.tf-meal-row[onclick] { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.tf-meal-row[onclick]:active { background: var(--surface2); }
+
+.tf-meal-main { display: flex; align-items: center; gap: 14px; }
+.tf-meal-icon { font-size: 22px; flex-shrink: 0; width: 32px; text-align: center; }
+.tf-meal-info { flex: 1; min-width: 0; }
+.tf-meal-label { display: block; font-size: 14px; font-weight: 600; color: var(--text); line-height: 1.3; }
+.tf-meal-foods {
+  display: block; font-size: 12px; color: var(--text-secondary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  margin-top: 2px; line-height: 1.3;
+}
+.tf-meal-muted { color: var(--text-tertiary); }
+
+.tf-meal-right { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.tf-meal-kcal { font-size: 15px; font-weight: 700; color: var(--text); }
+.tf-meal-kcal-unit { font-size: 10px; font-weight: 500; color: var(--text-tertiary); margin-left: 1px; }
+.tf-meal-chevron {
+  font-size: 16px; color: var(--text-tertiary); transition: transform 0.2s ease;
+  font-weight: 300; line-height: 1;
+}
+
+.tf-meal-empty { opacity: 0.45; }
+.tf-meal-empty .tf-meal-icon { filter: grayscale(0.8); }
+
+/* 끼니별 탄단지 아코디언 */
+.tf-meal-macro {
+  max-height: 0; overflow: hidden;
+  transition: max-height 0.25s ease, margin 0.25s ease, padding 0.25s ease;
+  margin-top: 0; padding-top: 0;
+}
+.tf-meal-macro.tf-meal-macro-open {
+  max-height: 80px; margin-top: 12px; padding-top: 12px;
+  border-top: 1px dashed var(--border);
+}
+.tf-meal-macro-grid { display: flex; gap: 8px; }
+.tf-meal-macro-chip {
+  flex: 1; text-align: center; padding: 8px 4px;
+  border-radius: 10px;
+}
+.tf-chip-carb { background: rgba(255,152,0,0.08); }
+.tf-chip-protein { background: rgba(76,175,80,0.08); }
+.tf-chip-fat { background: rgba(255,235,59,0.1); }
+.tf-meal-macro-lbl {
+  display: block; font-size: 10px; font-weight: 600; color: var(--text-tertiary); letter-spacing: -0.02em;
+}
+.tf-meal-macro-val {
+  display: block; font-size: 15px; font-weight: 700; color: var(--text); margin-top: 2px;
+}
+
+/* ── 체중 변화 카드 (토스 스타일) ── */
+.tf-wt-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 20px 0;
+}
+.tf-wt-title { font-size: 15px; font-weight: 700; color: var(--text); }
+.tf-wt-action {
+  font-size: 12px; color: #3182F6; font-weight: 600;
+  background: none; border: none; cursor: pointer; padding: 0;
+}
+.tf-wt-body { padding: 16px 20px 18px; }
+.tf-wt-main {
+  display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px;
+}
+.tf-wt-current {
+  font-size: 32px; font-weight: 800; color: var(--text);
+  letter-spacing: -0.03em; line-height: 1;
+}
+.tf-wt-unit { font-size: 14px; font-weight: 500; color: var(--text-secondary); margin-left: 2px; }
+.tf-wt-delta {
+  font-size: 13px; font-weight: 700; color: #3182F6;
+  background: #EDF5FF; padding: 3px 10px; border-radius: 999px;
+}
+.tf-wt-bar {
+  height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden;
+}
+.tf-wt-bar-fill {
+  height: 100%; background: linear-gradient(90deg, #3182F6, #60a5fa);
+  border-radius: 3px; transition: width 0.5s ease;
+}
+.tf-wt-meta {
+  display: flex; align-items: center; justify-content: space-between; margin-top: 12px;
+}
+.tf-wt-tags { display: flex; gap: 4px; }
+.tf-wt-eta { font-size: 11px; color: var(--text-tertiary); font-weight: 500; }
+
 /* Reuse existing farm-inv-item, farm-shop-* styles */
 
 /* Legacy scene (unused but kept) */

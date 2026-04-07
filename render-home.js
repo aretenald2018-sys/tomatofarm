@@ -1331,33 +1331,7 @@ function _renderTomatoCard() {
     </div>`;
   }).join('<div class="tf-step-line"></div>');
 
-  // 칼로리 섭취 행
-  let kcalRow = '';
-  dayData.forEach((d, i) => {
-    const today = isToday(d.y, d.m, d.dd);
-    const clickable = !d.future && d.intake > 0;
-    const tapAttr = clickable ? `onclick="showMacroDetail(${i})"` : '';
-    if (d.future || d.intake <= 0) {
-      kcalRow += `<div class="tf-kcal-cell ${today?'tf-kcal-today':''}"><span class="tf-kcal-val muted">—</span></div>`;
-    } else {
-      const over = d.intake > d.target;
-      kcalRow += `<div class="tf-kcal-cell ${today?'tf-kcal-today':''} tf-kcal-tappable" ${tapAttr}>
-        <span class="tf-kcal-val ${over?'tf-over':'tf-ok'}">${d.intake.toLocaleString()}</span>
-        <span class="tf-kcal-target">/ ${d.target.toLocaleString()}</span>
-      </div>`;
-    }
-  });
-
-  // 오늘 칼로리 메시지
-  let kcalMsg = '';
-  if (todayKcal <= 0) {
-    kcalMsg = '아직 오늘 식단 기록이 없어요';
-  } else if (kcalOk) {
-    kcalMsg = `오늘 ${todayKcal.toLocaleString()} / ${todayTarget.toLocaleString()} kcal ✓`;
-  } else {
-    kcalMsg = `오늘 ${todayKcal.toLocaleString()} / ${todayTarget.toLocaleString()} kcal 초과`;
-  }
-
+  // ── 히어로 카드 (동기부여 + 진행 단계만) ──
   heroEl.innerHTML = `
     <div class="tf-card">
       <div class="tf-hero" style="background:linear-gradient(135deg, ${['hsl(100,40%,94%)','hsl(45,60%,93%)','hsl(20,65%,93%)','hsl(8,70%,93%)'][dayIndex]} 0%, transparent 100%);">
@@ -1385,26 +1359,6 @@ function _renderTomatoCard() {
         </div>
         <div class="tf-steps">${dots}</div>
       </div>
-
-      <div class="tf-kcal-section">
-        <div class="tf-kcal-header">
-          <span class="tf-kcal-label">칼로리 현황 <span style="font-size:10px;font-weight:400;color:var(--text-tertiary);">눌러서 탄단지 보기 →</span></span>
-          <span class="tf-kcal-msg ${kcalOk ? 'tf-ok' : todayKcal > 0 ? 'tf-over' : ''}">${kcalMsg}</span>
-        </div>
-        <div class="tf-kcal-row">
-          <div class="tf-kcal-labels">
-            <div class="tf-kcal-day-label">D1</div>
-            <div class="tf-kcal-day-label">D2</div>
-            <div class="tf-kcal-day-label">D3</div>
-            <div class="tf-kcal-day-label">D4</div>
-          </div>
-          <div class="tf-kcal-grid">${kcalRow}</div>
-        </div>
-        <div class="tf-macro-detail" id="tf-macro-detail" style="display:none"></div>
-      </div>
-
-      ${_buildDietStatusHtml(plan, metrics)}
-
     </div>
   `;
 
@@ -1412,57 +1366,140 @@ function _renderTomatoCard() {
   const unitCard = document.getElementById('card-unit-goal');
   if (unitCard) unitCard.style.display = 'none';
 
-  // 매크로 상세 팝오버
-  window._tfDayData = dayData;
-  window.showMacroDetail = function(idx) {
-    const detail = document.getElementById('tf-macro-detail');
-    if (!detail) return;
-    const d = window._tfDayData[idx];
-    if (!d) return;
+  // ── 오늘의 식단 카드 (토스 스타일 리스트) ──
+  document.getElementById('tf-meal-card')?.remove();
+  document.getElementById('tf-weight-card')?.remove();
 
-    // 이미 열려있으면 토글
-    if (detail.style.display !== 'none' && detail.dataset.idx === String(idx)) {
-      detail.style.display = 'none';
-      return;
+  const homeHero = document.getElementById('home-hero');
+  const todayDietData = getDiet(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
+  const totalIntake = (todayDietData.bKcal||0) + (todayDietData.lKcal||0) + (todayDietData.dKcal||0) + (todayDietData.sKcal||0);
+  const mealDefs = [
+    { key: 'b', label: '아침', icon: '☀️', textKey: 'breakfast' },
+    { key: 'l', label: '점심', icon: '🌤️', textKey: 'lunch' },
+    { key: 'd', label: '저녁', icon: '🌙', textKey: 'dinner' },
+    { key: 's', label: '간식', icon: '🍪', textKey: null },
+  ];
+
+  let mealsHtml = '';
+  mealDefs.forEach(mi => {
+    const kcal = todayDietData[`${mi.key}Kcal`] || 0;
+    const foods = todayDietData[`${mi.key}Foods`] || [];
+    const text = mi.textKey ? (todayDietData[mi.textKey] || '') : '';
+    const foodNames = foods.length > 0 ? foods.map(f => f.name).join(', ') : text;
+
+    let protein, carbs, fat;
+    if (foods.length > 0) {
+      protein = Math.round(foods.reduce((s, f) => s + (f.protein || 0), 0));
+      carbs = Math.round(foods.reduce((s, f) => s + (f.carbs || 0), 0));
+      fat = Math.round(foods.reduce((s, f) => s + (f.fat || 0), 0));
+    } else {
+      protein = Math.round(todayDietData[`${mi.key}Protein`] || 0);
+      carbs = Math.round(todayDietData[`${mi.key}Carbs`] || 0);
+      fat = Math.round(todayDietData[`${mi.key}Fat`] || 0);
     }
-    detail.dataset.idx = idx;
 
-    const fmtD = (act, tgt, lessIsGood) => {
-      if (act <= 0) return { text: '—', cls: '' };
-      const diff = Math.round(act - tgt);
-      const sign = diff > 0 ? '+' : '';
-      const cls = diff > 0 ? 'tf-over' : (diff < 0 ? (lessIsGood ? 'tf-ok' : 'tf-over') : 'tf-ok');
-      return { text: `${Math.round(act)}g (${sign}${diff})`, cls };
-    };
-    const p = fmtD(d.actP, d.tgtP, false);
-    const c = fmtD(d.actC, d.tgtC, true);
-    const f = fmtD(d.actF, d.tgtF, true);
-    const dayLabel = `D${idx+1} · ${d.m+1}/${d.dd}`;
+    const hasMacro = protein > 0 || carbs > 0 || fat > 0;
+    const hasData = kcal > 0 || foodNames;
 
-    detail.innerHTML = `
-      <div class="tf-detail-header">
-        <span class="tf-detail-title">${dayLabel} 영양소</span>
-        <button class="tf-detail-close" onclick="document.getElementById('tf-macro-detail').style.display='none'">✕</button>
+    mealsHtml += `
+      <div class="tf-meal-row ${hasData ? '' : 'tf-meal-empty'}" ${hasMacro ? `onclick="toggleMealMacro('${mi.key}')"` : ''}>
+        <div class="tf-meal-main">
+          <span class="tf-meal-icon">${mi.icon}</span>
+          <div class="tf-meal-info">
+            <span class="tf-meal-label">${mi.label}</span>
+            <span class="tf-meal-foods ${!foodNames ? 'tf-meal-muted' : ''}">${foodNames || '아직 기록이 없어요'}</span>
+          </div>
+          <div class="tf-meal-right">
+            ${kcal > 0 ? `<span class="tf-meal-kcal">${kcal.toLocaleString()}<span class="tf-meal-kcal-unit">kcal</span></span>` : '<span class="tf-meal-kcal tf-meal-muted">—</span>'}
+            ${hasMacro ? '<span class="tf-meal-chevron">›</span>' : ''}
+          </div>
+        </div>
+        ${hasMacro ? `<div class="tf-meal-macro" id="meal-macro-${mi.key}">
+          <div class="tf-meal-macro-grid">
+            <div class="tf-meal-macro-chip tf-chip-carb"><span class="tf-meal-macro-lbl">탄수화물</span><span class="tf-meal-macro-val">${carbs}g</span></div>
+            <div class="tf-meal-macro-chip tf-chip-protein"><span class="tf-meal-macro-lbl">단백질</span><span class="tf-meal-macro-val">${protein}g</span></div>
+            <div class="tf-meal-macro-chip tf-chip-fat"><span class="tf-meal-macro-lbl">지방</span><span class="tf-meal-macro-val">${fat}g</span></div>
+          </div>
+        </div>` : ''}
+      </div>`;
+  });
+
+  const kcalPct = todayTarget > 0 ? Math.min(Math.round(totalIntake / todayTarget * 100), 100) : 0;
+  const kcalState = totalIntake <= 0 ? '' : totalIntake <= todayTarget + 50 ? 'ok' : 'over';
+
+  const mealCard = document.createElement('div');
+  mealCard.id = 'tf-meal-card';
+  mealCard.className = 'home-card';
+  mealCard.style.cssText = 'padding:0;';
+  mealCard.innerHTML = `
+    <div class="tf-meal-header">
+      <span class="tf-meal-title">오늘의 식단</span>
+      <span class="tf-meal-total ${kcalState === 'ok' ? 'tf-ok' : kcalState === 'over' ? 'tf-over' : ''}">${totalIntake > 0 ? `${totalIntake.toLocaleString()} / ${todayTarget.toLocaleString()} kcal` : '아직 기록이 없어요'}</span>
+    </div>
+    ${todayTarget > 0 && totalIntake > 0 ? `<div class="tf-meal-bar"><div class="tf-meal-bar-fill ${kcalState}" style="width:${kcalPct}%"></div></div>` : ''}
+    <div class="tf-meal-list">${mealsHtml}</div>
+  `;
+  homeHero.after(mealCard);
+
+  // ── 체중 변화 카드 (토스 스타일) ──
+  if (plan._userSet && plan.weight) {
+    const checkins = getBodyCheckins();
+    const latest = checkins.length ? checkins[checkins.length - 1] : null;
+    const curWeight = latest?.weight ?? plan.weight;
+    const wTarget = plan.targetWeight || (plan.weight - (metrics.totalWeightLoss || 0));
+    const wStart = plan.weight;
+    const lost = Math.max(wStart - curWeight, 0);
+    const remain = Math.max(curWeight - wTarget, 0);
+    const wProgress = wStart > wTarget ? Math.min(Math.round((wStart - curWeight) / (wStart - wTarget) * 100), 100) : 0;
+    const weeksLeft = metrics.weeksNeeded;
+    const doneText = plan.startDate
+      ? (() => { const d2 = new Date(plan.startDate); d2.setDate(d2.getDate() + Math.round(weeksLeft * 7)); return `${d2.getMonth()+1}/${d2.getDate()}`; })()
+      : `${Math.round(weeksLeft)}주 후`;
+    const dow2 = TODAY.getDay();
+    const isRefeed = (plan.refeedDays || []).includes(dow2);
+
+    const weightCard = document.createElement('div');
+    weightCard.id = 'tf-weight-card';
+    weightCard.className = 'home-card';
+    weightCard.style.cssText = 'padding:0;';
+    weightCard.innerHTML = `
+      <div class="tf-wt-header">
+        <span class="tf-wt-title">체중 변화</span>
+        <button class="tf-wt-action" onclick="openCheckinModal()">몸무게 입력 →</button>
       </div>
-      <div class="tf-detail-grid">
-        <div class="tf-detail-item">
-          <span class="tf-detail-label">단백질</span>
-          <span class="tf-detail-val ${p.cls}">${p.text}</span>
-          <span class="tf-detail-tgt">목표 ${d.tgtP}g</span>
+      <div class="tf-wt-body">
+        <div class="tf-wt-main">
+          <span class="tf-wt-current">${curWeight.toFixed(1)}<span class="tf-wt-unit">kg</span></span>
+          ${lost > 0 ? `<span class="tf-wt-delta">-${lost.toFixed(1)}kg</span>` : ''}
         </div>
-        <div class="tf-detail-item">
-          <span class="tf-detail-label">탄수화물</span>
-          <span class="tf-detail-val ${c.cls}">${c.text}</span>
-          <span class="tf-detail-tgt">목표 ${d.tgtC}g</span>
+        <div class="tf-wt-bar">
+          <div class="tf-wt-bar-fill" style="width:${wProgress}%"></div>
         </div>
-        <div class="tf-detail-item">
-          <span class="tf-detail-label">지방</span>
-          <span class="tf-detail-val ${f.cls}">${f.text}</span>
-          <span class="tf-detail-tgt">목표 ${d.tgtF}g</span>
+        <div class="tf-wt-meta">
+          <div class="tf-wt-tags">
+            <span class="tf-diet-tag ${isRefeed ? 'tf-diet-tag-blue' : 'tf-diet-tag-orange'}">${isRefeed ? '리피드' : '데피싯'}</span>
+            ${remain > 0 ? `<span class="tf-diet-tag tf-diet-tag-gray">${remain.toFixed(1)}kg 남음</span>` : '<span class="tf-diet-tag tf-diet-tag-green">달성!</span>'}
+          </div>
+          <span class="tf-wt-eta">📅 ${doneText} 예상</span>
         </div>
       </div>
     `;
-    detail.style.display = 'block';
+    mealCard.after(weightCard);
+  }
+
+  // 끼니별 탄단지 토글
+  window.toggleMealMacro = function(key) {
+    const el = document.getElementById(`meal-macro-${key}`);
+    if (!el) return;
+    const row = el.closest('.tf-meal-row');
+    const chevron = row?.querySelector('.tf-meal-chevron');
+    if (el.classList.contains('tf-meal-macro-open')) {
+      el.classList.remove('tf-meal-macro-open');
+      if (chevron) chevron.style.transform = '';
+    } else {
+      el.classList.add('tf-meal-macro-open');
+      if (chevron) chevron.style.transform = 'rotate(90deg)';
+    }
   };
 }
 
