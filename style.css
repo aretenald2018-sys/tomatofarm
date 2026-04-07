@@ -3621,6 +3621,44 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
 }
 @keyframes tf-float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
 
+/* ── Hero gradient (A안 다크모드 톤) ── */
+.tf-hero--gradient {
+  background: linear-gradient(135deg, #921708 0%, #ca1d13 50%, #fa342c 100%) !important;
+  border-radius: 16px 16px 0 0;
+  position: relative;
+  overflow: hidden;
+}
+.tf-hero--gradient::after {
+  content: '';
+  position: absolute;
+  top: -30px; right: -30px;
+  width: 100px; height: 100px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 50%;
+  pointer-events: none;
+}
+.tf-hero--gradient .tf-hero-label {
+  color: rgba(255,255,255,0.85);
+  font-weight: 600;
+}
+.tf-hero--gradient .tf-hero-count {
+  color: #ffffff;
+  text-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+.tf-hero--gradient .tf-hero-unit {
+  color: rgba(255,255,255,0.7);
+}
+.tf-hero--gradient .tf-hero-sub {
+  color: rgba(255,255,255,0.6);
+}
+.tf-hero--gradient .tf-hero-sub b {
+  color: #ffffff;
+  font-weight: 700;
+}
+.tf-hero--gradient .tf-hero-tomato {
+  filter: drop-shadow(0 4px 12px rgba(0,0,0,0.3));
+}
+
 /* Progress steps D1→D4 */
 .tf-progress {
   padding: 0 20px 16px; border-bottom: 1px solid var(--border);

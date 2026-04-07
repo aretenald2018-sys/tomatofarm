@@ -1328,7 +1328,7 @@ function _renderTomatoCard() {
 
   heroEl.innerHTML = `
     <div class="tf-card">
-      <div class="tf-hero" style="background:linear-gradient(135deg, #fdf0f0, #fff8f7);">
+      <div class="tf-hero tf-hero--gradient">
         <div class="tf-hero-left">
           <div class="tf-hero-label">${heroLabel}</div>
           <div class="tf-hero-count">${heroCount}</div>
