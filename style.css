@@ -4625,8 +4625,11 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
 
 /* ── Hero Social Proof ── */
 .hero-social-proof {
-  font-size: 12px; color: var(--text-tertiary); margin-top: 8px;
-  text-align: center; animation: fadeIn 0.3s ease;
+  font-size: 13px; color: var(--text-secondary); margin-top: 12px;
+  text-align: left; line-height: 1.45; animation: fadeIn 0.3s ease;
+}
+.hero-social-proof strong {
+  font-weight: 700; color: var(--text);
 }
 
 /* ── Seed DatePicker ── */

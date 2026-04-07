@@ -843,7 +843,7 @@ function _renderCalorieTracker() {
   macroEl.innerHTML = macros.map(({ label, cur, goal, color }) => {
     const pct  = goal > 0 ? Math.min(cur / goal * 100, 100) : 0;
     const over = cur > goal && goal > 0;
-    const info = hasAnalysis ? `${cur}/${goal}g` : `목표 ${goal}g`;
+    const info = hasAnalysis ? `${Math.round(cur)}/${goal}g` : `목표 ${goal}g`;
     return `
     <div class="macro-bar-row">
       <span class="macro-bar-label">${label}</span>

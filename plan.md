@@ -42,9 +42,13 @@
 - [ ] Git 브랜치 전략 도입 (main → dev → feature)
 
 ## Phase 현재: 기능 개발
-**목표**: [여기에 현재 작업 중인 기능/버그 목록 추가]
 
-- [ ] ...
+### 2026-04-08 UI 개선 3건
+- [x] 프로필 댓글 "등록"/"남기기" 버튼 Tonal 스타일로 변경 (friend-profile.js)
+- [x] 칼로리 카드 단/탄/지 매크로 정수 표시 (render-workout.js)
+- [x] 히어로카드 듀오링고 스타일 이웃 통합 문구 (hero.js)
+  - **구현 중 발견한 버그**: `updateHeroSocialProof()`가 `renderFriendFeed()`에서만 호출되어, 오늘 활동한 이웃이 없으면 메시지가 업데이트되지 않았음. `renderLeaderboard()`에서도 주간 리더보드 이웃 데이터로 호출하도록 추가 수정.
+  - social-proof 영역 왼쪽 정렬 + 이웃 이름/핵심어 `<strong>` 강조 + 말투 활발하게 변경
 
 ---
 

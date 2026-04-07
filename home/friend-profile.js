@@ -248,7 +248,7 @@ window.openFriendProfile = async function(friendId, friendName, scrollToSection)
         </div>
         <div style="display:flex;gap:6px;">
           <input id="guestbook-input" style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:999px;font-size:13px;color:var(--text);background:var(--surface2);outline:none;font-family:var(--font-sans);transition:border-color 0.15s;" placeholder="응원 한마디 남기기" onfocus="this.style.borderColor='var(--primary)'" onblur="this.style.borderColor='var(--border)'" onkeydown="if(event.key==='Enter')submitGuestbook('${normalizedFriendId}')">
-          <button onclick="submitGuestbook('${normalizedFriendId}')" style="padding:8px 14px;border:none;border-radius:999px;background:var(--primary);color:#fff;font-size:13px;font-weight:600;cursor:pointer;flex-shrink:0;">남기기</button>
+          <button onclick="submitGuestbook('${normalizedFriendId}')" style="padding:8px 14px;border:none;border-radius:999px;background:var(--primary-bg);color:var(--primary);font-size:13px;font-weight:600;cursor:pointer;flex-shrink:0;">남기기</button>
         </div>
       </div>
 
@@ -519,7 +519,7 @@ async function loadComments(targetId, dk, section) {
 
   html += `<div style="display:flex;gap:6px;margin-top:8px;">
     <input id="comment-input-${section}" style="flex:1;padding:7px 12px;border:1px solid var(--border);border-radius:999px;font-size:12px;color:var(--text);background:var(--surface2);outline:none;font-family:var(--font-sans);transition:border-color 0.15s;" placeholder="댓글 남기기" onfocus="this.style.borderColor='var(--primary)'" onblur="this.style.borderColor='var(--border)'" onkeydown="if(event.key==='Enter')submitComment('${targetId}','${dk}','${section}')">
-    <button onclick="submitComment('${targetId}','${dk}','${section}')" style="padding:6px 12px;border:none;border-radius:999px;background:var(--primary);color:#fff;font-size:12px;font-weight:600;cursor:pointer;flex-shrink:0;">등록</button>
+    <button onclick="submitComment('${targetId}','${dk}','${section}')" style="padding:6px 12px;border:none;border-radius:999px;background:var(--primary-bg);color:var(--primary);font-size:12px;font-weight:600;cursor:pointer;flex-shrink:0;">등록</button>
   </div>`;
 
   panel.innerHTML = `<div style="margin-top:8px;padding:8px 0;border-top:1px dashed var(--border);">${html}</div>`;

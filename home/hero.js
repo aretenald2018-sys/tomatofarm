@@ -108,13 +108,40 @@ export function checkStreakMilestone(type, days) {
 // ── 소셜 히어로 업데이트 ─────────────────────────────────────────
 export function updateHeroSocialProof(activeNames) {
   const el = document.getElementById('hero-social-proof');
-  if (!el || !activeNames.length) return;
-  let text = '';
-  if (activeNames.length === 1) text = `${activeNames[0]}님도 오늘 달리고 있어요`;
-  else if (activeNames.length === 2) text = `${activeNames[0]}, ${activeNames[1]}님도 함께하고 있어요`;
-  else text = `${activeNames[0]}, ${activeNames[1]} 외 ${activeNames.length - 2}명이 함께하고 있어요`;
-  el.textContent = text;
-  el.style.display = '';
+  const msgEl = document.querySelector('.hero-message');
+
+  if (!activeNames || !activeNames.length) return;
+
+  const { workout, diet } = calcStreaks();
+  const mainStreak = Math.max(workout, diet);
+  const streakLabel = workout >= diet ? '운동' : '식단';
+  const firstName = activeNames[0];
+
+  // 듀오링고 스타일: 메인 메시지에 이웃 이름 통합
+  if (msgEl) {
+    if (mainStreak >= 7) {
+      msgEl.innerHTML = `<strong>${firstName}</strong>님과 <strong>함께</strong> ${mainStreak}일째 ${streakLabel} 달리는 중!`;
+    } else if (mainStreak >= 3) {
+      msgEl.innerHTML = `<strong>${firstName}</strong>님과 <strong>함께</strong> ${mainStreak}일째 이어가는 중!`;
+    } else if (mainStreak >= 1) {
+      msgEl.innerHTML = `<strong>${firstName}</strong>님도 같이 달리고 있어요!`;
+    }
+    // mainStreak === 0: 기존 개인 격려 메시지 유지
+  }
+
+  // 소셜 증명 줄: 왼쪽 정렬, 이웃 이름 강조
+  if (el) {
+    if (activeNames.length >= 3) {
+      el.innerHTML = `<strong>${activeNames[1]}</strong>님 외 ${activeNames.length - 2}명도 함께 달리는 중 🔥`;
+      el.style.display = '';
+    } else if (activeNames.length === 2) {
+      el.innerHTML = `<strong>${activeNames[1]}</strong>님도 같이 달리고 있어요 🔥`;
+      el.style.display = '';
+    } else {
+      // 1명은 이미 메인 메시지에 포함 — 중복 방지
+      el.style.display = 'none';
+    }
+  }
 }
 
 // ── Streak Freeze UI ─────────────────────────────────────────────
@@ -252,6 +279,12 @@ export async function renderLeaderboard() {
     const myEntry = board.find(p => p.isMe);
     const myRank = myEntry ? board.indexOf(myEntry) + 1 : 0;
     const neighborNames = board.filter(p => !p.isMe).slice(0, 2).map(p => p.name);
+
+    // 리더보드 이웃 데이터로 히어로 메시지도 업데이트 (주간 데이터 기반)
+    if (neighborNames.length > 0) {
+      updateHeroSocialProof(neighborNames);
+    }
+
     let contextMsg = '';
     if (myRank === 1 && myEntry && myEntry.days > 0) {
       contextMsg = '🏆 지금 1위예요! 이 기세를 유지해보세요';
