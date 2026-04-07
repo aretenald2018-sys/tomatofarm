@@ -3,6 +3,7 @@
 // ================================================================
 
 import { MUSCLES, DAYS }                       from './config.js';
+import { showToast }                           from './home/utils.js';
 import { saveDay, saveExercise, deleteExercise,
          getDay, getExList, dateKey,
          getLastSession, isFuture, TODAY,
@@ -21,7 +22,11 @@ let _cfStatus   = 'none';
 let _stretching = false;
 let _swimming   = false;
 let _running    = false;
+let _runData    = { distance: 0, durationMin: 0, durationSec: 0, memo: '' };
 let _wineFree   = false;
+let _workoutStartTime = null;  // 운동 시작 시각 (ms timestamp)
+let _workoutDuration  = 0;     // 저장된 운동 시간 (초)
+let _workoutTimerInterval = null;
 let _breakfastSkipped = false;
 let _lunchSkipped = false;
 let _dinnerSkipped = false;
@@ -60,7 +65,16 @@ export function loadWorkoutDate(y, m, d) {
   _stretching = !!day.stretching;
   _swimming   = !!day.swimming;
   _running    = !!day.running;
+  _runData    = {
+    distance:    day.runDistance || 0,
+    durationMin: day.runDurationMin || 0,
+    durationSec: day.runDurationSec || 0,
+    memo:        day.runMemo || '',
+  };
   _wineFree   = !!day.wine_free;
+  _workoutDuration = day.workoutDuration || 0;
+  _workoutStartTime = null;
+  if (_workoutTimerInterval) { clearInterval(_workoutTimerInterval); _workoutTimerInterval = null; }
   _breakfastSkipped = !!day.breakfast_skipped;
   _lunchSkipped = !!day.lunch_skipped;
   _dinnerSkipped = !!day.dinner_skipped;
@@ -91,6 +105,7 @@ export function loadWorkoutDate(y, m, d) {
   // 수영/런닝 칩 상태 복원
   document.getElementById('wt-chip-swimming')?.classList.toggle('active', _swimming);
   document.getElementById('wt-chip-running')?.classList.toggle('active', _running);
+  _renderRunningForm();
   _renderWineFreeToggle();
   _renderMealSkippedToggles();
   _initButtonEventListeners();
@@ -209,6 +224,10 @@ export function wtRemoveSet(entryIdx, si) {
 
 export function wtUpdateSet(entryIdx, si, field, val) {
   _exercises[entryIdx].sets[si][field] = field === 'setType' ? val : (parseFloat(val) || 0);
+  // kg/reps 변경 시 체크 자동 해제
+  if (field === 'kg' || field === 'reps') {
+    _exercises[entryIdx].sets[si].done = false;
+  }
   _renderSets(entryIdx);
   saveWorkoutDay().catch(e => console.error('Save error:', e));
 }
@@ -218,7 +237,10 @@ export function wtToggleSetDone(entryIdx, si) {
   _exercises[entryIdx].sets[si].done = !wasDone;
   _renderSets(entryIdx);
   // 저장 후 스파크라인 갱신을 위해 전체 운동 목록 재렌더
-  saveWorkoutDay().then(() => _renderExerciseList()).catch(e => console.error('Save error:', e));
+  saveWorkoutDay().then(() => {
+    _renderExerciseList();
+    if (!wasDone) showToast('저장되었습니다', 1500, 'success');
+  }).catch(e => console.error('Save error:', e));
   // 세트 완료 시 휴식 타이머 자동 시작
   if (!wasDone) wtRestTimerStart();
 }
@@ -339,6 +361,12 @@ export async function saveWorkoutDay() {
   const _tol = plan.advancedMode ? (plan.dietTolerance ?? 50) : 50;
   const isDietSuccess = isDietDaySuccess(totalKcal, dayTarget, _tol);
 
+  // 런닝 폼에서 최신값 읽기
+  _runData.distance    = parseFloat(document.getElementById('wt-run-distance')?.value) || 0;
+  _runData.durationMin = parseInt(document.getElementById('wt-run-duration-min')?.value) || 0;
+  _runData.durationSec = parseInt(document.getElementById('wt-run-duration-sec')?.value) || 0;
+  _runData.memo        = document.getElementById('wt-run-memo')?.value.trim() || '';
+
   await saveDay(dateKey(y, m, d), {
     exercises:  cleanEx,
     cf:         _cfStatus === 'done',
@@ -349,6 +377,11 @@ export async function saveWorkoutDay() {
     stretching: _stretching,
     swimming:   _swimming,
     running:    _running,
+    runDistance:    _runData.distance,
+    runDurationMin: _runData.durationMin,
+    runDurationSec: _runData.durationSec,
+    runMemo:       _runData.memo,
+    workoutDuration: _workoutDuration,
     wine_free:  _wineFree,
     breakfast_skipped: _breakfastSkipped,
     lunch_skipped: _lunchSkipped,
@@ -374,7 +407,7 @@ export async function saveWorkoutDay() {
     workoutPhoto: window._mealPhotos?.workout || null,
   });
 
-  if (btn) { btn.disabled = false; btn.textContent = '✓ 저장됨'; setTimeout(() => { btn.textContent = '저장'; }, 1500); }
+  if (btn) { btn.disabled = false; btn.textContent = '저장'; }
   document.dispatchEvent(new CustomEvent('sheet:saved'));
 }
 
@@ -901,6 +934,10 @@ async function _autoSaveDiet() {
       stretching: _stretching,
       swimming:   _swimming,
       running:    _running,
+      runDistance:    _runData.distance,
+      runDurationMin: _runData.durationMin,
+      runDurationSec: _runData.durationSec,
+      runMemo:       _runData.memo,
       wine_free:  _wineFree,
       breakfast_skipped: _breakfastSkipped,
       lunch_skipped: _lunchSkipped,
@@ -919,6 +956,12 @@ async function _autoSaveDiet() {
       dProtein:_diet.dProtein, dCarbs:_diet.dCarbs, dFat:_diet.dFat,
       sProtein:_diet.sProtein, sCarbs:_diet.sCarbs, sFat:_diet.sFat,
       bFoods:_diet.bFoods||[], lFoods:_diet.lFoods||[], dFoods:_diet.dFoods||[], sFoods:_diet.sFoods||[],
+      // 사진 데이터 보존 (누락 시 setDoc 전체 덮어쓰기로 사진 삭제됨)
+      bPhoto: window._mealPhotos?.breakfast || null,
+      lPhoto: window._mealPhotos?.lunch || null,
+      dPhoto: window._mealPhotos?.dinner || null,
+      sPhoto: window._mealPhotos?.snack || null,
+      workoutPhoto: window._mealPhotos?.workout || null,
     });
     console.log('[render-workout] 식단 자동 저장 완료');
   } catch(e) {
@@ -940,6 +983,109 @@ export function openNutritionPhotoUpload() {
     }, 100);
   }
 }
+
+// ── 운동 시간 측정 ───────────────────────────────────────────────
+export function wtStartWorkoutTimer() {
+  if (_workoutStartTime) return; // 이미 시작됨
+  _workoutStartTime = Date.now();
+  _renderWorkoutTimer();
+  _workoutTimerInterval = setInterval(_renderWorkoutTimer, 1000);
+}
+
+function _renderWorkoutTimer() {
+  const el = document.getElementById('wt-workout-timer');
+  if (!el) return;
+  if (_workoutStartTime) {
+    const elapsed = Math.floor((Date.now() - _workoutStartTime) / 1000) + _workoutDuration;
+    el.textContent = _fmtDuration(elapsed);
+    el.style.display = '';
+  } else if (_workoutDuration > 0) {
+    el.textContent = _fmtDuration(_workoutDuration);
+    el.style.display = '';
+  } else {
+    el.style.display = 'none';
+  }
+}
+
+function _fmtDuration(sec) {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  if (h > 0) return `${h}시간 ${m}분 ${s}초`;
+  if (m > 0) return `${m}분 ${s}초`;
+  return `${s}초`;
+}
+
+export function wtFinishWorkout() {
+  if (_workoutStartTime) {
+    _workoutDuration += Math.floor((Date.now() - _workoutStartTime) / 1000);
+    _workoutStartTime = null;
+  }
+  if (_workoutTimerInterval) { clearInterval(_workoutTimerInterval); _workoutTimerInterval = null; }
+  _renderWorkoutTimer();
+  // 운동끝내기 버튼 숨기고 결과 표시
+  const finBtn = document.getElementById('wt-finish-workout-btn');
+  if (finBtn) finBtn.style.display = 'none';
+  const resultEl = document.getElementById('wt-workout-duration-result');
+  if (resultEl) {
+    resultEl.textContent = `운동 시간: ${_fmtDuration(_workoutDuration)}`;
+    resultEl.style.display = '';
+  }
+  showToast(`운동 완료! ${_fmtDuration(_workoutDuration)}`, 3000, 'success');
+  saveWorkoutDay().catch(e => console.error('Save error:', e));
+}
+
+// ── 런닝 폼 렌더/이벤트 ──────────────────────────────────────────
+function _renderRunningForm() {
+  const dist = document.getElementById('wt-run-distance');
+  const durM = document.getElementById('wt-run-duration-min');
+  const durS = document.getElementById('wt-run-duration-sec');
+  const memo = document.getElementById('wt-run-memo');
+  if (dist) dist.value = _runData.distance || '';
+  if (durM) durM.value = _runData.durationMin || '';
+  if (durS) durS.value = _runData.durationSec || '';
+  if (memo) memo.value = _runData.memo || '';
+  _calcRunPace();
+}
+
+function _calcRunPace() {
+  const el = document.getElementById('wt-run-pace');
+  if (!el) return;
+  const totalSec = (_runData.durationMin || 0) * 60 + (_runData.durationSec || 0);
+  const dist = _runData.distance || 0;
+  if (dist > 0 && totalSec > 0) {
+    const paceTotal = totalSec / dist;
+    const paceMin = Math.floor(paceTotal / 60);
+    const paceSec = Math.round(paceTotal % 60);
+    el.textContent = `${paceMin}'${String(paceSec).padStart(2,'0')}" /km`;
+  } else {
+    el.textContent = "--'--\"";
+  }
+}
+
+let _runEventsBound = false;
+function _initRunningEvents() {
+  if (_runEventsBound) return;
+  _runEventsBound = true;
+  const dist = document.getElementById('wt-run-distance');
+  const durM = document.getElementById('wt-run-duration-min');
+  const durS = document.getElementById('wt-run-duration-sec');
+  const memo = document.getElementById('wt-run-memo');
+
+  function onRunChange() {
+    _runData.distance    = parseFloat(dist?.value) || 0;
+    _runData.durationMin = parseInt(durM?.value) || 0;
+    _runData.durationSec = parseInt(durS?.value) || 0;
+    _runData.memo        = memo?.value.trim() || '';
+    _calcRunPace();
+    saveWorkoutDay().catch(e => console.error('Save error:', e));
+  }
+  dist?.addEventListener('change', onRunChange);
+  durM?.addEventListener('change', onRunChange);
+  durS?.addEventListener('change', onRunChange);
+  memo?.addEventListener('change', onRunChange);
+}
+setTimeout(_initRunningEvents, 0);
 
 // ── 세트 간 휴식 타이머 ───────────────────────────────────────────
 let _restTimer = { interval: null, remaining: 0, total: 90, running: false };
@@ -1037,6 +1183,8 @@ window.wtOpenExerciseEditor = wtOpenExerciseEditor;
 window.wtCloseExerciseEditor = wtCloseExerciseEditor;
 window.wtSaveExerciseFromEditor = wtSaveExerciseFromEditor;
 window.wtDeleteExerciseFromEditor = wtDeleteExerciseFromEditor;
+window.wtStartWorkoutTimer = wtStartWorkoutTimer;
+window.wtFinishWorkout = wtFinishWorkout;
 window.wtRestTimerStart = wtRestTimerStart;
 window.wtRestTimerSkip = wtRestTimerSkip;
 window.wtRestTimerAdjust = wtRestTimerAdjust;

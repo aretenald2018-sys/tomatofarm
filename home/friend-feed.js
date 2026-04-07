@@ -173,7 +173,11 @@ export async function renderFriendFeed() {
 
       const hasToday = !!(w && ((w.muscles||[]).length || w.exercises?.length || w.breakfast || w.lunch || w.dinner || w.bFoods?.length || w.lFoods?.length || w.dFoods?.length));
       const hasRecent = !hasToday && recentWorkouts[fi].some(rw => rw && ((rw.muscles||[]).length || rw.exercises?.length || rw.breakfast || rw.lunch || rw.dinner));
-      const statusClass = hasToday ? 'active' : hasRecent ? 'recent' : 'inactive';
+      // 비활성 판정: 마지막 접속으로부터 12시간 이상 지나야 inactive
+      const lastLogin = acc?.lastLoginAt || 0;
+      const hoursSinceLogin = (Date.now() - lastLogin) / (1000 * 60 * 60);
+      const isInactive = !hasToday && !hasRecent && hoursSinceLogin >= 12;
+      const statusClass = hasToday ? 'active' : hasRecent ? 'recent' : (isInactive ? 'inactive' : 'recent');
 
       avatarEntries.push({ name, statusClass, fid: f.friendId, fullName });
 

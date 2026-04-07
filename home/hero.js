@@ -36,12 +36,42 @@ export function renderHero() {
   const m = TODAY.getMonth() + 1;
   const d = TODAY.getDate();
   const dow = ['일','월','화','수','목','금','토'][TODAY.getDay()];
+  const hour = new Date().getHours();
+  const dayOfWeek = TODAY.getDay();
+  const isMonday = dayOfWeek === 1;
+  const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+
+  function _pick(pool) {
+    const seed = TODAY.getDate() * 31 + hour;
+    return pool[seed % pool.length];
+  }
 
   let message = '';
-  if (mainStreak >= 7) message = `대단해요! ${streakLabel} ${mainStreak}일 연속`;
-  else if (mainStreak >= 3) message = `좋은 흐름이에요. ${streakLabel} ${mainStreak}일째`;
-  else if (mainStreak >= 1) message = `${streakLabel} ${mainStreak}일째, 이어가 볼까요?`;
-  else message = '오늘부터 시작해볼까요?';
+  if (mainStreak >= 14) message = _pick([
+    `대단해요! ${streakLabel} ${mainStreak}일 연속`,
+    `${mainStreak}일째, 완전히 습관이 됐어요!`,
+    `멈출 수 없는 기세! ${streakLabel} ${mainStreak}일`,
+  ]);
+  else if (mainStreak >= 7) message = _pick([
+    `대단해요! ${streakLabel} ${mainStreak}일 연속`,
+    `일주일 넘었어요! ${streakLabel} ${mainStreak}일째`,
+    `꾸준함이 빛나요! ${mainStreak}일 연속`,
+  ]);
+  else if (mainStreak >= 3) message = _pick([
+    `좋은 흐름이에요. ${streakLabel} ${mainStreak}일째`,
+    `리듬을 타고 있어요! ${mainStreak}일째`,
+    `${mainStreak}일째, 이대로만!`,
+  ]);
+  else if (mainStreak >= 1) message = _pick([
+    `${streakLabel} ${mainStreak}일째, 이어가 볼까요?`,
+    isMonday ? '새로운 한 주, 이어가볼까요?' : '오늘도 한 번 더!',
+    '기록 하나면 연속 유지!',
+  ]);
+  else message = _pick([
+    '오늘부터 시작해볼까요?',
+    '다시 시작하는 것도 멋져요',
+    isWeekend ? '주말이니까 가볍게!' : '새로운 1일차를 만들어봐요',
+  ]);
 
   el.innerHTML = `
     <div class="hero-date">${m}월 ${d}일 ${dow}요일</div>
@@ -52,13 +82,11 @@ export function renderHero() {
       <span class="hero-sub-dot">·</span>
       <span class="hero-sub">🥗 식단 ${diet}일</span>
     </div>
-    <div class="streak-freeze-row" id="streak-freeze-row"></div>
     <div class="hero-social-proof" id="hero-social-proof" style="display:none;"></div>
   `;
 
   checkStreakMilestone('workout', workout);
   checkStreakMilestone('diet', diet);
-  renderStreakFreeze();
 }
 
 // ── 마일스톤 체크 ────────────────────────────────────────────────
@@ -100,9 +128,25 @@ export function renderStreakFreeze() {
   const tomatoState = getTomatoState();
   const available = tomatoState.totalTomatoes + tomatoState.giftedReceived - tomatoState.giftedSent;
   const canUse = available > 0 && usedThisWeek.length === 0;
-  el.innerHTML = `<button class="streak-freeze-btn${canUse ? '' : ' disabled'}" onclick="useStreakFreezeUI()" ${canUse ? '' : 'disabled'}>
-    스트릭 보호<span class="streak-freeze-sub">토마토 1개 · 주 1회</span>
-  </button>`;
+
+  if (usedThisWeek.length > 0) {
+    el.innerHTML = `<div class="tf-freeze-banner tf-freeze-used">
+      <span class="tf-freeze-icon">🍅</span>
+      <div class="tf-freeze-text">
+        <span class="tf-freeze-title">이번 주 스트릭 보호 사용 완료</span>
+        <span class="tf-freeze-desc">다음 주에 다시 사용할 수 있어요</span>
+      </div>
+    </div>`;
+  } else {
+    el.innerHTML = `<div class="tf-freeze-banner">
+      <span class="tf-freeze-icon">🍅</span>
+      <div class="tf-freeze-text">
+        <span class="tf-freeze-title">스트릭 보호</span>
+        <span class="tf-freeze-desc">토마토 1개 · 주 1회 · 보유 ${available}개</span>
+      </div>
+      <button class="tf-freeze-action${canUse ? '' : ' disabled'}" onclick="useStreakFreezeUI()" ${canUse ? '' : 'disabled'}>보호하기</button>
+    </div>`;
+  }
 }
 
 window.useStreakFreezeUI = async function() {
@@ -110,7 +154,7 @@ window.useStreakFreezeUI = async function() {
   const result = await useStreakFreeze('workout');
   if (result.error) { showToast(result.error, 2500, 'error'); return; }
   haptic('success');
-  showToast('🧊 스트릭이 보호됐어요!', 2500, 'success');
+  showToast('🍅 스트릭이 보호됐어요!', 2500, 'success');
   renderStreakFreeze();
   if (_renderHomeFn) _renderHomeFn();
 };
@@ -195,12 +239,29 @@ export async function renderLeaderboard() {
       })
     );
 
-    const board = results.filter(r => r.status === 'fulfilled').map(r => r.value).sort((a, b) => b.days - a.days);
+    const board = results.filter(r => r.status === 'fulfilled')
+      .map(r => r.value)
+      .filter(p => p.days > 0 || p.isMe)
+      .sort((a, b) => b.days - a.days);
 
     if (board.length <= 1) { cardEl.style.display = 'none'; return; }
 
     const rankIcons = ['🥇', '🥈', '🥉'];
-    let html = '';
+
+    // 이웃 컨텍스트 문구
+    const myEntry = board.find(p => p.isMe);
+    const myRank = myEntry ? board.indexOf(myEntry) + 1 : 0;
+    const neighborNames = board.filter(p => !p.isMe).slice(0, 2).map(p => p.name);
+    let contextMsg = '';
+    if (myRank === 1 && myEntry && myEntry.days > 0) {
+      contextMsg = '🏆 지금 1위예요! 이 기세를 유지해보세요';
+    } else if (myRank > 0 && neighborNames.length >= 2) {
+      contextMsg = `${neighborNames[0]}, ${neighborNames[1]}님과 함께 ${myRank}위를 달리고 있어요`;
+    } else if (myRank > 0 && neighborNames.length === 1) {
+      contextMsg = `${neighborNames[0]}님과 함께 ${myRank}위를 달리고 있어요`;
+    }
+
+    let html = contextMsg ? `<div class="lb-context">${contextMsg}</div>` : '';
     for (let i = 0; i < board.length; i++) {
       const p = board[i];
       const rank = rankIcons[i] || `${i + 1}`;

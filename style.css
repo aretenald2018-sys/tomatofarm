@@ -2800,7 +2800,7 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
 /* ══════════════════════════════════════════════════════════════════
    Tomato Growing System
    ══════════════════════════════════════════════════════════════════ */
-.tomato-hero { padding: 28px 20px 20px; text-align: center; }
+.tomato-hero { padding: 28px 20px 20px; text-align: center; position: relative; }
 .tomato-stage {
   font-size: 48px; line-height: 1.2;
   animation: tomato-bounce-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -3490,6 +3490,58 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
   padding: 4px 0;
 }
 
+/* ── 운동 타이머 + 끝내기 ── */
+.wt-workout-timer-bar {
+  display: none; align-items: center; gap: 10px;
+  background: var(--surface2); border-radius: 14px; padding: 12px 16px;
+  margin-bottom: 8px;
+}
+.wt-workout-timer-bar.wt-open { display: flex; }
+.wt-timer-icon { font-size: 18px; }
+.wt-timer-text {
+  font-size: 16px; font-weight: 700; color: var(--primary);
+  font-variant-numeric: tabular-nums; flex: 1;
+}
+.wt-workout-duration-result {
+  font-size: 14px; font-weight: 600; color: var(--text-secondary); flex: 1;
+}
+.wt-finish-btn {
+  padding: 8px 18px; border-radius: 10px;
+  background: var(--primary); color: #fff;
+  font-size: 13px; font-weight: 700;
+  border: none; cursor: pointer;
+  transition: all 0.15s;
+}
+.wt-finish-btn:active { transform: scale(0.96); opacity: 0.9; }
+
+/* ── 런닝 기록 폼 ── */
+.wt-running-form {
+  background: var(--surface2); border-radius: 14px; padding: 14px 16px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.wt-running-row {
+  display: flex; align-items: center; gap: 10px;
+}
+.wt-running-label {
+  font-size: 13px; font-weight: 600; color: var(--text-secondary); min-width: 70px; flex-shrink: 0;
+}
+.wt-running-input-wrap {
+  display: flex; align-items: center; gap: 4px;
+}
+.wt-running-input {
+  width: 72px; padding: 8px 10px; border: 1.5px solid var(--border); border-radius: 10px;
+  font-size: 15px; font-weight: 600; color: var(--text); background: var(--surface);
+  outline: none; transition: border-color 0.15s;
+}
+.wt-running-input:focus { border-color: var(--primary); }
+.wt-running-unit {
+  font-size: 12px; color: var(--text-tertiary); font-weight: 500;
+}
+.wt-running-pace {
+  font-size: 18px; font-weight: 700; color: var(--primary);
+  font-variant-numeric: tabular-nums;
+}
+
 /* ── 식단 탭 Seed 적용 ── */
 #tab-diet, #tab-diet * { font-family: var(--font-sans) !important; }
 #tab-diet .workout-date-nav { background: var(--seed-bg-layer); border-bottom: 1px solid var(--seed-stroke-neutral); padding: var(--seed-x3) var(--seed-x4); gap: var(--seed-x2); box-shadow: var(--seed-s1); }
@@ -3596,7 +3648,8 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
    ══════════════════════════════════════════════════════════════════ */
 .tf-card {
   background: var(--surface); border-radius: var(--radius-lg);
-  overflow: hidden; border: 1px solid var(--border);
+  overflow: visible; border: 1px solid var(--border);
+  position: relative;
 }
 
 /* Hero section — 큰 숫자 중심 */
@@ -4253,19 +4306,29 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
 .inactive-friends-toggle:active { background: var(--surface2); }
 
 /* ── Streak Freeze (TDS ghost pill) ── */
-.streak-freeze-row { text-align: center; margin-top: 10px; }
-.streak-freeze-btn {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 7px 14px; border: 1px solid var(--seed-stroke-neutral, rgba(255,255,255,0.1));
-  border-radius: var(--seed-r-full); background: transparent;
-  color: var(--text-secondary); font-size: 12px; font-weight: 600;
-  cursor: pointer; transition: all var(--seed-d3, 0.15s) var(--seed-ease, ease);
+/* ── Streak Freeze Banner (TDS) ── */
+.streak-freeze-row { margin-top: 0; }
+.tf-freeze-banner {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 20px;
+  background: var(--surface2);
+  border-top: 1px solid var(--border);
 }
-.streak-freeze-sub {
-  font-weight: 400; color: var(--text-tertiary); font-size: 11px;
+.tf-freeze-icon { font-size: 20px; line-height: 1; flex-shrink: 0; }
+.tf-freeze-text { flex: 1; min-width: 0; }
+.tf-freeze-title { display: block; font-size: 13px; font-weight: 600; color: var(--text); }
+.tf-freeze-desc { display: block; font-size: 11px; color: var(--text-tertiary); margin-top: 2px; }
+.tf-freeze-action {
+  flex-shrink: 0; padding: 8px 16px;
+  background: var(--primary); color: #fff;
+  border-radius: var(--seed-r-full); font-size: 12px; font-weight: 700;
+  border: none; cursor: pointer;
+  transition: all var(--seed-d3, 0.15s) var(--seed-ease, ease);
 }
-.streak-freeze-btn:active { background: var(--seed-bg-neutral-weak, rgba(255,255,255,0.04)); transform: scale(0.97); }
-.streak-freeze-btn.disabled { opacity: 0.35; cursor: not-allowed; }
+.tf-freeze-action:active { transform: scale(0.96); opacity: 0.9; }
+.tf-freeze-action.disabled { opacity: 0.35; cursor: not-allowed; }
+.tf-freeze-used { opacity: 0.6; }
+.tf-freeze-used .tf-freeze-title { color: var(--text-secondary); }
 
 /* ── Weekly Leaderboard ── */
 .lb-row {
@@ -4285,6 +4348,93 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
   transition: width 0.6s cubic-bezier(0.32, 0.72, 0, 1);
 }
 .lb-days { font-size: 12px; font-weight: 700; color: var(--text-secondary); min-width: 28px; text-align: right; }
+
+/* ── Leaderboard Context ── */
+.lb-context {
+  font-size: 12px; font-weight: 600;
+  color: var(--text-secondary);
+  padding: 0 0 10px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* ── Tomato Rule Tooltip ── */
+.tf-info-btn {
+  background: none; border: none; cursor: pointer;
+  font-size: 14px; color: var(--text-tertiary);
+  padding: 2px 6px; margin-left: 4px;
+  border-radius: var(--seed-r-full);
+  vertical-align: middle;
+  transition: color var(--seed-d3, 0.15s);
+}
+.tf-info-btn:active { background: var(--primary-bg); }
+.tf-info-btn--light { color: #fff; font-size: 13px; font-weight: 700; opacity: 0.9; text-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+.tf-info-btn--light:active { background: rgba(255,255,255,0.15); }
+
+.tomato-rule-tooltip {
+  position: fixed; left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  width: calc(100% - 48px); max-width: 320px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--seed-r3, 12px);
+  padding: 24px 20px;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.5);
+  z-index: 1000;
+  animation: fadeIn 0.2s ease;
+  text-align: center;
+}
+.tomato-rule-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 999;
+  animation: fadeIn 0.15s ease;
+}
+.tomato-rule-title {
+  font-size: 15px; font-weight: 700; color: var(--text);
+  margin-bottom: 10px;
+}
+.tomato-rule-body {
+  font-size: 13px; color: var(--text-secondary); line-height: 1.6;
+}
+.tomato-rule-stages {
+  font-size: 20px; margin: 12px 0;
+  letter-spacing: 4px;
+}
+.tomato-rule-divider {
+  height: 1px; background: var(--border); margin: 14px 0;
+}
+.tomato-rule-section-title {
+  font-size: 12px; font-weight: 700; color: var(--text-tertiary);
+  margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;
+}
+.tomato-rule-freeze {
+  display: flex; align-items: center; gap: 10px;
+  margin-top: 14px; padding: 10px 14px;
+  background: var(--surface2); border-radius: var(--seed-r2, 8px);
+}
+.tomato-rule-freeze--used {
+  opacity: 0.6; justify-content: center;
+  font-size: 12px; color: var(--text-tertiary);
+}
+.tomato-rule-freeze-info { flex: 1; text-align: left; }
+.tomato-rule-freeze-label { display: block; font-size: 13px; font-weight: 600; color: var(--text); }
+.tomato-rule-freeze-desc { display: block; font-size: 11px; color: var(--text-tertiary); margin-top: 2px; }
+.tomato-rule-freeze-btn {
+  padding: 7px 14px; background: var(--primary); color: #fff;
+  border: none; border-radius: var(--seed-r-full);
+  font-size: 12px; font-weight: 700; cursor: pointer;
+  transition: all var(--seed-d3, 0.15s);
+}
+.tomato-rule-freeze-btn:active { transform: scale(0.96); }
+.tomato-rule-freeze-btn.disabled { opacity: 0.35; cursor: not-allowed; }
+.tomato-rule-close {
+  margin-top: 16px; padding: 10px 24px;
+  background: transparent; color: var(--text-secondary);
+  border: 1px solid var(--border); border-radius: var(--seed-r-full);
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: all var(--seed-d3, 0.15s);
+}
+.tomato-rule-close:active { background: var(--surface2); }
 
 /* ── Hero Social Proof ── */
 .hero-social-proof {

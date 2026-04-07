@@ -6,10 +6,12 @@ import { TODAY, getDiet, getDietPlan, calcDietMetrics, getBodyCheckins,
          getExercises, calcStreaks,
          getUnitGoalStart, saveUnitGoalStart, getDayTargetKcal,
          getTomatoState, saveTomatoState, saveTomatoCycle,
-         getTomatoCycles, dateKey }  from '../data.js';
+         getTomatoCycles, dateKey,
+         getStreakFreezes, useStreakFreeze }  from '../data.js';
 import { calcTomatoCycle, evaluateCycleResult, getQuarterKey,
          isDietDaySuccess, getDayTargetKcal as calcDayTarget }  from '../calc.js';
-import { renderStreakFreeze, checkStreakMilestone } from './hero.js';
+import { checkStreakMilestone } from './hero.js';
+import { showToast, haptic } from './utils.js';
 
 const TOMATO_STAGES = [
   { icon: '🌱', label: '씨앗을 심었어요' },
@@ -93,13 +95,85 @@ export function renderTomatoHero(el) {
         <span>🍅 이번 분기: ${qCount}개</span>
         <span style="color:var(--border);">·</span>
         <span>누적: ${totalCount}개</span>
+        <button class="tf-info-btn" id="tomato-rule-info" aria-label="토마토 획득 규칙">ⓘ</button>
       </div>
-      <div class="streak-freeze-row" id="streak-freeze-row"></div>
       <div class="hero-social-proof" id="hero-social-proof" style="display:none;"></div>
     </div>
   `;
-  renderStreakFreeze();
+  document.getElementById('tomato-rule-info')?.addEventListener('click', _showTomatoRuleTooltip);
 }
+
+// ── 토마토 규칙 팝오버 (스트릭 보호 통합) ─────────────────────
+function _closeTomatoRule() {
+  document.querySelector('.tomato-rule-backdrop')?.remove();
+  document.querySelector('.tomato-rule-tooltip')?.remove();
+}
+
+function _showTomatoRuleTooltip(e) {
+  e.stopPropagation();
+  if (document.querySelector('.tomato-rule-tooltip')) {
+    _closeTomatoRule();
+    return;
+  }
+
+  const tomatoState = getTomatoState();
+  const available = tomatoState.totalTomatoes + (tomatoState.giftedReceived || 0) - (tomatoState.giftedSent || 0);
+  const freezes = getStreakFreezes();
+  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const usedThisWeek = freezes.filter(f => f.usedAt > weekAgo);
+  const canFreeze = available > 0 && usedThisWeek.length === 0;
+
+  let freezeHtml = '';
+  if (usedThisWeek.length > 0) {
+    freezeHtml = `<div class="tomato-rule-freeze tomato-rule-freeze--used">
+      <span>🍅 이번 주 스트릭 보호 사용 완료</span>
+    </div>`;
+  } else {
+    freezeHtml = `<div class="tomato-rule-freeze">
+      <div class="tomato-rule-freeze-info">
+        <span class="tomato-rule-freeze-label">🍅 스트릭 보호</span>
+        <span class="tomato-rule-freeze-desc">토마토 1개 · 주 1회 · 보유 ${available}개</span>
+      </div>
+      <button class="tomato-rule-freeze-btn${canFreeze ? '' : ' disabled'}" id="tooltip-freeze-btn" ${canFreeze ? '' : 'disabled'}>보호하기</button>
+    </div>`;
+  }
+
+  // backdrop
+  const backdrop = document.createElement('div');
+  backdrop.className = 'tomato-rule-backdrop';
+  backdrop.addEventListener('click', _closeTomatoRule);
+  document.body.appendChild(backdrop);
+
+  // tooltip (fixed 중앙)
+  const tooltip = document.createElement('div');
+  tooltip.className = 'tomato-rule-tooltip';
+  tooltip.innerHTML = `
+    <div class="tomato-rule-title">🍅 토마토 획득 규칙</div>
+    <div class="tomato-rule-body">
+      4일 연속 식단 목표를 달성하면<br>토마토 1개를 수확해요!
+    </div>
+    <div class="tomato-rule-stages">🌱 → 🌿 → 🌸 → 🍅</div>
+    <div class="tomato-rule-divider"></div>
+    <div class="tomato-rule-section-title">토마토 사용처</div>
+    <div class="tomato-rule-body">
+      스트릭 보호(🍅) · 이웃에게 선물(🎁)
+    </div>
+    ${freezeHtml}
+    <button class="tomato-rule-close" onclick="_closeTomatoRuleGlobal()">닫기</button>
+  `;
+  document.body.appendChild(tooltip);
+
+  tooltip.querySelector('#tooltip-freeze-btn')?.addEventListener('click', async () => {
+    if (!confirm('토마토 1개를 사용하여 오늘의 스트릭을 보호할까요?')) return;
+    const result = await useStreakFreeze('workout');
+    if (result.error) { showToast(result.error, 2500, 'error'); return; }
+    haptic('success');
+    showToast('🍅 스트릭이 보호됐어요!', 2500, 'success');
+    _closeTomatoRule();
+  });
+}
+
+window._closeTomatoRuleGlobal = _closeTomatoRule;
 
 // ── 토마토 사이클 정산 ──────────────────────────────────────────
 export function settleTomatoCycleIfNeeded() {
@@ -350,12 +424,27 @@ export function renderTomatoCard() {
   const hasRecordedToday = (todayExercises && todayExercises.length > 0) ||
     (todayDiet && ((todayDiet.bKcal||0) + (todayDiet.lKcal||0) + (todayDiet.dKcal||0) > 0));
   const now = new Date();
-  const hoursLeft = 23 - now.getHours();
-  const isEvening = now.getHours() >= 18;
+  const hour = now.getHours();
+  const hoursLeft = 23 - hour;
+  const dow = TODAY.getDay();
+  const isMonday = dow === 1;
+  const isFriday = dow === 5;
+  const isWeekend = dow === 0 || dow === 6;
+  const isDawn = hour >= 5 && hour < 7;
+  const isMorning = hour >= 7 && hour < 10;
+  const isMidday = hour >= 10 && hour < 13;
+  const isAfternoon = hour >= 13 && hour < 18;
+  const isEvening = hour >= 18 && hour < 22;
+  const isLateNight = hour >= 22;  // 22시 이후만 긴급 (새벽 0~5시는 제외)
+
+  // 결정적 랜덤: 같은 날·시간대엔 동일 문구, 시간 바뀌면 자연스럽게 변경
+  function pickMsg(pool) {
+    const seed = TODAY.getDate() * 31 + hour;
+    return pool[seed % pool.length];
+  }
 
   const todayDietForKcal = getDiet(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
   const todayKcal = (todayDietForKcal.bKcal||0) + (todayDietForKcal.lKcal||0) + (todayDietForKcal.dKcal||0) + (todayDietForKcal.sKcal||0);
-  const dow = TODAY.getDay();
   const isRefeed = (plan.refeedDays || []).includes(dow);
   const dayTarget = isRefeed ? metrics.refeed : metrics.deficit;
   const todayTarget = dayTarget.kcal || 0;
@@ -363,37 +452,80 @@ export function renderTomatoCard() {
   let heroLabel, heroCount, heroSub, heroEmoji;
 
   if (bestStreak >= 14 && hasRecordedToday) {
-    heroLabel = '멈출 수 없는 기세!';
+    heroLabel = pickMsg([
+      '멈출 수 없는 기세!',
+      '완전히 습관이 됐어요!',
+      `${bestStreak}일째, 전설을 쓰는 중!`,
+      '이 루틴, 누구도 못 막아요!',
+      '꾸준함의 끝판왕!',
+    ]);
     heroCount = `${bestStreak}<span class="tf-hero-unit">일</span>`;
     heroSub = `🍅 ${totalCount}개 · 이번 분기 <b>${qCount}개</b>`;
     heroEmoji = '🔥';
   } else if (bestStreak >= 7 && hasRecordedToday) {
-    heroLabel = '대단해요, 일주일 넘었어요!';
+    heroLabel = pickMsg([
+      '대단해요, 일주일 넘었어요!',
+      '꾸준함이 빛나는 순간!',
+      '이 루틴 정말 멋져요!',
+      `${bestStreak}일째, 습관이 되어가고 있어요!`,
+    ]);
     heroCount = `${bestStreak}<span class="tf-hero-unit">일</span>`;
     heroSub = `🍅 ${totalCount}개 · 이번 분기 <b>${qCount}개</b>`;
     heroEmoji = '🔥';
   } else if (bestStreak >= 3 && hasRecordedToday) {
-    heroLabel = '좋은 흐름이에요!';
+    heroLabel = pickMsg([
+      '좋은 흐름이에요!',
+      '리듬을 타고 있어요!',
+      `${bestStreak}일째, 멋진 페이스!`,
+      '이대로만 가면 돼요!',
+    ]);
     heroCount = `${bestStreak}<span class="tf-hero-unit">일</span>`;
     heroSub = `🍅 ${totalCount}개 · 이번 분기 <b>${qCount}개</b>`;
     heroEmoji = '🔥';
-  } else if (bestStreak >= 2 && !hasRecordedToday && isEvening) {
-    heroLabel = '연속 기록이 위험해요!';
+  } else if (bestStreak >= 2 && !hasRecordedToday && (isEvening || isLateNight)) {
+    heroLabel = pickMsg([
+      '연속 기록이 위험해요!',
+      `${hoursLeft}시간 남았어요!`,
+      '오늘이 끝나기 전에!',
+      isLateNight ? '자기 전에 기록 한 번!' : '지금 기록하면 연속 유지!',
+    ]);
     heroCount = `${bestStreak}<span class="tf-hero-unit">일</span>`;
-    heroSub = `<span style="color:#FF3B30;font-weight:600;">오늘 기록하면 ${bestStreak + 1}일째 · ${hoursLeft}시간 남음</span>`;
+    heroSub = `<span style="color:#fdf0f0;font-weight:600;">오늘 기록하면 ${bestStreak + 1}일째 · ${hoursLeft}시간 남음</span>`;
     heroEmoji = '⚠️';
   } else if (bestStreak >= 2 && !hasRecordedToday) {
-    heroLabel = '오늘도 이어가볼까요?';
+    heroLabel = pickMsg([
+      '오늘도 이어가볼까요?',
+      isFriday ? '금요일! 주말에도 이어가볼까요?' : '오늘 한 번이면 연속 유지!',
+      isWeekend ? '쉬는 날에도 가볍게 한 번!' : '기록 한 번이면 충분해요',
+    ]);
     heroCount = `${bestStreak}<span class="tf-hero-unit">일</span>`;
-    heroSub = `<span style="color:var(--primary);font-weight:600;">기록하면 ${bestStreak + 1}일 연속!</span>`;
+    heroSub = `<span style="color:#fdf0f0;font-weight:600;">기록하면 ${bestStreak + 1}일 연속!</span>`;
     heroEmoji = '💪';
   } else if (hasRecordedToday) {
-    heroLabel = '오늘도 기록 완료!';
+    heroLabel = pickMsg([
+      '오늘도 기록 완료!',
+      '잘했어요, 오늘의 할 일 끝!',
+      '오늘도 한 발짝 나아갔어요!',
+    ]);
+    heroCount = `${totalCount}<span class="tf-hero-unit">개</span>`;
+    heroSub = `이번 분기 <b>${qCount}개</b> 수확`;
+    heroEmoji = stages[dayIndex];
+  } else if (bestStreak === 0) {
+    heroLabel = pickMsg([
+      '다시 시작하는 것도 멋져요',
+      '오늘부터 새로운 1일차!',
+      isWeekend ? '주말이니까 가볍게 시작해볼까요?' : '한 번이면 돼요, 시작해봐요',
+      isMonday ? '새로운 한 주, 새로운 시작!' : '오늘이 바로 그날이에요',
+    ]);
     heroCount = `${totalCount}<span class="tf-hero-unit">개</span>`;
     heroSub = `이번 분기 <b>${qCount}개</b> 수확`;
     heroEmoji = stages[dayIndex];
   } else {
-    heroLabel = '오늘 첫 기록을 남겨보세요';
+    heroLabel = pickMsg([
+      '오늘 첫 기록을 남겨보세요',
+      '작은 기록이 큰 변화를 만들어요',
+      '시작이 반이에요!',
+    ]);
     heroCount = `${totalCount}<span class="tf-hero-unit">개</span>`;
     heroSub = `이번 분기 <b>${qCount}개</b> 수확`;
     heroEmoji = stages[dayIndex];
@@ -405,17 +537,17 @@ export function renderTomatoCard() {
         <div class="tf-hero-left">
           <div class="tf-hero-label">${heroLabel}</div>
           <div class="tf-hero-count">${heroCount}</div>
-          <div class="tf-hero-sub">${heroSub}</div>
+          <div class="tf-hero-sub">${heroSub} <button class="tf-info-btn tf-info-btn--light" id="tomato-rule-info-card" aria-label="토마토 획득 규칙">ⓘ</button></div>
         </div>
         <div class="tf-hero-right">
           <div class="tf-hero-tomato">${heroEmoji}</div>
         </div>
       </div>
-      <div class="streak-freeze-row" id="streak-freeze-row" style="padding:0 16px;"></div>
       <div class="hero-social-proof" id="hero-social-proof" style="display:none;padding:0 16px 12px;"></div>
     </div>
   `;
-  renderStreakFreeze();
+
+  document.getElementById('tomato-rule-info-card')?.addEventListener('click', _showTomatoRuleTooltip);
 
   checkStreakMilestone('workout', streaks.workout);
   checkStreakMilestone('diet', streaks.diet);
