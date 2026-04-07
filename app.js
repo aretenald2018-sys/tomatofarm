@@ -2387,6 +2387,21 @@ window.openMealPhotoLightbox = function(src) {
   document.body.appendChild(lb);
 };
 window.wtToggleMealSkipped      = wtToggleMealSkipped;
+// 식단탭 끼니 아코디언 토글
+window.toggleDietMealRow = function(headerEl) {
+  const row = headerEl.closest('.diet-toss-row');
+  if (!row) return;
+  const body = row.querySelector('.diet-toss-body');
+  const chevron = row.querySelector('.diet-toss-chevron');
+  if (!body) return;
+  const isOpen = row.classList.contains('diet-toss-open');
+  if (isOpen) {
+    row.classList.remove('diet-toss-open');
+  } else {
+    row.classList.add('diet-toss-open');
+  }
+};
+
 // "안 먹었어요" — 토글 + 기존 음식 삭제
 window.wtSkipMeal = function(meal) {
   const btn = document.getElementById(`wt-${meal}-skipped`);

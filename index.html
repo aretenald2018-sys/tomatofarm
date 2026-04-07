@@ -496,67 +496,88 @@
       <div class="macro-bars" id="wt-macro-bars"></div>
     </div>
 
-    <div class="sheet-section">
-      <div class="diet-grid">
-        <div class="diet-meal-row">
-          <div class="diet-meal-header">
-            <span class="diet-meal-label">아침</span>
+    <div class="sheet-section" style="padding:0;">
+      <div class="diet-grid diet-toss-list">
+
+        <div class="diet-toss-row" data-meal="breakfast">
+          <div class="diet-toss-header" onclick="toggleDietMealRow(this)">
+            <span class="diet-toss-icon">☀️</span>
+            <div class="diet-toss-title"><span class="diet-toss-label">아침</span><span class="diet-toss-kcal" id="diet-toss-kcal-breakfast"></span></div>
+            <span class="diet-toss-chevron">›</span>
+          </div>
+          <div class="diet-toss-body">
             <div class="diet-meal-actions">
               <button class="diet-add-btn" onclick="openNutritionSearch('breakfast')">+ 음식 추가</button>
               <button class="diet-skip-btn" id="wt-breakfast-skipped" onclick="wtSkipMeal('breakfast')">안 먹었어요</button>
             </div>
+            <div class="meal-food-list" id="wt-foods-breakfast"></div>
+            <div class="meal-photo-wrap" id="wt-photo-breakfast"></div>
+            <button class="meal-photo-btn" onclick="document.getElementById('photo-input-breakfast').click()">📷 사진 추가</button>
+            <input type="file" id="photo-input-breakfast" accept="image/*" style="display:none" onchange="uploadMealPhoto('breakfast',this)">
+            <input class="diet-meal-input" id="wt-meal-breakfast" placeholder="메모 (선택)">
+            <div class="diet-result" id="wt-result-breakfast"></div>
           </div>
-          <div class="meal-food-list" id="wt-foods-breakfast"></div>
-          <div class="meal-photo-wrap" id="wt-photo-breakfast"></div>
-          <button class="meal-photo-btn" onclick="document.getElementById('photo-input-breakfast').click()">📷 사진 추가</button>
-          <input type="file" id="photo-input-breakfast" accept="image/*" style="display:none" onchange="uploadMealPhoto('breakfast',this)">
-          <input class="diet-meal-input" id="wt-meal-breakfast" placeholder="메모 (선택)">
-          <div class="diet-result" id="wt-result-breakfast"></div>
         </div>
-        <div class="diet-meal-row">
-          <div class="diet-meal-header">
-            <span class="diet-meal-label">점심</span>
+
+        <div class="diet-toss-row" data-meal="lunch">
+          <div class="diet-toss-header" onclick="toggleDietMealRow(this)">
+            <span class="diet-toss-icon">🌤️</span>
+            <div class="diet-toss-title"><span class="diet-toss-label">점심</span><span class="diet-toss-kcal" id="diet-toss-kcal-lunch"></span></div>
+            <span class="diet-toss-chevron">›</span>
+          </div>
+          <div class="diet-toss-body">
             <div class="diet-meal-actions">
               <button class="diet-add-btn" onclick="openNutritionSearch('lunch')">+ 음식 추가</button>
               <button class="diet-skip-btn" id="wt-lunch-skipped" onclick="wtSkipMeal('lunch')">안 먹었어요</button>
             </div>
+            <div class="meal-food-list" id="wt-foods-lunch"></div>
+            <div class="meal-photo-wrap" id="wt-photo-lunch"></div>
+            <button class="meal-photo-btn" onclick="document.getElementById('photo-input-lunch').click()">📷 사진 추가</button>
+            <input type="file" id="photo-input-lunch" accept="image/*" style="display:none" onchange="uploadMealPhoto('lunch',this)">
+            <input class="diet-meal-input" id="wt-meal-lunch" placeholder="메모 (선택)">
+            <div class="diet-result" id="wt-result-lunch"></div>
           </div>
-          <div class="meal-food-list" id="wt-foods-lunch"></div>
-          <div class="meal-photo-wrap" id="wt-photo-lunch"></div>
-          <button class="meal-photo-btn" onclick="document.getElementById('photo-input-lunch').click()">📷 사진 추가</button>
-          <input type="file" id="photo-input-lunch" accept="image/*" style="display:none" onchange="uploadMealPhoto('lunch',this)">
-          <input class="diet-meal-input" id="wt-meal-lunch" placeholder="메모 (선택)">
-          <div class="diet-result" id="wt-result-lunch"></div>
         </div>
-        <div class="diet-meal-row">
-          <div class="diet-meal-header">
-            <span class="diet-meal-label">저녁</span>
+
+        <div class="diet-toss-row" data-meal="dinner">
+          <div class="diet-toss-header" onclick="toggleDietMealRow(this)">
+            <span class="diet-toss-icon">🌙</span>
+            <div class="diet-toss-title"><span class="diet-toss-label">저녁</span><span class="diet-toss-kcal" id="diet-toss-kcal-dinner"></span></div>
+            <span class="diet-toss-chevron">›</span>
+          </div>
+          <div class="diet-toss-body">
             <div class="diet-meal-actions">
               <button class="diet-add-btn" onclick="openNutritionSearch('dinner')">+ 음식 추가</button>
               <button class="diet-skip-btn" id="wt-dinner-skipped" onclick="wtSkipMeal('dinner')">안 먹었어요</button>
             </div>
+            <div class="meal-food-list" id="wt-foods-dinner"></div>
+            <div class="meal-photo-wrap" id="wt-photo-dinner"></div>
+            <button class="meal-photo-btn" onclick="document.getElementById('photo-input-dinner').click()">📷 사진 추가</button>
+            <input type="file" id="photo-input-dinner" accept="image/*" style="display:none" onchange="uploadMealPhoto('dinner',this)">
+            <input class="diet-meal-input" id="wt-meal-dinner" placeholder="메모 (선택)">
+            <div class="diet-result" id="wt-result-dinner"></div>
           </div>
-          <div class="meal-food-list" id="wt-foods-dinner"></div>
-          <div class="meal-photo-wrap" id="wt-photo-dinner"></div>
-          <button class="meal-photo-btn" onclick="document.getElementById('photo-input-dinner').click()">📷 사진 추가</button>
-          <input type="file" id="photo-input-dinner" accept="image/*" style="display:none" onchange="uploadMealPhoto('dinner',this)">
-          <input class="diet-meal-input" id="wt-meal-dinner" placeholder="메모 (선택)">
-          <div class="diet-result" id="wt-result-dinner"></div>
         </div>
-        <div class="diet-meal-row">
-          <div class="diet-meal-header">
-            <span class="diet-meal-label">음료/간식</span>
+
+        <div class="diet-toss-row" data-meal="snack">
+          <div class="diet-toss-header" onclick="toggleDietMealRow(this)">
+            <span class="diet-toss-icon">🍪</span>
+            <div class="diet-toss-title"><span class="diet-toss-label">간식</span><span class="diet-toss-kcal" id="diet-toss-kcal-snack"></span></div>
+            <span class="diet-toss-chevron">›</span>
+          </div>
+          <div class="diet-toss-body">
             <div class="diet-meal-actions">
               <button class="diet-add-btn" onclick="openNutritionSearch('snack')">+ 음식 추가</button>
             </div>
+            <div class="meal-food-list" id="wt-foods-snack"></div>
+            <div class="meal-photo-wrap" id="wt-photo-snack"></div>
+            <button class="meal-photo-btn" onclick="document.getElementById('photo-input-snack').click()">📷 사진 추가</button>
+            <input type="file" id="photo-input-snack" accept="image/*" style="display:none" onchange="uploadMealPhoto('snack',this)">
+            <input class="diet-meal-input" id="wt-meal-snack" placeholder="메모 (선택)">
+            <div class="diet-result" id="wt-result-snack"></div>
           </div>
-          <div class="meal-food-list" id="wt-foods-snack"></div>
-          <div class="meal-photo-wrap" id="wt-photo-snack"></div>
-          <button class="meal-photo-btn" onclick="document.getElementById('photo-input-snack').click()">📷 사진 추가</button>
-          <input type="file" id="photo-input-snack" accept="image/*" style="display:none" onchange="uploadMealPhoto('snack',this)">
-          <input class="diet-meal-input" id="wt-meal-snack" placeholder="메모 (선택)">
-          <div class="diet-result" id="wt-result-snack"></div>
         </div>
+
       </div>
     </div>
     <div class="sheet-actions">

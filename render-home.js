@@ -1331,25 +1331,56 @@ function _renderTomatoCard() {
     </div>`;
   }).join('<div class="tf-step-line"></div>');
 
-  // ── 히어로 카드 (동기부여 + 진행 단계만) ──
+  // ── 듀오링고 스타일 동적 히어로 라벨 ──
+  let heroLabel, heroCount, heroSub, heroEmoji;
+
+  if (bestStreak >= 14 && hasRecordedToday) {
+    heroLabel = '멈출 수 없는 기세!';
+    heroCount = `${bestStreak}<span class="tf-hero-unit">일</span>`;
+    heroSub = `🍅 ${totalCount}개 · 이번 분기 <b>${qCount}개</b>`;
+    heroEmoji = '🔥';
+  } else if (bestStreak >= 7 && hasRecordedToday) {
+    heroLabel = '대단해요, 일주일 넘었어요!';
+    heroCount = `${bestStreak}<span class="tf-hero-unit">일</span>`;
+    heroSub = `🍅 ${totalCount}개 · 이번 분기 <b>${qCount}개</b>`;
+    heroEmoji = '🔥';
+  } else if (bestStreak >= 3 && hasRecordedToday) {
+    heroLabel = '좋은 흐름이에요!';
+    heroCount = `${bestStreak}<span class="tf-hero-unit">일</span>`;
+    heroSub = `🍅 ${totalCount}개 · 이번 분기 <b>${qCount}개</b>`;
+    heroEmoji = '🔥';
+  } else if (bestStreak >= 2 && !hasRecordedToday && isEvening) {
+    heroLabel = '연속 기록이 위험해요!';
+    heroCount = `${bestStreak}<span class="tf-hero-unit">일</span>`;
+    heroSub = `<span style="color:#FF3B30;font-weight:600;">오늘 기록하면 ${bestStreak + 1}일째 · ${hoursLeft}시간 남음</span>`;
+    heroEmoji = '⚠️';
+  } else if (bestStreak >= 2 && !hasRecordedToday) {
+    heroLabel = '오늘도 이어가볼까요?';
+    heroCount = `${bestStreak}<span class="tf-hero-unit">일</span>`;
+    heroSub = `<span style="color:var(--primary);font-weight:600;">기록하면 ${bestStreak + 1}일 연속!</span>`;
+    heroEmoji = '💪';
+  } else if (hasRecordedToday) {
+    heroLabel = '오늘도 기록 완료!';
+    heroCount = `${totalCount}<span class="tf-hero-unit">개</span>`;
+    heroSub = `이번 분기 <b>${qCount}개</b> 수확`;
+    heroEmoji = stages[dayIndex];
+  } else {
+    heroLabel = '오늘 첫 기록을 남겨보세요';
+    heroCount = `${totalCount}<span class="tf-hero-unit">개</span>`;
+    heroSub = `이번 분기 <b>${qCount}개</b> 수확`;
+    heroEmoji = stages[dayIndex];
+  }
+
   heroEl.innerHTML = `
     <div class="tf-card">
       <div class="tf-hero" style="background:linear-gradient(135deg, ${['hsl(100,40%,94%)','hsl(45,60%,93%)','hsl(20,65%,93%)','hsl(8,70%,93%)'][dayIndex]} 0%, transparent 100%);">
         <div class="tf-hero-left">
-          <div class="tf-hero-label">${bestStreak >= 2 ? '연속 기록' : '내 토마토'}</div>
-          <div class="tf-hero-count">${bestStreak >= 2
-            ? `${bestStreak}<span class="tf-hero-unit">일</span>`
-            : `${totalCount}<span class="tf-hero-unit">개</span>`}</div>
-          <div class="tf-hero-sub">${bestStreak >= 2
-            ? (!hasRecordedToday
-              ? (isEvening
-                ? `<span style="color:#FF3B30;font-weight:600;">오늘 기록하면 ${bestStreak + 1}일째 · ${hoursLeft}시간 남음</span>`
-                : `<span style="color:var(--primary);font-weight:600;">오늘 기록하면 ${bestStreak + 1}일째</span>`)
-              : `🍅 ${totalCount}개 · 이번 분기 <b>${qCount}개</b>`)
-            : `이번 분기 <b>${qCount}개</b> 수확`}</div>
+          <div class="tf-hero-label">${heroLabel}</div>
+          <div class="tf-hero-count">${heroCount}</div>
+          <div class="tf-hero-sub">${heroSub}</div>
         </div>
         <div class="tf-hero-right">
-          <div class="tf-hero-tomato">${bestStreak >= 2 ? '🔥' : stages[dayIndex]}</div>
+          <div class="tf-hero-tomato">${heroEmoji}</div>
         </div>
       </div>
 
@@ -1420,7 +1451,10 @@ function _renderTomatoCard() {
     const wTarget = plan.targetWeight || (plan.weight - (metrics.totalWeightLoss || 0));
     const wStart = plan.weight;
     const lost = Math.max(wStart - curWeight, 0);
-    const wProgress = wStart > wTarget ? Math.min(Math.round((wStart - curWeight) / (wStart - wTarget) * 100), 100) : 0;
+    const wRange = wStart - wTarget;
+    const wProgress = wRange > 0 ? Math.min(Math.round((wStart - curWeight) / wRange * 100), 100) : 0;
+    // 작은 변화도 시각적으로 보이도록 최소 5% 보장
+    const wProgressVisual = wProgress > 0 ? Math.max(wProgress, 5) : 0;
 
     const weightCard = document.createElement('div');
     weightCard.id = 'tf-weight-card';
@@ -1442,8 +1476,10 @@ function _renderTomatoCard() {
       </div>
       <div class="tf-wt-journey">
         <div class="tf-wt-journey-bar">
-          <div class="tf-wt-journey-fill" style="width:${wProgress}%"></div>
-          <div class="tf-wt-journey-marker" style="left:${wProgress}%"></div>
+          <div class="tf-wt-journey-fill tf-wt-animate" data-width="${wProgressVisual}"></div>
+          <div class="tf-wt-journey-marker tf-wt-animate-marker" data-left="${wProgressVisual}">
+            <span class="tf-wt-marker-label">${curWeight.toFixed(1)}</span>
+          </div>
         </div>
         <div class="tf-wt-journey-labels">
           <span class="tf-wt-journey-lbl">${wStart.toFixed(1)}</span>
@@ -1452,6 +1488,14 @@ function _renderTomatoCard() {
       </div>
     `;
     mealCard.after(weightCard);
+
+    // 등장 애니메이션: 0 → 실제 값으로 채워지는 효과
+    requestAnimationFrame(() => {
+      const fill = weightCard.querySelector('.tf-wt-animate');
+      const marker = weightCard.querySelector('.tf-wt-animate-marker');
+      if (fill) { fill.style.width = fill.dataset.width + '%'; }
+      if (marker) { marker.style.left = marker.dataset.left + '%'; }
+    });
   }
 }
 

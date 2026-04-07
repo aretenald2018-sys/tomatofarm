@@ -718,7 +718,7 @@ body {
   padding: 32px 20px 24px;
   text-align: center;
 }
-.home-hero:has(.tf-card) { padding: 0; text-align: left; }
+.home-hero:has(.tf-card) { padding: 0 0 10px; text-align: left; }
 .hero-date {
   font-size: 13px; font-weight: 500;
   color: var(--text-secondary);
@@ -3496,10 +3496,59 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
 #tab-diet .workout-date-label { font-family: var(--font-sans) !important; font-size: var(--seed-t5); font-weight: 700; color: var(--seed-fg-neutral); letter-spacing: -0.02em; }
 #tab-diet .wt-today-btn { background: var(--primary-bg); color: var(--primary); border: 1px solid var(--primary); border-radius: var(--seed-r-full); font-size: var(--seed-t2); font-weight: 700; padding: var(--seed-x1) var(--seed-x3); }
 #tab-diet .section-category-title { font-size: var(--seed-t6); font-weight: 700; color: var(--seed-fg-neutral); padding-bottom: var(--seed-x3); border-bottom: 2px solid var(--seed-stroke-neutral); margin-bottom: var(--seed-x4); margin-top: var(--seed-x2); gap: var(--seed-x2); }
-#tab-diet .diet-grid { gap: var(--seed-x3); }
-#tab-diet .diet-meal-row { background: var(--seed-bg-layer); border: 1px solid var(--seed-stroke-neutral); border-radius: var(--seed-r3); padding: var(--seed-x4); box-shadow: var(--seed-s1); }
-#tab-diet .diet-meal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--seed-x2); }
-#tab-diet .diet-meal-label { font-size: var(--seed-t3); font-weight: 700; color: var(--seed-fg-neutral); letter-spacing: 0; margin-bottom: 0; }
+
+/* ── 식단탭 토스 스타일 끼니 리스트 (Seed Design 타이포) ── */
+.diet-toss-list {
+  display: flex; flex-direction: column; gap: 0;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); overflow: hidden;
+}
+.diet-toss-row {
+  border-bottom: 1px solid var(--border);
+}
+.diet-toss-row:last-child { border-bottom: none; }
+.diet-toss-header {
+  display: flex; align-items: center; gap: var(--seed-x3);
+  padding: var(--seed-x4); cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s;
+}
+.diet-toss-header:active { background: var(--surface2); }
+.diet-toss-icon { font-size: var(--seed-t7); flex-shrink: 0; width: 28px; text-align: center; }
+.diet-toss-title { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: var(--seed-x2); }
+.diet-toss-label { font-size: var(--seed-t5); font-weight: 700; color: var(--text); line-height: 22px; }
+.diet-toss-kcal { font-size: var(--seed-t3); font-weight: 700; color: var(--text-tertiary); line-height: 18px; }
+.diet-toss-kcal.diet-toss-ok { color: var(--primary); }
+.diet-toss-kcal.diet-toss-over { color: #e53935; }
+.diet-toss-chevron {
+  font-size: var(--seed-t6); color: var(--text-tertiary); font-weight: 300;
+  transition: transform 0.25s ease; flex-shrink: 0;
+}
+.diet-toss-open .diet-toss-chevron { transform: rotate(90deg); }
+
+/* 아코디언 바디 */
+.diet-toss-body {
+  max-height: 0; overflow: hidden;
+  transition: max-height 0.3s ease, padding 0.3s ease;
+  padding: 0 var(--seed-x4);
+}
+.diet-toss-open .diet-toss-body {
+  max-height: 800px; padding: 0 var(--seed-x4) var(--seed-x4);
+}
+
+/* 바디 내부 요소 Seed 타이포 적용 */
+.diet-toss-body .diet-meal-actions { gap: var(--seed-x2); margin-bottom: var(--seed-x2); }
+.diet-toss-body .diet-add-btn { font-size: var(--seed-t3); font-weight: 600; }
+.diet-toss-body .diet-skip-btn { font-size: var(--seed-t2); }
+.diet-toss-body .diet-meal-input { font-size: var(--seed-t4); }
+.diet-toss-body .meal-photo-btn { font-size: var(--seed-t2); }
+.diet-toss-body .diet-result { font-size: var(--seed-t2); }
+
+/* 기존 diet-meal-row 오버라이드 비활성화 */
+.diet-toss-list .diet-meal-row,
+#tab-diet .diet-meal-row { background: none; border: none; border-radius: 0; padding: 0; box-shadow: none; }
+#tab-diet .diet-toss-list .diet-meal-header { display: none; }
+#tab-diet .diet-toss-list .diet-meal-label { display: none; }
 #tab-diet .diet-add-btn {
   font-size: var(--seed-t2); font-weight: 600; color: var(--primary);
   background: none; border: none; cursor: pointer; padding: 4px 8px;
@@ -3828,14 +3877,14 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
 .tf-sum-title { font-size: 13px; font-weight: 500; color: var(--text-tertiary); }
 .tf-sum-nums { display: flex; align-items: baseline; gap: 3px; margin-top: 6px; }
 .tf-sum-big {
-  font-size: 28px; font-weight: 800; color: var(--text);
+  font-size: 22px; font-weight: 800; color: var(--text);
   letter-spacing: -0.03em; line-height: 1;
 }
 .tf-sum-big.tf-over { color: #e53935; }
-.tf-sum-sep { font-size: 16px; font-weight: 400; color: var(--text-tertiary); margin: 0 2px; }
-.tf-sum-target { font-size: 16px; font-weight: 500; color: var(--text-tertiary); }
+.tf-sum-sep { font-size: 14px; font-weight: 400; color: var(--text-tertiary); margin: 0 2px; }
+.tf-sum-target { font-size: 14px; font-weight: 500; color: var(--text-tertiary); }
 .tf-sum-unit { font-size: 11px; font-weight: 400; margin-left: 1px; }
-.tf-sum-unit-lg { font-size: 14px; font-weight: 500; color: var(--text-secondary); margin-left: 3px; }
+.tf-sum-unit-lg { font-size: 12px; font-weight: 500; color: var(--text-secondary); margin-left: 2px; }
 .tf-sum-remaining {
   display: inline-block; font-size: 12px; font-weight: 600;
   color: var(--text-tertiary); margin-top: 6px;
@@ -3874,16 +3923,23 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
   border-radius: 4px; overflow: visible;
 }
 .tf-wt-journey-fill {
-  height: 100%; border-radius: 4px;
+  height: 100%; border-radius: 4px; width: 0;
   background: linear-gradient(90deg, #3182F6, #60a5fa);
-  transition: width 0.5s ease;
+  transition: width 0.8s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .tf-wt-journey-marker {
-  position: absolute; top: 50%; transform: translate(-50%, -50%);
-  width: 14px; height: 14px; border-radius: 50%;
+  position: absolute; top: 50%; left: 0;
+  transform: translate(-50%, -50%);
+  width: 16px; height: 16px; border-radius: 50%;
   background: #3182F6; border: 2.5px solid var(--surface);
   box-shadow: 0 0 0 3px rgba(49,130,246,0.2);
-  transition: left 0.5s ease;
+  transition: left 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.tf-wt-marker-label {
+  position: absolute; bottom: calc(100% + 6px); left: 50%;
+  transform: translateX(-50%); white-space: nowrap;
+  font-size: 11px; font-weight: 700; color: #3182F6;
+  background: #EDF5FF; padding: 2px 6px; border-radius: 4px;
 }
 .tf-wt-journey-labels {
   display: flex; justify-content: space-between; margin-top: 8px;

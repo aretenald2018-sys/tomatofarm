@@ -652,6 +652,12 @@ function _renderDietResults() {
     } else {
       el.innerHTML = `<span class="diet-badge bad">초과</span><span class="diet-kcal">${kcal}kcal</span>${reason?`<span class="diet-reason bad">${reason}</span>`:''}`;
     }
+    // 토스 스타일 헤더 kcal 업데이트
+    const headerKcal = document.getElementById(`diet-toss-kcal-${meal}`);
+    if (headerKcal) {
+      headerKcal.textContent = kcal > 0 ? `${kcal.toLocaleString()}kcal` : '';
+      headerKcal.className = 'diet-toss-kcal' + (ok === false ? ' diet-toss-over' : ok === true ? ' diet-toss-ok' : '');
+    }
   });
   _renderCalorieTracker();
 }
