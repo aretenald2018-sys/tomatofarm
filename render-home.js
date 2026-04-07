@@ -2560,6 +2560,17 @@ window.openFriendProfile = async function(friendId, friendName, scrollToSection)
   // 방명록 로드
   _loadGuestbook(normalizedFriendId);
 
+  // 댓글 섹션 자동 펼침 (친구/내 프로필인 경우)
+  if (isFriend) {
+    const commentPanels = document.querySelectorAll('#dynamic-modal .comment-section-panel');
+    commentPanels.forEach(panel => {
+      panel.style.display = 'block';
+      panel.innerHTML = '<div style="text-align:center;padding:8px;font-size:12px;color:var(--text-tertiary);">불러오는 중...</div>';
+    });
+    const sectionNames = Array.from(commentPanels).map(p => p.id.replace('comments-', ''));
+    Promise.all(sectionNames.map(s => _loadComments(normalizedFriendId, tk, s)));
+  }
+
   // 섹션 스크롤 (알림에서 연결된 경우)
   if (scrollToSection) {
     setTimeout(async () => {
