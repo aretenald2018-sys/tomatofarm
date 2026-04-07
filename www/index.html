@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="description" content="일일 운동, 식단, 건강을 추적하고 관리하는 개인 대시보드 앱">
+<meta name="theme-color" content="#1a1a1a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Life Streak">
+<title>Life Streak</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="loading-overlay" id="loading">
+  <div class="spinner"></div>
+  <div style="font-size:13px;color:var(--muted)">데이터 불러오는 중...</div>
+</div>
+
+<div class="sync-bar">
+  <div class="sync-dot" id="sync-dot"></div>
+  <span id="sync-text">동기화 연결 중...</span>
+</div>
+
+<nav class="tab-nav" id="tab-nav">
+  <button class="tab-btn active" data-tab="home"     draggable="true" onclick="switchTab('home')">🏠 홈</button>
+  <button class="tab-btn"        data-tab="workout"  draggable="true" onclick="switchTab('workout')">💪 운동·식단</button>
+  <button class="tab-btn"        data-tab="cooking"  draggable="true" onclick="switchTab('cooking')">🍳 요리</button>
+  <button class="tab-btn"        data-tab="calendar" draggable="true" onclick="switchTab('calendar')">📆 Streak</button>
+  <button class="tab-btn"        data-tab="wine"     draggable="true" onclick="switchTab('wine')">🍷 와인</button>
+  <button class="tab-btn"        data-tab="movie"    draggable="true" onclick="switchTab('movie')">🎬 영화</button>
+  <button class="tab-btn"        data-tab="stats"    draggable="true" onclick="switchTab('stats')">📊 통계</button>
+  <button class="tab-btn"        data-tab="finance"  draggable="true" onclick="switchTab('finance')">💰 재무</button>
+  <button class="tab-btn"        data-tab="loa"      draggable="true" onclick="switchTab('loa')">🗺️ 로아</button>
+  <button class="tab-btn tab-btn-settings" onclick="openSettingsModal()">⚙️</button>
+</nav>
+
+<!-- ═══ 홈 탭 ═══ -->
+<div id="tab-home" class="tab-panel active">
+
+  <!-- 홈 섹션 -->
+  <div class="home-section">
+
+    <!-- 주간 스트릭 미니 캘린더 -->
+    <div class="home-card" id="card-weekly-streak">
+      <div class="section-title-row" style="align-items:center">
+        <div class="home-card-title" style="margin-bottom:0">📅 이번 주</div>
+        <div class="ws-stepper">
+          <button class="ws-stepper-btn" onclick="window.changeHomeStreakDays((window._homeStreakDays||6)-1)">◀</button>
+          <span class="ws-stepper-val" id="home-streak-days-label">7일</span>
+          <button class="ws-stepper-btn" onclick="window.changeHomeStreakDays((window._homeStreakDays||6)+1)">▶</button>
+        </div>
+      </div>
+      <div id="weekly-streak-grid"></div>
+    </div>
+
+    <!-- 단위 목표달성 정보 -->
+    <div class="home-card" id="card-unit-goal">
+      <div class="section-title-row" style="align-items:center">
+        <div class="home-card-title" style="margin-bottom:0">🎯 단위 목표달성</div>
+        <button class="section-title-edit-btn" onclick="openUnitGoalDatePicker()">✏️</button>
+      </div>
+      <div id="unit-goal-content"></div>
+    </div>
+
+    <!-- 미니 메모 (체크리스트) -->
+    <div class="home-card" id="card-mini-memo">
+      <div class="section-title-row">
+        <div class="home-card-title editable-title" id="title-mini_memo">미니 메모</div>
+        <button class="section-title-edit-btn" onclick="editSectionTitle('mini_memo')">✏️</button>
+      </div>
+      <div id="mini-memo-list"></div>
+      <div class="mini-memo-add-row">
+        <input class="mini-memo-new-input" id="mini-memo-new-input" placeholder="메모 추가"
+          onkeydown="if(event.key==='Enter') addMiniMemoItem()">
+        <button class="mini-memo-add-btn" onclick="addMiniMemoItem()">+</button>
+      </div>
+    </div>
+
+    <!-- 목표 (마스터 목표) -->
+    <div class="home-card" id="card-goals">
+      <div class="section-title-row">
+        <div class="home-card-title editable-title" id="title-goals">🎯 목표</div>
+        <button class="section-title-edit-btn" onclick="editSectionTitle('goals')">✏️</button>
+      </div>
+      <div id="goals-section"></div>
+    </div>
+
+    <!-- 퀘스트 보드 -->
+    <div class="home-card quest-board-card" id="card-quests">
+      <div class="section-title-row" style="margin-bottom:8px">
+        <div class="home-card-title editable-title" id="title-quests">🗒️ 퀘스트 보드</div>
+        <button class="section-title-edit-btn" onclick="editSectionTitle('quests')">✏️</button>
+      </div>
+      <div class="quest-board" id="quest-board">
+        <!-- 분기 퀘스트 -->
+        <div class="quest-cell" data-type="quarterly" draggable="true">
+          <div class="quest-cell-header">
+            <div class="quest-cell-title">분기 퀘스트<span class="quest-period-badge">분기 리셋</span></div>
+            <button class="quest-add-btn" onclick="openQuestModal('quarterly')">+</button>
+          </div>
+          <div id="quarterly-quests"></div>
+        </div>
+        <!-- 월간 퀘스트 -->
+        <div class="quest-cell" data-type="monthly" draggable="true">
+          <div class="quest-cell-header">
+            <div class="quest-cell-title">월간 퀘스트<span class="quest-period-badge">매월 리셋</span></div>
+            <button class="quest-add-btn" onclick="openQuestModal('monthly')">+</button>
+          </div>
+          <div id="monthly-quests"></div>
+        </div>
+        <!-- 주간 퀘스트 -->
+        <div class="quest-cell" data-type="weekly" draggable="true">
+          <div class="quest-cell-header">
+            <div class="quest-cell-title">주간 퀘스트<span class="quest-period-badge">매주 리셋</span></div>
+            <button class="quest-add-btn" onclick="openQuestModal('weekly')">+</button>
+          </div>
+          <div id="weekly-quests"></div>
+        </div>
+        <!-- 일간 퀘스트 -->
+        <div class="quest-cell" data-type="daily" draggable="true">
+          <div class="quest-cell-header">
+            <div class="quest-cell-title">일간 퀘스트<span class="quest-period-badge">매일 리셋</span></div>
+            <button class="quest-add-btn" onclick="openQuestModal('daily')">+</button>
+          </div>
+          <div id="daily-quests"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 주식 -->
+    <div class="home-card" id="card-stocks">
+      <div class="section-title-row" style="margin-bottom:8px">
+        <div class="home-card-title editable-title" id="title-stocks">📈 주식 · RSI</div>
+        <button class="section-title-edit-btn" onclick="editSectionTitle('stocks')">✏️</button>
+      </div>
+      <div class="stock-row" id="stock-row"><div style="font-size:12px;color:var(--muted);padding:8px">주식 데이터 로딩 중...</div></div>
+      <div class="stock-updated" id="stock-updated"></div>
+    </div>
+
+    <!-- 다이어트 목표 카드 -->
+    <div class="home-card" id="card-diet-goal">
+      <div class="section-title-row" style="margin-bottom:12px">
+        <div class="home-card-title">다이어트 목표</div>
+        <button class="section-title-edit-btn" onclick="openDietPlanModal()">✏️</button>
+      </div>
+      <div id="diet-goal-content"></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══ 운동·식단 탭 ═══ -->
+<div id="tab-workout" class="tab-panel">
+  <div class="workout-date-nav">
+    <button class="wt-date-nav-btn" onclick="changeWorkoutDate(-1)">◀</button>
+    <span id="wt-date-label" class="workout-date-label"></span>
+    <button class="wt-date-nav-btn" onclick="changeWorkoutDate(1)">▶</button>
+    <button id="wt-today-btn" class="wt-today-btn" onclick="goToTodayWorkout()" style="display:none">오늘</button>
+  </div>
+  <div id="wt-future-notice" class="wt-future-notice" style="display:none">📅 미래 날짜에는 기록할 수 없습니다.</div>
+  <div class="workout-tab-content">
+    <!-- ═════ 운동 카테고리 ═════ -->
+    <div class="sheet-section">
+      <div class="section-category-title">🏋️ 운동</div>
+      <div class="ex-list-header">
+        <span class="sheet-section-label" style="margin-bottom:0">💪 운동 종목</span>
+        <button class="ex-add-btn" onclick="wtOpenExercisePicker()">+ 종목 추가</button>
+      </div>
+      <div class="extra-toggle-row" style="margin-bottom:8px;border:none;padding:0;gap:16px;">
+        <div class="extra-toggle-item">
+          <span class="extra-toggle-label">🧘 스트레칭</span>
+          <div class="toggle-switch" id="wt-stretching-toggle" onclick="wtToggleStretching()"><div class="toggle-knob"></div></div>
+        </div>
+      </div>
+      <div class="activity-status-row">
+        <span class="activity-status-label">🏋️ 헬스장 상태</span>
+        <div class="activity-status-btns">
+          <button class="act-btn" id="wt-gym-btn-done"   onclick="wtSetGymStatus('done')">✅ 완료</button>
+          <button class="act-btn" id="wt-gym-btn-skip"   onclick="wtSetGymStatus('skip')">⏭️ 쉬었음</button>
+          <button class="act-btn" id="wt-gym-btn-health" onclick="wtSetGymStatus('health')">🩺 건강이슈</button>
+        </div>
+      </div>
+      <div id="wt-exercise-list" style="margin-top:8px;"></div>
+      <textarea class="memo-input" id="wt-workout-memo" placeholder="운동 메모 (예: 벤치 컨디션 좋았음..)"></textarea>
+      <div class="activity-status-row" style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px">
+        <span class="activity-status-label">🔥 크로스핏 상태</span>
+        <div class="activity-status-btns">
+          <button class="act-btn" id="wt-cf-btn-done"   onclick="wtSetCFStatus('done')">✅ 완료</button>
+          <button class="act-btn" id="wt-cf-btn-skip"   onclick="wtSetCFStatus('skip')">⏭️ 쉬었음</button>
+          <button class="act-btn" id="wt-cf-btn-health" onclick="wtSetCFStatus('health')">🩺 건강이슈</button>
+        </div>
+      </div>
+    </div>
+    <!-- ═════ 식단기록 카테고리 ═════ -->
+    <div class="sheet-section">
+      <div class="section-category-title">🥗 식단기록</div>
+      <div class="sheet-section-label">식단 입력</div>
+      <div style="margin-bottom:10px;display:flex;gap:8px;border-bottom:1px solid var(--border);padding-bottom:10px" id="diet-input-buttons">
+        <button class="diet-db-btn" data-action="addFood" title="새 음식 수기 입력" style="flex:1;background:var(--accent);color:#fff">✏️ 음식 추가</button>
+        <button class="diet-db-btn" data-action="photoUpload" title="사진으로 영양정보 인식" style="flex:1;background:var(--accent);color:#fff">📷 사진 인식</button>
+      </div>
+      <div class="diet-grid">
+        <div class="diet-meal-row">
+          <div class="diet-meal-label">🌅 아침</div>
+          <input class="diet-meal-input" id="wt-meal-breakfast" placeholder="메모 (선택)">
+          <button class="diet-db-btn" onclick="openNutritionSearch('breakfast')" title="음식 검색">🔍</button>
+          <button class="diet-skip-btn" id="wt-breakfast-skipped" title="아침 굶었음" onclick="wtToggleMealSkipped('breakfast')" style="font-size:14px;padding:6px 8px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);cursor:pointer">🚫</button>
+          <div class="meal-food-list" id="wt-foods-breakfast"></div>
+          <div class="diet-result" id="wt-result-breakfast"><span class="diet-badge pending">미분석</span></div>
+        </div>
+        <div class="diet-meal-row">
+          <div class="diet-meal-label">☀️ 점심</div>
+          <input class="diet-meal-input" id="wt-meal-lunch" placeholder="메모 (선택)">
+          <button class="diet-db-btn" onclick="openNutritionSearch('lunch')" title="음식 검색">🔍</button>
+          <button class="diet-skip-btn" id="wt-lunch-skipped" title="점심 굶었음" onclick="wtToggleMealSkipped('lunch')" style="font-size:14px;padding:6px 8px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);cursor:pointer">🚫</button>
+          <div class="meal-food-list" id="wt-foods-lunch"></div>
+          <div class="diet-result" id="wt-result-lunch"><span class="diet-badge pending">미분석</span></div>
+        </div>
+        <div class="diet-meal-row">
+          <div class="diet-meal-label">🌙 저녁</div>
+          <input class="diet-meal-input" id="wt-meal-dinner" placeholder="메모 (선택)">
+          <button class="diet-db-btn" onclick="openNutritionSearch('dinner')" title="음식 검색">🔍</button>
+          <button class="diet-skip-btn" id="wt-dinner-skipped" title="저녁 굶었음" onclick="wtToggleMealSkipped('dinner')" style="font-size:14px;padding:6px 8px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);cursor:pointer">🚫</button>
+          <div class="meal-food-list" id="wt-foods-dinner"></div>
+          <div class="diet-result" id="wt-result-dinner"><span class="diet-badge pending">미분석</span></div>
+        </div>
+        <div class="diet-meal-row">
+          <div class="diet-meal-label">🥤 음료/간식</div>
+          <input class="diet-meal-input" id="wt-meal-snack" placeholder="메모 (선택)">
+          <button class="diet-db-btn" onclick="openNutritionSearch('snack')" title="음식 검색">🔍</button>
+          <div class="meal-food-list" id="wt-foods-snack"></div>
+          <div class="diet-result" id="wt-result-snack"><span class="diet-badge pending">미분석</span></div>
+        </div>
+      </div>
+      <div class="extra-toggle-row" style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px;gap:16px;">
+        <div class="extra-toggle-item">
+          <span class="extra-toggle-label">🍷 와인 프리</span>
+          <div class="toggle-switch" id="wt-wine-free-toggle" onclick="wtToggleWineFree()"><div class="toggle-knob"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 오늘의 칼로리 -->
+    <div class="sheet-section" id="wt-calorie-tracker" style="display:none">
+      <div class="sheet-section-label">📊 오늘의 칼로리</div>
+      <div class="cal-tracker-header">
+        <span id="wt-day-type-badge" class="cal-day-type"></span>
+      </div>
+      <div class="cal-main-bar-wrap">
+        <div class="cal-numbers">
+          <span class="cal-current" id="wt-cal-current">0</span>
+          <span class="cal-sep"> / </span>
+          <span class="cal-goal" id="wt-cal-goal">목표</span>
+          <span class="cal-unit">kcal</span>
+        </div>
+        <div class="cal-remain" id="wt-cal-remain"></div>
+        <div class="cal-bar-track">
+          <div class="cal-bar-fill" id="wt-cal-bar"></div>
+        </div>
+      </div>
+      <div class="macro-bars" id="wt-macro-bars"></div>
+    </div>
+
+    <div class="sheet-actions">
+      <button class="sheet-btn confirm" id="wt-save-btn" onclick="saveWorkoutDay()">💾 저장</button>
+    </div>
+  </div>
+
+  <!-- ═══ 세트 간 휴식 타이머 (플로팅) ═══ -->
+  <div id="rest-timer-bar" class="rest-timer-bar" style="display:none">
+    <div class="rest-timer-main">
+      <div class="rest-timer-display">
+        <span class="rest-timer-icon">⏱️</span>
+        <span id="rest-timer-time" class="rest-timer-time">1:30</span>
+      </div>
+      <div class="rest-timer-presets">
+        <button class="rest-preset-btn" data-sec="60">1:00</button>
+        <button class="rest-preset-btn active" data-sec="90">1:30</button>
+        <button class="rest-preset-btn" data-sec="120">2:00</button>
+        <button class="rest-preset-btn" data-sec="180">3:00</button>
+      </div>
+      <div class="rest-timer-controls">
+        <button id="rest-timer-adj-down" class="rest-timer-adj" onclick="wtRestTimerAdjust(-15)">−15</button>
+        <div class="rest-timer-progress">
+          <div id="rest-timer-fill" class="rest-timer-fill"></div>
+        </div>
+        <button id="rest-timer-adj-up" class="rest-timer-adj" onclick="wtRestTimerAdjust(+15)">+15</button>
+        <button id="rest-timer-skip" class="rest-timer-skip" onclick="wtRestTimerSkip()">건너뛰기</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ 요리 탭 ═══ -->
+<div id="tab-cooking" class="tab-panel">
+  <div class="wine-tab-header">
+    <span class="wine-tab-title">🍳 요리 경험 기록</span>
+    <button class="wine-add-btn" onclick="openCookingModal()">+ 기록 추가</button>
+  </div>
+  <div id="cooking-list" class="cooking-list"></div>
+</div>
+
+<!-- ═══ 연간 달력 탭 ═══ -->
+<div id="tab-calendar" class="tab-panel">
+  <div class="nav-bar">
+    <button class="nav-btn" onclick="changeYear(-1)">◀</button>
+    <span class="nav-year" id="year-label"></span>
+    <button class="nav-btn" onclick="changeYear(1)">▶</button>
+    <button class="nav-btn" onclick="openStreakSettingsModal()" style="margin-left:auto">⚙️</button>
+  </div>
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:var(--gym)"></div>헬스</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--cf)"></div>크핏</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--diet-ok)"></div>식단OK</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--diet-bad)"></div>식단NG</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#374151;border:1px solid #6b7280"></div>쉬었음</div>
+    <div class="legend-item"><div class="legend-dot legend-health"></div>건강이슈</div>
+    <div class="legend-item" style="color:var(--muted)">빈칸 = 미기록</div>
+  </div>
+  <div class="calendar-wrap" id="calendar"></div>
+</div>
+
+<div id="tab-stats" class="tab-panel">
+<div class="stats-section">
+<div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
+<button class="export-btn" onclick="openExportModal()">📊 CSV 내보내기</button>
+</div>
+<div class="stats-block">
+<div class="stats-block-title">💪 부위별 운동 비중 (최근 14일)</div>
+<div id="muscle-14d"></div>
+<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:10px;color:var(--muted);">
+<span style="color:var(--streak)">완료</span> 2회 ↑&nbsp;&nbsp;
+<span style="color:var(--accent)">진행</span> 1회&nbsp;&nbsp;
+<span style="color:#ef4444">미달</span> 0회
+</div>
+</div>
+<div class="stats-block">
+<div class="stats-block-title">📈 기간별 운동 횟수</div>
+<div class="period-tabs">
+<button class="period-btn active" onclick="setPeriod(30,this)">30일</button>
+<button class="period-btn"         onclick="setPeriod(60,this)">60일</button>
+<button class="period-btn"         onclick="setPeriod(90,this)">90일</button>
+<button class="period-btn"         onclick="setPeriod(0,this)">전체</button>
+</div>
+<div id="muscle-period"></div>
+</div>
+<div class="stats-block">
+<div class="stats-block-title">🏋️ 종목별 볼륨 추이 (kg × 횟수 × 세트)</div>
+<div id="volume-section"></div>
+</div>
+<div class="stats-block">
+<div class="stats-block-title">🥗 식단 달성 단계 (올해)</div>
+<div id="diet-stats"></div>
+</div>
+<div class="stats-block">
+<div class="stats-block-title">📅 월별 운동 일수</div>
+<div class="monthly-row" id="monthly-summary"></div>
+</div>
+<div class="stats-block">
+<div class="stats-block-title">⚖️ 체중 & 체지방 추이</div>
+<div style="position:relative;height:200px"><canvas id="checkin-chart"></canvas></div>
+<div id="checkin-chart-empty" style="display:none;font-size:12px;color:var(--muted);text-align:center;padding:20px">
+주간 체크인 기록이 없어요.
+
+
+다이어트 목표 카드에서 체크인 해보세요!
+</div>
+</div>
+<div class="stats-block">
+<div class="stats-block-title">🔥 연간 트레이닝 맵 <span id="heatmap-year" style="color:var(--accent)"></span></div>
+<div style="display:flex;gap:4px;margin-bottom:6px;font-size:9px;color:var(--muted);">
+<span style="flex:1;text-align:center">월</span><span style="flex:1;text-align:center">화</span>
+<span style="flex:1;text-align:center">수</span><span style="flex:1;text-align:center">목</span>
+<span style="flex:1;text-align:center">금</span><span style="flex:1;text-align:center">토</span>
+<span style="flex:1;text-align:center">일</span>
+</div>
+<div class="heatmap-grid" id="heatmap"></div>
+</div>
+</div>
+</div>
+
+<!-- 모달들은 modals/*.js에서 동적으로 주입됩니다 -->
+<div id="modals-container"></div>
+
+<!-- Streak 설정 모달 -->
+<div class="modal-overlay" id="streak-settings-modal" onclick="closeStreakSettingsModal(event)" style="display:none;z-index:1001">
+  <div class="modal-sheet">
+    <div class="sheet-handle"></div>
+    <div class="modal-title">Streak 탭 세팅</div>
+    <div class="ex-editor-form" style="padding-bottom:8px">
+      <div style="margin-bottom:16px">
+        <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:8px;font-weight:600">일정 글자 크기</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+            <input type="radio" name="font-size" value="small" style="cursor:pointer">
+            작음
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+            <input type="radio" name="font-size" value="default" checked style="cursor:pointer">
+            기본
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+            <input type="radio" name="font-size" value="large" style="cursor:pointer">
+            큼
+          </label>
+        </div>
+      </div>
+      <div style="margin-bottom:16px">
+        <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:8px;font-weight:600">셀 너비</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+            <input type="radio" name="cell-width" value="small" style="cursor:pointer">
+            좁음
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+            <input type="radio" name="cell-width" value="default" checked style="cursor:pointer">
+            기본
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+            <input type="radio" name="cell-width" value="large" style="cursor:pointer">
+            넓음
+          </label>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="ex-editor-save" onclick="saveStreakSettingsAndClose()" style="flex:1">저장</button>
+        <button class="ex-editor-cancel" onclick="closeStreakSettingsModal()" style="flex:1">취소</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Streak 설정 모달 함수
+function openStreakSettingsModal() {
+  const settings = window.getStreakSettings();
+  document.querySelector(`input[name="font-size"][value="${settings.fontSizeMode}"]`).checked = true;
+  document.querySelector(`input[name="cell-width"][value="${settings.cellWidthMode}"]`).checked = true;
+  document.getElementById('streak-settings-modal').style.display = 'flex';
+}
+
+function closeStreakSettingsModal(e) {
+  if (e && e.target !== document.getElementById('streak-settings-modal')) return;
+  document.getElementById('streak-settings-modal').style.display = 'none';
+}
+
+async function saveStreakSettingsAndClose() {
+  const fontSizeMode = document.querySelector('input[name="font-size"]:checked')?.value || 'default';
+  const cellWidthMode = document.querySelector('input[name="cell-width"]:checked')?.value || 'default';
+
+  await window.saveStreakSettings('fontSizeMode', fontSizeMode);
+  await window.saveStreakSettings('cellWidthMode', cellWidthMode);
+
+  if (window.renderCalendar) {
+    window.renderCalendar();
+  }
+
+  document.getElementById('streak-settings-modal').style.display = 'none';
+}
+</script>
+
+<!-- 월간 캘린더 모달 -->
+<div class="modal-overlay" id="monthly-calendar-modal" onclick="closeMonthlyCalendarModal(event)">
+  <div class="modal-sheet" style="max-height:90vh;overflow-y:auto;max-width:600px;padding:12px;">
+    <div class="sheet-handle"></div>
+    <div id="monthly-calendar-modal-content" style="padding:12px 16px 80px;"></div>
+  </div>
+</div>
+
+<div id="tab-loa" class="tab-panel">
+<div class="loa-tab-header">
+<span class="loa-tab-title">⚔️ 로스트아크 숙제 체크</span>
+</div>
+<div id="loa-container" class="loa-container"></div>
+</div>
+
+<!-- ═══ 영화 탭 ═══ -->
+<div id="tab-movie" class="tab-panel">
+  <div class="movie-tab-header">
+    <button class="month-nav-btn" onclick="changeMovieMonth(-1)">◀</button>
+    <span class="movie-tab-title" id="movie-label">2026년 3월</span>
+    <button class="month-nav-btn" onclick="changeMovieMonth(1)">▶</button>
+    <button class="movie-refresh-btn" id="movie-refresh-btn" onclick="startMovieCrawl()" title="최신 영화 데이터 새로고침">🔄 새로고침</button>
+  </div>
+  <div id="movie-tag-filters" class="movie-tag-filters"></div>
+  <div id="movie-calendar-content" class="movie-calendar-content"></div>
+</div>
+
+<!-- ═══ 재무 탭 ═══ -->
+<div id="tab-finance" class="tab-panel">
+  <div class="fin-header">
+    <span class="fin-title">💰 재무 대시보드</span>
+    <span class="fin-fx" id="fin-fx-rate">USD/KRW: -</span>
+  </div>
+  <div id="fin-content"></div>
+</div>
+
+<div id="tab-wine" class="tab-panel">
+  <div class="wine-tab-header">
+    <span class="wine-tab-title">🍷 와인 테이스팅 노트</span>
+    <button class="wine-add-btn" onclick="openWineModal()">+ 기록 추가</button>
+  </div>
+  <div id="wine-list" class="wine-list"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script type="module" src="app.js?v=20260401"></script>
+
+<!-- PWA Service Worker 등록 -->
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    console.log('[PWA] Service Worker 등록 시도 중...');
+    navigator.serviceWorker.register('sw.js', { scope: '/dashboard3/' })
+      .then(registration => {
+        console.log('[PWA] Service Worker 등록 성공:', registration);
+        console.log('[PWA] Service Worker 상태 - Active:', !!registration.active, 'Installing:', !!registration.installing, 'Waiting:', !!registration.waiting);
+
+        // 업데이트 확인
+        registration.addEventListener('updatefound', () => {
+          console.log('[PWA] updatefound 이벤트 감지');
+          const newWorker = registration.installing;
+          newWorker.addEventListener('statechange', () => {
+            console.log('[PWA] Service Worker 상태 변경:', newWorker.state);
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              console.log('[PWA] 새로운 버전이 준비되었습니다. 페이지를 새로고침하세요.');
+            }
+          });
+        });
+
+        // 현재 활성 Service Worker 확인
+        navigator.serviceWorker.ready.then(registration => {
+          console.log('[PWA] Service Worker 준비 완료:', registration);
+        });
+      })
+      .catch(error => {
+        console.error('[PWA] Service Worker 등록 실패:', error);
+        console.error('[PWA] 에러 상세:', error.message);
+      });
+} else {
+  console.warn('[PWA] Service Worker를 지원하지 않는 브라우저');
+}
+
+// 설치 프롬프트 처리 (PWA 설치 버튼)
+let deferredPrompt;
+window.addEventListener('beforeinstallprompt', (e) => {
+  deferredPrompt = e;
+  console.log('[PWA] 설치 준비 완료');
+});
+
+window.addEventListener('appinstalled', () => {
+  console.log('[PWA] 앱이 설치되었습니다');
+  deferredPrompt = null;
+});
+</script>
+</body>
+</html>
+
+
