@@ -1,0 +1,13 @@
+node_modules/
+android/
+www/
+functions/node_modules/
+*.apk
+public/data/foods.csv
+muko-full-page.html
+dom-analysis-report.json
+network-analysis-report.json
+*.png
+*.svg
+data/movies/
+package-lock.json

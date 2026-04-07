@@ -811,10 +811,11 @@ async function initLoginScreen() {
   let saved = loadSavedUser();
   if (!saved) saved = await restoreUserFromBackup();
   if (saved) {
-    const isKimSaved = saved.id === '김_태우' || saved.id === '김_태우(guest)';
+    const { isAdminInstance, getAdminId, getAdminGuestId } = await import('./data.js');
+    const isKimSaved = isAdminInstance(saved.id);
     if (isKimSaved) {
       // 이미 이 세션에서 인증 완료했으면 바로 진입
-      if (localStorage.getItem('kim_authenticated')) {
+      if (localStorage.getItem('admin_authenticated') || localStorage.getItem('kim_authenticated')) {
         const { recordLogin: rlAuto } = await import('./data.js');
         rlAuto();
         document.getElementById('login-screen').style.display = 'none';
@@ -822,9 +823,9 @@ async function initLoginScreen() {
         return;
       }
       // 김태우 잠금 화면
-      const { setCurrentUser, hashPassword, verifyPassword, getAccountList, saveAccount, backupKimAuth } = await import('./data.js');
+      const { setCurrentUser, hashPassword, verifyPassword, getAccountList, saveAccount, backupAdminAuth } = await import('./data.js');
       const accounts = await getAccountList();
-      let kimAcc = accounts.find(a => a.id === '김_태우(guest)') || accounts.find(a => a.id === saved.id);
+      let kimAcc = accounts.find(a => a.id === getAdminGuestId()) || accounts.find(a => a.id === saved.id);
       if (kimAcc && (!kimAcc.hasPassword || !kimAcc.passwordHash)) {
         kimAcc.hasPassword = true;
         kimAcc.passwordHash = hashPassword('kimtw100');
@@ -849,8 +850,8 @@ async function initLoginScreen() {
         const pw = document.getElementById('kim-lock-pw').value;
         if (kimAcc && verifyPassword(kimAcc, pw)) {
           setCurrentUser(kimAcc);
-          localStorage.setItem('kim_authenticated', 'true');
-          backupKimAuth();
+          localStorage.setItem('admin_authenticated', 'true');
+          backupAdminAuth();
           import('./data.js').then(m => m.recordLogin());
           lockDiv.remove();
           document.getElementById('loading').style.display = 'flex';
@@ -861,6 +862,7 @@ async function initLoginScreen() {
       };
       document.getElementById('kim-lock-other').onclick = () => {
         setCurrentUser(null);
+        localStorage.removeItem('admin_authenticated');
         localStorage.removeItem('kim_authenticated');
         lockDiv.remove();
         location.reload();
@@ -1029,7 +1031,8 @@ async function initLoginScreen() {
   try {
     const accounts = await getAccountList();
     const { hashPassword, deleteDoc: delDoc } = await import('./data.js');
-    const adminIds = ['김_태우', '김_태우(guest)'];
+    const { getAdminId: gAId, getAdminGuestId: gAGId, isAdminInstance: isAI2 } = await import('./data.js');
+    const adminIds = [gAId(), gAGId()];
 
     // 더미 계정 삭제 — 비활성화 (계정이 삭제되는 버그 원인이었음)
     // 삭제된 계정 1회 복구 (이전 삭제 코드로 유실된 계정)
@@ -1042,23 +1045,23 @@ async function initLoginScreen() {
 
     // Admin/Guest 비밀번호 통일 + nickname/firstName 완전 동기화
     const freshAccounts = await getAccountList();
-    let adminAcc2 = freshAccounts.find(a => a.id === '김_태우');
-    let guestAcc2 = freshAccounts.find(a => a.id === '김_태우(guest)');
+    let adminAcc2 = freshAccounts.find(a => a.id === gAId());
+    let guestAcc2 = freshAccounts.find(a => a.id === gAGId());
 
     // 김태우(Guest) 계정이 없으면 자동 생성
-    if (!guestAcc2) {
+    if (!guestAcc2 && adminAcc2) {
       guestAcc2 = {
-        id: '김_태우(guest)', lastName: '김', firstName: '태우',
+        id: gAGId(), lastName: adminAcc2.lastName, firstName: adminAcc2.firstName,
         nickname: adminAcc2?.nickname || '', hasPassword: true,
         passwordHash: hashPassword('kimtw100'), createdAt: Date.now(),
       };
       await saveAccount(guestAcc2);
-      console.log('[login] 김태우(Guest) 계정 자동 생성');
+      console.log('[login] Guest 계정 자동 생성');
     }
 
     // nickname SSOT: 둘 중 실명이 아닌 별명을 가진 쪽을 SSOT로 삼음
-    const realName = '김태우';
-    const isRealNick = (n) => !n || n === realName || n === '김태우(Admin)' || n === '김태우(Guest)';
+    const realName = adminAcc2 ? adminAcc2.lastName + adminAcc2.firstName.replace(/\(.*\)/, '') : '';
+    const isRealNick = (n) => !n || n === realName || n === realName + '(Admin)' || n === realName + '(Guest)';
     const ssotNick = !isRealNick(guestAcc2?.nickname) ? guestAcc2.nickname
                    : !isRealNick(adminAcc2?.nickname) ? adminAcc2.nickname
                    : (guestAcc2?.nickname || adminAcc2?.nickname || '');
@@ -1144,10 +1147,12 @@ async function createAccountAndLogin() {
 
   const { saveAccount, setCurrentUser, hashPassword, getAccountList, verifyPassword } = await import('./data.js');
 
-  // 김/태우 → 무조건 Guest 계정 (Guest UX 기본)
+  const { getAdminId: _gAI, getAdminGuestId: _gAGI, isAdminInstance: _isAI } = await import('./data.js');
+  // 관리자 이름으로 가입 시 → Guest 계정
   let newId;
-  if (lastName === '김' && firstName === '태우') {
-    newId = '김_태우(guest)';
+  const _tryId = `${lastName}_${firstName}`.toLowerCase().replace(/\s/g, '');
+  if (_isAI(_tryId) || _tryId === _gAI()) {
+    newId = _gAGI();
   } else {
     newId = `${lastName}_${firstName}`.toLowerCase().replace(/\s/g, '');
   }
@@ -1166,8 +1171,8 @@ async function createAccountAndLogin() {
         return;
       }
       setCurrentUser(found);
-      localStorage.setItem('kim_authenticated', 'true');
-      const { backupKimAuth: bkAuth, recordLogin: rl1 } = await import('./data.js');
+      localStorage.setItem('admin_authenticated', 'true');
+      const { backupAdminAuth: bkAuth, recordLogin: rl1 } = await import('./data.js');
       bkAuth();
       rl1();
       document.getElementById('login-screen').style.display = 'none';
@@ -1253,20 +1258,22 @@ async function logoutAccount() {
 }
 
 async function confirmLogout() {
-  const { setCurrentUser, clearKimAuth } = await import('./data.js');
+  const { setCurrentUser, clearAdminAuth } = await import('./data.js');
   setCurrentUser(null);
+  localStorage.removeItem('admin_authenticated');
   localStorage.removeItem('kim_authenticated');
-  clearKimAuth();
+  clearAdminAuth();
   location.reload();
 }
 
 async function switchKimMode(mode) {
-  const { setCurrentUser, getAccountList, hashPassword, saveAccount } = await import('./data.js');
+  const { setCurrentUser, getAccountList, hashPassword, saveAccount, getAdminId, getAdminGuestId } = await import('./data.js');
   const accounts = await getAccountList();
-  const targetId = mode === 'Admin' ? '김_태우' : '김_태우(guest)';
+  const targetId = mode === 'Admin' ? getAdminId() : getAdminGuestId();
   let target = accounts.find(a => a.id === targetId);
   if (!target && mode === 'Guest') {
-    target = { id: '김_태우(guest)', lastName: '김', firstName: '태우(Guest)',
+    const adminAcc = accounts.find(a => a.id === getAdminId());
+    target = { id: getAdminGuestId(), lastName: adminAcc?.lastName || '', firstName: (adminAcc?.firstName || '') + '(Guest)',
                hasPassword: true, passwordHash: hashPassword('kimtw100'), createdAt: Date.now() };
     await saveAccount(target);
   }
@@ -1289,7 +1296,8 @@ async function openNicknameEdit() {
   // Admin/Guest nickname 동기화 (SSOT)
   if (isAdmin() || isAdminGuest()) {
     const accounts = await getAccountList();
-    const otherId = isAdmin() ? '김_태우(guest)' : '김_태우';
+    const { getAdminId: gAI3, getAdminGuestId: gAGI3 } = await import('./data.js');
+    const otherId = isAdmin() ? gAGI3() : gAI3();
     const other = accounts.find(a => a.id === otherId);
     if (other) {
       other.nickname = newNick.trim();
@@ -1505,8 +1513,8 @@ async function sendLetter() {
       message: text, createdAt: Date.now(), read: false,
     });
     // 김태우에게 알림
-    const { sendNotification } = await import('./data.js');
-    await sendNotification('김_태우', {
+    const { sendNotification, getAdminId: gAI4 } = await import('./data.js');
+    await sendNotification(gAI4(), {
       type: 'letter', from: user.id,
       message: '개발자에게 편지를 보냈어요 ✉️',
     });

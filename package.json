@@ -5,13 +5,13 @@
   "description": "Personal Dashboard with Fitness, Diet, Wine Tracking",
   "main": "app.js",
   "scripts": {
-    "start": "node api-server.js",
+    "start": "node tools/api-server.js",
     "dev": "python -m http.server 5500",
     "build": "node scripts/copy-www.js",
     "cap:sync": "npm run build && npx cap sync android",
     "cap:open": "npx cap open android",
-    "crawl": "node crawl-movies-optimized.js",
-    "server": "node api-server.js"
+    "crawl": "node tools/crawl-movies.js",
+    "server": "node tools/api-server.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.24.3",

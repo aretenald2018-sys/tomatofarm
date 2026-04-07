@@ -26,19 +26,8 @@ import { connectGoogleCalendar, disconnectGoogleCalendar, isGCalConnected,
 import { loadStocks }                             from './stocks.js?v=20260401';
 import { getDietRec, getWorkoutRec,
          analyzeGoalFeasibility }                 from './ai.js';
-import { renderCalendar, changeYear }             from './render-calendar.js';
-import { renderStats, setPeriod, exportCSV }      from './render-stats.js';
+// ── 코어 탭 (즉시 로드) ──
 import { renderHome, refreshNotifCenter, showToast } from './render-home.js';
-import { renderMonthlyCalendar, renderMonthlyCalendarInModal,
-         changeMonthlyMonth }                     from './render-monthly-calendar.js';
-import { renderMovie, changeMovieMonth, startMovieCrawl, toggleMovieTagFilter }  from './render-movie.js';
-import { renderDev, submitDevTask }                from './render-dev.js';
-import { renderAdmin }                            from './render-admin.js';
-import { renderWine, openWineModal, closeWineModal,
-         saveWineFromModal, deleteWineFromModal,
-         searchVivinoRating, searchWineImage,
-         analyzeWinePreference, bulkSearchVivino,
-         searchCriticRatings }                    from './render-wine.js';
 import {
   loadWorkoutDate, changeWorkoutDate, goToTodayWorkout, saveWorkoutDay,
   wtSetGymStatus, wtSetCFStatus, wtToggleStretching, wtToggleSwimming, wtToggleRunning, wtToggleWineFree, wtToggleMealSkipped,
@@ -49,29 +38,24 @@ import {
   wtAddFoodItem, wtRemoveFoodItem,
   openNutritionPhotoUpload,
 } from './render-workout.js';
-import {
-  renderCooking, openCookingModal, closeCookingModal,
-  saveCookingFromModal, deleteCookingFromModal, onCookingPhotoInput,
-  calcPerServing,
-} from './render-cooking.js';
-import {
-  renderFinance, refreshFinMarketData, runFinAIAnalysis, toggleFlowChart,
-  openFinBenchmarkModal, closeFinBenchmarkModal, saveFinBenchmarkFromModal,
-  deleteFinBenchmarkFromModal, deleteFinBenchmarkDirect,
-  openFinActualModal, closeFinActualModal, saveFinActualFromModal, deleteFinActualFromModal,
-  openFinLoanModal, closeFinLoanModal, saveFinLoanFromModal, deleteFinLoanFromModal,
-  openFinPositionModal, closeFinPositionModal, saveFinPositionFromModal, deleteFinPositionFromModal,
-  openFinPlanModal, closeFinPlanModal, saveFinPlanFromModal, deleteFinPlanFromModal,
-  deleteFinPlanDirect, addFinPlanEntry,
-  onBudgetYearChange, onBudgetQChange,
-  openBudgetGroupModal, deleteBudgetGroup,
-  openBudgetItemModal, closeBudgetItemModal, saveBudgetItemFromModal, deleteBudgetItemFromModal, deleteBudgetItem,
-  editBudgetMonth, editBudgetQGoal,
-  openStockDetail, closeStockDetailModal, switchStockDetailTab, changeStockChartRange,
-  toggleLiveAutoRefresh, changeLiveRange,
-  openSwingBuy, editSwingPosition, closeSwingPosition,
-  openPbBuy, editPbPosition, closePbPosition,
-} from './render-finance.js';
+
+// ── 레이지 로딩 탭 캐시 ──
+const _lazyModules = {};
+async function _lazy(name, path) {
+  if (!_lazyModules[name]) _lazyModules[name] = await import(path);
+  return _lazyModules[name];
+}
+
+// ── 레이지 프록시: 탭 전환 시 모듈 로드, window.* 자동 등록 ──
+async function _lazyRenderCalendar() { const m = await _lazy('calendar', './render-calendar.js'); m.renderCalendar(); return m; }
+async function _lazyRenderStats() { const m = await _lazy('stats', './render-stats.js'); m.renderStats(); return m; }
+async function _lazyRenderMonthly() { const m = await _lazy('monthly', './render-monthly-calendar.js'); return m; }
+async function _lazyRenderMovie() { const m = await _lazy('movie', './render-movie.js'); m.renderMovie(); return m; }
+async function _lazyRenderDev() { const m = await _lazy('dev', './render-dev.js'); m.renderDev(); return m; }
+async function _lazyRenderAdmin() { const m = await _lazy('admin', './render-admin.js'); m.renderAdmin(); return m; }
+async function _lazyRenderWine() { const m = await _lazy('wine', './render-wine.js'); m.renderWine(); return m; }
+async function _lazyRenderCooking() { const m = await _lazy('cooking', './render-cooking.js'); m.renderCooking(); return m; }
+async function _lazyRenderFinance() { const m = await _lazy('finance', './render-finance.js'); m.renderFinance(); return m; }
 import { loadAndInjectModals } from './modal-manager.js';
 
 // ── 분리된 모달 핸들러 import ──────────────────────────────────
@@ -135,7 +119,7 @@ document.addEventListener('keydown', (e) => {
 // ── 탭 전환 ──────────────────────────────────────────────────────
 let _currentTab = 'home';
 
-function switchTab(tab) {
+async function switchTab(tab) {
   _currentTab = tab;
   document.querySelectorAll('.tab-btn[data-tab]').forEach(b =>
     b.classList.toggle('active', b.dataset.tab === tab)
@@ -143,25 +127,29 @@ function switchTab(tab) {
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
   const panel = document.getElementById('tab-' + tab);
   if (panel) panel.classList.add('active');
+
+  // 코어 탭 (즉시 로드)
   if (tab === 'home')     renderHome();
-  if (tab === 'stats')    renderStats();
-  if (tab === 'calendar') { renderCalendar(); if (isGCalConnected()) syncGCalNow(); }
-  if (tab === 'wine')     renderWine();
-  if (tab === 'dev')      renderDev();
-  if (tab === 'admin')    renderAdmin();
-  if (tab === 'cooking')  renderCooking();
-  if (tab === 'movie')    renderMovie();
-  if (tab === 'finance')  renderFinance();
   if (tab === 'workout')  loadWorkoutDate(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
   if (tab === 'diet')     loadWorkoutDate(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
+
+  // 레이지 로드 탭
+  if (tab === 'stats')    await _lazyRenderStats();
+  if (tab === 'calendar') { await _lazyRenderCalendar(); if (isGCalConnected()) syncGCalNow(); }
+  if (tab === 'wine')     await _lazyRenderWine();
+  if (tab === 'dev')      await _lazyRenderDev();
+  if (tab === 'admin')    await _lazyRenderAdmin();
+  if (tab === 'cooking')  await _lazyRenderCooking();
+  if (tab === 'movie')    await _lazyRenderMovie();
+  if (tab === 'finance')  await _lazyRenderFinance();
 }
 
-function renderAll() {
+async function renderAll() {
   renderHome();
-  if (_currentTab === 'calendar') renderCalendar();
-  if (_currentTab === 'stats')    renderStats();
-  if (_currentTab === 'cooking')  renderCooking();
-  if (_currentTab === 'movie')    renderMovie();
+  if (_currentTab === 'calendar') await _lazyRenderCalendar();
+  if (_currentTab === 'stats')    await _lazyRenderStats();
+  if (_currentTab === 'cooking')  await _lazyRenderCooking();
+  if (_currentTab === 'movie')    await _lazyRenderMovie();
 }
 
 document.addEventListener('sheet:saved',   renderAll);
@@ -620,8 +608,8 @@ async function saveCalEventFromModal() {
   }
 
   document.getElementById('cal-event-modal').classList.remove('open');
-  renderMonthlyCalendar();
-  renderCalendar();
+  _lazy('monthly', './render-monthly-calendar.js').then(m => m.renderMonthlyCalendar());
+  _lazy('calendar', './render-calendar.js').then(m => m.renderCalendar());
 }
 
 async function deleteCalEventFromModal() {
@@ -635,31 +623,34 @@ async function deleteCalEventFromModal() {
       await syncDeleteToGCal(ev.gcalId);
     }
     document.getElementById('cal-event-modal').classList.remove('open');
-    renderMonthlyCalendar();
-    renderCalendar();
+    _lazy('monthly', './render-monthly-calendar.js').then(m => m.renderMonthlyCalendar());
+    _lazy('calendar', './render-calendar.js').then(m => m.renderCalendar());
   } else {
     alert(`⚠️ 일정 삭제 실패: ${result.error}`);
   }
 }
 
 // ── 월간 캘린더 모달 ──────────────────────────────────────────────
-function openMonthlyCalendarModal(year, month) {
+async function openMonthlyCalendarModal(year, month) {
   const content = document.getElementById('monthly-calendar-modal-content');
   if (!content) return;
-  renderMonthlyCalendarInModal(year, month, content);
+  const m = await _lazy('monthly', './render-monthly-calendar.js');
+  m.renderMonthlyCalendarInModal(year, month, content);
   document.getElementById('monthly-calendar-modal').classList.add('open');
 }
 
 function closeMonthlyCalendarModal(e) { _closeModal('monthly-calendar-modal', e); }
 
 // ── 이벤트 표시 모드 전환 (바 ↔ 화살표) ─────────────────────────
-function toggleEventViewMode() {
+async function toggleEventViewMode() {
   const current = localStorage.getItem('event_view_mode') || 'bar';
   const next = current === 'bar' ? 'arrow' : 'bar';
   localStorage.setItem('event_view_mode', next);
   _updateEventViewToggle();
-  renderCalendar();
-  renderMonthlyCalendar();
+  const calMod = await _lazy('calendar', './render-calendar.js');
+  calMod.renderCalendar();
+  const monMod = await _lazy('monthly', './render-monthly-calendar.js');
+  monMod.renderMonthlyCalendar();
 }
 
 function _updateEventViewToggle() {
@@ -689,8 +680,9 @@ function openExportModal() {
   document.getElementById('export-modal').classList.add('open');
 }
 function closeExportModal(e) { _closeModal('export-modal', e); }
-function runExportCSV(period) {
-  exportCSV(period);
+async function runExportCSV(period) {
+  const m = await _lazy('stats', './render-stats.js');
+  m.exportCSV(period);
   document.getElementById('export-modal').classList.remove('open');
 }
 
@@ -727,7 +719,7 @@ window.addCalendarRow = async function() {
   rows.push({ id: 'custom_' + Date.now(), label: label.trim(), emoji });
   await saveCalendarRows(rows);
   _renderCalendarRowsSettings();
-  if (window.renderCalendar) renderCalendar();
+  _lazy('calendar', './render-calendar.js').then(m => m.renderCalendar());
 };
 
 window.removeCalendarRow = async function(index) {
@@ -736,7 +728,7 @@ window.removeCalendarRow = async function(index) {
   rows.splice(index, 1);
   await saveCalendarRows(rows);
   _renderCalendarRowsSettings();
-  if (window.renderCalendar) renderCalendar();
+  _lazy('calendar', './render-calendar.js').then(m => m.renderCalendar());
 };
 
 function _renderNutritionDBList() {
@@ -858,8 +850,8 @@ async function syncGCalNow() {
       }
     }
 
-    renderMonthlyCalendar();
-    renderCalendar();
+    _lazy('monthly', './render-monthly-calendar.js').then(m => m.renderMonthlyCalendar());
+    _lazy('calendar', './render-calendar.js').then(m => m.renderCalendar());
     console.log('[GCal] 동기화 완료');
   } catch (e) {
     console.error('[GCal] 동기화 오류:', e);
@@ -1958,7 +1950,7 @@ async function init() {
     if (bellBtn) bellBtn.style.display = '';
     requestAnimationFrame(() => {
       refreshNotifCenter();
-      renderCalendar();
+      _lazy('calendar', './render-calendar.js').then(m => m.renderCalendar());
       loadWorkoutDate(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
       loadStocks();
     });
@@ -2256,11 +2248,11 @@ _initDietInputButtons();
 window.renderAll                = renderAll;
 window.renderHome               = renderHome;
 window.switchTab                = switchTab;
-window.changeYear               = changeYear;
+window.changeYear               = async (...a) => (await _lazy('calendar', './render-calendar.js')).changeYear(...a);
 window.toggleEventViewMode      = toggleEventViewMode;
 window.setEventViewFromModal    = setEventViewFromModal;
-window.changeMonthlyMonth       = changeMonthlyMonth;
-window.setPeriod                = setPeriod;
+window.changeMonthlyMonth       = async (...a) => (await _lazy('monthly', './render-monthly-calendar.js')).changeMonthlyMonth(...a);
+window.setPeriod                = async (...a) => (await _lazy('stats', './render-stats.js')).setPeriod(...a);
 window.getDietRec               = getDietRec;
 window.getWorkoutRec            = getWorkoutRec;
 // 운동·식단 탭
@@ -2421,17 +2413,17 @@ window.wtOpenExerciseEditor     = wtOpenExerciseEditor;
 window.wtCloseExerciseEditor    = wtCloseExerciseEditor;
 window.wtSaveExerciseFromEditor = wtSaveExerciseFromEditor;
 window.wtDeleteExerciseFromEditor = wtDeleteExerciseFromEditor;
-// 영화 탭
-window.renderMovie              = renderMovie;
-window.changeMovieMonth         = changeMovieMonth;
-window.startMovieCrawl          = startMovieCrawl;
-window.toggleMovieTagFilter     = toggleMovieTagFilter;
-// 요리 탭
-window.openCookingModal         = openCookingModal;
-window.closeCookingModal        = closeCookingModal;
-window.saveCookingFromModal     = saveCookingFromModal;
-window.deleteCookingFromModal   = deleteCookingFromModal;
-window.onCookingPhotoInput      = onCookingPhotoInput;
+// 영화 탭 (레이지)
+window.renderMovie              = async (...a) => (await _lazy('movie', './render-movie.js')).renderMovie(...a);
+window.changeMovieMonth         = async (...a) => (await _lazy('movie', './render-movie.js')).changeMovieMonth(...a);
+window.startMovieCrawl          = async (...a) => (await _lazy('movie', './render-movie.js')).startMovieCrawl(...a);
+window.toggleMovieTagFilter     = async (...a) => (await _lazy('movie', './render-movie.js')).toggleMovieTagFilter(...a);
+// 요리 탭 (레이지)
+window.openCookingModal         = async (...a) => (await _lazy('cooking', './render-cooking.js')).openCookingModal(...a);
+window.closeCookingModal        = async (...a) => (await _lazy('cooking', './render-cooking.js')).closeCookingModal(...a);
+window.saveCookingFromModal     = async (...a) => (await _lazy('cooking', './render-cooking.js')).saveCookingFromModal(...a);
+window.deleteCookingFromModal   = async (...a) => (await _lazy('cooking', './render-cooking.js')).deleteCookingFromModal(...a);
+window.onCookingPhotoInput      = async (...a) => (await _lazy('cooking', './render-cooking.js')).onCookingPhotoInput(...a);
 // 목표
 window.openGoalModal            = openGoalModal;
 window.closeGoalModal           = closeGoalModal;
@@ -2474,70 +2466,47 @@ window.closeMonthlyCalendarModal = closeMonthlyCalendarModal;
 window.openExportModal          = openExportModal;
 window.closeExportModal         = closeExportModal;
 window.runExportCSV             = runExportCSV;
-// 개발
-window.renderDev           = renderDev;
-window.submitDevTask       = submitDevTask;
-// 와인
-window.openWineModal            = openWineModal;
-window.closeWineModal           = closeWineModal;
-window.saveWineFromModal        = saveWineFromModal;
-window.deleteWineFromModal      = deleteWineFromModal;
-window.searchVivinoRating       = searchVivinoRating;
-window.searchWineImage          = searchWineImage;
-window.searchCriticRatings      = searchCriticRatings;
-window.analyzeWinePreference    = analyzeWinePreference;
-window.bulkSearchVivino         = bulkSearchVivino;
-// 재무
-window.renderFinance                = renderFinance;
-window.refreshFinMarketData         = refreshFinMarketData;
-window.runFinAIAnalysis             = runFinAIAnalysis;
-window.openFinBenchmarkModal        = openFinBenchmarkModal;
-window.closeFinBenchmarkModal       = closeFinBenchmarkModal;
-window.saveFinBenchmarkFromModal    = saveFinBenchmarkFromModal;
-window.deleteFinBenchmarkFromModal  = deleteFinBenchmarkFromModal;
-window.deleteFinBenchmarkDirect     = deleteFinBenchmarkDirect;
-window.openFinActualModal           = openFinActualModal;
-window.closeFinActualModal          = closeFinActualModal;
-window.saveFinActualFromModal       = saveFinActualFromModal;
-window.deleteFinActualFromModal     = deleteFinActualFromModal;
-window.openFinLoanModal             = openFinLoanModal;
-window.closeFinLoanModal            = closeFinLoanModal;
-window.saveFinLoanFromModal         = saveFinLoanFromModal;
-window.deleteFinLoanFromModal       = deleteFinLoanFromModal;
-window.openFinPositionModal         = openFinPositionModal;
-window.closeFinPositionModal        = closeFinPositionModal;
-window.saveFinPositionFromModal     = saveFinPositionFromModal;
-window.deleteFinPositionFromModal   = deleteFinPositionFromModal;
-window.toggleFlowChart              = toggleFlowChart;
-window.openFinPlanModal             = openFinPlanModal;
-window.closeFinPlanModal            = closeFinPlanModal;
-window.saveFinPlanFromModal         = saveFinPlanFromModal;
-window.deleteFinPlanFromModal       = deleteFinPlanFromModal;
-window.deleteFinPlanDirect          = deleteFinPlanDirect;
-window.addFinPlanEntry              = addFinPlanEntry;
-window.onBudgetYearChange           = onBudgetYearChange;
-window.onBudgetQChange              = onBudgetQChange;
-window.openBudgetGroupModal         = openBudgetGroupModal;
-window.deleteBudgetGroup            = deleteBudgetGroup;
-window.openBudgetItemModal          = openBudgetItemModal;
-window.closeBudgetItemModal         = closeBudgetItemModal;
-window.saveBudgetItemFromModal      = saveBudgetItemFromModal;
-window.deleteBudgetItemFromModal    = deleteBudgetItemFromModal;
-window.deleteBudgetItem             = deleteBudgetItem;
-window.editBudgetMonth              = editBudgetMonth;
-window.editBudgetQGoal              = editBudgetQGoal;
-window.openStockDetail              = openStockDetail;
-window.closeStockDetailModal        = closeStockDetailModal;
-window.switchStockDetailTab         = switchStockDetailTab;
-window.changeStockChartRange        = changeStockChartRange;
-window.toggleLiveAutoRefresh        = toggleLiveAutoRefresh;
-window.changeLiveRange              = changeLiveRange;
-window.openSwingBuy                 = openSwingBuy;
-window.editSwingPosition            = editSwingPosition;
-window.closeSwingPosition           = closeSwingPosition;
-window.openPbBuy                    = openPbBuy;
-window.editPbPosition               = editPbPosition;
-window.closePbPosition              = closePbPosition;
+// 개발 (레이지)
+window.renderDev           = async (...a) => (await _lazy('dev', './render-dev.js')).renderDev(...a);
+window.submitDevTask       = async (...a) => (await _lazy('dev', './render-dev.js')).submitDevTask(...a);
+// 와인 (레이지)
+{ const _w = (fn) => async (...a) => (await _lazy('wine', './render-wine.js'))[fn](...a);
+  window.openWineModal = _w('openWineModal'); window.closeWineModal = _w('closeWineModal');
+  window.saveWineFromModal = _w('saveWineFromModal'); window.deleteWineFromModal = _w('deleteWineFromModal');
+  window.searchVivinoRating = _w('searchVivinoRating'); window.searchWineImage = _w('searchWineImage');
+  window.searchCriticRatings = _w('searchCriticRatings'); window.analyzeWinePreference = _w('analyzeWinePreference');
+  window.bulkSearchVivino = _w('bulkSearchVivino');
+}
+// 재무 (레이지)
+{ const _f = (fn) => async (...a) => (await _lazy('finance', './render-finance.js'))[fn](...a);
+  window.renderFinance = _f('renderFinance'); window.refreshFinMarketData = _f('refreshFinMarketData');
+  window.runFinAIAnalysis = _f('runFinAIAnalysis'); window.toggleFlowChart = _f('toggleFlowChart');
+  window.openFinBenchmarkModal = _f('openFinBenchmarkModal'); window.closeFinBenchmarkModal = _f('closeFinBenchmarkModal');
+  window.saveFinBenchmarkFromModal = _f('saveFinBenchmarkFromModal'); window.deleteFinBenchmarkFromModal = _f('deleteFinBenchmarkFromModal');
+  window.deleteFinBenchmarkDirect = _f('deleteFinBenchmarkDirect');
+  window.openFinActualModal = _f('openFinActualModal'); window.closeFinActualModal = _f('closeFinActualModal');
+  window.saveFinActualFromModal = _f('saveFinActualFromModal'); window.deleteFinActualFromModal = _f('deleteFinActualFromModal');
+  window.openFinLoanModal = _f('openFinLoanModal'); window.closeFinLoanModal = _f('closeFinLoanModal');
+  window.saveFinLoanFromModal = _f('saveFinLoanFromModal'); window.deleteFinLoanFromModal = _f('deleteFinLoanFromModal');
+  window.openFinPositionModal = _f('openFinPositionModal'); window.closeFinPositionModal = _f('closeFinPositionModal');
+  window.saveFinPositionFromModal = _f('saveFinPositionFromModal'); window.deleteFinPositionFromModal = _f('deleteFinPositionFromModal');
+  window.openFinPlanModal = _f('openFinPlanModal'); window.closeFinPlanModal = _f('closeFinPlanModal');
+  window.saveFinPlanFromModal = _f('saveFinPlanFromModal'); window.deleteFinPlanFromModal = _f('deleteFinPlanFromModal');
+  window.deleteFinPlanDirect = _f('deleteFinPlanDirect'); window.addFinPlanEntry = _f('addFinPlanEntry');
+  window.onBudgetYearChange = _f('onBudgetYearChange'); window.onBudgetQChange = _f('onBudgetQChange');
+  window.openBudgetGroupModal = _f('openBudgetGroupModal'); window.deleteBudgetGroup = _f('deleteBudgetGroup');
+  window.openBudgetItemModal = _f('openBudgetItemModal'); window.closeBudgetItemModal = _f('closeBudgetItemModal');
+  window.saveBudgetItemFromModal = _f('saveBudgetItemFromModal'); window.deleteBudgetItemFromModal = _f('deleteBudgetItemFromModal');
+  window.deleteBudgetItem = _f('deleteBudgetItem'); window.editBudgetMonth = _f('editBudgetMonth');
+  window.editBudgetQGoal = _f('editBudgetQGoal');
+  window.openStockDetail = _f('openStockDetail'); window.closeStockDetailModal = _f('closeStockDetailModal');
+  window.switchStockDetailTab = _f('switchStockDetailTab'); window.changeStockChartRange = _f('changeStockChartRange');
+  window.toggleLiveAutoRefresh = _f('toggleLiveAutoRefresh'); window.changeLiveRange = _f('changeLiveRange');
+  window.openSwingBuy = _f('openSwingBuy'); window.editSwingPosition = _f('editSwingPosition');
+  window.closeSwingPosition = _f('closeSwingPosition');
+  window.openPbBuy = _f('openPbBuy'); window.editPbPosition = _f('editPbPosition');
+  window.closePbPosition = _f('closePbPosition');
+}
 // 설정
 window.openSettingsModal        = openSettingsModal;
 window.closeSettingsModal       = closeSettingsModal;

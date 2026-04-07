@@ -5,6 +5,7 @@
 import { CONFIG } from './config.js';
 import {
   getAccountList, isAdmin, dateKey, TODAY, deleteUserAccount,
+  getAdminId, isAdminInstance, getDataOwnerId,
 } from './data.js';
 import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
 import {
@@ -382,9 +383,9 @@ window.publishPatchnote = async function() {
     const { getAccountList, sendNotification } = await import('./data.js');
     const accs = await getAccountList();
     for (const acc of accs) {
-      if (acc.id === '김_태우' || acc.id.includes('(guest)')) continue;
+      if (isAdminInstance(acc.id) || acc.id.includes('(guest)')) continue;
       await sendNotification(acc.id, {
-        type: 'patchnote', from: '김_태우',
+        type: 'patchnote', from: getAdminId(),
         message: `📋 새 패치노트: ${title}`,
       });
     }
@@ -400,8 +401,8 @@ window.publishPatchnote = async function() {
 // 운영자 공지 에디터
 window.openAnnouncementEditor = async function() {
   const accs = await getAccountList();
-  const myId = '김_태우';
-  const targets = accs.filter(a => a.id && a.id !== myId && !a.id.includes('(guest)'));
+  const myId = getAdminId();
+  const targets = accs.filter(a => a.id && !isAdminInstance(a.id) && !a.id.includes('(guest)'));
   const userListHtml = targets.map(a => {
     const nick = a.nickname || (a.lastName + a.firstName);
     return `<label style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);cursor:pointer;">
@@ -472,7 +473,7 @@ window.publishAnnouncement = async function() {
     const { sendNotification } = await import('./data.js');
     for (const userId of selectedIds) {
       await sendNotification(userId, {
-        type: 'announcement', from: '김_태우',
+        type: 'announcement', from: getAdminId(),
         title, body: body || '',
         message: `📢 ${title}`,
       });
@@ -490,8 +491,8 @@ window.publishAnnouncement = async function() {
 // 개별 푸시 메시지 에디터
 window.openDirectPushEditor = async function() {
   const accs = await getAccountList();
-  const myId = '김_태우';
-  const targets = accs.filter(a => a.id && a.id !== myId && !a.id.includes('(guest)'));
+  const myId = getAdminId();
+  const targets = accs.filter(a => a.id && !isAdminInstance(a.id) && !a.id.includes('(guest)'));
   targets.sort((a, b) => (a.nickname || a.lastName + a.firstName).localeCompare(b.nickname || b.lastName + b.firstName));
 
   const userOptionsHtml = targets.map(a => {
@@ -541,7 +542,7 @@ window.sendDirectPush = async function() {
   try {
     const { sendNotification } = await import('./data.js');
     await sendNotification(targetId, {
-      type: 'direct_message', from: '김_태우',
+      type: 'direct_message', from: getAdminId(),
       title, body: body || '',
       message: `📬 ${title}`,
     });

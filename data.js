@@ -89,6 +89,9 @@ export function getCurrentUser() { return _currentUser; }
 const ADMIN_ID = '김_태우';
 const ADMIN_GUEST_ID = '김_태우(guest)';
 
+export function getAdminId() { return ADMIN_ID; }
+export function getAdminGuestId() { return ADMIN_GUEST_ID; }
+
 export function isAdmin() {
   return _currentUser?.id === ADMIN_ID;
 }
@@ -96,6 +99,18 @@ export function isAdmin() {
 // 김태우(Guest)는 admin의 데이터를 공유하되 게스트 UX를 사용
 export function isAdminGuest() {
   return _currentUser?.id === ADMIN_GUEST_ID;
+}
+
+// 두 ID가 같은 인스턴스(admin + guest)인지 확인
+export function isSameInstance(id1, id2) {
+  if (id1 === id2) return true;
+  const normalize = (id) => (id === ADMIN_GUEST_ID ? ADMIN_ID : id);
+  return normalize(id1) === normalize(id2);
+}
+
+// 특정 ID가 admin 인스턴스(admin 또는 guest)에 속하는지 확인
+export function isAdminInstance(id) {
+  return id === ADMIN_ID || id === ADMIN_GUEST_ID;
 }
 
 // 데이터 경로용 ID (김태우(Guest) → 김태우(Admin)의 데이터 사용)
@@ -132,7 +147,8 @@ export function setCurrentUser(user) {
   } else {
     localStorage.removeItem('currentUser');
     _idbRemove('currentUser');
-    _idbRemove('kim_authenticated');
+    _idbRemove('admin_authenticated');
+    _idbRemove('kim_authenticated'); // 레거시 키 정리
   }
 }
 
@@ -144,9 +160,12 @@ export function loadSavedUser() {
   return null;
 }
 
-// 김태우 인증 상태 IndexedDB 백업
-export function backupKimAuth() { _idbSet('kim_authenticated', true); }
-export function clearKimAuth() { _idbRemove('kim_authenticated'); }
+// 관리자 인증 상태 IndexedDB 백업
+export function backupAdminAuth() { _idbSet('admin_authenticated', true); }
+export function clearAdminAuth() { _idbRemove('admin_authenticated'); }
+// 하위 호환
+export const backupKimAuth = backupAdminAuth;
+export const clearKimAuth = clearAdminAuth;
 
 // localStorage가 클리어된 경우 IndexedDB에서 복구
 export async function restoreUserFromBackup() {
@@ -156,9 +175,9 @@ export async function restoreUserFromBackup() {
     if (backup) {
       _currentUser = backup;
       localStorage.setItem('currentUser', JSON.stringify(backup));
-      // 김태우 인증 상태도 복구
-      const kimAuth = await _idbGet('kim_authenticated');
-      if (kimAuth) localStorage.setItem('kim_authenticated', 'true');
+      // 관리자 인증 상태 복구 (kim_authenticated는 레거시 키, admin_authenticated는 신규 키)
+      const adminAuth = await _idbGet('admin_authenticated') || await _idbGet('kim_authenticated');
+      if (adminAuth) localStorage.setItem('admin_authenticated', 'true');
       return _currentUser;
     }
   } catch {}
@@ -233,9 +252,9 @@ export async function recoverDeletedAccounts() {
       if (data.to && !existingIds.has(data.to))     missingIds.add(data.to);
     });
 
-    // (guest) ID 제외, 김_태우 관련은 이미 처리됨
-    missingIds.delete('김_태우');
-    missingIds.delete('김_태우(guest)');
+    // (guest) ID 제외, 관리자 관련은 이미 처리됨
+    missingIds.delete(ADMIN_ID);
+    missingIds.delete(ADMIN_GUEST_ID);
 
     // 5) 누락 계정 복구
     let recovered = 0;
@@ -886,17 +905,18 @@ export async function loadAll() {
   try {
     // admin 계정만: 데이터가 비어있으면 루트에서 1회 마이그레이션
     if (_currentUser && isAdmin()) {
-      const migrated = localStorage.getItem('migrated_김_태우');
+      const migrateKey = `migrated_${_currentUser.id}`;
+      const migrated = localStorage.getItem(migrateKey) || localStorage.getItem('migrated_김_태우');
       if (!migrated) {
         const testSnap = await getDocs(_col('workouts'));
         if (testSnap.empty) {
           const rootSnap = await getDocs(collection(db, 'workouts'));
           if (!rootSnap.empty) {
-            console.log('[loadAll] 김_태우 마이그레이션 실행');
+            console.log(`[loadAll] ${_currentUser.id} 마이그레이션 실행`);
             await migrateDataToUser(_currentUser.id);
           }
         }
-        localStorage.setItem('migrated_김_태우', 'done');
+        localStorage.setItem(migrateKey, 'done');
       }
     }
 
@@ -938,8 +958,8 @@ export async function loadAll() {
 
     _wines = [];
     wineSnap.forEach(d => _wines.push(d.data()));
-    // 김_태우만 초기 와인 데이터 삽입 (다른 계정은 빈 상태로 시작)
-    if (_wines.length === 0 && _currentUser?.id === '김_태우') {
+    // 관리자만 초기 와인 데이터 삽입 (다른 계정은 빈 상태로 시작)
+    if (_wines.length === 0 && isAdmin()) {
       for (const wine of INITIAL_WINES) await setDoc(_doc('wines', wine.id), wine);
       _wines = [...INITIAL_WINES];
     }
