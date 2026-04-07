@@ -8,9 +8,7 @@ import { saveDay, saveExercise, deleteExercise,
          getLastSession, isFuture, TODAY,
          getDietPlan, calcDietMetrics,
          getVolumeHistory, calcVolume,
-         isDietDaySuccess, getDayTargetKcal,
-         calcExerciseCalorieCredit,
-         getBodyCheckins }                     from './data.js';
+         isDietDaySuccess, getDayTargetKcal }  from './data.js';
 
 
 let _date       = null;   // { y, m, d }
@@ -19,8 +17,6 @@ let _hiddenExercises = []; // 모달에서 임시로 숨길 운동 ID 목록
 let _gymStatus  = 'none'; // 'done'|'skip'|'health'|'none'
 let _cfStatus   = 'none';
 let _stretching = false;
-let _swimming   = false;
-let _running    = false;
 let _wineFree   = false;
 let _breakfastSkipped = false;
 let _lunchSkipped = false;
@@ -58,8 +54,6 @@ export function loadWorkoutDate(y, m, d) {
   else                  _cfStatus = 'none';
 
   _stretching = !!day.stretching;
-  _swimming   = !!day.swimming;
-  _running    = !!day.running;
   _wineFree   = !!day.wine_free;
   _breakfastSkipped = !!day.breakfast_skipped;
   _lunchSkipped = !!day.lunch_skipped;
@@ -76,21 +70,10 @@ export function loadWorkoutDate(y, m, d) {
     bFoods:day.bFoods||[], lFoods:day.lFoods||[], dFoods:day.dFoods||[], sFoods:day.sFoods||[],
   };
 
-  // 저장된 사진 복원
-  window._mealPhotos = {};
-  if (day.bPhoto) window._mealPhotos.breakfast = day.bPhoto;
-  if (day.lPhoto) window._mealPhotos.lunch = day.lPhoto;
-  if (day.dPhoto) window._mealPhotos.dinner = day.dPhoto;
-  if (day.sPhoto) window._mealPhotos.snack = day.sPhoto;
-  if (day.workoutPhoto) window._mealPhotos.workout = day.workoutPhoto;
-
   _renderDateLabel();
   _renderGymStatusBtns();
   _renderCFStatusBtns();
   _renderStretchingToggle();
-  // 수영/런닝 칩 상태 복원
-  document.getElementById('wt-chip-swimming')?.classList.toggle('active', _swimming);
-  document.getElementById('wt-chip-running')?.classList.toggle('active', _running);
   _renderWineFreeToggle();
   _renderMealSkippedToggles();
   _initButtonEventListeners();
@@ -100,7 +83,6 @@ export function loadWorkoutDate(y, m, d) {
   _renderMealFoodItems('dinner');
   _renderMealFoodItems('snack');
   _renderDietResults();
-  _renderMealPhotos();
 
   const memoEl = document.getElementById('wt-workout-memo');
   if (memoEl) memoEl.value = day.memo || '';
@@ -157,16 +139,6 @@ export function wtSetCFStatus(status) {
 export function wtToggleStretching() {
   _stretching = !_stretching;
   _renderStretchingToggle();
-  saveWorkoutDay().catch(e => console.error('Save error:', e));
-}
-
-export function wtToggleSwimming() {
-  _swimming = !_swimming;
-  saveWorkoutDay().catch(e => console.error('Save error:', e));
-}
-
-export function wtToggleRunning() {
-  _running = !_running;
   saveWorkoutDay().catch(e => console.error('Save error:', e));
 }
 
@@ -236,24 +208,16 @@ export function wtRemoveExerciseEntry(entryIdx) {
 }
 
 // ── 종목 선택/에디터 ──────────────────────────────────────────────
-export async function wtOpenExercisePicker() {
-  let modal = document.getElementById('ex-picker-modal');
-  if (!modal) {
-    // 모달이 아직 로드되지 않았으면 재시도
-    const { loadAndInjectModals } = await import('./modal-manager.js');
-    await loadAndInjectModals();
-    modal = document.getElementById('ex-picker-modal');
-  }
-  if (!modal) { console.error('[workout] ex-picker-modal not found'); return; }
+export function wtOpenExercisePicker() {
   _renderPickerList();
-  modal.classList.add('open');
+  document.getElementById('ex-picker-modal').classList.add('open');
 }
 
 export function wtOpenExerciseEditor(exId, defaultMuscleId) {
   const editor       = document.getElementById('ex-editor-modal');
   const nameInput    = document.getElementById('ex-editor-name');
   const muscleSelect = document.getElementById('ex-editor-muscle');
-  const deleteBtn    = document.getElementById('tds-btn danger sm');
+  const deleteBtn    = document.getElementById('ex-editor-delete');
   const titleEl      = document.getElementById('ex-editor-title');
 
   muscleSelect.innerHTML = MUSCLES.map(m =>
@@ -327,17 +291,9 @@ export async function saveWorkoutDay() {
 
   // 🎯 목표 칼로리 vs 실제 섭취 칼로리 비교 (calc.js 단일 소스)
   const plan = getDietPlan();
-  const _dayDataForSave = {
-    exercises: cleanEx,
-    cf: _cfStatus === 'done',
-    swimming: _swimming,
-    running: _running,
-    gym_skip: _gymStatus === 'skip',
-  };
-  const dayTarget = getDayTargetKcal(plan, y, m, d, _dayDataForSave);
+  const dayTarget = getDayTargetKcal(plan, y, m, d);
   const totalKcal = (_diet.bKcal||0) + (_diet.lKcal||0) + (_diet.dKcal||0) + (_diet.sKcal||0);
-  const _tol = plan.advancedMode ? (plan.dietTolerance ?? 50) : 50;
-  const isDietSuccess = isDietDaySuccess(totalKcal, dayTarget, _tol);
+  const isDietSuccess = isDietDaySuccess(totalKcal, dayTarget);
 
   await saveDay(dateKey(y, m, d), {
     exercises:  cleanEx,
@@ -347,8 +303,6 @@ export async function saveWorkoutDay() {
     gym_skip:   _gymStatus === 'skip',
     gym_health: _gymStatus === 'health',
     stretching: _stretching,
-    swimming:   _swimming,
-    running:    _running,
     wine_free:  _wineFree,
     breakfast_skipped: _breakfastSkipped,
     lunch_skipped: _lunchSkipped,
@@ -366,15 +320,9 @@ export async function saveWorkoutDay() {
     dProtein:_diet.dProtein, dCarbs:_diet.dCarbs, dFat:_diet.dFat,
     sProtein:_diet.sProtein, sCarbs:_diet.sCarbs, sFat:_diet.sFat,
     bFoods:_diet.bFoods||[], lFoods:_diet.lFoods||[], dFoods:_diet.dFoods||[], sFoods:_diet.sFoods||[],
-    // 사진
-    bPhoto: window._mealPhotos?.breakfast || null,
-    lPhoto: window._mealPhotos?.lunch || null,
-    dPhoto: window._mealPhotos?.dinner || null,
-    sPhoto: window._mealPhotos?.snack || null,
-    workoutPhoto: window._mealPhotos?.workout || null,
   });
 
-  if (btn) { btn.disabled = false; btn.textContent = '✓ 저장됨'; setTimeout(() => { btn.textContent = '저장'; }, 1500); }
+  if (btn) { btn.disabled = false; btn.textContent = '✓ 저장됨'; setTimeout(() => { btn.textContent = '💾 저장'; }, 1500); }
   document.dispatchEvent(new CustomEvent('sheet:saved'));
 }
 
@@ -383,19 +331,17 @@ function _renderDateLabel() {
   if (!_date) return;
   const { y, m, d } = _date;
   const dow = new Date(y, m, d).getDay();
-  const dateText = `${y}년 ${m+1}월 ${d}일 (${DAYS[dow]})`;
-  const isFutureDay = isFuture(y, m, d);
-  const isToday  = y === TODAY.getFullYear() && m === TODAY.getMonth() && d === TODAY.getDate();
+  const label = document.getElementById('wt-date-label');
+  if (label) label.textContent = `${y}년 ${m+1}월 ${d}일 (${DAYS[dow]})`;
 
-  // 운동탭 + 식단탭 양쪽 라벨 업데이트
-  ['wt-date-label', 'wt-date-label-diet'].forEach(id => {
-    const label = document.getElementById(id);
-    if (label) { label.textContent = dateText; label.style.color = isFutureDay ? 'var(--muted)' : 'var(--text)'; }
-  });
-  ['wt-today-btn', 'wt-today-btn-diet'].forEach(id => {
-    const btn = document.getElementById(id);
-    if (btn) btn.style.display = isToday ? 'none' : 'inline-block';
-  });
+  // 미래 날짜면 날짜 색상 변경
+  const isFutureDay = isFuture(y, m, d);
+  if (label) label.style.color = isFutureDay ? 'var(--muted)' : 'var(--text)';
+
+  // 오늘 버튼 표시/숨김
+  const todayBtn = document.getElementById('wt-today-btn');
+  const isToday  = y === TODAY.getFullYear() && m === TODAY.getMonth() && d === TODAY.getDate();
+  if (todayBtn) todayBtn.style.display = isToday ? 'none' : 'inline-block';
 }
 
 function _renderGymStatusBtns() {
@@ -455,39 +401,27 @@ function _initButtonEventListeners() {
 function _buildSparkline(exerciseId, color) {
   const history = getVolumeHistory(exerciseId);
   if (history.length < 2) return '';
-  // 전체 히스토리 사용 (주식 흐름 스타일)
-  const vals = history.map(h => h.volume);
+  const recent = history.slice(-10);
+  const vals = recent.map(h => h.volume);
   const min = Math.min(...vals), max = Math.max(...vals);
   const range = max - min || 1;
-  const W = 120, H = 28, pad = 2;
+  const W = 80, H = 24, pad = 2;
   const coords = vals.map((v, i) => ({
     x: pad + (i / (vals.length - 1)) * (W - pad * 2),
     y: pad + (1 - (v - min) / range) * (H - pad * 2),
   }));
   const points = coords.map(c => `${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(' ');
   const lastPt = coords[coords.length - 1];
-  const firstPt = coords[0];
-  const lastVal = vals[vals.length - 1], firstVal = vals[0];
-  const totalDiff = lastVal - firstVal;
-  const isUp = totalDiff >= 0;
-  const lineColor = color || 'var(--accent)';
-  // 그라디언트 fill (주식 차트 스타일)
-  const fillId = `spark-fill-${exerciseId.replace(/[^a-z0-9]/gi,'')}`;
-  const fillPoints = `${firstPt.x.toFixed(1)},${H} ${points} ${lastPt.x.toFixed(1)},${H}`;
-  const arrow = totalDiff > 0 ? '↑' : totalDiff < 0 ? '↓' : '→';
-  const arrowColor = totalDiff > 0 ? 'var(--diet-ok)' : totalDiff < 0 ? 'var(--diet-bad)' : 'var(--muted)';
-  const pct = firstVal > 0 ? Math.abs(totalDiff / firstVal * 100).toFixed(0) : 0;
+  const lastVal = vals[vals.length - 1], prevVal = vals[vals.length - 2];
+  const diff = lastVal - prevVal;
+  const arrow = diff > 0 ? '↑' : diff < 0 ? '↓' : '→';
+  const arrowColor = diff > 0 ? 'var(--diet-ok)' : diff < 0 ? 'var(--diet-bad)' : 'var(--muted)';
   return `<div class="ex-sparkline-wrap">
     <svg width="${W}" height="${H}" class="ex-sparkline">
-      <defs><linearGradient id="${fillId}" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="${lineColor}" stop-opacity="0.15"/>
-        <stop offset="100%" stop-color="${lineColor}" stop-opacity="0"/>
-      </linearGradient></defs>
-      <polygon points="${fillPoints}" fill="url(#${fillId})"/>
-      <polyline points="${points}" fill="none" stroke="${lineColor}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-      <circle cx="${lastPt.x.toFixed(1)}" cy="${lastPt.y.toFixed(1)}" r="2.5" fill="${lineColor}"/>
+      <polyline points="${points}" fill="none" stroke="${color||'var(--accent)'}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="${lastPt.x.toFixed(1)}" cy="${lastPt.y.toFixed(1)}" r="2" fill="${color||'var(--accent)'}"/>
     </svg>
-    <span class="ex-sparkline-diff" style="color:${arrowColor}">${arrow}${pct}%</span>
+    <span class="ex-sparkline-diff" style="color:${arrowColor}">${arrow}${Math.abs(diff).toLocaleString()}</span>
   </div>`;
 }
 
@@ -625,7 +559,7 @@ function _renderPickerList() {
     });
     const addBtn = document.createElement('button');
     addBtn.className = 'ex-picker-add';
-    addBtn.textContent = `+ ${muscle.name} 종목 추가(선택)`;
+    addBtn.textContent = `+ ${muscle.name} 종목 추가`;
     addBtn.addEventListener('click', () => wtOpenExerciseEditor(null, muscle.id));
     group.appendChild(addBtn);
     container.appendChild(group);
@@ -646,17 +580,11 @@ function _renderDietResults() {
     const kcal   = _diet[kcalKey];
     const reason = _diet[reasonKey] || '';
     if (ok === null) {
-      el.innerHTML = '<span style="font-size:11px;color:var(--text-tertiary);">음식을 추가해주세요</span>';
+      el.innerHTML = '<span class="diet-badge pending">미분석</span>';
     } else if (ok) {
-      el.innerHTML = `<span class="diet-badge ok">달성</span><span class="diet-kcal">${kcal}kcal</span>${reason?`<span class="diet-reason">${reason}</span>`:''}`;
+      el.innerHTML = `<span class="diet-badge ok">✓ OK</span><span class="diet-kcal">${kcal}kcal</span>${reason?`<span class="diet-reason">${reason}</span>`:''}`;
     } else {
-      el.innerHTML = `<span class="diet-badge bad">초과</span><span class="diet-kcal">${kcal}kcal</span>${reason?`<span class="diet-reason bad">${reason}</span>`:''}`;
-    }
-    // 토스 스타일 헤더 kcal 업데이트
-    const headerKcal = document.getElementById(`diet-toss-kcal-${meal}`);
-    if (headerKcal) {
-      headerKcal.textContent = kcal > 0 ? `${kcal.toLocaleString()}kcal` : '';
-      headerKcal.className = 'diet-toss-kcal' + (ok === false ? ' diet-toss-over' : ok === true ? ' diet-toss-ok' : '');
+      el.innerHTML = `<span class="diet-badge bad">✗ NG</span><span class="diet-kcal">${kcal}kcal</span>${reason?`<span class="diet-reason bad">${reason}</span>`:''}`;
     }
   });
   _renderCalorieTracker();
@@ -669,36 +597,14 @@ function _renderCalorieTracker() {
   if (!tracker) return;
 
   const plan    = getDietPlan();
-  const _chkW = getBodyCheckins();
-  const _lwW = _chkW.length ? _chkW[_chkW.length - 1].weight : null;
-  const metrics = calcDietMetrics(_lwW ? { ...plan, weight: _lwW } : plan);
-  if (!plan._userSet || !plan.weight) {
-    tracker.style.display = 'none';
-    // 인라인 설정 폼 표시
-    const setup = document.getElementById('wt-diet-setup');
-    if (setup) { setup.style.display = ''; setup.style.opacity = '1'; setup.style.transform = 'scale(1)'; }
-    return;
-  }
-  // 플랜이 있으면 설정 폼 숨기기
-  const setupEl = document.getElementById('wt-diet-setup');
-  if (setupEl) setupEl.style.display = 'none';
+  const metrics = calcDietMetrics(plan);
+  if (!plan.weight) { tracker.style.display = 'none'; return; }
 
   // 오늘이 리피드 데이인지 판단
   const dow = _date ? new Date(_date.y, _date.m, _date.d).getDay() : new Date().getDay();
   const isRefeed    = (plan.refeedDays || []).includes(dow);
   const dayTarget   = isRefeed ? metrics.refeed : metrics.deficit;
   const macroTarget = dayTarget;
-
-  // 운동 칼로리 크레딧 계산
-  const dayData = {
-    exercises: _exercises,
-    cf: _cfStatus === 'done',
-    swimming: _swimming,
-    running: _running,
-    gym_skip: _gymStatus === 'skip',
-  };
-  const exerciseCredit = calcExerciseCalorieCredit(plan, dayData);
-  const adjustedGoalKcal = dayTarget.kcal + exerciseCredit;
 
   // 현재 섭취 kcal (분석된 식사 합산)
   const currentKcal = (_diet.bKcal || 0) + (_diet.lKcal || 0) + (_diet.dKcal || 0) + (_diet.sKcal || 0);
@@ -718,23 +624,12 @@ function _renderCalorieTracker() {
   const remainEl = document.getElementById('wt-cal-remain');
   const barEl    = document.getElementById('wt-cal-bar');
 
-  if (goalEl)   goalEl.textContent   = adjustedGoalKcal.toLocaleString();
+  if (goalEl)   goalEl.textContent   = dayTarget.kcal.toLocaleString();
   if (curEl)    curEl.textContent    = currentKcal.toLocaleString();
 
-  // 운동 칼로리 크레딧 배지 표시
-  const creditEl = document.getElementById('wt-exercise-credit-badge');
-  if (creditEl) {
-    if (exerciseCredit > 0) {
-      creditEl.innerHTML = `<span class="cal-exercise-credit">+${exerciseCredit} kcal 운동</span>`;
-      creditEl.style.display = '';
-    } else {
-      creditEl.style.display = 'none';
-    }
-  }
-
-  const pct     = Math.min(currentKcal / adjustedGoalKcal * 100, 100);
-  const over    = currentKcal > adjustedGoalKcal;
-  const remain  = adjustedGoalKcal - currentKcal;
+  const pct     = Math.min(currentKcal / dayTarget.kcal * 100, 100);
+  const over    = currentKcal > dayTarget.kcal;
+  const remain  = dayTarget.kcal - currentKcal;
 
   if (remainEl) {
     remainEl.textContent  = over
@@ -744,21 +639,19 @@ function _renderCalorieTracker() {
   }
   if (barEl) {
     barEl.style.width     = pct + '%';
-    barEl.style.background = over ? 'var(--diet-bad)' : 'linear-gradient(90deg, #fa342c, #fc6a66)';
+    barEl.style.background = over ? 'var(--diet-bad)' : (isRefeed ? 'var(--cf)' : 'var(--diet-ok)');
   }
 
   // 탄단지 바 (분석 데이터 있으면 현재값 / 목표값 표시)
   const macroEl = document.getElementById('wt-macro-bars');
   if (!macroEl) return;
-  const curProtein = (_diet.bProtein||0) + (_diet.lProtein||0) + (_diet.dProtein||0) + (_diet.sProtein||0);
-  const curCarbs   = (_diet.bCarbs  ||0) + (_diet.lCarbs  ||0) + (_diet.dCarbs  ||0) + (_diet.sCarbs||0);
-  const curFat     = (_diet.bFat    ||0) + (_diet.lFat    ||0) + (_diet.dFat    ||0) + (_diet.sFat||0);
-  // 운동 칼로리 크레딧이 있으면 매크로 목표도 비례 증가
-  const macroScale = exerciseCredit > 0 && dayTarget.kcal > 0 ? adjustedGoalKcal / dayTarget.kcal : 1;
+  const curProtein = Math.round(((_diet.bProtein||0) + (_diet.lProtein||0) + (_diet.dProtein||0) + (_diet.sProtein||0)) * 10) / 10;
+  const curCarbs   = Math.round(((_diet.bCarbs  ||0) + (_diet.lCarbs  ||0) + (_diet.dCarbs  ||0) + (_diet.sCarbs||0)) * 10) / 10;
+  const curFat     = Math.round(((_diet.bFat    ||0) + (_diet.lFat    ||0) + (_diet.dFat    ||0) + (_diet.sFat||0)) * 10) / 10;
   const macros = [
-    { label:'단', cur: curProtein, goal: Math.round(macroTarget.proteinG * macroScale), color:'#fa342c' },
-    { label:'탄', cur: curCarbs,   goal: Math.round(macroTarget.carbG * macroScale),    color:'#fc6a66' },
-    { label:'지', cur: curFat,     goal: Math.round(macroTarget.fatG * macroScale),     color:'#fed4d2' },
+    { label:'단', cur: curProtein, goal: macroTarget.proteinG, color:'var(--gym)' },
+    { label:'탄', cur: curCarbs,   goal: macroTarget.carbG,    color:'var(--cf)' },
+    { label:'지', cur: curFat,     goal: macroTarget.fatG,     color:'var(--accent)' },
   ];
   macroEl.innerHTML = macros.map(({ label, cur, goal, color }) => {
     const pct  = goal > 0 ? Math.min(cur / goal * 100, 100) : 0;
@@ -773,7 +666,6 @@ function _renderCalorieTracker() {
       <span class="macro-bar-info" style="color:${over?'var(--diet-bad)':color}">${info}</span>
     </div>`;
   }).join('');
-
 }
 
 // ── 식사별 음식 아이템 렌더 ──────────────────────────────────────
@@ -838,24 +730,6 @@ export function wtRemoveFoodItem(meal, idx) {
   _autoSaveDiet();
 }
 
-// ── 저장된 사진 표시 ────────────────────────────────────────────────
-function _renderMealPhotos() {
-  const meals = ['breakfast', 'lunch', 'dinner', 'snack', 'workout'];
-  for (const meal of meals) {
-    const wrap = document.getElementById('wt-photo-' + meal);
-    if (!wrap) continue;
-    const photo = window._mealPhotos?.[meal];
-    if (photo) {
-      wrap.innerHTML = `<div class="meal-photo-frame" onclick="openMealPhotoLightbox('${photo.replace(/'/g,"\\'")}')">
-        <img src="${photo}">
-        <button class="meal-photo-delete" onclick="event.stopPropagation();removeMealPhoto('${meal}')">✕</button>
-      </div>`;
-    } else {
-      wrap.innerHTML = '';
-    }
-  }
-}
-
 // ── 식단 자동 저장 헬퍼 ────────────────────────────────────────────
 async function _autoSaveDiet() {
   if (!_date) {
@@ -878,17 +752,9 @@ async function _autoSaveDiet() {
 
   // 🎯 목표 칼로리 vs 실제 섭취 칼로리 비교 (calc.js 단일 소스)
   const plan = getDietPlan();
-  const _autoSaveDayData = {
-    exercises: cleanEx,
-    cf: _cfStatus === 'done',
-    swimming: _swimming,
-    running: _running,
-    gym_skip: _gymStatus === 'skip',
-  };
-  const dayTarget = getDayTargetKcal(plan, y, m, d, _autoSaveDayData);
+  const dayTarget = getDayTargetKcal(plan, y, m, d);
   const totalKcal = (_diet.bKcal||0) + (_diet.lKcal||0) + (_diet.dKcal||0) + (_diet.sKcal||0);
-  const _autoTol = plan.advancedMode ? (plan.dietTolerance ?? 50) : 50;
-  const isDietSuccess = isDietDaySuccess(totalKcal, dayTarget, _autoTol);
+  const isDietSuccess = isDietDaySuccess(totalKcal, dayTarget);
 
   try {
     await saveDay(dateKey(y, m, d), {
@@ -899,8 +765,6 @@ async function _autoSaveDiet() {
       gym_skip:   _gymStatus === 'skip',
       gym_health: _gymStatus === 'health',
       stretching: _stretching,
-      swimming:   _swimming,
-      running:    _running,
       wine_free:  _wineFree,
       breakfast_skipped: _breakfastSkipped,
       lunch_skipped: _lunchSkipped,

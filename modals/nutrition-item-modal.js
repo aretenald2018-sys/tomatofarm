@@ -9,16 +9,16 @@ let _niParsedData = null;
 let _niConfidence = null;  // OCR 신뢰도
 
 export const MODAL_HTML = `
-<div class="modal-backdrop" id="nutrition-item-modal" onclick="closeNutritionItemModal(event)">
+<div class="modal-overlay" id="nutrition-item-modal" onclick="closeNutritionItemModal(event)">
   <div class="modal-sheet">
     <div class="sheet-handle"></div>
-    <div class="modal-title" id="nutrition-item-title" style="font-size:17px;font-weight:700;">음식 정보 등록</div>
+    <div class="modal-title" id="nutrition-item-title">음식 정보 등록</div>
 
     <!-- 탭: 수기입력 / 사진인식 / 텍스트파싱 -->
     <div class="ni-tabs">
-      <button class="ni-tab-btn active" id="ni-tab-manual" data-tab="manual">수기입력</button>
-      <button class="ni-tab-btn" id="ni-tab-photo" data-tab="photo">사진인식</button>
-      <button class="ni-tab-btn" id="ni-tab-text" data-tab="text">텍스트파싱</button>
+      <button class="ni-tab-btn active" id="ni-tab-manual" data-tab="manual">✏️ 수기입력</button>
+      <button class="ni-tab-btn" id="ni-tab-photo" data-tab="photo">📷 사진인식</button>
+      <button class="ni-tab-btn" id="ni-tab-text" data-tab="text">📝 텍스트파싱</button>
     </div>
 
     <!-- ═══ TAB 1: 수기 입력 ═══ -->
@@ -45,24 +45,24 @@ export const MODAL_HTML = `
       <div class="ex-editor-form">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
           <div class="ni-upload-zone" style="padding:20px 12px;cursor:pointer" onclick="document.getElementById('ni-photo-input').click()">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="12" cy="12" r="3"/></svg>
-            <div style="font-weight:600;font-size:13px;color:var(--text);margin-top:6px">갤러리</div>
-            <div style="font-size:11px;color:var(--text-tertiary)">저장된 사진</div>
+            <div style="font-size:32px;margin-bottom:4px">🖼️</div>
+            <div style="font-weight:500;font-size:12px">갤러리</div>
+            <div style="font-size:10px;color:var(--muted)">저장된 사진</div>
             <input type="file" id="ni-photo-input" accept="image/*" style="display:none" onchange="handleNutritionPhotoSelect(event)">
           </div>
           <div class="ni-upload-zone" style="padding:20px 12px;cursor:pointer" onclick="document.getElementById('ni-camera-input').click()">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2" stroke-linecap="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
-            <div style="font-weight:600;font-size:13px;color:var(--text);margin-top:6px">카메라</div>
-            <div style="font-size:11px;color:var(--text-tertiary)">지금 촬영</div>
+            <div style="font-size:32px;margin-bottom:4px">📸</div>
+            <div style="font-weight:500;font-size:12px">카메라</div>
+            <div style="font-size:10px;color:var(--muted)">지금 촬영</div>
             <input type="file" id="ni-camera-input" accept="image/*;capture=environment" style="display:none" onchange="handleNutritionPhotoSelect(event)">
           </div>
         </div>
         <div id="ni-photo-preview" style="display:none;margin-top:12px">
           <img id="ni-photo-img" style="max-width:100%;max-height:200px;border-radius:8px;margin-bottom:8px">
-          <button class="tds-btn cancel-btn ghost md" onclick="clearNutritionPhoto()" style="width:100%">사진 변경</button>
+          <button class="ex-editor-cancel" onclick="clearNutritionPhoto()" style="width:100%">사진 변경</button>
         </div>
         <div id="ni-photo-analyzing" style="display:none;text-align:center;padding:20px;color:var(--muted)">
-          <div style="width:24px;height:24px;border:3px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto 8px;"></div>
+          <div style="font-size:24px;animation:spin 1s linear infinite;margin-bottom:8px">⏳</div>
           <div>OCR 분석 중...</div>
         </div>
         <div id="ni-photo-result" style="display:none;border:1px solid var(--border);border-radius:8px;padding:12px;margin-top:12px;background:var(--bg-secondary)">
@@ -84,10 +84,10 @@ export const MODAL_HTML = `
 단백질 31g
 탄수화물 0.4g
 지방 3.6g"></textarea>
-        <button style="width:100%;margin-top:8px;padding:10px;border:none;border-radius:12px;background:var(--primary);color:#fff;font-size:14px;font-weight:600;cursor:pointer;" onclick="analyzeNutritionText()">분석하기</button>
+        <button class="diet-db-btn" style="width:100%;margin-top:8px;padding:10px" onclick="analyzeNutritionText()">🔍 분석하기</button>
 
         <div id="ni-text-analyzing" style="display:none;text-align:center;padding:20px;color:var(--muted)">
-          <div style="width:24px;height:24px;border:3px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto 8px;"></div>
+          <div style="font-size:24px;animation:spin 1s linear infinite;margin-bottom:8px">⏳</div>
           <div>텍스트 분석 중...</div>
         </div>
         <div id="ni-text-result" style="display:none;border:1px solid var(--border);border-radius:8px;padding:12px;margin-top:12px;background:var(--bg-secondary)">
@@ -101,9 +101,9 @@ export const MODAL_HTML = `
 
     <!-- 공통 저장/취소 버튼 -->
     <div class="ex-editor-actions">
-      <button class="tds-btn cancel-btn ghost md" id="ni-delete-btn" onclick="deleteNutritionItemFromModal()" style="display:none;color:var(--diet-bad)">삭제</button>
-      <button class="tds-btn cancel-btn ghost md" onclick="closeNutritionItemModal()">취소</button>
-      <button class="tds-btn fill md" onclick="saveNutritionItemFromModal()">저장하기</button>
+      <button class="ex-editor-cancel" id="ni-delete-btn" onclick="deleteNutritionItemFromModal()" style="display:none;color:var(--diet-bad)">삭제</button>
+      <button class="ex-editor-cancel" onclick="closeNutritionItemModal()">취소</button>
+      <button class="ex-editor-save" onclick="saveNutritionItemFromModal()">저장하기</button>
     </div>
   </div>
 </div>
@@ -121,27 +121,31 @@ export const MODAL_HTML = `
 
 .ni-tab-btn {
   flex: 1;
-  padding: 12px 8px;
+  padding: 14px 8px;
   border: none;
   background: transparent;
-  color: var(--text-tertiary);
-  font-size: 13px;
-  font-weight: 500;
+  color: var(--muted);
+  font-size: 12px;
   cursor: pointer;
   border-bottom: 2px solid transparent;
-  transition: all 0.15s ease;
+  transition: all 0.2s;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
   user-select: none;
   -webkit-user-select: none;
   -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 
-.ni-tab-btn:active { opacity: 0.7; }
+.ni-tab-btn:active {
+  opacity: 0.7;
+}
 
 .ni-tab-btn.active {
-  color: var(--primary);
-  border-bottom-color: var(--primary);
-  font-weight: 700;
+  color: var(--accent);
+  border-bottom-color: var(--accent);
 }
 
 @media (max-width: 480px) {
@@ -170,23 +174,22 @@ export const MODAL_HTML = `
 }
 
 .ni-upload-zone {
-  border: 1.5px dashed var(--border);
-  border-radius: 12px;
+  border: 2px dashed var(--border);
+  border-radius: 8px;
   padding: 20px 16px;
   text-align: center;
   cursor: pointer;
-  transition: all 0.15s ease;
-  background: var(--surface2);
+  transition: all 0.2s;
 }
 
-.ni-upload-zone:hover, .ni-upload-zone:active {
-  border-color: var(--primary);
-  background: rgba(49,130,246,0.04);
+.ni-upload-zone:hover {
+  border-color: var(--accent);
+  background: var(--bg-secondary);
 }
 
 .ni-upload-zone.dragover {
-  border-color: var(--primary);
-  background: rgba(49,130,246,0.06);
+  border-color: var(--accent);
+  background: var(--bg-secondary);
 }
 
 @media (max-width: 480px) {
@@ -543,10 +546,10 @@ function _displayNutritionResult(data) {
   extracted.innerHTML = `
     <div style="margin-bottom:8px"><strong>${data.name || '음식명'}</strong> (${data.language === 'ja' ? '일본어' : data.language === 'en' ? '영어' : '한국어'})</div>
     <div style="font-size:12px;display:grid;grid-template-columns:1fr 1fr;gap:4px">
-      <div>칼로리: <strong>${data.nutrition?.kcal || '?'} kcal</strong></div>
-      <div>단백질: <strong>${data.nutrition?.protein || '?'} g</strong></div>
-      <div>탄수화물: <strong>${data.nutrition?.carbs || '?'} g</strong></div>
-      <div>지방: <strong>${data.nutrition?.fat || '?'} g</strong></div>
+      <div>칼로리: <strong>${data.nutrition?.kcal ? Math.round(data.nutrition.kcal * 10) / 10 : '?'} kcal</strong></div>
+      <div>단백질: <strong>${data.nutrition?.protein ? Math.round(data.nutrition.protein * 10) / 10 : '?'} g</strong></div>
+      <div>탄수화물: <strong>${data.nutrition?.carbs ? Math.round(data.nutrition.carbs * 10) / 10 : '?'} g</strong></div>
+      <div>지방: <strong>${data.nutrition?.fat ? Math.round(data.nutrition.fat * 10) / 10 : '?'} g</strong></div>
     </div>
   `;
 }
@@ -564,10 +567,10 @@ function _displayNutritionTextResult(data, langResult) {
   extracted.innerHTML = `
     <div style="margin-bottom:8px"><strong>${data.name || '음식명 (미감지)'}</strong></div>
     <div style="font-size:12px;display:grid;grid-template-columns:1fr 1fr;gap:4px">
-      <div>칼로리: <strong>${data.nutrition?.kcal || '?'} kcal</strong></div>
-      <div>단백질: <strong>${data.nutrition?.protein || '?'} g</strong></div>
-      <div>탄수화물: <strong>${data.nutrition?.carbs || '?'} g</strong></div>
-      <div>지방: <strong>${data.nutrition?.fat || '?'} g</strong></div>
+      <div>칼로리: <strong>${data.nutrition?.kcal ? Math.round(data.nutrition.kcal * 10) / 10 : '?'} kcal</strong></div>
+      <div>단백질: <strong>${data.nutrition?.protein ? Math.round(data.nutrition.protein * 10) / 10 : '?'} g</strong></div>
+      <div>탄수화물: <strong>${data.nutrition?.carbs ? Math.round(data.nutrition.carbs * 10) / 10 : '?'} g</strong></div>
+      <div>지방: <strong>${data.nutrition?.fat ? Math.round(data.nutrition.fat * 10) / 10 : '?'} g</strong></div>
     </div>
   `;
 }
@@ -598,10 +601,10 @@ function _displayMultipleTextResults(items, langResult) {
           <span style="font-size:10px;color:var(--muted)">${item.unit || ''} · ${Math.round((item.confidence || 0.8) * 100)}%</span>
         </div>
         <div style="font-size:11px;display:grid;grid-template-columns:1fr 1fr;gap:2px;color:var(--muted2)">
-          <div>🔥 ${item.nutrition?.kcal || 0} kcal</div>
-          <div>🥩 단 ${item.nutrition?.protein || 0}g</div>
-          <div>🍚 탄 ${item.nutrition?.carbs || 0}g</div>
-          <div>🧈 지 ${item.nutrition?.fat || 0}g</div>
+          <div>🔥 ${Math.round((item.nutrition?.kcal || 0) * 10) / 10} kcal</div>
+          <div>🥩 단 ${Math.round((item.nutrition?.protein || 0) * 10) / 10}g</div>
+          <div>🍚 탄 ${Math.round((item.nutrition?.carbs || 0) * 10) / 10}g</div>
+          <div>🧈 지 ${Math.round((item.nutrition?.fat || 0) * 10) / 10}g</div>
         </div>
       </div>
     `).join('')}
@@ -667,10 +670,10 @@ function _displayMultipleResults(items) {
           <span style="font-size:10px;color:var(--muted)">${Math.round((item.confidence || 0.8) * 100)}%</span>
         </div>
         <div style="font-size:11px;display:grid;grid-template-columns:1fr 1fr;gap:2px;color:var(--muted2)">
-          <div>🔥 ${item.nutrition?.kcal || 0} kcal</div>
-          <div>🥩 단 ${item.nutrition?.protein || 0}g</div>
-          <div>🍚 탄 ${item.nutrition?.carbs || 0}g</div>
-          <div>🧈 지 ${item.nutrition?.fat || 0}g</div>
+          <div>🔥 ${Math.round((item.nutrition?.kcal || 0) * 10) / 10} kcal</div>
+          <div>🥩 단 ${Math.round((item.nutrition?.protein || 0) * 10) / 10}g</div>
+          <div>🍚 탄 ${Math.round((item.nutrition?.carbs || 0) * 10) / 10}g</div>
+          <div>🧈 지 ${Math.round((item.nutrition?.fat || 0) * 10) / 10}g</div>
         </div>
       </div>
     `).join('')}
