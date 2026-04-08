@@ -208,14 +208,20 @@ export function calcStreaks(cache, today, plan, dateKeyFn) {
   let workout = 0, diet = 0, stretching = 0, wineFree = 0;
 
   const getDay = (y, m, d) => cache[dateKeyFn(y, m, d)] || {};
-  const getMuscles = (y, m, d) => [...new Set((getDay(y, m, d).exercises || []).map(e => e.muscleId))];
-  const getCF = (y, m, d) => !!getDay(y, m, d).cf;
+  const hasWorkout = (y, m, d) => {
+    const day = getDay(y, m, d);
+    return (day.exercises || []).length > 0
+        || !!day.cf
+        || !!day.swimming
+        || !!day.running
+        || !!day.stretching;
+  };
 
   // 운동 스트릭
   let cur = new Date(today);
   for (let i = 0; i < MAX_LOOKBACK; i++) {
     const y = cur.getFullYear(), m = cur.getMonth(), d = cur.getDate();
-    if (!getMuscles(y, m, d).length && !getCF(y, m, d)) break;
+    if (!hasWorkout(y, m, d)) break;
     workout++;
     cur.setDate(cur.getDate() - 1);
   }
