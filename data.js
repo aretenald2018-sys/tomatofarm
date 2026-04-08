@@ -456,6 +456,14 @@ export function getDisplayName(account, isFriend = false) {
   return nick;
 }
 
+// ── 글로벌 주간 랭킹 ─────────────────────────────────────────────
+export async function getGlobalWeeklyRanking() {
+  try {
+    const snap = await getDoc(doc(db, '_weekly_ranking', 'current'));
+    return snap.exists() ? snap.data() : null;
+  } catch { return null; }
+}
+
 // ── 방명록 시스템 ────────────────────────────────────────────────
 export async function getGuestbook(targetUserId) {
   const snap = await getDocs(collection(db, '_guestbook'));

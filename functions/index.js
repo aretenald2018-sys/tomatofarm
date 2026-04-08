@@ -1,4 +1,6 @@
 const { onDocumentCreated } = require("firebase-functions/v2/firestore");
+const { onSchedule } = require("firebase-functions/v2/scheduler");
+const { onRequest } = require("firebase-functions/v2/https");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
 const { getMessaging } = require("firebase-admin/messaging");
@@ -102,3 +104,100 @@ function _buildTitle(data) {
     default:                return "🍅 토마토팜 알림";
   }
 }
+
+// ── 주간 랭킹 공통 로직 ─────────────────────────────────────────────
+
+function _isActiveDay(workoutData) {
+  if (!workoutData) return false;
+  const w = workoutData;
+  if ((w.exercises || []).length > 0) return true;
+  if (w.cf || w.swimming || w.running || w.stretching) return true;
+  if ((w.muscles || []).length > 0) return true;
+  if (w.bKcal || w.lKcal || w.dKcal) return true;
+  if ((w.bFoods || []).length || (w.lFoods || []).length || (w.dFoods || []).length) return true;
+  if (w.breakfast || w.lunch || w.dinner) return true;
+  return false;
+}
+
+async function _computeRanking() {
+  const db = getFirestore();
+
+  // 1. 모든 계정 조회
+  const accountsSnap = await db.collection("_accounts").get();
+  const accounts = [];
+  accountsSnap.forEach((d) => {
+    accounts.push({ id: d.id, ...d.data() });
+  });
+
+  // 2. 이번 주 월~일 dateKey 계산 (KST = UTC+9)
+  const nowKST = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  const dayOfWeek = nowKST.getUTCDay() || 7; // 월=1 ... 일=7
+  const monday = new Date(nowKST);
+  monday.setUTCDate(nowKST.getUTCDate() - dayOfWeek + 1);
+
+  const weekKeys = [];
+  const pad = (n) => String(n).padStart(2, "0");
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday);
+    d.setUTCDate(monday.getUTCDate() + i);
+    weekKeys.push(
+      `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`
+    );
+  }
+  const weekStart = weekKeys[0]; // monday ISO
+
+  // 3. 유저별 활동일 수 계산 (10명씩 배치)
+  const batchSize = 10;
+  const rankings = [];
+
+  for (let b = 0; b < accounts.length; b += batchSize) {
+    const batch = accounts.slice(b, b + batchSize);
+    const batchResults = await Promise.all(
+      batch.map(async (account) => {
+        const dayResults = await Promise.allSettled(
+          weekKeys.map((dk) =>
+            db.doc(`users/${account.id}/workouts/${dk}`).get()
+          )
+        );
+        let activeDays = 0;
+        for (const r of dayResults) {
+          if (r.status === "fulfilled" && r.value.exists) {
+            if (_isActiveDay(r.value.data())) activeDays++;
+          }
+        }
+        const name =
+          account.nickname || account.firstName || account.id;
+        return { userId: account.id, name, activeDays };
+      })
+    );
+    rankings.push(...batchResults);
+  }
+
+  // 4. 활동일 > 0 필터, 내림차순 정렬
+  const filtered = rankings
+    .filter((r) => r.activeDays > 0)
+    .sort((a, b) => b.activeDays - a.activeDays);
+
+  // 5. Firestore에 기록
+  await db.doc("_weekly_ranking/current").set({
+    updatedAt: Date.now(),
+    weekStart,
+    rankings: filtered,
+  });
+
+  console.log(
+    `[WeeklyRanking] ${filtered.length} ranked users, weekStart=${weekStart}`
+  );
+  return { ranked: filtered.length, weekStart };
+}
+
+// 매시간 자동 실행
+exports.computeWeeklyRanking = onSchedule("every 1 hours", async () => {
+  await _computeRanking();
+});
+
+// 수동 새로고침 엔드포인트
+exports.refreshWeeklyRanking = onRequest({ cors: true }, async (req, res) => {
+  const result = await _computeRanking();
+  res.json({ ok: true, ...result });
+});

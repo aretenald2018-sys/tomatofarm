@@ -985,6 +985,7 @@ async function _autoSaveDiet() {
       runDurationMin: _runData.durationMin,
       runDurationSec: _runData.durationSec,
       runMemo:       _runData.memo,
+      workoutDuration: _workoutDuration,
       wine_free:  _wineFree,
       breakfast_skipped: _breakfastSkipped,
       lunch_skipped: _lunchSkipped,
@@ -1011,6 +1012,7 @@ async function _autoSaveDiet() {
       workoutPhoto: window._mealPhotos?.workout || null,
     });
     console.log('[render-workout] 식단 자동 저장 완료');
+    showToast('저장되었습니다', 1500, 'success');
   } catch(e) {
     console.error('[render-workout] 자동 저장 실패:', e);
   }

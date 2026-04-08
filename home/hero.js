@@ -5,7 +5,7 @@
 import { TODAY, calcStreaks, getMuscles, getDiet, getCF,
          getMilestoneShown, saveMilestoneShown,
          getStreakFreezes, getTomatoState, useStreakFreeze,
-         getMyFriends, getAccountList, getCurrentUser,
+         getGlobalWeeklyRanking, getMyFriends, getAccountList, getCurrentUser,
          getFriendWorkout, dateKey, isAdmin }  from '../data.js';
 import { setText, showToast, haptic, resolveNickname } from './utils.js';
 
@@ -210,103 +210,148 @@ function calcCFStreak() {
   return streak;
 }
 
-// ── 주간 리더보드 ────────────────────────────────────────────────
+// ── 주간 리더보드 (글로벌 랭킹 + 이웃 폴백) ─────────────────────
 export async function renderLeaderboard() {
   const cardEl = document.getElementById('card-leaderboard');
   const contentEl = document.getElementById('leaderboard-content');
   if (!cardEl || !contentEl) return;
 
   try {
-    const friends = await getMyFriends();
-    if (!friends.length) { cardEl.style.display = 'none'; return; }
-    const accounts = await getAccountList();
     const user = getCurrentUser();
     if (!user) return;
 
-    const weekKeys = [];
-    const now = new Date(TODAY);
-    const dayOfWeek = now.getDay() || 7;
-    const monday = new Date(now);
-    monday.setDate(now.getDate() - dayOfWeek + 1);
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(monday);
-      d.setDate(monday.getDate() + i);
-      weekKeys.push(dateKey(d.getFullYear(), d.getMonth(), d.getDate()));
-    }
+    // 글로벌 랭킹 우선 시도, 없으면 이웃 기반 폴백
+    const globalData = await getGlobalWeeklyRanking();
+    let board, total, isGlobal;
 
-    const participants = [{ id: user.id, name: '나', isMe: true }];
-    for (const f of friends) {
-      const acc = accounts.find(a => a.id === f.friendId);
-      const name = acc ? resolveNickname(acc, accounts) : f.friendId.replace(/_/g, '');
-      participants.push({ id: f.friendId, name, isMe: false });
-    }
+    if (globalData && globalData.rankings && globalData.rankings.length) {
+      // ── 글로벌 랭킹 모드 ──
+      board = globalData.rankings.map((r, i) => ({
+        name: r.userId === user.id ? '나' : r.name,
+        days: r.activeDays,
+        isMe: r.userId === user.id,
+      }));
+      total = board.length;
+      isGlobal = true;
+    } else {
+      // ── 이웃 폴백 모드 ──
+      const friends = await getMyFriends();
+      if (!friends.length) { cardEl.style.display = 'none'; return; }
+      const accounts = await getAccountList();
 
-    const results = await Promise.allSettled(
-      participants.map(async p => {
-        if (p.isMe) {
-          let days = 0;
-          for (const wk of weekKeys) {
-            const [y, m, d] = wk.split('-').map(Number);
-            const muscles = getMuscles(y, m - 1, d);
-            const diet = getDiet(y, m - 1, d);
-            const hasDiet = diet.bKcal || diet.lKcal || diet.dKcal;
-            if ((muscles || []).length > 0 || hasDiet) days++;
+      const weekKeys = [];
+      const now = new Date(TODAY);
+      const dayOfWeek = now.getDay() || 7;
+      const monday = new Date(now);
+      monday.setDate(now.getDate() - dayOfWeek + 1);
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(monday);
+        d.setDate(monday.getDate() + i);
+        weekKeys.push(dateKey(d.getFullYear(), d.getMonth(), d.getDate()));
+      }
+
+      const participants = [{ id: user.id, name: '나', isMe: true }];
+      for (const f of friends) {
+        const acc = accounts.find(a => a.id === f.friendId);
+        const name = acc ? resolveNickname(acc, accounts) : f.friendId.replace(/_/g, '');
+        participants.push({ id: f.friendId, name, isMe: false });
+      }
+
+      const results = await Promise.allSettled(
+        participants.map(async p => {
+          if (p.isMe) {
+            let days = 0;
+            for (const wk of weekKeys) {
+              const [y, m, d] = wk.split('-').map(Number);
+              const muscles = getMuscles(y, m - 1, d);
+              const diet = getDiet(y, m - 1, d);
+              const hasDiet = diet.bKcal || diet.lKcal || diet.dKcal;
+              if ((muscles || []).length > 0 || hasDiet) days++;
+            }
+            return { ...p, days };
+          } else {
+            let days = 0;
+            const dayResults = await Promise.allSettled(weekKeys.map(k => getFriendWorkout(p.id, k)));
+            for (const r of dayResults) {
+              if (r.status !== 'fulfilled' || !r.value) continue;
+              const w = r.value;
+              if ((w.muscles||[]).length || w.exercises?.length || w.breakfast || w.lunch || w.dinner || w.bFoods?.length || w.lFoods?.length || w.dFoods?.length) days++;
+            }
+            return { ...p, days };
           }
-          return { ...p, days };
-        } else {
-          let days = 0;
-          const dayResults = await Promise.allSettled(weekKeys.map(k => getFriendWorkout(p.id, k)));
-          for (const r of dayResults) {
-            if (r.status !== 'fulfilled' || !r.value) continue;
-            const w = r.value;
-            if ((w.muscles||[]).length || w.exercises?.length || w.breakfast || w.lunch || w.dinner || w.bFoods?.length || w.lFoods?.length || w.dFoods?.length) days++;
-          }
-          return { ...p, days };
-        }
-      })
-    );
+        })
+      );
 
-    const board = results.filter(r => r.status === 'fulfilled')
-      .map(r => r.value)
-      .filter(p => p.days > 0 || p.isMe)
-      .sort((a, b) => b.days - a.days);
+      board = results.filter(r => r.status === 'fulfilled')
+        .map(r => r.value)
+        .sort((a, b) => b.days - a.days);
 
-    if (board.length <= 1) { cardEl.style.display = 'none'; return; }
-
-    const rankIcons = ['🥇', '🥈', '🥉'];
-
-    // 이웃 컨텍스트 문구
-    const myEntry = board.find(p => p.isMe);
-    const myRank = myEntry ? board.indexOf(myEntry) + 1 : 0;
-    const neighborNames = board.filter(p => !p.isMe).slice(0, 2).map(p => p.name);
-
-    // 리더보드 이웃 데이터로 히어로 메시지도 업데이트 (주간 데이터 기반)
-    if (neighborNames.length > 0) {
-      updateHeroSocialProof(neighborNames);
+      if (board.length <= 1) { cardEl.style.display = 'none'; return; }
+      total = board.length;
+      isGlobal = false;
     }
 
+    // ── 공통 렌더링: 전원 표시, 활동 강조 ──
+
+    // 활동자 / 미활동자 분리
+    const active = board.filter(p => p.days > 0).sort((a, b) => b.days - a.days);
+    const inactive = board.filter(p => p.days === 0);
+    const activeCount = active.length;
+
+    // 히어로 소셜프루프 업데이트
+    const proofNames = active.filter(p => !p.isMe).slice(0, 2).map(p => p.name);
+    if (proofNames.length > 0) updateHeroSocialProof(proofNames);
+
+    // 집단 컨텍스트 문구
     let contextMsg = '';
-    if (myRank === 1 && myEntry && myEntry.days > 0) {
-      contextMsg = '🏆 지금 1위예요! 이 기세를 유지해보세요';
-    } else if (myRank > 0 && neighborNames.length >= 2) {
-      contextMsg = `${neighborNames[0]}, ${neighborNames[1]}님과 함께 ${myRank}위를 달리고 있어요`;
-    } else if (myRank > 0 && neighborNames.length === 1) {
-      contextMsg = `${neighborNames[0]}님과 함께 ${myRank}위를 달리고 있어요`;
+    if (activeCount === 0) {
+      contextMsg = '이번 주 첫 기록의 주인공이 되어보세요!';
+    } else if (activeCount === 1 && active[0].isMe) {
+      contextMsg = '🔥 이번 주 첫 기록을 시작했어요!';
+    } else {
+      contextMsg = `🔥 ${activeCount}명이 함께 달리고 있어요`;
     }
 
-    let html = contextMsg ? `<div class="lb-context">${contextMsg}</div>` : '';
-    for (let i = 0; i < board.length; i++) {
-      const p = board[i];
+    // HTML 렌더링
+    const rankIcons = ['🥇', '🥈', '🥉'];
+    let html = `<div class="lb-context">${contextMsg}</div>`;
+
+    // 활동자: 아바타 + 순위 + 프로그레스 바
+    for (let i = 0; i < active.length; i++) {
+      const p = active[i];
       const rank = rankIcons[i] || `${i + 1}`;
       const pct = Math.round((p.days / 7) * 100);
-      const isMe = p.isMe;
-      html += `<div class="lb-row${isMe ? ' lb-me' : ''}">
+      const initial = p.isMe ? '나' : p.name.charAt(0);
+      html += `<div class="lb-row${p.isMe ? ' lb-me' : ''}">
         <span class="lb-rank">${rank}</span>
-        <span class="lb-name">${p.name}</span>
+        <div class="lb-avatar active">${initial}</div>
+        <span class="lb-name">${p.isMe ? '나' : p.name}</span>
         <div class="lb-bar-track"><div class="lb-bar-fill" style="width:${pct}%"></div></div>
         <span class="lb-days">${p.days}일</span>
       </div>`;
     }
+
+    // 미활동자: 순위 번호 없이, 하단 분리
+    if (inactive.length > 0) {
+      html += `<div class="lb-inactive-label">아직 이번 주 기록 없음</div>`;
+      html += `<div class="lb-inactive-row">`;
+      for (const p of inactive) {
+        const initial = p.isMe ? '나' : p.name.charAt(0);
+        html += `<div class="lb-inactive-item${p.isMe ? ' lb-me-inactive' : ''}">
+          <div class="lb-avatar inactive">${initial}</div>
+          <span class="lb-inactive-name">${p.isMe ? '나' : p.name}</span>
+        </div>`;
+      }
+      html += `</div>`;
+    }
+
+    // 글로벌 모드일 때 업데이트 시각 표시
+    if (isGlobal && globalData.updatedAt) {
+      const diffMin = Math.floor((Date.now() - globalData.updatedAt) / 60000);
+      const freshness = diffMin < 1 ? '방금 업데이트' : diffMin < 60 ? `${diffMin}분 전 업데이트` : `${Math.floor(diffMin / 60)}시간 전 업데이트`;
+      html += `<div class="lb-freshness">${freshness}</div>`;
+    }
+
     contentEl.innerHTML = html;
     cardEl.style.display = '';
   } catch(e) { console.warn('[leaderboard]', e); }
