@@ -1494,6 +1494,7 @@ export const calcExerciseCalorieCredit = _calcExerciseCalorieCredit;
 
 export const getExList    = ()      => _exList;
 export const getCache     = ()      => _cache;
+export const getAllDateKeys = () => Object.keys(_cache).filter(k => /^\d{4}-\d{2}-\d{2}$/.test(k));
 export const getDay       = (y,m,d) => _cache[dateKey(y,m,d)] || {};
 export const getExercises = (y,m,d) => getDay(y,m,d).exercises || [];
 export const getMuscles   = (y,m,d) => {

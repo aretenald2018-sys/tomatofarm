@@ -3,21 +3,21 @@
 // ================================================================
 
 import { TODAY, getDiet, getDietPlan, calcDietMetrics, getBodyCheckins,
-         getExercises, calcStreaks,
+         getExercises, calcStreaks, getDay, getAllDateKeys,
          getUnitGoalStart, saveUnitGoalStart, getDayTargetKcal,
          getTomatoState, saveTomatoState, saveTomatoCycle,
          getTomatoCycles, dateKey,
          getStreakFreezes, useStreakFreeze }  from '../data.js';
 import { calcTomatoCycle, evaluateCycleResult, getQuarterKey,
-         isDietDaySuccess, getDayTargetKcal as calcDayTarget }  from '../calc.js';
+         isDietDaySuccess, isExerciseDaySuccess,
+         getDayTargetKcal as calcDayTarget }  from '../calc.js';
 import { checkStreakMilestone } from './hero.js';
 import { showToast, haptic } from './utils.js';
 
 const TOMATO_STAGES = [
   { icon: '🌱', label: '씨앗을 심었어요' },
-  { icon: '🌿', label: '줄기가 자라고 있어요' },
-  { icon: '🌸', label: '꽃이 피었어요! 내일이면 수확해요' },
-  { icon: '🍅', label: '오늘만 지키면 토마토를 수확해요!' },
+  { icon: '🌿', label: '새싹이 자라고 있어요' },
+  { icon: '🍅', label: '오늘만 지키면 수확해요!' },
 ];
 
 // ── 토마토 히어로 (게스트 전용, _renderHero에서 호출) ────────────
@@ -37,11 +37,11 @@ export function renderTomatoHero(el) {
   const qCount = state.quarterlyTomatoes[qKey] || 0;
   const totalCount = state.totalTomatoes + state.giftedReceived - state.giftedSent;
 
-  const dayStatuses = cycle.days.map((dayKey, i) => {
+  // 식단 상태 계산
+  const dietStatuses = cycle.days.map((dayKey, i) => {
     const [y, m, d] = dayKey.split('-').map(Number);
     const dayDate = new Date(y, m - 1, d);
-    const isFutureDay = dayDate > TODAY;
-    if (isFutureDay) return 'future';
+    if (dayDate > TODAY) return 'future';
     const diet = getDiet(y, m - 1, d);
     const totalKcal = (diet.bKcal || 0) + (diet.lKcal || 0) + (diet.dKcal || 0) + (diet.sKcal || 0);
     const target = calcDayTarget(plan, y, m - 1, d);
@@ -49,27 +49,47 @@ export function renderTomatoHero(el) {
     return isDietDaySuccess(totalKcal, target) ? 'success' : 'fail';
   });
 
+  // 운동 상태 계산
+  const exerciseStatuses = cycle.days.map((dayKey, i) => {
+    const [y, m, d] = dayKey.split('-').map(Number);
+    const dayDate = new Date(y, m - 1, d);
+    if (dayDate > TODAY) return 'future';
+    const dayData = getDay(y, m - 1, d);
+    if (!isExerciseDaySuccess(dayData)) return i < cycle.dayIndex ? 'fail' : 'pending';
+    return 'success';
+  });
+
   const todayDiet = getDiet(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
   const todayKcal = (todayDiet.bKcal || 0) + (todayDiet.lKcal || 0) + (todayDiet.dKcal || 0) + (todayDiet.sKcal || 0);
   const todayTarget = calcDayTarget(plan, TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
 
-  const hasPriorFail = dayStatuses.slice(0, cycle.dayIndex).some(s => s === 'fail');
+  const dietPriorFail = dietStatuses.slice(0, cycle.dayIndex).some(s => s === 'fail');
+  const exPriorFail = exerciseStatuses.slice(0, cycle.dayIndex).some(s => s === 'fail');
 
   const stage = TOMATO_STAGES[cycle.dayIndex];
   let stageIcon = stage.icon;
   let message = stage.label;
 
-  if (cycle.dayIndex === 3 && hasPriorFail) {
-    stageIcon = '🌸';
-    message = '이번 사이클은 아쉽지만, 내일 새로운 시작이에요';
-  } else if (hasPriorFail && cycle.dayIndex < 3) {
-    message = '아직 포기하지 마세요! 좋은 습관을 만들어가요';
+  const dietAllOk = !dietPriorFail;
+  const exAllOk = !exPriorFail;
+
+  if (dietAllOk && exAllOk) {
+    message = cycle.dayIndex === 2 ? '더블 수확이 가까워요!' : stage.label;
+  } else if (dietAllOk && !exAllOk) {
+    message = '식단은 잘 지키고 있어요!';
+  } else if (!dietAllOk && exAllOk) {
+    message = '운동은 꾸준히 하고 있어요!';
+  } else {
+    message = cycle.dayIndex === 2
+      ? '이번 사이클은 아쉽지만, 내일 새로운 시작이에요'
+      : '아직 포기하지 마세요! 좋은 습관을 만들어가요';
+    if (cycle.dayIndex === 2) stageIcon = '🌿';
   }
 
   const dayNames = ['일','월','화','수','목','금','토'];
   const dateStr = `${TODAY.getMonth()+1}월 ${TODAY.getDate()}일 ${dayNames[TODAY.getDay()]}요일`;
 
-  const dots = dayStatuses.map((s, i) => {
+  const makeDots = (statuses) => statuses.map((s, i) => {
     let cls = 'tomato-dot';
     if (s === 'success') cls += ' success';
     else if (s === 'fail') cls += ' fail';
@@ -81,12 +101,29 @@ export function renderTomatoHero(el) {
   const kcalIcon = todayKcal <= 0 ? '' : kcalOk ? ' ✓' : ' ✗';
   const kcalCls = todayKcal <= 0 ? '' : kcalOk ? 'tomato-kcal-ok' : 'tomato-kcal-over';
 
+  const doublePossible = dietAllOk && exAllOk;
+  const doubleBadge = doublePossible
+    ? `<div class="tomato-double-badge">🍅🍅 더블 수확</div>`
+    : '';
+
   el.innerHTML = `
     <div class="tomato-hero">
-      <div style="font-size:12px;color:var(--text-tertiary);font-weight:500;margin-bottom:8px;">${dateStr}</div>
+      <div style="font-size:13px;color:var(--text-tertiary);font-weight:500;margin-bottom:8px;">${dateStr}</div>
       <div class="tomato-stage">${stageIcon}</div>
-      <div class="tomato-day-label">D${cycle.dayIndex + 1} <span style="font-weight:400;color:var(--text-tertiary);font-size:14px;">/ 4</span></div>
-      <div class="tomato-progress">${dots}</div>
+      <div class="tomato-day-label">D${cycle.dayIndex + 1} <span style="font-weight:400;color:var(--text-tertiary);font-size:14px;">/ 3</span></div>
+      <div class="tomato-dual-track">
+        <div class="tomato-track-row">
+          <span class="tomato-track-label">🥗</span>
+          <div class="tomato-track-dots">${makeDots(dietStatuses)}</div>
+          <span class="tomato-track-name">식단</span>
+        </div>
+        <div class="tomato-track-row">
+          <span class="tomato-track-label">💪</span>
+          <div class="tomato-track-dots">${makeDots(exerciseStatuses)}</div>
+          <span class="tomato-track-name">운동</span>
+        </div>
+      </div>
+      ${doubleBadge}
       <div class="tomato-message">${message}</div>
       <div class="tomato-kcal-status ${kcalCls}">
         ${todayKcal > 0 ? `${todayKcal.toLocaleString()} / ${todayTarget.toLocaleString()} kcal${kcalIcon}` : '아직 식단 기록이 없어요'}
@@ -149,14 +186,34 @@ function _showTomatoRuleTooltip(e) {
   tooltip.className = 'tomato-rule-tooltip';
   tooltip.innerHTML = `
     <div class="tomato-rule-title">🍅 토마토 획득 규칙</div>
-    <div class="tomato-rule-body">
-      4일 연속 식단 목표를 달성하면<br>토마토 1개를 수확해요!
+    <div class="tomato-rule-list">
+      <div class="tomato-rule-item">
+        <span class="tomato-rule-icon">🥗</span>
+        <span>식단 3일 연속 달성</span>
+        <span class="tomato-rule-reward">🍅 ×1</span>
+      </div>
+      <div class="tomato-rule-item">
+        <span class="tomato-rule-icon">💪</span>
+        <span>운동 3일 연속 달성</span>
+        <span class="tomato-rule-reward">🍅 ×1</span>
+      </div>
+      <div class="tomato-rule-item tomato-rule-item--double">
+        <span class="tomato-rule-icon">🥗+💪</span>
+        <span>둘 다 달성하면</span>
+        <span class="tomato-rule-reward">🍅🍅 ×2!</span>
+      </div>
     </div>
-    <div class="tomato-rule-stages">🌱 → 🌿 → 🌸 → 🍅</div>
+    <div class="tomato-rule-stages">🌱 → 🌿 → 🍅</div>
     <div class="tomato-rule-divider"></div>
     <div class="tomato-rule-section-title">토마토 사용처</div>
     <div class="tomato-rule-body">
       스트릭 보호(🍅) · 이웃에게 선물(🎁)
+    </div>
+    <div class="tomato-rule-divider"></div>
+    <div class="tomato-rule-item" style="background:var(--primary-bg);margin-top:4px;">
+      <span class="tomato-rule-icon">📦</span>
+      <span style="flex:1;font-size:13px;line-height:1.4;">30개 모으면 실제 토마토 한 팩을<br>집으로 보내드려요!</span>
+      <span class="tomato-rule-reward" style="font-size:13px;">${available}/30</span>
     </div>
     ${freezeHtml}
     <button class="tomato-rule-close" onclick="_closeTomatoRuleGlobal()">닫기</button>
@@ -177,7 +234,18 @@ window._closeTomatoRuleGlobal = _closeTomatoRule;
 
 // ── 토마토 사이클 정산 ──────────────────────────────────────────
 export function settleTomatoCycleIfNeeded() {
-  const startStr = getUnitGoalStart();
+  let startStr = getUnitGoalStart();
+
+  // unit_goal_start가 없거나, 더 오래된 데이터가 있으면 최초 데이터 날짜로 교정
+  const allKeys = getAllDateKeys();
+  if (allKeys.length > 0) {
+    allKeys.sort();
+    const earliest = allKeys[0];
+    if (!startStr || earliest < startStr) {
+      startStr = earliest;
+      saveUnitGoalStart(startStr);
+    }
+  }
   if (!startStr) return;
 
   const cycle = calcTomatoCycle(startStr, TODAY);
@@ -191,33 +259,51 @@ export function settleTomatoCycleIfNeeded() {
   const start = new Date(startStr + 'T00:00:00');
   const todayMs = new Date(dateKey(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate()) + 'T00:00:00').getTime();
   const diffDays = Math.floor((todayMs - start.getTime()) / 86400000);
-  if (diffDays < 4) return;
+  console.log(`[tomato] startStr=${startStr}, diffDays=${diffDays}, allKeys=${allKeys.length}개`);
+  if (diffDays < 3) return;
 
-  const totalCycles = Math.floor(diffDays / 4);
-  const startCycle = Math.max(0, totalCycles - 10);
+  const totalCycles = Math.floor(diffDays / 3);
+  // 마이그레이션: 3일 사이클 소급 정산이 안 된 경우 전체 기간 대상
+  const migrated = state.migrated_v2;
+  const startCycle = migrated ? Math.max(0, totalCycles - 10) : 0;
+  console.log(`[tomato] settlement: startStr=${startStr}, totalCycles=${totalCycles}, startCycle=${startCycle}, migrated=${!!migrated}`);
+
+  // 마이그레이션 시 state 재계산 (v1 잔여값 정리)
+  if (!migrated) {
+    const cycle3Cycles = existingCycles.filter(c => c.id.startsWith('cycle3_'));
+    state.totalTomatoes = cycle3Cycles.reduce((sum, c) => sum + (c.tomatoesAwarded || 0), 0);
+    state.quarterlyTomatoes = {};
+    cycle3Cycles.forEach(c => {
+      if (c.tomatoesAwarded > 0) {
+        state.quarterlyTomatoes[c.quarter] = (state.quarterlyTomatoes[c.quarter] || 0) + c.tomatoesAwarded;
+      }
+    });
+  }
+  let newlyAwarded = 0;
 
   for (let ci = startCycle; ci < totalCycles; ci++) {
     const csDate = new Date(start);
-    csDate.setDate(csDate.getDate() + ci * 4);
+    csDate.setDate(csDate.getDate() + ci * 3);
     const csKey = `${csDate.getFullYear()}-${String(csDate.getMonth()+1).padStart(2,'0')}-${String(csDate.getDate()).padStart(2,'0')}`;
-    const cycleId = `cycle_${csKey}`;
+    const cycleId = `cycle3_${csKey}`;
 
     if (existingIds.has(cycleId)) continue;
 
     const dayResults = [];
-    for (let di = 0; di < 4; di++) {
+    for (let di = 0; di < 3; di++) {
       const dd = new Date(csDate);
       dd.setDate(dd.getDate() + di);
       const y = dd.getFullYear(), m = dd.getMonth(), d = dd.getDate();
       const diet = getDiet(y, m, d);
       const totalKcal = (diet.bKcal || 0) + (diet.lKcal || 0) + (diet.dKcal || 0) + (diet.sKcal || 0);
-      const target = calcDayTarget(plan, y, m, d);
-      dayResults.push({ date: dateKey(y, m, d), intake: totalKcal, target });
+      const dayData = getDay(y, m, d);
+      const target = calcDayTarget(plan, y, m, d, dayData);
+      dayResults.push({ date: dateKey(y, m, d), intake: totalKcal, target, dayData });
     }
 
     const result = evaluateCycleResult(dayResults);
     const ceDate = new Date(csDate);
-    ceDate.setDate(ceDate.getDate() + 3);
+    ceDate.setDate(ceDate.getDate() + 2);
     const ceKey = `${ceDate.getFullYear()}-${String(ceDate.getMonth()+1).padStart(2,'0')}-${String(ceDate.getDate()).padStart(2,'0')}`;
     const qKey = getQuarterKey(ceDate);
 
@@ -225,8 +311,14 @@ export function settleTomatoCycleIfNeeded() {
       id: cycleId,
       cycleStart: csKey,
       cycleEnd: ceKey,
-      days: dayResults.map((dr, i) => ({ ...dr, success: result.daySuccesses[i] })),
-      allSuccess: result.allSuccess,
+      days: dayResults.map((dr, i) => ({
+        date: dr.date, intake: dr.intake, target: dr.target,
+        dietSuccess: result.dietSuccesses[i],
+        exerciseSuccess: result.exerciseSuccesses[i],
+      })),
+      dietAllSuccess: result.dietAllSuccess,
+      exerciseAllSuccess: result.exerciseAllSuccess,
+      tomatoesAwarded: result.tomatoesAwarded,
       quarter: qKey,
       settledAt: Date.now(),
     };
@@ -234,14 +326,109 @@ export function settleTomatoCycleIfNeeded() {
     saveTomatoCycle(cycleResult);
     existingIds.add(cycleId);
 
-    if (result.allSuccess) {
-      state.quarterlyTomatoes[qKey] = (state.quarterlyTomatoes[qKey] || 0) + 1;
-      state.totalTomatoes++;
+    if (result.tomatoesAwarded > 0) {
+      state.quarterlyTomatoes[qKey] = (state.quarterlyTomatoes[qKey] || 0) + result.tomatoesAwarded;
+      state.totalTomatoes += result.tomatoesAwarded;
+      newlyAwarded += result.tomatoesAwarded;
     }
   }
 
+  // 마이그레이션 완료 플래그 (유저별 Firebase에 저장)
+  if (!migrated) {
+    state.migrated_v2 = true;
+  }
+
   saveTomatoState(state);
+
+  console.log(`[tomato] awarded ${newlyAwarded} tomatoes, total=${state.totalTomatoes}`);
+  // 새로 수확한 토마토가 있으면 축하 모달 예약
+  if (newlyAwarded > 0) {
+    const total = state.totalTomatoes + (state.giftedReceived || 0) - (state.giftedSent || 0);
+    setTimeout(() => _showHarvestCelebration(newlyAwarded, total), 800);
+  }
 }
+
+// ── 토마토 수확 축하 모달 ──────────────────────────────────────
+function _showHarvestCelebration(count, totalCount) {
+  const existing = document.getElementById('harvest-celebration-modal');
+  if (existing) existing.remove();
+
+  const remaining30 = Math.max(0, 30 - totalCount);
+  const reached30 = totalCount >= 30;
+
+  let rewardHtml = '';
+  if (reached30) {
+    rewardHtml = `
+      <div class="harvest-reward harvest-reward--complete">
+        <span class="harvest-reward-icon">📦</span>
+        <div class="harvest-reward-text">
+          <div class="harvest-reward-title">토마토 한 팩 배송 대상!</div>
+          <div class="harvest-reward-desc">30개 달성! 등록된 주소로 실제 토마토를 보내드려요.</div>
+        </div>
+      </div>`;
+  } else {
+    rewardHtml = `
+      <div class="harvest-reward">
+        <span class="harvest-reward-icon">🎯</span>
+        <div class="harvest-reward-text">
+          <div class="harvest-reward-title">토마토 30개를 모으면</div>
+          <div class="harvest-reward-desc">실제 토마토 한 팩을 집으로 보내드려요!<br>앞으로 <strong>${remaining30}개</strong> 남았어요.</div>
+        </div>
+      </div>`;
+  }
+
+  const modal = document.createElement('div');
+  modal.id = 'harvest-celebration-modal';
+  modal.className = 'modal-backdrop open';
+  modal.style.zIndex = '1003';
+  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+  modal.innerHTML = `
+    <div class="modal-sheet" style="text-align:center;padding:32px 20px 20px 20px;" onclick="event.stopPropagation()">
+      <div class="sheet-handle"></div>
+      <div style="font-size:64px;margin:16px 0;animation:tomato-bounce-in 0.3s ease;">🍅</div>
+      <div style="font-size:22px;font-weight:700;color:var(--text);margin-bottom:8px;">
+        토마토 ${count}개 수확!
+      </div>
+      <div style="font-size:14px;color:var(--text-secondary);line-height:1.6;margin-bottom:16px;">
+        꾸준한 노력이 열매를 맺었어요.
+      </div>
+      <div style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:var(--radius-full);background:var(--primary-bg);color:var(--primary);font-size:13px;font-weight:700;margin-bottom:20px;">
+        🍅 누적 ${totalCount}개
+      </div>
+      ${rewardHtml}
+      <div class="harvest-rule-section">
+        <div class="harvest-rule-header">토마토 획득 규칙</div>
+        <div class="harvest-rule-row">
+          <span class="harvest-rule-emoji">🥗</span>
+          <span class="harvest-rule-label">식단 3일 연속 달성</span>
+          <span class="harvest-rule-value">🍅 ×1</span>
+        </div>
+        <div class="harvest-rule-row">
+          <span class="harvest-rule-emoji">💪</span>
+          <span class="harvest-rule-label">운동 3일 연속 달성</span>
+          <span class="harvest-rule-value">🍅 ×1</span>
+        </div>
+        <div class="harvest-rule-row harvest-rule-row--last">
+          <span class="harvest-rule-emoji">🥗+💪</span>
+          <span class="harvest-rule-label">둘 다 달성하면</span>
+          <span class="harvest-rule-value" style="color:var(--primary);font-weight:700;">🍅🍅 ×2</span>
+        </div>
+      </div>
+      <div style="margin-top:20px;">
+        <button class="tds-btn fill md" style="width:100%;" onclick="this.closest('.modal-backdrop').remove()">계속하기 💪</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  // Confetti + Haptic
+  if (window._showConfetti) window._showConfetti(3500);
+  if (navigator.vibrate) navigator.vibrate([50, 30, 50, 30, 100]);
+  haptic('success');
+}
+
+// [DEV] 콘솔에서 수확 카드 테스트: window._debugHarvest(수확개수, 누적개수)
+window._debugHarvest = (count = 3, total = 10) => _showHarvestCelebration(count, total);
 
 // ── 토마토 바구니 카드 ──────────────────────────────────────────
 export function renderTomatoBasket() {
@@ -257,7 +444,7 @@ export function renderTomatoBasket() {
 
   const qStart = new Date(TODAY.getFullYear(), Math.floor(TODAY.getMonth() / 3) * 3, 1);
   const qEnd = new Date(qStart.getFullYear(), qStart.getMonth() + 3, 0);
-  const maxCycles = Math.floor((qEnd.getTime() - qStart.getTime()) / 86400000 / 4);
+  const maxCycles = Math.floor((qEnd.getTime() - qStart.getTime()) / 86400000 / 3);
 
   let gridHtml = '';
   for (let i = 0; i < maxCycles; i++) {
@@ -412,8 +599,8 @@ export function renderTomatoCard() {
   }
   const cycle = calcTomatoCycle(startStr, TODAY);
   const dayIndex = cycle.dayIndex;
-  const stages = ['🌱','🌿','🌸','🍅'];
-  const stageLabels = ['씨앗 심기','새싹 돌보기','꽃 피우기','수확하기'];
+  const stages = ['🌱','🌿','🍅'];
+  const stageLabels = ['씨앗 심기','새싹 돌보기','수확하기'];
 
   const streaks = calcStreaks();
   const bestStreak = Math.max(streaks.workout, streaks.diet);
