@@ -697,9 +697,21 @@ export async function sendAnnouncement(title, body) {
 export async function toggleLike(targetUserId, dateKey, field, emoji) {
   // field: 'workout' | 'meal_breakfast' | 'meal_lunch' 등
   if (!_currentUser) return;
-  const likeId = `${_currentUser.id}_${targetUserId}_${dateKey}_${field}`;
+  const fromId = _socialId();
+  const likeId = `${fromId}_${targetUserId}_${dateKey}_${field}`;
   const likeDoc = doc(db, '_likes', likeId);
   const snap = await getDoc(likeDoc);
+  // 레거시 호환: _currentUser.id로 저장된 문서가 있으면 삭제 후 _socialId 기준으로 재생성
+  if (!snap.exists() && fromId !== _currentUser.id) {
+    const legacyId = `${_currentUser.id}_${targetUserId}_${dateKey}_${field}`;
+    const legacySnap = await getDoc(doc(db, '_likes', legacyId)).catch(() => null);
+    if (legacySnap?.exists()) {
+      await deleteDoc(doc(db, '_likes', legacyId));
+      // 레거시 문서를 새 ID로 마이그레이션
+      await setDoc(likeDoc, { ...legacySnap.data(), id: likeId, from: fromId });
+      return true;
+    }
+  }
   if (snap.exists()) {
     if (emoji && snap.data().emoji !== emoji) {
       // 이모지 변경
@@ -710,18 +722,36 @@ export async function toggleLike(targetUserId, dateKey, field, emoji) {
     return false; // unlike
   } else {
     await setDoc(likeDoc, {
-      id: likeId, from: _currentUser.id, to: targetUserId,
+      id: likeId, from: fromId, to: targetUserId,
       dateKey, field, emoji: emoji || '👏', createdAt: Date.now(),
     });
     // 상대에게 알림 (자기 자신이면 스킵)
     if (!_isMySocialId(targetUserId)) {
       await sendNotification(targetUserId, {
-        type: 'like', from: _currentUser.id, dateKey, field,
+        type: 'like', from: fromId, dateKey, field,
         message: `${emoji || '👏'} 리액션을 보냈어요.`,
       });
     }
     return true; // liked
   }
+}
+
+export async function getCheerStatus(friendId, dk) {
+  if (!_currentUser) return { iSent: false, theyCheerd: false };
+  const myId = _socialId();
+  const checks = [
+    getDoc(doc(db, '_likes', `${myId}_${friendId}_${dk}_cheer`)).catch(() => null),
+    getDoc(doc(db, '_likes', `${friendId}_${myId}_${dk}_cheer`)).catch(() => null),
+  ];
+  // 레거시 호환: _currentUser.id가 _socialId()와 다를 경우 레거시 ID도 조회
+  if (myId !== _currentUser.id) {
+    checks.push(getDoc(doc(db, '_likes', `${_currentUser.id}_${friendId}_${dk}_cheer`)).catch(() => null));
+    checks.push(getDoc(doc(db, '_likes', `${friendId}_${_currentUser.id}_${dk}_cheer`)).catch(() => null));
+  }
+  const results = await Promise.all(checks);
+  const iSent = !!results[0]?.exists() || !!results[2]?.exists();
+  const theyCheerd = !!results[1]?.exists() || !!results[3]?.exists();
+  return { iSent, theyCheerd };
 }
 
 export async function getLikes(targetUserId, dateKey) {
@@ -1669,15 +1699,16 @@ export async function sendTomatoGift(toUserId, message) {
   const state = getTomatoState();
   const available = state.totalTomatoes + state.giftedReceived - state.giftedSent;
   if (available <= 0) return { error: '선물할 토마토가 없어요.' };
-  const giftId = `${_currentUser.id}_${toUserId}_${Date.now()}`;
+  const fromId = _socialId();
+  const giftId = `${fromId}_${toUserId}_${Date.now()}`;
   await setDoc(doc(db, '_tomato_gifts', giftId), {
-    id: giftId, from: _currentUser.id, to: toUserId,
+    id: giftId, from: fromId, to: toUserId,
     quarter: _getQuarterKeyNow(), message: message || '',
     createdAt: Date.now(),
   });
   state.giftedSent++;
   await saveTomatoState(state);
-  await sendNotification(toUserId, { type: 'tomato_gift', from: _currentUser.id, message: '토마토를 선물했어요! 🍅' });
+  await sendNotification(toUserId, { type: 'tomato_gift', from: fromId, message: '토마토를 선물했어요! 🍅' });
   return { ok: true };
 }
 
@@ -1685,7 +1716,7 @@ export async function getReceivedTomatoGifts() {
   if (!_currentUser) return [];
   const snap = await getDocs(collection(db, '_tomato_gifts'));
   const gifts = [];
-  snap.forEach(d => { const data = d.data(); if (data.to === _currentUser.id) gifts.push(data); });
+  snap.forEach(d => { const data = d.data(); if (_isMySocialId(data.to)) gifts.push(data); });
   gifts.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   return gifts;
 }

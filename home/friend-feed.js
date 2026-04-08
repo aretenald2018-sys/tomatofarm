@@ -5,7 +5,7 @@
 import { TODAY, getCurrentUser, getMyFriends, getAccountList,
          getPendingRequests, getMyNotifications,
          getFriendWorkout, sendFriendRequest, acceptFriendRequest, removeFriend,
-         toggleLike, getLikes, dateKey,
+         toggleLike, getLikes, dateKey, getCheerStatus,
          isAdmin, isAdminGuest, getAdminId, getAdminGuestId,
          recordAction }  from '../data.js';
 import { resolveNickname, showToast, haptic, formatTimeAgo } from './utils.js';
@@ -157,6 +157,11 @@ export async function renderFriendFeed() {
     );
     const recentWorkouts = recentResults.map(r => r.status === 'fulfilled' ? r.value : [null, null, null]);
 
+    const cheerResults = await Promise.allSettled(
+      friends.map(f => getCheerStatus(f.friendId, tk))
+    );
+    const cheerStatuses = cheerResults.map(r => r.status === 'fulfilled' ? r.value : { iSent: false, theyCheerd: false });
+
     let activeCount = 0;
     const FRIEND_PAGE_SIZE = 3;
     const friendCards = [];
@@ -200,7 +205,18 @@ export async function renderFriendFeed() {
         });
       }
       if (items || hasToday) { activeCount++; if (!activeNames.includes(name)) activeNames.push(name); }
-      const cheerBtn = hasToday ? `<button class="friend-cheer-btn" data-cheer-fid="${f.friendId}" data-cheer-name="${name.replace(/"/g,'&quot;')}" title="응원 보내기" style="padding:4px 10px;border:none;border-radius:999px;background:var(--primary-bg);color:var(--primary);font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;transition:all 0.15s;">👏 응원</button>` : '';
+      const cs = cheerStatuses[fi];
+      const isMutual = cs.iSent && cs.theyCheerd;
+      let cheerBtn = '';
+      if (hasToday) {
+        if (isMutual) {
+          cheerBtn = `<button class="friend-cheer-btn" data-cheer-fid="${f.friendId}" data-cheer-name="${name.replace(/"/g,'&quot;')}" title="서로 응원!" style="padding:4px 10px;border:none;border-radius:999px;background:var(--primary);color:#fff;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;transition:all 0.15s;">🤝 함께응원!</button>`;
+        } else if (cs.iSent) {
+          cheerBtn = `<button class="friend-cheer-btn" data-cheer-fid="${f.friendId}" data-cheer-name="${name.replace(/"/g,'&quot;')}" title="응원 보내기" style="padding:4px 10px;border:none;border-radius:999px;background:var(--primary-bg);color:var(--primary);font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;transition:all 0.15s;opacity:0.7;">✓ 응원 완료</button>`;
+        } else {
+          cheerBtn = `<button class="friend-cheer-btn" data-cheer-fid="${f.friendId}" data-cheer-name="${name.replace(/"/g,'&quot;')}" title="응원 보내기" style="padding:4px 10px;border:none;border-radius:999px;background:var(--primary-bg);color:var(--primary);font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;transition:all 0.15s;">👏 응원</button>`;
+        }
+      }
       friendCards.push({ statusClass, html: `<div class="friend-card"><div class="friend-card-header"><span class="friend-avatar" style="font-size:18px;">🍅<span class="status-dot ${statusClass}"></span></span><span class="friend-name" data-fid="${f.friendId}" data-fname="${fullName.replace(/"/g,'&quot;')}" style="cursor:pointer;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;">${name}</span><div style="display:flex;gap:6px;align-items:center;">${cheerBtn}<button class="friend-gift-btn" data-gift-fid="${f.friendId}" data-gift-name="${fullName.replace(/"/g,'&quot;')}" title="토마토 선물">🍅</button></div></div>${items}</div>` });
     }
 
@@ -307,22 +323,32 @@ export async function renderFriendFeed() {
         const dk = dateKey(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
         const liked = await toggleLike(fid, dk, 'cheer', '👏');
         if (liked) {
-          haptic('success');
-          btnEl.textContent = '✓ 응원 완료';
-          btnEl.style.background = 'var(--primary-bg, #fdf0f0)';
-          btnEl.style.color = 'var(--primary, #fa342c)';
-          btnEl.style.opacity = '0.7';
+          const { theyCheerd } = await getCheerStatus(fid, dk);
+          if (theyCheerd) {
+            haptic('success');
+            btnEl.textContent = '🤝 함께응원!';
+            btnEl.style.background = 'var(--primary, #fa342c)';
+            btnEl.style.color = '#fff';
+            btnEl.style.opacity = '1';
+          } else {
+            haptic('success');
+            btnEl.textContent = '✓ 응원 완료';
+            btnEl.style.background = 'var(--primary-bg, #fdf0f0)';
+            btnEl.style.color = 'var(--primary, #fa342c)';
+            btnEl.style.opacity = '0.7';
+          }
         } else {
           btnEl.textContent = '👏 응원';
           btnEl.style.background = 'var(--primary-bg)';
           btnEl.style.color = 'var(--primary)';
+          btnEl.style.opacity = '1';
         }
       } catch (e) {
         console.warn('[cheer] error:', e);
         btnEl.textContent = '👏 응원';
+        btnEl.style.opacity = '1';
       }
       btnEl.disabled = false;
-      btnEl.style.opacity = '1';
     }
 
     feedEl.onclick = (e) => {
