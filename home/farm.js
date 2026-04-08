@@ -32,9 +32,9 @@ export function renderFarmDuolingo() {
   const startStr = getUnitGoalStart();
   const cycle = startStr ? calcTomatoCycle(startStr, TODAY) : null;
   const dayIndex = cycle ? cycle.dayIndex : 0;
-  const stages = ['🌱','🌿','🌸','🍅'];
-  const stageLabels = ['씨앗 심기','새싹 돌보기','꽃 피우기','수확하기'];
-  const stageColors = ['#8b95a1','#5cb85c','#ff9ebc','#e53935'];
+  const stages = ['🌱','🌿','🍅'];
+  const stageLabels = ['씨앗 심기','새싹 돌보기','수확하기'];
+  const stageColors = ['#8b95a1','#5cb85c','#e53935'];
 
   const user = getCurrentUser();
   const userName = user ? user.lastName + user.firstName : '';
@@ -60,11 +60,12 @@ export function renderFarmDuolingo() {
     if (item) decoItems += `<span class="tf-deco-item" onclick="farmTileClick(${idx})">${item.emoji}</span>`;
   });
 
-  const dots = [0,1,2,3].map(i => {
+  const clampedIdx = Math.min(dayIndex, 2);
+  const dots = [0,1,2].map(i => {
     let cls = 'tf-step';
-    if (i < dayIndex) cls += ' tf-done';
-    else if (i === dayIndex) cls += ' tf-current';
-    return `<div class="${cls}"><span class="tf-step-icon">${stages[i]}</span><span class="tf-step-label">${['D1','D2','D3','D4'][i]}</span></div>`;
+    if (i < clampedIdx) cls += ' tf-done';
+    else if (i === clampedIdx) cls += ' tf-current';
+    return `<div class="${cls}"><span class="tf-step-icon">${stages[i]}</span><span class="tf-step-label">${['D1','D2','D3'][i]}</span></div>`;
   }).join('<div class="tf-step-line"></div>');
 
   el.innerHTML = `
@@ -255,14 +256,14 @@ export function renderFarmCyworld() {
   const cycle = startStr ? calcTomatoCycle(startStr, TODAY) : null;
   const dayIndex = cycle ? cycle.dayIndex : 0;
 
-  const stages = ['🌱','🌿','🌸','🍅'];
+  const stages = ['🌱','🌿','🍅'];
 
   const farmSlots = [];
   for (let i = 0; i < 12; i++) {
     if (i < qCount) {
       farmSlots.push('<div class="cy-slot cy-has">🍅</div>');
     } else if (i === qCount && cycle) {
-      farmSlots.push(`<div class="cy-slot cy-growing">${stages[dayIndex]}</div>`);
+      farmSlots.push(`<div class="cy-slot cy-growing">${stages[Math.min(dayIndex, 2)]}</div>`);
     } else {
       farmSlots.push('<div class="cy-slot cy-dirt"></div>');
     }

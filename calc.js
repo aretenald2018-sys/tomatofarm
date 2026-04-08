@@ -155,6 +155,19 @@ export function isDietDaySuccess(totalKcal, limitKcal, tolerance = 50) {
 }
 
 /**
+ * 하루 운동 성공 여부 (운동 기록이 하나라도 있으면 성공)
+ * @param {object} dayData - getDay()로 가져온 해당 날짜 데이터
+ * @returns {boolean}
+ */
+export function isExerciseDaySuccess(dayData) {
+  return (dayData.exercises || []).length > 0
+      || !!dayData.cf
+      || !!dayData.swimming
+      || !!dayData.running
+      || !!dayData.stretching;
+}
+
+/**
  * 하루 식단 성공/실패/미기록 판정
  * @param {object} dayData - getDay()로 가져온 해당 날짜 데이터
  * @param {object} plan - 다이어트 플랜
@@ -208,14 +221,7 @@ export function calcStreaks(cache, today, plan, dateKeyFn) {
   let workout = 0, diet = 0, stretching = 0, wineFree = 0;
 
   const getDay = (y, m, d) => cache[dateKeyFn(y, m, d)] || {};
-  const hasWorkout = (y, m, d) => {
-    const day = getDay(y, m, d);
-    return (day.exercises || []).length > 0
-        || !!day.cf
-        || !!day.swimming
-        || !!day.running
-        || !!day.stretching;
-  };
+  const hasWorkout = (y, m, d) => isExerciseDaySuccess(getDay(y, m, d));
 
   // 운동 스트릭
   let cur = new Date(today);
@@ -277,14 +283,14 @@ export function calcTomatoCycle(unitGoalStart, today) {
   if (diffDays < 0) {
     cycleStartDate = start;
   } else {
-    const offset = Math.floor(diffDays / 4) * 4;
+    const offset = Math.floor(diffDays / 3) * 3;
     cycleStartDate = new Date(start);
     cycleStartDate.setDate(cycleStartDate.getDate() + offset);
   }
 
-  const dayIndex = Math.max(0, Math.min(3, Math.floor((todayMs - cycleStartDate.getTime()) / 86400000)));
+  const dayIndex = Math.max(0, Math.min(2, Math.floor((todayMs - cycleStartDate.getTime()) / 86400000)));
   const days = [];
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 3; i++) {
     const d = new Date(cycleStartDate);
     d.setDate(d.getDate() + i);
     days.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`);
@@ -298,16 +304,17 @@ export function calcTomatoCycle(unitGoalStart, today) {
 }
 
 /**
- * 완료된 4일 사이클 결과 평가 (칼로리 기준만)
- * @param {Array<{intake:number, target:number}>} dayResults
- * @returns {{ allSuccess: boolean, daySuccesses: boolean[] }}
+ * 완료된 3일 사이클 결과 평가 (식단 + 운동 듀얼 트랙)
+ * @param {Array<{intake:number, target:number, dayData:object}>} dayResults
+ * @returns {{ dietAllSuccess: boolean, exerciseAllSuccess: boolean, tomatoesAwarded: number, dietSuccesses: boolean[], exerciseSuccesses: boolean[] }}
  */
 export function evaluateCycleResult(dayResults) {
-  const daySuccesses = dayResults.map(d => isDietDaySuccess(d.intake, d.target));
-  return {
-    allSuccess: daySuccesses.every(s => s),
-    daySuccesses,
-  };
+  const dietSuccesses = dayResults.map(d => isDietDaySuccess(d.intake, d.target));
+  const exerciseSuccesses = dayResults.map(d => isExerciseDaySuccess(d.dayData || {}));
+  const dietAllSuccess = dietSuccesses.every(s => s);
+  const exerciseAllSuccess = exerciseSuccesses.every(s => s);
+  const tomatoesAwarded = (dietAllSuccess ? 1 : 0) + (exerciseAllSuccess ? 1 : 0);
+  return { dietSuccesses, exerciseSuccesses, dietAllSuccess, exerciseAllSuccess, tomatoesAwarded };
 }
 
 /**

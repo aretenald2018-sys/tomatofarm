@@ -2577,14 +2577,37 @@ window.wtRemoveFoodItem         = wtRemoveFoodItem;
 async function _initFCM() {
   try {
     // Capacitor 네이티브 환경 확인
-    if (window.Capacitor?.getPlatform?.() === 'android' ||
-        window.Capacitor?.getPlatform?.() === 'ios') {
+    const isNative = window.Capacitor?.getPlatform?.() === 'android' ||
+        window.Capacitor?.getPlatform?.() === 'ios';
+
+    // 이미 권한 획득 이력이 있으면 토큰만 등록, 모달 표시 안 함
+    if (localStorage.getItem('fcm_permission_granted') === '1') {
+      if (isNative) {
+        try {
+          const { PushNotifications } = await import("@capacitor/push-notifications");
+          const check = await PushNotifications.checkPermissions();
+          if (check.receive === 'granted') {
+            await PushNotifications.register();
+          } else {
+            localStorage.removeItem('fcm_permission_granted'); // 권한 철회됨
+          }
+        } catch(e) { console.warn('[FCM] re-register failed:', e); }
+      } else if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        await _registerFCMToken();
+      } else if (typeof Notification !== 'undefined' && Notification.permission === 'denied') {
+        localStorage.removeItem('fcm_permission_granted'); // 권한 철회됨
+      }
+      return;
+    }
+
+    if (isNative) {
       await _initFCMCapacitor();
       return;
     }
 
     // 이미 권한이 있으면 바로 토큰 등록
     if (Notification.permission === 'granted') {
+      localStorage.setItem('fcm_permission_granted', '1');
       await _registerFCMToken();
       return;
     }
@@ -2638,6 +2661,7 @@ function _showPushPermissionModal() {
     modal.remove();
     const permission = await Notification.requestPermission();
     if (permission === 'granted') {
+      localStorage.setItem('fcm_permission_granted', '1');
       await _registerFCMToken();
     } else if (permission === 'denied') {
       // 사용자가 "허용"을 눌렀는데 denied → 브라우저/OS 레벨에서 알림이 차단된 상태
@@ -2736,6 +2760,7 @@ function _showNativeNotifSettingsModal() {
         const { PushNotifications } = await import("@capacitor/push-notifications");
         const check = await PushNotifications.checkPermissions();
         if (check.receive === 'granted') {
+          localStorage.setItem('fcm_permission_granted', '1');
           existingModal.remove();
           await PushNotifications.register();
           const { saveFcmToken } = await import('./data.js');
@@ -2845,6 +2870,7 @@ function _showChromeNotifGuideModal() {
       const existingModal = document.getElementById('chrome-notif-guide-modal');
       if (!existingModal) return;
       if (Notification.permission === 'granted') {
+        localStorage.setItem('fcm_permission_granted', '1');
         existingModal.remove();
         await _registerFCMToken();
         const toast = document.createElement('div');
@@ -2993,14 +3019,20 @@ async function _initFCMCapacitor() {
       });
     }
 
-    const permResult = await PushNotifications.requestPermissions();
-    if (permResult.receive !== 'granted') {
-      console.log('[FCM-Cap] 알림 권한 거부됨');
-      // 네이티브 앱에서 권한 거부 → OS 앱 설정을 직접 열어주는 안내
-      _showNativeNotifSettingsModal();
-      return;
+    // 이미 권한이 있으면 바로 등록, requestPermissions 호출 생략
+    const checkResult = await PushNotifications.checkPermissions();
+
+    if (checkResult.receive !== 'granted') {
+      // 권한 없으면 요청
+      const permResult = await PushNotifications.requestPermissions();
+      if (permResult.receive !== 'granted') {
+        console.log('[FCM-Cap] 알림 권한 거부됨');
+        _showNativeNotifSettingsModal();
+        return;
+      }
     }
 
+    localStorage.setItem('fcm_permission_granted', '1');
     await PushNotifications.register();
 
     PushNotifications.addListener('registration', async (token) => {

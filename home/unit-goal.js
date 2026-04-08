@@ -1,5 +1,5 @@
 // ================================================================
-// home/unit-goal.js — 단위 목표달성 (4일 사이클)
+// home/unit-goal.js — 단위 목표달성 (3일 사이클)
 // ================================================================
 
 import { TODAY, getDiet, getDietPlan, calcDietMetrics, getBodyCheckins,
@@ -10,7 +10,7 @@ import { TODAY, getDiet, getDietPlan, calcDietMetrics, getBodyCheckins,
 let _renderHomeFn = null;
 export function setUnitGoalDeps({ renderHome }) { _renderHomeFn = renderHome; }
 
-// ── 단위 목표달성 정보 (4일 사이클) ──────────────────────────────
+// ── 단위 목표달성 정보 (3일 사이클) ──────────────────────────────
 export function renderUnitGoal() {
   const container = document.getElementById('unit-goal-content');
   if (!container) return;
@@ -34,13 +34,13 @@ export function renderUnitGoal() {
   if (diffDays < 0) {
     cycleStart = startDate;
   } else {
-    const cycleOffset = Math.floor(diffDays / 4) * 4;
+    const cycleOffset = Math.floor(diffDays / 3) * 3;
     cycleStart = new Date(startDate);
     cycleStart.setDate(cycleStart.getDate() + cycleOffset);
   }
 
   const days = [];
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 3; i++) {
     const d = new Date(cycleStart);
     d.setDate(cycleStart.getDate() + i);
     days.push(d);
@@ -87,7 +87,7 @@ export function renderUnitGoal() {
 
   const fmt = d => `${d.getMonth()+1}/${d.getDate()}`;
   const DOW = ['일','월','화','수','목','금','토'];
-  const rangeStr = `${fmt(days[0])}(${DOW[days[0].getDay()]}) ~ ${fmt(days[3])}(${DOW[days[3].getDay()]})`;
+  const rangeStr = `${fmt(days[0])}(${DOW[days[0].getDay()]}) ~ ${fmt(days[2])}(${DOW[days[2].getDay()]})`;
 
   const totalSuccess = recordedDays.length > 0 ? calcSuccess(totalIntake, totalTarget) : null;
 

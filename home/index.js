@@ -36,8 +36,9 @@ setNotificationsDeps({ renderFriendFeed });
 export function renderHome() {
   try {
     _applyCardVisibility();
+    // 토마토 정산은 모든 사용자에게 실행
+    try { settleTomatoCycleIfNeeded(); } catch(e) { console.warn('[tomato] settle error:', e); }
     if (!isAdmin()) {
-      try { settleTomatoCycleIfNeeded(); } catch(e) { console.warn('[tomato] settle error:', e); }
       try { renderTomatoCard(); } catch(e) { console.warn('[tomato] card error:', e); renderHero(); }
     } else {
       renderHero();
