@@ -6,12 +6,25 @@
 
 ```
 index.html (단일 SPA)
-  ├── app.js          — 오케스트레이터: 탭 전환, 이벤트 바인딩, window.* 함수 등록
-  ├── render-*.js     — 탭별 UI 모듈
-  ├── modals/*-modal.js — 모달 HTML 템플릿
-  ├── data.js         — Firebase CRUD + _cache (유일한 데이터 접근점)
-  ├── calc.js         — 순수 비즈니스 로직 (사이드이펙트 없음)
-  └── 외부: Firebase, Claude API, Gemini, Google Calendar, AlphaVantage, 식품안전처
+  ├── app.js              — 오케스트레이터: 탭 전환, 이벤트 바인딩, window.* 함수 등록
+  ├── render-*.js         — 탭별 UI 모듈
+  ├── modals/*-modal.js   — 모달 HTML 템플릿
+  ├── data.js             — 배럴: re-export + loadAll/saveDay (데이터 접근점)
+  │   └── data/
+  │       ├── data-core.js           — Firebase init, 공유 상태, _col/_doc/_fbOp
+  │       ├── data-auth.js           — 인증, 역할 체크, 비밀번호
+  │       ├── data-account.js        — 계정 CRUD, 복구, 삭제
+  │       ├── data-social.js         — 소셜 배럴 (하위 4개 모듈 re-export)
+  │       │   ├── data-social-friends.js  — 친구, 소개, 랭킹
+  │       │   ├── data-social-guild.js    — 길드 시스템
+  │       │   ├── data-social-interact.js — 방명록, 댓글, 알림, 좋아요, FCM
+  │       │   └── data-social-log.js      — 로그인/액션 로그, 튜토리얼
+  │       ├── data-date.js           — 날짜 유틸 (dateKey, TODAY)
+  │       ├── data-image.js          — 이미지 base64 변환
+  │       ├── data-external.js       — 환율, Fear & Greed API
+  │       └── data-helpers.js        — 정렬, 분기 키 유틸
+  ├── calc.js             — 순수 비즈니스 로직 (사이드이펙트 없음)
+  └── 외부: Firebase, Claude API, Gemini, 식품안전처
 ```
 
 ## 2. 기술 스택
@@ -29,10 +42,12 @@ index.html (단일 SPA)
 ### 왜 빌드 스텝이 없는가
 1인 개발 + 빠른 배포가 우선. ES6 modules로 직접 import. 번들러 도입 시 Capacitor 빌드 파이프라인과 충돌 가능성.
 
-### 왜 data.js를 통해서만 데이터 접근하는가
+### 왜 data.js(data/ 디렉토리)를 통해서만 데이터 접근하는가
 - `_cache` 인메모리 캐시와 Firebase가 항상 동기화되어야 함
 - 직접 Firestore 호출하면 캐시가 stale 됨 → 다른 탭에서 구 데이터 표시
 - `saveDay()`는 저장 후 `_cache`를 업데이트하고 이벤트를 발생시킴 → 이 체인이 끊기면 UI 갱신이 안 됨
+- **data.js는 배럴 모듈**: 12개 하위 모듈(data/*.js)을 re-export. 기존 `import { ... } from './data.js'` 호환 유지
+- **data-core.js가 공유 상태 소유자**: db, _cache, _settings, _currentUser 등 모든 공유 상태는 data-core.js에서 관리. 의존 방향은 항상 core → 나머지 (순환 없음)
 
 ### 왜 saveWorkoutDay()와 _autoSaveDiet()가 분리되어 있는가
 - `saveWorkoutDay()`: 명시적 저장 (운동 상태 변경, 세트 체크 등)
@@ -48,7 +63,8 @@ index.html (단일 SPA)
 
 ### 탭 로딩 전략
 - **즉시 로드**: home, workout (import 문으로 직접)
-- **레이지 로드**: 나머지 탭 (app.js `_lazy()` 함수로 동적 import)
+- **레이지 로드**: stats, cooking, admin (app.js `_lazy()` 함수로 동적 import)
+- **삭제됨**: calendar, finance, wine, movie, dev (경량화 2026-04)
 - 코어 탭은 앱 시작 시 무조건 필요하므로 즉시 로드
 
 ## 4. Firebase 컬렉션
@@ -59,9 +75,9 @@ index.html (단일 SPA)
 | `users` | userId | 프로필, 설정, 식단 플랜 |
 | `goals` | goalId | 목표 정의 |
 | `quests` | questId | 일일 퀘스트 |
-| `stocks` | 심볼 | 주식 포트폴리오 |
-| `wines` | wineId | 와인 기록 |
-| `movies` | 월별 키 | 영화 목록 (자동 크롤링) |
+| `stocks` | 심볼 | 주식 포트폴리오 (UI 삭제, 데이터 보존) |
+| `wines` | wineId | 와인 기록 (UI 삭제, 데이터 보존) |
+| `movies` | 월별 키 | 영화 목록 (UI 삭제, 데이터 보존) |
 
 ## 5. 워크아웃 데이터 구조 (workouts 컬렉션)
 
