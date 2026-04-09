@@ -71,6 +71,22 @@ export function showToast(message, duration = 2500, type = 'default') {
   }, duration);
 }
 
+// ── 화면 중앙 큰 토스트 (식단 저장 등) ──────────────────────────
+export function showCenterToast(message, duration = 1800) {
+  const existing = document.getElementById('tds-center-toast');
+  if (existing) existing.remove();
+  const toast = document.createElement('div');
+  toast.id = 'tds-center-toast';
+  toast.className = 'tds-center-toast';
+  toast.innerHTML = `<span class="tds-center-toast-icon">✓</span><span>${message}</span>`;
+  document.body.appendChild(toast);
+  requestAnimationFrame(() => toast.classList.add('show'));
+  setTimeout(() => {
+    toast.classList.remove('show');
+    setTimeout(() => toast.remove(), 300);
+  }, duration);
+}
+
 // ── Confetti 축하 애니메이션 ─────────────────────────────────────
 export function showConfetti(duration = 3000) {
   const container = document.createElement('div');

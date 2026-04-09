@@ -82,6 +82,7 @@ export async function refreshNotifCenter() {
     else if (n.type === 'announcement')    { icon = '📢'; iconClass = 'announce'; }
     else if (n.type === 'comment')              { icon = '💬'; iconClass = 'default'; }
     else if (n.type === 'comment_reply')        { icon = '💬'; iconClass = 'default'; }
+    else if (n.type === 'guild_join_pending')    { icon = '⏳'; iconClass = 'default'; }
     else if (n.type === 'guild_join_request')   { icon = '🏠'; iconClass = 'default'; }
     else if (n.type === 'guild_join_approved')  { icon = '🏠'; iconClass = 'friend-ok'; }
     else if (n.type === 'guild_member_joined') { icon = '🏠'; iconClass = 'friend-ok'; }
@@ -217,6 +218,11 @@ window.acceptGuildInvite = async function(guildId, notifId) {
   setCurrentUser(user);
   await updateGuildMemberCount(guildId, 1);
   await markNotificationRead(notifId);
+  // "진행중" 알림도 제거
+  try {
+    const { deleteDoc, doc, getFirestore } = await import("https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js");
+    await deleteDoc(doc(getFirestore(), '_notifications', `guild_pending_${guildId}_${user.id}`));
+  } catch {}
   haptic('success');
   showToast(`${guildId} 길드에 가입했어요!`, 2500, 'success');
   refreshNotifCenter();

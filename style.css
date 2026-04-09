@@ -255,6 +255,8 @@
 .tds-btn.secondary:active { background: var(--surface3); }
 .tds-btn.ghost { background: transparent; color: var(--text-secondary); }
 .tds-btn.ghost:active { background: var(--surface2); }
+.tds-btn.tonal { background: var(--primary-bg, #fdf0f0); color: var(--primary); border: none; }
+.tds-btn.tonal:active { background: var(--primary-light, #fed4d2); }
 .tds-btn.danger { background: var(--diet-bad-dim); color: var(--diet-bad); border: 1px solid var(--diet-bad); }
 .tds-btn.sm { padding: 8px 14px; font-size: 12px; line-height: 18px; border-radius: var(--radius-sm); }
 .tds-btn.lg { padding: 14px 24px; font-size: 17px; line-height: 25.5px; border-radius: var(--radius-lg); }
@@ -3928,43 +3930,53 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
   padding: 4px 0;
 }
 
-/* ── 운동 타이머 + 끝내기 (Seed) ── */
+/* ── 총 운동시간 타이머 (TDS Mobile) ── */
 .wt-workout-timer-bar {
-  display: none; align-items: center; gap: var(--seed-x3);
+  display: none; align-items: center; justify-content: space-between;
   background: var(--seed-bg-layer); border: 1px solid var(--seed-stroke-neutral);
-  border-radius: var(--seed-r3); padding: var(--seed-x3) var(--seed-x4);
+  border-radius: var(--seed-r3); padding: 10px 14px;
   margin-bottom: var(--seed-x3); box-shadow: var(--seed-s1);
 }
 .wt-workout-timer-bar.wt-open { display: flex; }
-.wt-timer-icon { font-size: var(--seed-t6); flex-shrink: 0; }
-.wt-timer-text {
-  font-size: var(--seed-t5); font-weight: 700; color: var(--seed-fg-brand, var(--primary));
-  font-variant-numeric: tabular-nums; flex: 1;
+.wt-timer-left { display: flex; align-items: center; gap: 10px; }
+.wt-timer-icon {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: var(--primary-bg, #fdf0f0); color: var(--primary);
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
 }
+.wt-timer-info { display: flex; flex-direction: column; gap: 1px; }
+.wt-timer-label {
+  font-size: 11px; line-height: 16.5px; font-weight: 500; color: var(--text-tertiary);
+}
+.wt-timer-text {
+  font-size: 20px; line-height: 29px; font-weight: 700; color: var(--text);
+  font-variant-numeric: tabular-nums; letter-spacing: 0.5px;
+}
+.wt-workout-timer-bar.wt-running .wt-timer-text { color: var(--primary); }
 .wt-workout-duration-result {
-  font-size: var(--seed-t4); font-weight: 600; color: var(--seed-fg-muted); flex: 1;
+  font-size: 16px; font-weight: 600; color: var(--text-secondary); flex: 1;
 }
 .wt-finish-btn {
-  padding: var(--seed-x2) var(--seed-x4); border-radius: var(--seed-r-full);
-  background: var(--seed-bg-critical-solid, var(--primary)); color: #fff;
-  font-size: var(--seed-t3); font-weight: 700;
+  padding: 7px 14px; border-radius: var(--seed-r-full);
+  background: var(--primary); color: #fff;
+  font-size: 13px; line-height: 19.5px; font-weight: 700;
   border: none; cursor: pointer;
-  transition: all var(--seed-d3) var(--seed-ease);
+  transition: all 0.1s ease-in-out;
 }
 .wt-finish-btn:active { transform: scale(0.96); opacity: 0.9; }
 .wt-timer-controls {
-  display: flex; align-items: center; gap: var(--seed-x2); flex-shrink: 0;
+  display: flex; align-items: center; gap: 6px; flex-shrink: 0;
 }
 .wt-timer-ctrl-btn {
-  padding: var(--seed-x2) var(--seed-x3); border-radius: var(--seed-r-full);
-  background: var(--seed-bg-neutral-weak); border: 1px solid var(--seed-stroke-neutral);
-  font-size: var(--seed-t2); font-weight: 500; color: var(--seed-fg-muted);
-  cursor: pointer; transition: all var(--seed-d3) var(--seed-ease);
-  white-space: nowrap;
+  width: 32px; height: 32px; border-radius: 50%;
+  background: var(--surface2); border: 1px solid var(--seed-stroke-neutral);
+  color: var(--text-secondary);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: all 0.1s ease-in-out;
 }
-.wt-timer-ctrl-btn:active { transform: scale(0.96); }
+.wt-timer-ctrl-btn:active { transform: scale(0.96); background: var(--surface3); }
 .wt-timer-ctrl-btn--ghost {
-  background: transparent; border-color: transparent; color: var(--seed-fg-subtle);
+  background: transparent; border-color: transparent; color: var(--text-tertiary);
 }
 
 /* ── 런닝 기록 폼 (Seed — ex-block 동일 패턴) ── */
@@ -4717,6 +4729,28 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
 .tds-toast[data-type="warning"] { background: var(--seed-gray-800, #333); border-left: 3px solid #fe928d; }
 .tds-toast[data-type="info"]    { background: var(--seed-gray-900); }
 
+/* ── TDS Center Toast (식단 저장 등 큰 피드백) ── */
+.tds-center-toast {
+  position: fixed; top: 50%; left: 50%;
+  transform: translate(-50%, -50%) scale(0.8);
+  background: var(--seed-gray-900); color: #fff;
+  font-size: 17px; font-weight: 700; font-family: var(--font-sans);
+  padding: 20px 32px;
+  border-radius: var(--seed-r3, 16px); box-shadow: var(--seed-s3);
+  z-index: 2000; opacity: 0; pointer-events: none;
+  display: flex; align-items: center; gap: 10px;
+  transition: opacity 0.2s ease-in-out, transform 0.2s ease-in-out;
+}
+.tds-center-toast.show {
+  opacity: 1; transform: translate(-50%, -50%) scale(1); pointer-events: auto;
+}
+.tds-center-toast-icon {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: var(--primary, #fa342c); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; font-weight: 700; flex-shrink: 0;
+}
+
 /* ── Confetti 축하 애니메이션 ── */
 .confetti-container {
   position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -4804,8 +4838,8 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
 }
 .lb-row:last-child { border-bottom: none; }
 .lb-me { background: var(--primary-bg); margin: 0 -16px; padding: 10px 16px; border-radius: 10px; }
-.lb-rank { font-size: 16px; line-height: 24px; min-width: 28px; text-align: center; }
-.lb-name { font-size: 13px; line-height: 19.5px; font-weight: 600; color: var(--text); min-width: 48px; }
+.lb-rank { font-size: 16px; line-height: 24px; min-width: 28px; text-align: center; flex-shrink: 0; }
+.lb-name { font-size: 13px; line-height: 19.5px; font-weight: 600; color: var(--text); min-width: 48px; max-width: 72px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0; }
 .lb-bar-track {
   flex: 1; height: 8px; background: var(--surface3);
   border-radius: var(--seed-r-full); overflow: hidden;
@@ -4814,7 +4848,7 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
   height: 100%; background: var(--primary); border-radius: var(--seed-r-full);
   transition: width 0.6s cubic-bezier(0.32, 0.72, 0, 1);
 }
-.lb-days { font-size: 12px; line-height: 18px; font-weight: 700; color: var(--text-secondary); min-width: 28px; text-align: right; }
+.lb-days { font-size: 12px; line-height: 18px; font-weight: 700; color: var(--text-secondary); min-width: 52px; text-align: right; white-space: nowrap; flex-shrink: 0; }
 
 /* ── Leaderboard Context ── */
 .lb-context {
@@ -4856,10 +4890,13 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
 }
 
 /* ── 길드 랭킹 ── */
+.lb-name-guild {
+  width: 80px; min-width: 80px; max-width: 80px;
+}
 .lb-my-guild {
   background: var(--primary-bg, #fdf0f0);
   border-radius: var(--radius-md, 12px);
-  padding: var(--seed-x3, 12px) var(--seed-x2, 8px);
+  margin: 0 -12px; padding: 10px 12px;
 }
 .lb-primary-badge {
   font-size: 10px; font-weight: 700; line-height: 15px;

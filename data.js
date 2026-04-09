@@ -536,6 +536,18 @@ export async function createGuildJoinRequest(guildId, guildName, userId, userNam
   };
   await setDoc(doc(db, '_guild_requests', requestId), request);
 
+  // 요청자 본인에게 "진행중" 알림 (승인 시 자동 제거)
+  const pendingNotifId = `guild_pending_${guildId}_${userId}`;
+  await setDoc(doc(db, '_notifications', pendingNotifId), {
+    id: pendingNotifId, to: userId, read: false, createdAt: Date.now(),
+    type: 'guild_join_pending',
+    from: userId,
+    guildId,
+    guildName,
+    requestId,
+    message: `${guildName} 길드 가입이 진행 중입니다.`,
+  });
+
   // 해당 길드의 모든 승인된 멤버에게 알림
   const accounts = await getAccountList();
   for (const acc of accounts) {
@@ -585,6 +597,10 @@ export async function approveGuildJoinRequest(requestId) {
 
     // 멤버 카운트 증가
     await updateGuildMemberCount(request.guildId, 1);
+
+    // 요청자의 "진행중" 알림 제거
+    const pendingNotifId = `guild_pending_${request.guildId}_${request.userId}`;
+    try { await deleteDoc(doc(db, '_notifications', pendingNotifId)); } catch {}
 
     // 요청자에게 승인 알림
     await sendNotification(request.userId, {

@@ -3,7 +3,7 @@
 // ================================================================
 
 import { MUSCLES, DAYS }                       from './config.js';
-import { showToast }                           from './home/utils.js';
+import { showToast, showCenterToast }           from './home/utils.js';
 import { saveDay, saveExercise, deleteExercise,
          getDay, getExList, dateKey,
          getLastSession, isFuture, TODAY,
@@ -698,6 +698,10 @@ function _renderPickerList() {
           _exercises.push({ muscleId:ex.muscleId, exerciseId:ex.id, sets:[{kg:0,reps:0,setType:'main',done:false}] });
           _renderExerciseList();
           wtCloseExercisePicker();
+          // 헬스 종목 추가 시 타이머 자동 시작
+          const timerBar = document.getElementById('wt-workout-timer-bar');
+          if (timerBar && !timerBar.classList.contains('wt-open')) timerBar.classList.add('wt-open');
+          if (!_workoutStartTime && _workoutDuration === 0) wtStartWorkoutTimer();
           saveWorkoutDay().catch(e => console.error('Save error:', e));
         });
       }
@@ -1030,7 +1034,7 @@ async function _autoSaveDiet() {
       workoutPhoto: window._mealPhotos?.workout || null,
     });
     console.log('[render-workout] 식단 자동 저장 완료');
-    showToast('저장되었습니다', 1500, 'success');
+    showCenterToast('저장되었습니다');
   } catch(e) {
     console.error('[render-workout] 자동 저장 실패:', e);
   }
@@ -1085,24 +1089,26 @@ function _renderWorkoutTimer() {
   const elapsed = _workoutStartTime
     ? Math.floor((Date.now() - _workoutStartTime) / 1000) + _workoutDuration
     : _workoutDuration;
-  el.textContent = _fmtDuration(elapsed);
+  el.textContent = _fmtTimerCompact(elapsed);
   el.style.display = '';
+  // 진행중 시각 피드백
+  const bar = document.getElementById('wt-workout-timer-bar');
+  if (bar) bar.classList.toggle('wt-running', !!_workoutStartTime);
 }
 
 function _renderTimerControls() {
   const isRunning = !!_workoutStartTime;
   const hasTime   = _workoutDuration > 0 || isRunning;
   const pauseBtn  = document.getElementById('wt-timer-pause-btn');
+  const playBtn   = document.getElementById('wt-timer-play-btn');
   const resetBtn  = document.getElementById('wt-timer-reset-btn');
   const finBtn    = document.getElementById('wt-finish-workout-btn');
   const resultEl  = document.getElementById('wt-workout-duration-result');
 
-  if (pauseBtn) {
-    pauseBtn.textContent = isRunning ? '일시정지' : '재개';
-    pauseBtn.style.display = hasTime ? '' : 'none';
-  }
+  if (pauseBtn) pauseBtn.style.display = (hasTime && isRunning) ? '' : 'none';
+  if (playBtn)  playBtn.style.display  = (hasTime && !isRunning) ? '' : 'none';
   if (resetBtn) resetBtn.style.display = hasTime ? '' : 'none';
-  if (finBtn)   finBtn.style.display = hasTime ? '' : 'none';
+  if (finBtn)   finBtn.style.display   = isRunning ? '' : 'none';
   if (resultEl) resultEl.style.display = 'none';
 }
 
@@ -1113,6 +1119,15 @@ function _fmtDuration(sec) {
   if (h > 0) return `${h}시간 ${m}분 ${s}초`;
   if (m > 0) return `${m}분 ${s}초`;
   return `${s}초`;
+}
+
+function _fmtTimerCompact(sec) {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  const pad = n => String(n).padStart(2, '0');
+  if (h > 0) return `${h}:${pad(m)}:${pad(s)}`;
+  return `${m}:${pad(s)}`;
 }
 
 export function wtTogglePauseWorkoutTimer() {
@@ -1136,12 +1151,16 @@ export function wtFinishWorkout() {
   const finBtn   = document.getElementById('wt-finish-workout-btn');
   const resultEl = document.getElementById('wt-workout-duration-result');
   if (pauseBtn) pauseBtn.style.display = 'none';
+  const playBtn = document.getElementById('wt-timer-play-btn');
+  if (playBtn) playBtn.style.display = 'none';
   if (resetBtn) resetBtn.style.display = 'none';
   if (finBtn)   finBtn.style.display = 'none';
   if (resultEl) {
-    resultEl.textContent = `운동 시간: ${_fmtDuration(_workoutDuration)}`;
+    resultEl.textContent = `총 ${_fmtDuration(_workoutDuration)}`;
     resultEl.style.display = '';
   }
+  const bar = document.getElementById('wt-workout-timer-bar');
+  if (bar) bar.classList.remove('wt-running');
   showToast(`운동 완료! ${_fmtDuration(_workoutDuration)}`, 3000, 'success');
   saveWorkoutDay().catch(e => console.error('Save error:', e));
 }

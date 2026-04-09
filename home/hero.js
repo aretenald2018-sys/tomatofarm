@@ -474,14 +474,15 @@ async function _renderGuildLeaderboard(contentEl, user) {
       const rank = rankIcons[i] || `${i + 1}`;
       const pct = Math.round((g.avgActiveDays / 7) * 100);
       const isMine = myGuilds.has(g.guildId);
-      const isPrimary = g.guildId === user.primaryGuild;
-      const primaryBadge = isPrimary ? ' <span class="lb-primary-badge">★ 대표</span>' : '';
       const myCls = isMine ? ' lb-my-guild' : '';
+
+      const nameLen = g.guildName.length;
+      const nameFontSize = nameLen > 4 ? '11px' : '13px';
 
       html += `<div class="lb-row${myCls}">
         <span class="lb-rank">${rank}</span>
         <div class="lb-avatar active" style="font-size:14px;overflow:hidden;">${((guildIconMap[g.guildName] || '🏠').startsWith('data:')) ? `<img src="${guildIconMap[g.guildName]}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">` : (guildIconMap[g.guildName] || '🏠')}</div>
-        <span class="lb-name">${g.guildName}${primaryBadge}</span>
+        <span class="lb-name lb-name-guild" style="font-size:${nameFontSize};">${g.guildName}</span>
         <div class="lb-bar-track"><div class="lb-bar-fill" style="width:${pct}%"></div></div>
         <span class="lb-days"><span class="lb-guild-info">${g.memberCount}명</span> ${g.avgActiveDays}일</span>
       </div>`;

@@ -413,15 +413,21 @@
         </div>
       </div>
 
-      <!-- 운동 타이머 + 컨트롤 -->
+      <!-- 총 운동시간 타이머 -->
       <div class="wt-workout-timer-bar" id="wt-workout-timer-bar">
-        <span class="wt-timer-icon">⏱️</span>
-        <span class="wt-timer-text" id="wt-workout-timer">0초</span>
+        <div class="wt-timer-left">
+          <span class="wt-timer-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2"/><path d="M9 2h6"/><path d="M12 2v3"/></svg></span>
+          <div class="wt-timer-info">
+            <span class="wt-timer-label">총 운동시간</span>
+            <span class="wt-timer-text" id="wt-workout-timer">0:00</span>
+          </div>
+        </div>
         <span class="wt-workout-duration-result" id="wt-workout-duration-result" style="display:none"></span>
         <div class="wt-timer-controls">
-          <button class="wt-timer-ctrl-btn" id="wt-timer-pause-btn" onclick="wtTogglePauseWorkoutTimer()" style="display:none">일시정지</button>
-          <button class="wt-timer-ctrl-btn wt-timer-ctrl-btn--ghost" id="wt-timer-reset-btn" onclick="wtResetWorkoutTimer()" style="display:none">초기화</button>
-          <button class="wt-finish-btn" id="wt-finish-workout-btn" onclick="wtFinishWorkout()" style="display:none">운동 끝내기</button>
+          <button class="wt-timer-ctrl-btn" id="wt-timer-pause-btn" onclick="wtTogglePauseWorkoutTimer()" style="display:none" title="일시정지"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></button>
+          <button class="wt-timer-ctrl-btn" id="wt-timer-play-btn" onclick="wtTogglePauseWorkoutTimer()" style="display:none" title="재개"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg></button>
+          <button class="wt-timer-ctrl-btn wt-timer-ctrl-btn--ghost" id="wt-timer-reset-btn" onclick="wtResetWorkoutTimer()" style="display:none" title="초기화"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg></button>
+          <button class="wt-finish-btn" id="wt-finish-workout-btn" onclick="wtFinishWorkout()" style="display:none">끝내기</button>
         </div>
       </div>
 
@@ -471,7 +477,10 @@
       <div class="wt-detail-section" id="wt-memo-section">
         <textarea class="memo-input" id="wt-workout-memo" placeholder="운동 메모 (예: 벤치 컨디션 좋았음..)"></textarea>
         <div class="meal-photo-wrap" id="wt-photo-workout" style="margin-top:8px;"></div>
-        <button class="meal-photo-btn" onclick="document.getElementById('photo-input-workout').click()" style="margin-top:6px;">📷 운동 인증사진</button>
+        <button class="tds-btn tonal md wt-photo-upload-btn" onclick="document.getElementById('photo-input-workout').click()" style="margin-top:8px;width:100%;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+          운동 인증사진
+        </button>
         <input type="file" id="photo-input-workout" accept="image/*" style="display:none" onchange="uploadMealPhoto('workout',this)">
       </div>
 
@@ -1920,13 +1929,46 @@ async function toggleGuildPrimary(name) {
 }
 
 async function removeGuildFromModal(name) {
-  // 길드장이면 위임 먼저 요구
-  if (_isMyGuildLeader(name)) {
+  const guildEntry = _guildModalGuilds.find(g => g.name === name);
+  const isPending = guildEntry && guildEntry.status === 'pending';
+
+  if (!isPending) {
+    // 정식 멤버 → 탈퇴
+    if (_isMyGuildLeader(name)) {
+      const { showToast: _st } = await import('./home/utils.js');
+      _st('길드장은 탈퇴 전에 다른 멤버에게 길드장을 위임해주세요.', 3000, 'warning');
+      return;
+    }
+    if (!confirm(`${name} 길드에서 탈퇴할까요?\n길드 데이터는 유지됩니다.`)) return;
+  } else {
+    // 승인 대기중 → 가입신청 철회
+    if (!confirm(`${name} 가입신청을 철회할까요?`)) return;
+
+    // pending은 즉시 Firebase 반영 (저장하기 안 눌러도 적용)
+    const { getCurrentUser, saveAccount, setCurrentUser } = await import('./data.js');
+    const user = getCurrentUser();
+    if (user) {
+      user.pendingGuilds = (user.pendingGuilds || []).filter(g => g !== name);
+      await saveAccount(user);
+      setCurrentUser(user);
+    }
+    // pending 알림 + _guild_requests 정리
+    try {
+      const { deleteDoc: _dd, doc: _dc, getFirestore: _gfs, getDocs: _gds, collection: _col } = await import("https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js");
+      const _db = _gfs();
+      await _dd(_dc(_db, '_notifications', `guild_pending_${name}_${user.id}`)).catch(() => {});
+      const reqSnap = await _gds(_col(_db, '_guild_requests'));
+      for (const d of reqSnap.docs) {
+        const data = d.data();
+        if (data.guildId === name && data.userId === user.id && data.status === 'pending') {
+          await _dd(_dc(_db, '_guild_requests', d.id));
+        }
+      }
+    } catch {}
     const { showToast: _st } = await import('./home/utils.js');
-    _st('길드장은 탈퇴 전에 다른 멤버에게 길드장을 위임해주세요.', 3000, 'warning');
-    return;
+    _st(`${name} 가입신청을 철회했어요`, 2500, 'info');
   }
-  if (!confirm(`${name} 길드에서 탈퇴할까요?\n길드 데이터��� 유지됩니다.`)) return;
+
   _guildModalGuilds = _guildModalGuilds.filter(g => g.name !== name);
   if (_guildModalPrimary === name) {
     const firstMember = _guildModalGuilds.find(g => g.status === 'member');
@@ -2006,6 +2048,26 @@ async function saveGuildFromModal() {
   for (const oldG of oldGuilds) {
     if (!newGuilds.includes(oldG)) {
       await updateGuildMemberCount(oldG, -1);
+    }
+  }
+
+  // 철회된 pending 길드 → _guild_requests 삭제 + pending 알림 제거
+  const { deleteDoc: _dd, doc: _dc, getFirestore: _gfs, getDocs: _gds, collection: _col } = await import("https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js");
+  const _db = _gfs();
+  for (const oldP of oldPending) {
+    if (!newPending.includes(oldP)) {
+      // pending 알림 제거
+      try { await _dd(_dc(_db, '_notifications', `guild_pending_${oldP}_${user.id}`)); } catch {}
+      // _guild_requests에서 해당 요청 삭제
+      try {
+        const reqSnap = await _gds(_col(_db, '_guild_requests'));
+        reqSnap.forEach(async (d) => {
+          const data = d.data();
+          if (data.guildId === oldP && data.userId === user.id && data.status === 'pending') {
+            await _dd(_dc(_db, '_guild_requests', d.id));
+          }
+        });
+      } catch {}
     }
   }
 

@@ -188,16 +188,27 @@ window.openFriendProfile = async function(friendId, friendName, scrollToSection,
           : ''
         }
         ${(() => {
-          const userGuilds = friendAcc?.guilds || [];
-          const primaryG = friendAcc?.primaryGuild || '';
-          if (userGuilds.length > 0) {
-            const chips = userGuilds.map(g => {
-              const isPrimary = g === primaryG;
-              return `<span class="guild-chip${isPrimary ? ' primary' : ''}" style="font-size:11px;padding:3px 8px;">${isPrimary ? '★ ' : ''}${g}</span>`;
-            }).join('');
-            return `<div style="display:flex;flex-wrap:wrap;gap:4px;justify-content:center;margin-top:6px;">${chips}</div>`;
+          const userGuilds = isMyProfile ? (user?.guilds || friendAcc?.guilds || []) : (friendAcc?.guilds || []);
+          const primaryG = isMyProfile ? (user?.primaryGuild || friendAcc?.primaryGuild || '') : (friendAcc?.primaryGuild || '');
+          const pendingGuilds = isMyProfile ? (user?.pendingGuilds || []) : [];
+          const hasPending = pendingGuilds.filter(g => !userGuilds.includes(g)).length > 0;
+          if (primaryG && userGuilds.includes(primaryG)) {
+            // 대표길드 1개만 표시
+            const setBtn = isMyProfile ? `<button onclick="openQuickGuildJoin()" style="background:none;border:none;color:var(--text-tertiary);font-size:11px;font-weight:500;cursor:pointer;padding:0;margin-left:4px;">변경</button>` : '';
+            const pendingInfo = hasPending ? `<div style="font-size:11px;color:var(--text-tertiary);margin-top:4px;">⏳ ${pendingGuilds.filter(g => !userGuilds.includes(g)).join(', ')} 가입 대기중</div>` : '';
+            return `<div style="display:flex;align-items:center;justify-content:center;gap:4px;margin-top:6px;"><span class="guild-chip primary" style="font-size:11px;padding:3px 8px;">★ ${primaryG}</span>${setBtn}</div>${pendingInfo}<div id="quick-guild-join-list" style="display:none;margin-top:6px;"></div>`;
+          } else if (userGuilds.length > 0) {
+            // 길드는 있지만 대표길드 미설정
+            const setBtn = isMyProfile ? ` <button onclick="openQuickGuildJoin()" style="background:none;border:none;color:var(--primary);font-size:11px;font-weight:600;cursor:pointer;padding:0;">대표길드 설정하기</button>` : '';
+            const firstChip = `<span class="guild-chip" style="font-size:11px;padding:3px 8px;">${userGuilds[0]}</span>`;
+            return `<div style="display:flex;align-items:center;justify-content:center;gap:4px;margin-top:6px;">${firstChip}${setBtn}</div><div id="quick-guild-join-list" style="display:none;margin-top:6px;"></div>`;
+          } else if (hasPending) {
+            // 가입 대기중만 있음
+            const pendingInfo = `<div style="margin-top:6px;font-size:11px;color:var(--text-tertiary);">⏳ ${pendingGuilds.filter(g => !userGuilds.includes(g)).join(', ')} 가입 대기중</div>`;
+            const setBtn = isMyProfile ? ` <button onclick="openQuickGuildJoin()" style="background:none;border:none;color:var(--primary);font-size:11px;font-weight:600;cursor:pointer;padding:0;margin-top:2px;">대표길드 설정하기</button>` : '';
+            return `${pendingInfo}${setBtn}<div id="quick-guild-join-list" style="display:none;margin-top:6px;"></div>`;
           } else if (isMyProfile) {
-            return `<div style="margin-top:6px;font-size:12px;color:var(--text-tertiary);">소속 길드가 없습니다. <button onclick="openQuickGuildJoin()" style="background:none;border:none;color:var(--primary);font-size:12px;font-weight:600;cursor:pointer;padding:0;">추가하기</button></div><div id="quick-guild-join-list" style="display:none;margin-top:6px;"></div>`;
+            return `<div style="margin-top:6px;font-size:12px;color:var(--text-tertiary);">소속 길드가 없습니다. <button onclick="openQuickGuildJoin()" style="background:none;border:none;color:var(--primary);font-size:12px;font-weight:600;cursor:pointer;padding:0;">대표길드 설정하기</button></div><div id="quick-guild-join-list" style="display:none;margin-top:6px;"></div>`;
           }
           return '';
         })()}
@@ -483,18 +494,32 @@ window.openQuickGuildJoin = async function() {
   if (listEl.style.display !== 'none') { listEl.style.display = 'none'; return; }
 
   const { getAllGuilds } = await import('../data.js');
+  const user = getCurrentUser();
+  const myGuilds = new Set(user?.guilds || []);
+  const myPending = new Set(user?.pendingGuilds || []);
   const guilds = await getAllGuilds();
   if (!guilds.length) {
     listEl.innerHTML = '<div style="font-size:11px;color:var(--text-tertiary);padding:4px 0;text-align:center;">아직 생성된 길드가 없어요</div>';
     listEl.style.display = '';
     return;
   }
+  // 내 길드를 상단에 표시 (대표길드 설정용)
+  const sorted = [...guilds].sort((a, b) => {
+    const aM = myGuilds.has(a.name) ? 0 : myPending.has(a.name) ? 1 : 2;
+    const bM = myGuilds.has(b.name) ? 0 : myPending.has(b.name) ? 1 : 2;
+    return aM - bM;
+  });
   listEl.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:4px;justify-content:center;">${
-    guilds.slice(0, 12).map(g =>
-      `<button onclick="quickJoinGuild('${g.name.replace(/'/g, "\\'")}')" class="guild-chip" style="font-size:11px;padding:3px 8px;cursor:pointer;border:1px solid var(--border);background:var(--surface2);">
-        ${g.name}<span style="font-size:9px;color:var(--text-tertiary);margin-left:2px;">${g.memberCount || 0}명</span>
-      </button>`
-    ).join('')
+    sorted.slice(0, 12).map(g => {
+      const isMine = myGuilds.has(g.name);
+      const isPending = myPending.has(g.name);
+      const label = isMine ? '★' : isPending ? '⏳' : `${g.memberCount || 0}명`;
+      const bg = isMine ? 'var(--primary-bg)' : 'var(--surface2)';
+      const border = isMine ? 'var(--primary)' : 'var(--border)';
+      return `<button onclick="quickJoinGuild('${g.name.replace(/'/g, "\\'")}')" class="guild-chip" style="font-size:11px;padding:3px 8px;cursor:pointer;border:1px solid ${border};background:${bg};">
+        ${g.name}<span style="font-size:9px;color:var(--text-tertiary);margin-left:2px;">${label}</span>
+      </button>`;
+    }).join('')
   }</div>`;
   listEl.style.display = '';
 };
@@ -503,6 +528,34 @@ window.quickJoinGuild = async function(guildName) {
   const user = getCurrentUser();
   if (!user) return;
   const { createGuildJoinRequest, saveAccount, setCurrentUser, createGuild: cg, getAllGuilds } = await import('../data.js');
+
+  // 이미 가입된 길드 → 대표길드로 설정
+  if ((user.guilds || []).includes(guildName)) {
+    user.primaryGuild = guildName;
+    await saveAccount(user);
+    setCurrentUser(user);
+    showToast(`${guildName}을(를) 대표길드로 설정했어요!`, 2500, 'success');
+    document.getElementById('dynamic-modal')?.remove();
+    openFriendProfile(isAdminGuest() ? getAdminId() : user.id);
+    return;
+  }
+
+  // 승인 대기중 길드 → 가입신청 철회
+  if ((user.pendingGuilds || []).includes(guildName)) {
+    user.pendingGuilds = (user.pendingGuilds || []).filter(g => g !== guildName);
+    await saveAccount(user);
+    setCurrentUser(user);
+    // pending 알림 제거
+    try {
+      const { deleteDoc: dd, doc: dc, getFirestore: gfs } = await import("https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js");
+      await dd(dc(gfs(), '_notifications', `guild_pending_${guildName}_${user.id}`));
+    } catch {}
+    showToast(`${guildName} 가입신청을 철회했어요.`, 2500, 'info');
+    document.getElementById('dynamic-modal')?.remove();
+    openFriendProfile(isAdminGuest() ? getAdminId() : user.id);
+    return;
+  }
+
   const allG = await getAllGuilds();
   const existing = allG.find(g => g.name === guildName);
 
@@ -510,7 +563,7 @@ window.quickJoinGuild = async function(guildName) {
     // 기존 길드 → 가입 요청 (승인 대기)
     const displayName = user.nickname || (user.lastName + user.firstName);
     const pending = user.pendingGuilds || [];
-    if (!pending.includes(guildName) && !(user.guilds || []).includes(guildName)) {
+    if (!pending.includes(guildName)) {
       pending.push(guildName);
       user.pendingGuilds = pending;
       await saveAccount(user);
