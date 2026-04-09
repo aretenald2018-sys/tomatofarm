@@ -5,7 +5,7 @@
 import { getCurrentUser, getMyNotifications, getAccountList,
          getPendingRequests, acceptFriendRequest, removeFriend,
          markNotificationRead, recordAction,
-         approveGuildJoinRequest }  from '../data.js';
+         approveGuildJoinRequest, findCommentProfileOwner }  from '../data.js';
 import { resolveNickname, formatTimeAgo, showToast, haptic } from './utils.js';
 
 let _notifCenterOpen = false;
@@ -120,14 +120,14 @@ export async function refreshNotifCenter() {
       : n.type === 'patchnote'
       ? `markNotifFromCenter('${n.id}',this);markPatchnoteReadFromNotif()`
       : (n.type === 'comment' || n.type === 'comment_reply')
-      ? `markNotifFromCenter('${n.id}',this);closeNotifCenter();openFriendProfile('${user.id}','${user.nickname || user.lastName + user.firstName}','comments_${n.section || ''}','${n.dateKey || ''}')`
+      ? `markNotifFromCenter('${n.id}',this);closeNotifCenter();openCommentNotif('${n.targetUserId || ''}','${n.from || ''}','${n.section || ''}','${n.dateKey || ''}')`
       : `markNotifFromCenter('${n.id}',this)`;
     html += `<div class="notif-item${unreadCls}" onclick="${clickAction}">
       <div class="notif-icon ${iconClass}">${icon}</div>
       <div class="notif-body">
         <div class="notif-message"><b style="cursor:pointer;text-decoration:underline;" onclick="event.stopPropagation();closeNotifCenter();openFriendProfile('${n.from}','${nm}')">${nm}</b>님이 ${
           (n.type === 'comment' || n.type === 'comment_reply')
-            ? (n.message || '').replace(/(댓글|답글)/g, `<b style="cursor:pointer;text-decoration:underline;" onclick="event.stopPropagation();closeNotifCenter();openFriendProfile('${user.id}','${user.nickname || user.lastName + user.firstName}','comments_${n.section || ''}','${n.dateKey || ''}')">$1</b>`)
+            ? (n.message || '').replace(/(댓글|답글)/g, `<b style="cursor:pointer;text-decoration:underline;" onclick="event.stopPropagation();closeNotifCenter();openCommentNotif('${n.targetUserId || ''}','${n.from || ''}','${n.section || ''}','${n.dateKey || ''}')">$1</b>`)
             : (n.message || '')
         }</div>
         <div class="notif-time">${formatTimeAgo(n.createdAt)}</div>
@@ -150,6 +150,20 @@ window.closeNotifCenter = function() {
   _notifCenterOpen = false;
   document.getElementById('notif-center').classList.remove('open');
   document.getElementById('notif-center-backdrop').classList.remove('open');
+};
+
+window.openCommentNotif = async function(targetUserId, fromId, section, dateKey) {
+  let profileId = targetUserId;
+  if (!profileId) {
+    profileId = await findCommentProfileOwner(fromId, dateKey, section);
+  }
+  if (!profileId) {
+    profileId = getCurrentUser()?.id;
+  }
+  const accounts = await getAccountList();
+  const acc = accounts.find(a => a.id === profileId);
+  const name = acc ? resolveNickname(acc, accounts) : (profileId || '').replace(/_/g, '');
+  window.openFriendProfile(profileId, name, `comments_${section}`, dateKey);
 };
 
 window.markAllNotifsRead = async function() {

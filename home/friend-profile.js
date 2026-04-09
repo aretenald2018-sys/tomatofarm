@@ -94,7 +94,7 @@ window.openFriendProfile = async function(friendId, friendName, scrollToSection,
         const mealEmojis = getReactionEmojis(mealField);
         const emojiDisplay = mealEmojis.length > 0 ? mealEmojis.join('') : '';
         const reactBadge = mealReactCount > 0 ? `<span class="react-badge-detail" onclick="event.stopPropagation();showReactionDetail(this,'${friendId}','${tk}','${mealField}')" style="cursor:pointer;display:inline-flex;align-items:center;gap:2px;padding:2px 6px;border-radius:999px;background:var(--surface2);"><span style="font-size:12px;">${emojiDisplay}</span><span style="font-size:10px;font-weight:600;color:var(--primary);">${mealReactCount}</span></span>` : '';
-        const reactionBtn = (isFriend && !isMyProfile) ? `${reactBadge}<button class="friend-like-btn" onclick="showReactionPicker(this,'${friendId}','${tk}','${mealField}')" style="flex-shrink:0;font-size:16px;background:none;border:none;cursor:pointer;padding:2px;">🤍</button>` : (mealReactCount > 0 ? `<span class="react-badge-detail" onclick="event.stopPropagation();showReactionDetail(this,'${friendId}','${tk}','${mealField}')" style="cursor:pointer;display:inline-flex;align-items:center;gap:2px;padding:2px 6px;border-radius:999px;background:var(--surface2);"><span style="font-size:12px;">${emojiDisplay}</span><span style="font-size:10px;font-weight:600;color:var(--primary);">${mealReactCount}</span></span>` : `<span style="font-size:14px;opacity:0.3;">🤍</span>`);
+        const reactionBtn = (!isMyProfile) ? `${reactBadge}<button class="friend-like-btn" onclick="showReactionPicker(this,'${friendId}','${tk}','${mealField}')" style="flex-shrink:0;font-size:16px;background:none;border:none;cursor:pointer;padding:2px;">🤍</button>` : (mealReactCount > 0 ? `<span class="react-badge-detail" onclick="event.stopPropagation();showReactionDetail(this,'${friendId}','${tk}','${mealField}')" style="cursor:pointer;display:inline-flex;align-items:center;gap:2px;padding:2px 6px;border-radius:999px;background:var(--surface2);"><span style="font-size:12px;">${emojiDisplay}</span><span style="font-size:10px;font-weight:600;color:var(--primary);">${mealReactCount}</span></span>` : `<span style="font-size:14px;opacity:0.3;">🤍</span>`);
         const mealCommentBtn = `<button class="comment-toggle-btn" onclick="toggleCommentSection('${normalizedFriendId}','${tk}','${m.memo}')" style="flex-shrink:0;font-size:13px;background:none;border:none;cursor:pointer;padding:2px 4px;color:var(--text-tertiary);">💬</button>`;
         todayDietHtml += `<div style="padding:6px 0;font-size:12px;border-bottom:1px solid var(--border);">
           <div style="display:flex;align-items:center;justify-content:space-between;">
@@ -244,7 +244,7 @@ window.openFriendProfile = async function(friendId, friendName, scrollToSection,
             const wEmojis = getReactionEmojis('workout');
             const wEmojiDisplay = wEmojis.length > 0 ? wEmojis.join('') : '';
             const wBadge = wReactCount > 0 ? `<span class="react-badge-detail" onclick="event.stopPropagation();showReactionDetail(this,'${friendId}','${tk}','workout')" style="cursor:pointer;display:inline-flex;align-items:center;gap:2px;padding:2px 6px;border-radius:999px;background:var(--surface2);margin-right:2px;"><span style="font-size:12px;">${wEmojiDisplay}</span><span style="font-size:10px;font-weight:600;color:var(--primary);">${wReactCount}</span></span>` : '';
-            if (isFriend && !isMyProfile && todayW?.exercises?.length) return `${wBadge}<button class="friend-like-btn" onclick="showReactionPicker(this,'${friendId}','${tk}','workout')" style="font-size:16px;background:none;border:none;cursor:pointer;padding:2px;">🤍</button>`;
+            if (!isMyProfile && todayW?.exercises?.length) return `${wBadge}<button class="friend-like-btn" onclick="showReactionPicker(this,'${friendId}','${tk}','workout')" style="font-size:16px;background:none;border:none;cursor:pointer;padding:2px;">🤍</button>`;
             if (wReactCount > 0) return `<span class="react-badge-detail" onclick="event.stopPropagation();showReactionDetail(this,'${friendId}','${tk}','workout')" style="cursor:pointer;display:inline-flex;align-items:center;gap:2px;padding:2px 6px;border-radius:999px;background:var(--surface2);"><span style="font-size:12px;">${wEmojiDisplay}</span><span style="font-size:10px;font-weight:600;color:var(--primary);">${wReactCount}</span></span>`;
             return '';
           })()}
@@ -798,9 +798,6 @@ window.sendReaction = async function(tid, dk, field, emoji) {
   document.querySelectorAll('.reaction-picker').forEach(p => p.remove());
   const user = getCurrentUser();
   if (!user) return;
-  if (document.getElementById('dynamic-modal')?.dataset.isFriend !== '1') {
-    showToast('이웃만 리액션을 보낼 수 있어요', 2500, 'warning'); return;
-  }
   await toggleLike(tid, dk, field, emoji);
   recordAction('리액션');
   haptic('light');

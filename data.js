@@ -764,6 +764,17 @@ export async function deleteGuestbookEntry(entryId) {
 }
 
 // ── 댓글 시스템 ──────────────────────────────────────────────────
+export async function findCommentProfileOwner(fromId, dateKey, section) {
+  const snap = await getDocs(collection(db, '_comments'));
+  for (const d of snap.docs) {
+    const data = d.data();
+    if (data.from === fromId && data.dateKey === dateKey && data.section === section) {
+      return data.to;
+    }
+  }
+  return null;
+}
+
 export async function getComments(targetUserId, dateKey, section) {
   const snap = await getDocs(collection(db, '_comments'));
   const comments = [];
@@ -793,7 +804,7 @@ export async function writeComment(targetUserId, dateKey, section, message, pare
   if (!_isMySocialId(targetUserId)) {
     await sendNotification(targetUserId, {
       type: parentId ? 'comment_reply' : 'comment',
-      from: fromId, dateKey, section,
+      from: fromId, dateKey, section, targetUserId,
       message: parentId ? '댓글에 답글을 남겼어요 💬' : '댓글을 남겼어요 💬',
     });
   }
@@ -805,7 +816,7 @@ export async function writeComment(targetUserId, dateKey, section, message, pare
         const parentData = parentSnap.data();
         if (parentData.from !== fromId && !_isMySocialId(parentData.from) && parentData.from !== targetUserId) {
           await sendNotification(parentData.from, {
-            type: 'comment_reply', from: fromId, dateKey, section,
+            type: 'comment_reply', from: fromId, dateKey, section, targetUserId,
             message: '댓글에 답글을 남겼어요 💬',
           });
         }
