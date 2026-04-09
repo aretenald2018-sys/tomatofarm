@@ -153,6 +153,7 @@ window.acceptFriendFromNotif = async function(id) {
 
 window.rejectFriendFromNotif = async function(id) {
   await removeFriend(id);
+  showToast('요청을 거절했어요', 2500, 'info');
   refreshNotifCenter();
   if (_renderFriendFeedFn) _renderFriendFeedFn();
 };

@@ -3,8 +3,8 @@
 // ================================================================
 
 import { TODAY, getCurrentUser, getMyFriends, getAccountList,
-         getFriendWorkout, getLikes, toggleLike,
-         sendFriendRequest, sendTomatoGift,
+         getFriendWorkout, getFriendTomatoState, getLikes, toggleLike,
+         sendFriendRequest, sendTomatoGift, revertTomatoGift,
          getGuestbook, writeGuestbook, deleteGuestbookEntry,
          getComments, writeComment, editComment, deleteComment,
          introduceFriend, markNotificationRead,
@@ -67,7 +67,7 @@ window.openFriendProfile = async function(friendId, friendName, scrollToSection)
     { key: 'dFoods', label: '저녁', memo: 'dinner' },
     { key: 'sFoods', label: '간식', memo: 'snack' },
   ];
-  const allLikes = (todayW && isFriend) ? await getLikes(friendId, tk) : [];
+  const allLikes = todayW ? await getLikes(friendId, tk) : [];
   const getReactionCount = (field) => allLikes.filter(l => l.field === field).length;
   const getReactionEmojis = (field) => {
     const emojis = allLikes.filter(l => l.field === field && l.emoji).map(l => l.emoji);
@@ -82,22 +82,22 @@ window.openFriendProfile = async function(friendId, friendName, scrollToSection)
       if (foods.length || memoText || photo) {
         const foodNames = foods.map(f => f.name).join(', ') || memoText;
         const kcal = foods.reduce((s, f) => s + (f.kcal || 0), 0);
-        const photoHtml = photo ? `<div class="meal-photo-frame" onclick="openMealPhotoLightbox(this.querySelector('img').src)"><img src="${photo}"></div>` : '';
+        const photoThumb = photo ? `<div style="width:40px;height:40px;border-radius:8px;overflow:hidden;flex-shrink:0;cursor:pointer;margin-right:8px;" onclick="event.stopPropagation();openMealPhotoLightbox('${photo.replace(/'/g,"\\'")}')"><img src="${photo}" style="width:100%;height:100%;object-fit:cover;display:block;"></div>` : '';
         const mealField = 'meal_' + m.memo;
         const mealReactCount = getReactionCount(mealField);
         const mealEmojis = getReactionEmojis(mealField);
         const emojiDisplay = mealEmojis.length > 0 ? mealEmojis.join('') : '';
         const reactBadge = mealReactCount > 0 ? `<span class="react-badge-detail" onclick="event.stopPropagation();showReactionDetail(this,'${friendId}','${tk}','${mealField}')" style="cursor:pointer;display:inline-flex;align-items:center;gap:2px;padding:2px 6px;border-radius:999px;background:var(--surface2);"><span style="font-size:12px;">${emojiDisplay}</span><span style="font-size:10px;font-weight:600;color:var(--primary);">${mealReactCount}</span></span>` : '';
         const reactionBtn = (isFriend && !isMyProfile) ? `${reactBadge}<button class="friend-like-btn" onclick="showReactionPicker(this,'${friendId}','${tk}','${mealField}')" style="flex-shrink:0;font-size:16px;background:none;border:none;cursor:pointer;padding:2px;">🤍</button>` : (mealReactCount > 0 ? `<span class="react-badge-detail" onclick="event.stopPropagation();showReactionDetail(this,'${friendId}','${tk}','${mealField}')" style="cursor:pointer;display:inline-flex;align-items:center;gap:2px;padding:2px 6px;border-radius:999px;background:var(--surface2);"><span style="font-size:12px;">${emojiDisplay}</span><span style="font-size:10px;font-weight:600;color:var(--primary);">${mealReactCount}</span></span>` : `<span style="font-size:14px;opacity:0.3;">🤍</span>`);
-        const mealCommentBtn = isFriend ? `<button class="comment-toggle-btn" onclick="toggleCommentSection('${normalizedFriendId}','${tk}','${m.memo}')" style="flex-shrink:0;font-size:13px;background:none;border:none;cursor:pointer;padding:2px 4px;color:var(--text-tertiary);">💬</button>` : '';
+        const mealCommentBtn = `<button class="comment-toggle-btn" onclick="toggleCommentSection('${normalizedFriendId}','${tk}','${m.memo}')" style="flex-shrink:0;font-size:13px;background:none;border:none;cursor:pointer;padding:2px 4px;color:var(--text-tertiary);">💬</button>`;
         todayDietHtml += `<div style="padding:6px 0;font-size:12px;border-bottom:1px solid var(--border);">
           <div style="display:flex;align-items:center;justify-content:space-between;">
+            ${photoThumb}
             <span style="color:var(--text-secondary);flex-shrink:0;">${m.label}</span>
             <span style="color:var(--text);flex:1;text-align:right;margin:0 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${foodNames}${kcal ? ` <span style="color:var(--text-tertiary);">${kcal}kcal</span>` : ''}</span>
             ${reactionBtn}
             ${mealCommentBtn}
           </div>
-          ${photoHtml}
           <div id="comments-${m.memo}" class="comment-section-panel" style="display:none;"></div>
         </div>`;
       }
@@ -145,10 +145,12 @@ window.openFriendProfile = async function(friendId, friendName, scrollToSection)
     else if (streakCounting && i > 0) streakCounting = false;
   }
 
-  let tomatoCount = '—';
-  let tomatoLevel = 1;
+  let tomatoCount, tomatoLevel = 1;
   if (isMyProfile) {
     const ts = getTomatoState();
+    tomatoCount = ts.totalTomatoes + (ts.giftedReceived || 0) - (ts.giftedSent || 0);
+  } else {
+    const ts = await getFriendTomatoState(lookupId);
     tomatoCount = ts.totalTomatoes + (ts.giftedReceived || 0) - (ts.giftedSent || 0);
   }
   if (typeof tomatoCount === 'number') {
@@ -167,7 +169,7 @@ window.openFriendProfile = async function(friendId, friendName, scrollToSection)
   let goalPct = '—';
 
   document.getElementById('dynamic-modal')?.remove();
-  const modal = document.createElement('div'); modal.id = 'dynamic-modal'; document.body.appendChild(modal);
+  const modal = document.createElement('div'); modal.id = 'dynamic-modal'; modal.dataset.isFriend = isFriend ? '1' : '0'; document.body.appendChild(modal);
   modal.innerHTML = `<div class="modal-backdrop" style="display:flex;z-index:1000;" onclick="if(event.target===this){document.getElementById('dynamic-modal')?.remove();}">
     <div class="modal-sheet" style="max-width:400px;max-height:85vh;overflow-y:auto;" onclick="event.stopPropagation()">
       <div class="sheet-handle"></div>
@@ -177,8 +179,7 @@ window.openFriendProfile = async function(friendId, friendName, scrollToSection)
         <div style="font-size:20px;font-weight:700;color:var(--text);-webkit-user-select:none;user-select:none;">${nickname}</div>
         ${isFriend || isMyProfile
           ? (nickname !== realName ? `<div style="font-size:13px;color:var(--text-tertiary);margin-top:2px;-webkit-user-select:none;user-select:none;">${realName}</div>` : '')
-          : `<div style="font-size:12px;color:var(--text-tertiary);margin-top:3px;">${realName.charAt(0)}${'*'.repeat(realName.length - 1)}</div>
-             <div style="font-size:10px;color:var(--text-tertiary);margin-top:2px;">이웃이 되면 이름을 볼 수 있어요</div>`
+          : ''
         }
       </div>
 
@@ -203,7 +204,7 @@ window.openFriendProfile = async function(friendId, friendName, scrollToSection)
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
           <span style="font-size:12px;font-weight:500;color:var(--text-tertiary);">오늘의 운동 ${volumeGrowth}</span>
           ${(() => {
-            const wReactCount = isFriend ? getReactionCount('workout') : 0;
+            const wReactCount = getReactionCount('workout');
             const wEmojis = getReactionEmojis('workout');
             const wEmojiDisplay = wEmojis.length > 0 ? wEmojis.join('') : '';
             const wBadge = wReactCount > 0 ? `<span class="react-badge-detail" onclick="event.stopPropagation();showReactionDetail(this,'${friendId}','${tk}','workout')" style="cursor:pointer;display:inline-flex;align-items:center;gap:2px;padding:2px 6px;border-radius:999px;background:var(--surface2);margin-right:2px;"><span style="font-size:12px;">${wEmojiDisplay}</span><span style="font-size:10px;font-weight:600;color:var(--primary);">${wReactCount}</span></span>` : '';
@@ -218,8 +219,8 @@ window.openFriendProfile = async function(friendId, friendName, scrollToSection)
           </div>
           ${todayW?.workoutPhoto ? `<img src="${todayW.workoutPhoto}" style="width:100%;max-height:240px;object-fit:contain;border-radius:8px;margin-top:8px;">` : ''}
         ` : '<div style="font-size:12px;color:var(--text-tertiary);">아직 기록이 없어요</div>'}
-        ${isFriend ? `<button class="comment-toggle-btn" onclick="toggleCommentSection('${normalizedFriendId}','${tk}','workout')" style="font-size:12px;background:none;border:1px solid var(--border);border-radius:999px;padding:4px 10px;cursor:pointer;color:var(--text-tertiary);margin-top:6px;">💬 댓글</button>
-        <div id="comments-workout" class="comment-section-panel" style="display:none;"></div>` : ''}
+        <button class="comment-toggle-btn" onclick="toggleCommentSection('${normalizedFriendId}','${tk}','workout')" style="font-size:12px;background:none;border:1px solid var(--border);border-radius:999px;padding:4px 10px;cursor:pointer;color:var(--text-tertiary);margin-top:6px;">💬 댓글</button>
+        <div id="comments-workout" class="comment-section-panel" style="display:none;"></div>
       </div>
 
       <div style="padding:8px 4px;border-top:1px solid var(--border);margin-top:6px;">
@@ -246,10 +247,10 @@ window.openFriendProfile = async function(friendId, friendName, scrollToSection)
         <div id="guestbook-list" style="max-height:160px;overflow-y:auto;margin-bottom:10px;">
           <div style="text-align:center;padding:12px;font-size:12px;color:var(--text-tertiary);">불러오는 중...</div>
         </div>
-        <div style="display:flex;gap:6px;">
+        ${isFriend || isMyProfile ? `<div style="display:flex;gap:6px;">
           <input id="guestbook-input" style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:999px;font-size:13px;color:var(--text);background:var(--surface2);outline:none;font-family:var(--font-sans);transition:border-color 0.15s;" placeholder="응원 한마디 남기기" onfocus="this.style.borderColor='var(--primary)'" onblur="this.style.borderColor='var(--border)'" onkeydown="if(event.key==='Enter')submitGuestbook('${normalizedFriendId}')">
           <button onclick="submitGuestbook('${normalizedFriendId}')" style="padding:8px 14px;border:none;border-radius:999px;background:var(--primary-bg);color:var(--primary);font-size:13px;font-weight:600;cursor:pointer;flex-shrink:0;">남기기</button>
-        </div>
+        </div>` : ''}
       </div>
 
       ${isFriend || isMyProfile ? `
@@ -269,14 +270,14 @@ window.openFriendProfile = async function(friendId, friendName, scrollToSection)
 
   loadGuestbook(normalizedFriendId);
 
-  if (isFriend) {
+  {
     const commentPanels = document.querySelectorAll('#dynamic-modal .comment-section-panel');
     commentPanels.forEach(panel => {
       panel.style.display = 'block';
       panel.innerHTML = '<div style="text-align:center;padding:8px;font-size:12px;color:var(--text-tertiary);">불러오는 중...</div>';
     });
     const sectionNames = Array.from(commentPanels).map(p => p.id.replace('comments-', ''));
-    Promise.all(sectionNames.map(s => loadComments(normalizedFriendId, tk, s)));
+    Promise.all(sectionNames.map(s => loadComments(normalizedFriendId, tk, s, isFriend)));
   }
 
   if (scrollToSection) {
@@ -456,6 +457,9 @@ window.startGbReply = function(parentId, fromName) {
 };
 
 window.submitGuestbook = async function(targetId) {
+  if (document.getElementById('dynamic-modal')?.dataset.isFriend !== '1') {
+    showToast('이웃만 방명록을 남길 수 있어요', 2500, 'warning'); return;
+  }
   const input = document.getElementById('guestbook-input');
   if (!input || !input.value.trim()) return;
   const isReply = !!_gbReplyParentId;
@@ -485,13 +489,14 @@ window.toggleCommentSection = async function(targetId, dk, section) {
   if (panel.style.display === 'none') {
     panel.style.display = 'block';
     panel.innerHTML = '<div style="text-align:center;padding:8px;font-size:12px;color:var(--text-tertiary);">불러오는 중...</div>';
-    await loadComments(targetId, dk, section);
+    const canWrite = document.getElementById('dynamic-modal')?.dataset.isFriend === '1';
+    await loadComments(targetId, dk, section, canWrite);
   } else {
     panel.style.display = 'none';
   }
 };
 
-async function loadComments(targetId, dk, section) {
+async function loadComments(targetId, dk, section, canWrite = true) {
   const panel = document.getElementById(`comments-${section}`);
   if (!panel) return;
   const comments = await getComments(targetId, dk, section);
@@ -517,10 +522,12 @@ async function loadComments(targetId, dk, section) {
     }).join('');
   }
 
-  html += `<div style="display:flex;gap:6px;margin-top:8px;">
-    <input id="comment-input-${section}" style="flex:1;padding:7px 12px;border:1px solid var(--border);border-radius:999px;font-size:12px;color:var(--text);background:var(--surface2);outline:none;font-family:var(--font-sans);transition:border-color 0.15s;" placeholder="댓글 남기기" onfocus="this.style.borderColor='var(--primary)'" onblur="this.style.borderColor='var(--border)'" onkeydown="if(event.key==='Enter')submitComment('${targetId}','${dk}','${section}')">
-    <button onclick="submitComment('${targetId}','${dk}','${section}')" style="padding:6px 12px;border:none;border-radius:999px;background:var(--primary-bg);color:var(--primary);font-size:12px;font-weight:600;cursor:pointer;flex-shrink:0;">등록</button>
-  </div>`;
+  if (canWrite) {
+    html += `<div style="display:flex;gap:6px;margin-top:8px;">
+      <input id="comment-input-${section}" style="flex:1;padding:7px 12px;border:1px solid var(--border);border-radius:999px;font-size:12px;color:var(--text);background:var(--surface2);outline:none;font-family:var(--font-sans);transition:border-color 0.15s;" placeholder="댓글 남기기" onfocus="this.style.borderColor='var(--primary)'" onblur="this.style.borderColor='var(--border)'" onkeydown="if(event.key==='Enter')submitComment('${targetId}','${dk}','${section}')">
+      <button onclick="submitComment('${targetId}','${dk}','${section}')" style="padding:6px 12px;border:none;border-radius:999px;background:var(--primary-bg);color:var(--primary);font-size:12px;font-weight:600;cursor:pointer;flex-shrink:0;">등록</button>
+    </div>`;
+  }
 
   panel.innerHTML = `<div style="margin-top:8px;padding:8px 0;border-top:1px dashed var(--border);">${html}</div>`;
 }
@@ -548,6 +555,9 @@ function renderComment(c, isReply, myId, myDataOwnerId, targetId, dk, section) {
 }
 
 window.submitComment = async function(targetId, dk, section) {
+  if (document.getElementById('dynamic-modal')?.dataset.isFriend !== '1') {
+    showToast('이웃만 댓글을 남길 수 있어요', 2500, 'warning'); return;
+  }
   const input = document.getElementById(`comment-input-${section}`);
   if (!input || !input.value.trim()) return;
   const isReply = !!_commentReplyParentId;
@@ -605,6 +615,9 @@ window.sendReaction = async function(tid, dk, field, emoji) {
   document.querySelectorAll('.reaction-picker').forEach(p => p.remove());
   const user = getCurrentUser();
   if (!user) return;
+  if (document.getElementById('dynamic-modal')?.dataset.isFriend !== '1') {
+    showToast('이웃만 리액션을 보낼 수 있어요', 2500, 'warning'); return;
+  }
   await toggleLike(tid, dk, field, emoji);
   recordAction('리액션');
   haptic('light');
@@ -654,9 +667,13 @@ window.openTomatoGiftModal = function(friendId, friendName) {
 window.sendTomatoGiftFromModal = async function(friendId) {
   const msg = document.getElementById('tomato-gift-msg')?.value || '';
   const result = await sendTomatoGift(friendId, msg);
-  if (result.error) { alert(result.error); return; }
+  if (result.error) { showToast(result.error, 2500, 'error'); return; }
   recordAction('토마토선물');
+  showToast('토마토를 선물했어요!', 2500, 'success');
   document.getElementById('modals-container').innerHTML = '';
   if (_renderHomeFn) _renderHomeFn();
   if (_refreshNotifCenterFn) _refreshNotifCenterFn();
 };
+
+// 데이터 복구용 (콘솔에서 호출)
+window.revertTomatoGift = revertTomatoGift;

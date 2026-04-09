@@ -919,20 +919,38 @@ export function wtRemoveFoodItem(meal, idx) {
 }
 
 // ── 저장된 사진 표시 ────────────────────────────────────────────────
-function _renderMealPhotos() {
-  const meals = ['breakfast', 'lunch', 'dinner', 'snack', 'workout'];
+export function _renderMealPhotos() {
+  // Side thumbnail for meal photos
+  const meals = ['breakfast', 'lunch', 'dinner', 'snack'];
   for (const meal of meals) {
-    const wrap = document.getElementById('wt-photo-' + meal);
-    if (!wrap) continue;
+    const row = document.getElementById(`wt-meal-content-${meal}`);
+    if (!row) continue;
+    row.querySelector('.meal-side-thumb')?.remove();
     const photo = window._mealPhotos?.[meal];
     if (photo) {
-      wrap.innerHTML = `<div class="meal-photo-frame" onclick="openMealPhotoLightbox(this.querySelector('img').src)">
-        <img src="${photo}">
-        <button class="meal-photo-delete" onclick="event.stopPropagation();removeMealPhoto('${meal}')">✕</button>
-      </div>`;
-    } else {
-      wrap.innerHTML = '';
+      const thumb = document.createElement('div');
+      thumb.className = 'meal-side-thumb';
+      thumb.innerHTML = `<img src="${photo}">`;
+      thumb.onclick = () => openMealPhotoLightbox(photo);
+      let pressTimer;
+      thumb.onpointerdown = () => { pressTimer = setTimeout(() => {
+        if (confirm('사진을 삭제할까요?')) removeMealPhoto(meal);
+      }, 600); };
+      thumb.onpointerup = () => clearTimeout(pressTimer);
+      thumb.onpointerleave = () => clearTimeout(pressTimer);
+      row.prepend(thumb);
     }
+  }
+  // Workout photo: 기존 방식 유지
+  const wrapW = document.getElementById('wt-photo-workout');
+  if (wrapW) {
+    const photo = window._mealPhotos?.workout;
+    if (photo) {
+      wrapW.innerHTML = `<div class="meal-photo-frame" onclick="openMealPhotoLightbox(this.querySelector('img').src)">
+        <img src="${photo}">
+        <button class="meal-photo-delete" onclick="event.stopPropagation();removeMealPhoto('workout')">✕</button>
+      </div>`;
+    } else { wrapW.innerHTML = ''; }
   }
 }
 

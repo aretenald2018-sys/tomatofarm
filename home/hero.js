@@ -227,6 +227,7 @@ export async function renderLeaderboard() {
     if (globalData && globalData.rankings && globalData.rankings.length) {
       // ── 글로벌 랭킹 모드 ──
       board = globalData.rankings.map((r, i) => ({
+        userId: r.userId,
         name: r.userId === user.id ? '나' : r.name,
         days: r.activeDays,
         isMe: r.userId === user.id,
@@ -283,7 +284,7 @@ export async function renderLeaderboard() {
       );
 
       board = results.filter(r => r.status === 'fulfilled')
-        .map(r => r.value)
+        .map(r => ({ ...r.value, userId: r.value.id }))
         .sort((a, b) => b.days - a.days);
 
       if (board.length <= 1) { cardEl.style.display = 'none'; return; }
@@ -322,7 +323,8 @@ export async function renderLeaderboard() {
       const rank = rankIcons[i] || `${i + 1}`;
       const pct = Math.round((p.days / 7) * 100);
       const initial = p.isMe ? '나' : p.name.charAt(0);
-      html += `<div class="lb-row${p.isMe ? ' lb-me' : ''}">
+      const clickAttr = p.isMe ? '' : ` onclick="openFriendProfile('${p.userId}','${p.name}')" style="cursor:pointer;"`;
+      html += `<div class="lb-row${p.isMe ? ' lb-me' : ''}"${clickAttr}>
         <span class="lb-rank">${rank}</span>
         <div class="lb-avatar active">${initial}</div>
         <span class="lb-name">${p.isMe ? '나' : p.name}</span>
@@ -337,7 +339,8 @@ export async function renderLeaderboard() {
       html += `<div class="lb-inactive-row">`;
       for (const p of inactive) {
         const initial = p.isMe ? '나' : p.name.charAt(0);
-        html += `<div class="lb-inactive-item${p.isMe ? ' lb-me-inactive' : ''}">
+        const inactiveClickAttr = p.isMe ? '' : ` onclick="openFriendProfile('${p.userId}','${p.name}')" style="cursor:pointer;"`;
+        html += `<div class="lb-inactive-item${p.isMe ? ' lb-me-inactive' : ''}"${inactiveClickAttr}>
           <div class="lb-avatar inactive">${initial}</div>
           <span class="lb-inactive-name">${p.isMe ? '나' : p.name}</span>
         </div>`;

@@ -17,6 +17,11 @@
 - 사진 필드(`bPhoto`, `lPhoto`, `dPhoto`, `sPhoto`, `workoutPhoto`)를 저장 객체에 빠뜨리면 setDoc 전체 덮어쓰기로 인해 사진이 삭제됨.
 - **레이지 로드 모듈의 함수를 즉시 실행 코드에서 직접 호출하면 `ReferenceError`** — `render-cooking.js` 등 `_lazy()`로 로드되는 모듈의 export 함수(`calcPerServing` 등)를 `app.js`의 동기 함수(`_buildRecipeResultsHtml` 등)에서 바로 쓰면 모듈 로드 전이라 에러. 해결: app.js에 로컬 헬퍼로 복사하거나, 호출부를 async로 바꿔 `await _lazy()`로 가져올 것.
 - **이벤트 위임(`document.addEventListener`)과 HTML `onclick`이 같은 버튼에 동시 등록되면 핸들러가 2번 실행됨** — 토글 함수가 2번 호출되면 원복되어 "안 눌리는" 증상. 하나의 버튼에는 **이벤트 위임 또는 onclick 중 하나만** 사용할 것. 새 버튼 추가 시 기존 이벤트 위임 블록(`_initButtonEventListeners`)에 동일 ID가 등록되어 있지 않은지 반드시 확인.
+- **SW 캐시 버전을 안 올리면 코드 변경이 배포에 반영 안 됨** — `sw.js`의 `CACHE_VERSION`을 올리지 않으면 Service Worker가 구버전 파일을 서빙. **`sw.js` STATIC_ASSETS에 등록된 파일을 수정했으면 반드시 `CACHE_VERSION` 범프 + `sw.js`도 같이 커밋/푸시.** 실수 방지: 배포 커밋 시 `sw.js`가 빠져 있는지 항상 확인.
+- **커밋 시 의존 파일 누락 → 배포 사이트 런타임 에러** — `home/tomato.js`가 `calc.js`의 `isExerciseDaySuccess`를 import하는데, `calc.js`를 커밋 안 하면 `SyntaxError: does not provide an export named`. **파일 A를 커밋할 때, A가 import하는 다른 파일의 미커밋 변경이 있는지 반드시 확인.** 특히 `calc.js ↔ home/tomato.js`, `data.js ↔ home/*.js` 간 export/import 의존성 주의.
+- **`localStorage`는 기기 단위, 유저별 아님** — 멀티 유저 환경에서 마이그레이션 플래그 등을 `localStorage`에 저장하면 다른 유저에게도 적용됨. 유저별 상태는 **Firebase `_settings`(tomato_state 등)에 저장**해야 함. `localStorage`는 UI 상태/캐시 용도만.
+- **`unit_goal_start` 같은 설정은 모든 사용자 경로에서 자동설정 필요** — `renderUnitGoal()`이 admin 전용이라 비관리자는 `unit_goal_start`가 영원히 null이었음. 특정 사용자 유형에서만 호출되는 함수에 초기화 로직을 넣지 말 것. `settleTomatoCycleIfNeeded()` 같은 공통 경로에서 처리.
+- **사용자 액션에 피드백 토스트 필수** — CRUD 작업(저장, 삭제, 전송, 선물 등) 완료 시 반드시 `showToast(msg, duration, type)` 호출. `alert()` 사용 금지 — TDS Toast로 통일. 타입: success(완료), error(실패), warning(경고), info(안내). 예외: 좋아요 토글 등 UI 자체가 즉각 변하는 마이크로 인터랙션은 토스트 불필요.
 
 ## 📋 레시피: 운동 종류 추가 (예: swimming, running)
 
@@ -101,6 +106,34 @@ CSS 클래스 의미:
   - 포커스: `border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-bg)`
 - **새 UI 작성 시:** TDS Mobile 스펙 기준 필수. 임의 값 금지.
 
+## 📋 레시피: 토마토 사이클 정산 수정 시 주의
+
+토마토 정산(`settleTomatoCycleIfNeeded`)은 여러 파일에 걸쳐 있음. 수정 시 반드시 전체를 동기화:
+
+- [ ] `calc.js` — `calcTomatoCycle()`, `evaluateCycleResult()`, `isExerciseDaySuccess()` (사이클 일수, 평가 로직)
+- [ ] `home/tomato.js` — `settleTomatoCycleIfNeeded()` (정산 루프, 마이그레이션, 수확 모달)
+- [ ] `home/farm.js` — `renderFarmDuolingo()`, `renderFarmCyworld()` (사이클 단계 표시, stages 배열)
+- [ ] `home/unit-goal.js` — `renderUnitGoal()` (사이클 일수, 날짜 범위 표시)
+- [ ] `home/index.js` — `renderHome()` (정산 호출 위치 — admin/non-admin 공통 실행 필수)
+
+핵심 규칙:
+- **사이클 일수 변경**(예: 4일→3일) 시 위 5개 파일 전부 수정
+- **`evaluateCycleResult` 반환값 변경** 시 이를 소비하는 `home/tomato.js` 반드시 동기화
+- **유저별 상태/플래그**는 `localStorage` 금지 → Firebase `tomato_state`에 저장
+- **`unit_goal_start` 자동설정**은 admin 전용 경로(`renderUnitGoal`)가 아닌 `settleTomatoCycleIfNeeded` 공통 경로에서 처리
+
+## 📋 레시피: 배포 커밋 체크리스트
+
+배포용 커밋 전 반드시 확인:
+
+- [ ] **SW 캐시 버전 범프** — `sw.js`의 `CACHE_VERSION` 날짜/버전 올렸는가? STATIC_ASSETS에 등록된 파일을 하나라도 수정했으면 필수.
+- [ ] **import 의존성 파일 포함** — 커밋 대상 파일이 import하는 다른 파일에 미커밋 변경이 있는가? 있으면 같이 커밋.
+  - `home/tomato.js` → `calc.js`, `data.js` (export 추가/변경 시 같이 커밋)
+  - `home/index.js` → `home/tomato.js` (함수 시그니처 변경 시)
+  - `calc.js` 사이클 로직 변경 → `home/farm.js`, `home/unit-goal.js` 동기화
+- [ ] **`sw.js` 자체도 커밋에 포함** — 버전만 올리고 커밋에서 빠뜨리면 의미 없음.
+- [ ] **`git diff --stat`으로 미커밋 파일 확인** — 관련 변경이 남아있지 않은지 체크.
+
 ## 📁 파일 패턴
 - 새 탭: `render-*.js`
 - 새 모달: `modals/*-modal.js`
@@ -119,3 +152,36 @@ CSS 클래스 의미:
 3. localhost에서 동작 확인
 4. Conventional Commits (feat/fix/refactor) 형식 커밋
 5. `@plan.md` 진행 상태 업데이트
+
+## 🤖 에이전트 코디네이션
+
+`.claude/agents/`에 5개 전문 에이전트가 있다. "go" 또는 작업 지시 시 메인 세션이 코디네이터로서 적절한 에이전트를 **병렬 실행**한다.
+
+### 에이전트 목록
+| 에이전트 | 역할 | 모델 | 권한 |
+|----------|------|------|------|
+| `feature-dev` | 기능 구현, 버그 수정 | sonnet | 전체 |
+| `data-guardian` | setDoc 필드 감사 (읽기 전용) | sonnet | read only |
+| `tds-reviewer` | TDS Mobile 스펙 검사 (읽기 전용) | haiku | read only |
+| `test-writer` | calc.js Vitest 테스트 작성 | sonnet | 전체 |
+| `refactor-architect` | 대형 파일 안전 분할 | opus | 전체 |
+
+### Explore 에이전트 규칙 (플랜 모드)
+- **최대 2개**만 사용. **파일 경계로 분리** (주제별 X):
+  - 에이전트1: `calc.js`, `data.js`만 — 순수 로직/데이터 모델
+  - 에이전트2: `home/` 폴더만 — UI/모달/렌더링
+- 겹치는 파일 읽지 마. 파일 경계로 분리하면 중복이 거의 없음.
+- "주제별"로 나누면 결국 같은 파일을 다 읽게 되므로 금지.
+
+### Plan 에이전트 규칙
+- Plan 에이전트가 **실패하면 직접 계획을 써**. 에이전트 재시도하지 마.
+
+### 코디네이션 규칙
+1. **기능 개발/버그 수정**: feature-dev(포그라운드) → 완료 후 data-guardian + tds-reviewer(백그라운드 병렬)
+2. **Phase 2 테스트**: test-writer
+3. **Phase 3 리팩토링**: data-guardian(베이스라인) → refactor-architect → data-guardian(검증) + vitest run
+
+### 자동 트리거
+- `render-workout.js` 또는 `data.js` 변경 → **data-guardian 필수 실행**
+- `style.css` 또는 `index.html` 변경 → **tds-reviewer 필수 실행**
+- `calc.js` 변경 → test-writer에게 관련 테스트 업데이트 요청

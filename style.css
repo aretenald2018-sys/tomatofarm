@@ -3214,14 +3214,38 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
 }
 @keyframes lbFadeIn { from { opacity: 0; } to { opacity: 1; } }
 
-.meal-photo-btn {
-  display: block; width: 100%; padding: 6px;
-  background: none; border: 1px dashed var(--border); border-radius: 8px;
-  font-size: 12px; color: var(--text-tertiary); cursor: pointer;
-  margin-top: 6px; transition: all 0.15s ease; text-align: center;
+/* Side Thumbnail layout */
+.meal-content-row {
+  display: flex; gap: 10px; align-items: flex-start;
 }
-.meal-photo-btn:active { background: var(--surface2); }
-.meal-photo-wrap { min-height: 0; }
+.meal-content-row .meal-food-list { flex: 1; min-width: 0; }
+.meal-side-thumb {
+  width: 72px; height: 72px;
+  flex-shrink: 0; border-radius: 12px; overflow: hidden;
+  cursor: pointer; position: relative;
+  transition: transform 0.15s ease;
+  box-shadow:
+    inset 0 0 0 1px rgba(255,255,255,0.08),
+    0 1px 3px rgba(0,0,0,0.15);
+  border: 1px solid rgba(255,255,255,0.05);
+}
+.meal-side-thumb::after {
+  content: ''; position: absolute; inset: 0; border-radius: 12px;
+  box-shadow: inset 0 0 8px rgba(0,0,0,0.15);
+  pointer-events: none;
+}
+.meal-side-thumb:active { transform: scale(0.96); }
+.meal-side-thumb img {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+}
+.meal-cam-btn {
+  width: 36px; height: 36px; border-radius: 999px; border: none;
+  background: var(--surface3, #383838); color: var(--text-tertiary);
+  cursor: pointer; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.1s ease-in-out; -webkit-tap-highlight-color: transparent;
+}
+.meal-cam-btn:active { background: var(--primary-bg); color: var(--primary); }
 
 /* ── Tomato Crate (상자) ── */
 .tomato-crate {

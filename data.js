@@ -447,6 +447,14 @@ export async function getFriendWorkout(friendId, dateKey) {
   } catch { return null; }
 }
 
+export async function getFriendTomatoState(friendId) {
+  try {
+    const snap = await getDoc(doc(db, 'users', friendId, 'settings', 'tomato_state'));
+    return snap.exists() ? (snap.data().value || { totalTomatoes: 0, giftedReceived: 0, giftedSent: 0 })
+      : { totalTomatoes: 0, giftedReceived: 0, giftedSent: 0 };
+  } catch { return { totalTomatoes: 0, giftedReceived: 0, giftedSent: 0 }; }
+}
+
 // ── 표시명 (이웃 여부에 따라 분기) ────────────────────────────────
 export function getDisplayName(account, isFriend = false) {
   if (!account) return '익명';
@@ -1164,7 +1172,7 @@ export async function saveDay(key, data) {
             img.src = data[pk];
             await loaded;
             const c = document.createElement('canvas');
-            const MAX = 320;
+            const MAX = 480;
             let w = img.width, h = img.height;
             if (w > MAX || h > MAX) {
               if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
@@ -1172,7 +1180,7 @@ export async function saveDay(key, data) {
             }
             c.width = w; c.height = h;
             c.getContext('2d').drawImage(img, 0, 0, w, h);
-            data[pk] = c.toDataURL('image/jpeg', 0.4);
+            data[pk] = c.toDataURL('image/jpeg', 0.5);
           } catch { data[pk] = null; }
         }
       }
@@ -1443,23 +1451,37 @@ export async function saveNutritionItemFromOCR(parsedData, source = 'ocr') {
 }
 
 // 텍스트 이미지 base64로 변환
-export function imageToBase64(file) {
+export function imageToBase64(file, maxDim = 800, quality = 0.75) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
       const img = new Image();
       img.onload = () => {
-        // 최대 512px로 리사이징 (Firestore 1MB 문서 제한 대응)
-        const MAX = 512;
         let { width, height } = img;
-        if (width > MAX || height > MAX) {
-          if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
-          else                { width  = Math.round(width  * MAX / height); height = MAX; }
+        if (width > maxDim || height > maxDim) {
+          if (width > height) { height = Math.round(height * maxDim / width); width = maxDim; }
+          else                { width  = Math.round(width  * maxDim / height); height = maxDim; }
         }
         const canvas = document.createElement('canvas');
         canvas.width = width; canvas.height = height;
-        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+        const ctx = canvas.getContext('2d');
+        // Apple-style food enhancement
+        ctx.filter = 'contrast(1.06) saturate(1.12) brightness(1.03)';
+        ctx.drawImage(img, 0, 0, width, height);
+        ctx.filter = 'none';
+        // Warm tint overlay
+        ctx.globalCompositeOperation = 'overlay';
+        ctx.fillStyle = 'rgba(255, 173, 100, 0.06)';
+        ctx.fillRect(0, 0, width, height);
+        // Subtle vignette
+        ctx.globalCompositeOperation = 'multiply';
+        const vig = ctx.createRadialGradient(width/2, height/2, width*0.35, width/2, height/2, width*0.75);
+        vig.addColorStop(0, 'rgba(255,255,255,1)');
+        vig.addColorStop(1, 'rgba(240,235,230,1)');
+        ctx.fillStyle = vig;
+        ctx.fillRect(0, 0, width, height);
+        ctx.globalCompositeOperation = 'source-over';
+        const dataUrl = canvas.toDataURL('image/jpeg', quality);
         resolve(dataUrl.split(',')[1]);
       };
       img.onerror = reject;
@@ -1707,10 +1729,55 @@ export async function sendTomatoGift(toUserId, message) {
     quarter: _getQuarterKeyNow(), message: message || '',
     createdAt: Date.now(),
   });
+  // 보내는 사람: giftedSent 증가
   state.giftedSent++;
   await saveTomatoState(state);
+  // 받는 사람: giftedReceived 증가
+  try {
+    const recvSnap = await getDoc(doc(db, 'users', toUserId, 'settings', 'tomato_state'));
+    const recvState = recvSnap.exists()
+      ? (recvSnap.data().value || { quarterlyTomatoes: {}, totalTomatoes: 0, giftedReceived: 0, giftedSent: 0 })
+      : { quarterlyTomatoes: {}, totalTomatoes: 0, giftedReceived: 0, giftedSent: 0 };
+    recvState.giftedReceived = (recvState.giftedReceived || 0) + 1;
+    await setDoc(doc(db, 'users', toUserId, 'settings', 'tomato_state'), { value: recvState });
+  } catch(e) { console.warn('[gift] 받는 사람 토마토 상태 업데이트 실패:', e); }
   await sendNotification(toUserId, { type: 'tomato_gift', from: fromId, message: '토마토를 선물했어요! 🍅' });
   return { ok: true };
+}
+
+// 일회용 복구: 토마토 선물 되돌리기
+export async function revertTomatoGift(fromUserId, toUserId) {
+  // 1. 선물 기록 찾아서 삭제
+  const snap = await getDocs(collection(db, '_tomato_gifts'));
+  let deleted = 0;
+  for (const d of snap.docs) {
+    const data = d.data();
+    if (data.from === fromUserId && data.to === toUserId) {
+      await deleteDoc(doc(db, '_tomato_gifts', d.id));
+      deleted++;
+    }
+  }
+  // 2. 보낸 사람: giftedSent 감소
+  const senderSnap = await getDoc(doc(db, 'users', fromUserId, 'settings', 'tomato_state'));
+  if (senderSnap.exists()) {
+    const sState = senderSnap.data().value;
+    sState.giftedSent = Math.max(0, (sState.giftedSent || 0) - deleted);
+    await setDoc(doc(db, 'users', fromUserId, 'settings', 'tomato_state'), { value: sState });
+  }
+  // 3. 받는 사람: giftedReceived 감소
+  const recvSnap = await getDoc(doc(db, 'users', toUserId, 'settings', 'tomato_state'));
+  if (recvSnap.exists()) {
+    const rState = recvSnap.data().value;
+    rState.giftedReceived = Math.max(0, (rState.giftedReceived || 0) - deleted);
+    await setDoc(doc(db, 'users', toUserId, 'settings', 'tomato_state'), { value: rState });
+  }
+  // 로컬 캐시도 갱신
+  if (_socialId() === fromUserId) {
+    const s = getTomatoState();
+    s.giftedSent = Math.max(0, (s.giftedSent || 0) - deleted);
+    _settings.tomato_state = s;
+  }
+  return { ok: true, deleted };
 }
 
 export async function getReceivedTomatoGifts() {

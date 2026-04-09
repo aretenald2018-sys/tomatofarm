@@ -558,6 +558,7 @@
           <div class="diet-toss-header" onclick="toggleDietMealRow(this)">
             <span class="diet-toss-icon">☀️</span>
             <div class="diet-toss-title"><span class="diet-toss-label">아침</span><span class="diet-toss-kcal" id="diet-toss-kcal-breakfast"></span></div>
+            <button class="meal-cam-btn" onclick="event.stopPropagation();document.getElementById('photo-input-breakfast').click()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
             <span class="diet-toss-chevron">›</span>
           </div>
           <div class="diet-toss-body">
@@ -565,9 +566,9 @@
               <button class="diet-add-btn" onclick="openNutritionSearch('breakfast')">+ 음식 추가</button>
               <button class="diet-skip-btn" id="wt-breakfast-skipped" onclick="wtSkipMeal('breakfast')">안 먹었어요</button>
             </div>
-            <div class="meal-food-list" id="wt-foods-breakfast"></div>
-            <div class="meal-photo-wrap" id="wt-photo-breakfast"></div>
-            <button class="meal-photo-btn" onclick="document.getElementById('photo-input-breakfast').click()">📷 사진 추가</button>
+            <div class="meal-content-row" id="wt-meal-content-breakfast">
+              <div class="meal-food-list" id="wt-foods-breakfast"></div>
+            </div>
             <input type="file" id="photo-input-breakfast" accept="image/*" style="display:none" onchange="uploadMealPhoto('breakfast',this)">
             <input class="diet-meal-input" id="wt-meal-breakfast" placeholder="메모 (선택)">
             <div class="diet-result" id="wt-result-breakfast"></div>
@@ -578,6 +579,7 @@
           <div class="diet-toss-header" onclick="toggleDietMealRow(this)">
             <span class="diet-toss-icon">🌤️</span>
             <div class="diet-toss-title"><span class="diet-toss-label">점심</span><span class="diet-toss-kcal" id="diet-toss-kcal-lunch"></span></div>
+            <button class="meal-cam-btn" onclick="event.stopPropagation();document.getElementById('photo-input-lunch').click()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
             <span class="diet-toss-chevron">›</span>
           </div>
           <div class="diet-toss-body">
@@ -585,9 +587,9 @@
               <button class="diet-add-btn" onclick="openNutritionSearch('lunch')">+ 음식 추가</button>
               <button class="diet-skip-btn" id="wt-lunch-skipped" onclick="wtSkipMeal('lunch')">안 먹었어요</button>
             </div>
-            <div class="meal-food-list" id="wt-foods-lunch"></div>
-            <div class="meal-photo-wrap" id="wt-photo-lunch"></div>
-            <button class="meal-photo-btn" onclick="document.getElementById('photo-input-lunch').click()">📷 사진 추가</button>
+            <div class="meal-content-row" id="wt-meal-content-lunch">
+              <div class="meal-food-list" id="wt-foods-lunch"></div>
+            </div>
             <input type="file" id="photo-input-lunch" accept="image/*" style="display:none" onchange="uploadMealPhoto('lunch',this)">
             <input class="diet-meal-input" id="wt-meal-lunch" placeholder="메모 (선택)">
             <div class="diet-result" id="wt-result-lunch"></div>
@@ -598,6 +600,7 @@
           <div class="diet-toss-header" onclick="toggleDietMealRow(this)">
             <span class="diet-toss-icon">🌙</span>
             <div class="diet-toss-title"><span class="diet-toss-label">저녁</span><span class="diet-toss-kcal" id="diet-toss-kcal-dinner"></span></div>
+            <button class="meal-cam-btn" onclick="event.stopPropagation();document.getElementById('photo-input-dinner').click()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
             <span class="diet-toss-chevron">›</span>
           </div>
           <div class="diet-toss-body">
@@ -605,9 +608,9 @@
               <button class="diet-add-btn" onclick="openNutritionSearch('dinner')">+ 음식 추가</button>
               <button class="diet-skip-btn" id="wt-dinner-skipped" onclick="wtSkipMeal('dinner')">안 먹었어요</button>
             </div>
-            <div class="meal-food-list" id="wt-foods-dinner"></div>
-            <div class="meal-photo-wrap" id="wt-photo-dinner"></div>
-            <button class="meal-photo-btn" onclick="document.getElementById('photo-input-dinner').click()">📷 사진 추가</button>
+            <div class="meal-content-row" id="wt-meal-content-dinner">
+              <div class="meal-food-list" id="wt-foods-dinner"></div>
+            </div>
             <input type="file" id="photo-input-dinner" accept="image/*" style="display:none" onchange="uploadMealPhoto('dinner',this)">
             <input class="diet-meal-input" id="wt-meal-dinner" placeholder="메모 (선택)">
             <div class="diet-result" id="wt-result-dinner"></div>
@@ -618,15 +621,16 @@
           <div class="diet-toss-header" onclick="toggleDietMealRow(this)">
             <span class="diet-toss-icon">🍪</span>
             <div class="diet-toss-title"><span class="diet-toss-label">간식</span><span class="diet-toss-kcal" id="diet-toss-kcal-snack"></span></div>
+            <button class="meal-cam-btn" onclick="event.stopPropagation();document.getElementById('photo-input-snack').click()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
             <span class="diet-toss-chevron">›</span>
           </div>
           <div class="diet-toss-body">
             <div class="diet-meal-actions">
               <button class="diet-add-btn" onclick="openNutritionSearch('snack')">+ 음식 추가</button>
             </div>
-            <div class="meal-food-list" id="wt-foods-snack"></div>
-            <div class="meal-photo-wrap" id="wt-photo-snack"></div>
-            <button class="meal-photo-btn" onclick="document.getElementById('photo-input-snack').click()">📷 사진 추가</button>
+            <div class="meal-content-row" id="wt-meal-content-snack">
+              <div class="meal-food-list" id="wt-foods-snack"></div>
+            </div>
             <input type="file" id="photo-input-snack" accept="image/*" style="display:none" onchange="uploadMealPhoto('snack',this)">
             <input class="diet-meal-input" id="wt-meal-snack" placeholder="메모 (선택)">
             <div class="diet-result" id="wt-result-snack"></div>

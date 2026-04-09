@@ -471,8 +471,8 @@ window.acceptFriendReq = async function(id) {
   haptic('success');
   if (_renderHomeFn) _renderHomeFn();
 };
-window.rejectFriendReq = async function(id) { await removeFriend(id); if (_renderHomeFn) _renderHomeFn(); };
-window.deleteFriend = async function(id) { if(!confirm('이웃을 삭제할까요?')) return; await removeFriend(id); window.openFriendManager(); };
+window.rejectFriendReq = async function(id) { await removeFriend(id); showToast('요청을 거절했어요', 2500, 'info'); if (_renderHomeFn) _renderHomeFn(); };
+window.deleteFriend = async function(id) { if(!confirm('이웃을 삭제할까요?')) return; await removeFriend(id); showToast('이웃을 삭제했어요', 2500, 'info'); window.openFriendManager(); };
 
 window.quickAddNeighbor = async function(targetId) {
   const user = getCurrentUser();
