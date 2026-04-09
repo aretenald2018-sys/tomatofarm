@@ -233,8 +233,9 @@ function _renderMonthlySummary(){
 // ── 연간 히트맵 ──────────────────────────────────────────────────
 function _renderHeatmap(){
   const y=TODAY.getFullYear();
-  document.getElementById('heatmap-year').textContent=y+'년';
-  const el=document.getElementById('heatmap');el.innerHTML='';
+  const yearEl=document.getElementById('heatmap-year');
+  if(yearEl) yearEl.textContent=y+'년';
+  const el=document.getElementById('heatmap');if(!el)return;el.innerHTML='';
   const startDow=new Date(y,0,1).getDay();
   for(let i=0;i<startDow;i++){const b=document.createElement('div');b.style.aspectRatio='1';el.appendChild(b);}
   for(let m=0;m<12;m++)for(let d=1;d<=daysInMonth(y,m);d++){
