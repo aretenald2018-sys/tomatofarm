@@ -1689,7 +1689,7 @@ export const saveMilestoneShown = (obj) => { _settings.milestone_shown = obj; re
 export function getStreakFreezes() { return _settings.streak_freezes || []; }
 export async function useStreakFreeze(type) {
   const state = getTomatoState();
-  const available = state.totalTomatoes + state.giftedReceived - state.giftedSent;
+  const available = state.totalTomatoes + (state.giftedReceived || 0) - (state.giftedSent || 0);
   if (available <= 0) return { error: '토마토가 부족해요.' };
   const freezes = getStreakFreezes();
   const now = Date.now();

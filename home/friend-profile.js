@@ -148,10 +148,10 @@ window.openFriendProfile = async function(friendId, friendName, scrollToSection)
   let tomatoCount, tomatoLevel = 1;
   if (isMyProfile) {
     const ts = getTomatoState();
-    tomatoCount = ts.totalTomatoes + (ts.giftedReceived || 0) - (ts.giftedSent || 0);
+    tomatoCount = Math.max(0, ts.totalTomatoes + (ts.giftedReceived || 0) - (ts.giftedSent || 0));
   } else {
     const ts = await getFriendTomatoState(lookupId);
-    tomatoCount = ts.totalTomatoes + (ts.giftedReceived || 0) - (ts.giftedSent || 0);
+    tomatoCount = Math.max(0, ts.totalTomatoes + (ts.giftedReceived || 0) - (ts.giftedSent || 0));
   }
   if (typeof tomatoCount === 'number') {
     if (tomatoCount >= 100) tomatoLevel = 10;
@@ -640,7 +640,7 @@ window.markNotifRead = async function(id) {
 
 window.openTomatoGiftModal = function(friendId, friendName) {
   const state = getTomatoState();
-  const available = state.totalTomatoes + (state.giftedReceived || 0) - (state.giftedSent || 0);
+  const available = Math.max(0, state.totalTomatoes + (state.giftedReceived || 0) - (state.giftedSent || 0));
   document.getElementById('dynamic-modal')?.remove();
   const modal = document.createElement('div'); modal.id = 'dynamic-modal'; document.body.appendChild(modal);
   modal.innerHTML = `<div class="modal-backdrop" style="display:flex;z-index:1000;" onclick="if(event.target===this){document.getElementById('dynamic-modal')?.remove();}">

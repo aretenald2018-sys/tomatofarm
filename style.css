@@ -3041,23 +3041,126 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
   animation: tomato-bounce-in 0.3s ease;
 }
 
-/* Rule Tooltip List */
-.tomato-rule-list {
-  display: flex; flex-direction: column; gap: 8px; margin: 12px 0;
+/* ── Tomato Rule Bottom Sheet (TDS Modal) ── */
+.tr-sheet { padding: 32px 20px 20px 20px; }
+.tr-header { margin-bottom: 20px; }
+.tr-title {
+  font-size: 20px; font-weight: 700; line-height: 29px; color: var(--text);
+  font-family: 'Toss Product Sans', 'Tossface', 'SF Pro KR', -apple-system, sans-serif;
 }
-.tomato-rule-item {
-  display: flex; align-items: center; gap: 8px;
-  padding: 8px 12px; border-radius: 10px;
-  background: var(--surface2); font-size: 13px; font-weight: 500;
+.tr-section { padding: 0; }
+.tr-section-label {
+  font-size: 13px; font-weight: 600; line-height: 19.5px; color: var(--text-tertiary);
+  margin-bottom: 10px;
 }
-.tomato-rule-item--double {
-  background: var(--primary-bg); color: var(--primary); font-weight: 700;
+.tr-divider { height: 1px; background: var(--border); margin: 16px 0; }
+
+/* 획득 규칙 ListRow */
+.tr-row {
+  display: flex; align-items: center; gap: 16px;
+  min-height: 44px; padding: 0 4px;
+  font-size: 16px; line-height: 24px; color: var(--text);
 }
-.tomato-rule-icon {
-  font-size: 14px; min-width: 28px; text-align: center;
+.tr-row + .tr-row { border-top: 1px solid var(--seed-stroke-neutral, var(--border)); }
+.tr-row-icon { font-size: 18px; min-width: 32px; text-align: center; flex-shrink: 0; }
+.tr-row-text { flex: 1; font-weight: 500; font-size: 15px; line-height: 22.5px; }
+.tr-row-badge {
+  font-size: 13px; font-weight: 700; color: var(--text-secondary);
+  padding: 2px 10px; border-radius: 9px;
+  background: var(--surface2); flex-shrink: 0;
 }
-.tomato-rule-reward {
-  margin-left: auto; font-weight: 700; white-space: nowrap;
+.tr-row-badge--double {
+  background: var(--primary-bg); color: var(--primary);
+}
+.tr-row--highlight {
+  background: var(--primary-bg); border-radius: 12px;
+  padding: 0 12px; margin-top: 4px;
+}
+.tr-row--highlight .tr-row-text { color: var(--primary); font-weight: 600; }
+.tr-row--highlight + .tr-row { border-top: none; }
+
+/* 보유 현황 */
+.tr-progress-row {
+  display: flex; align-items: baseline; gap: 4px; margin-bottom: 8px;
+}
+.tr-progress-count {
+  font-size: 30px; font-weight: 800; line-height: 40px; color: var(--text);
+}
+.tr-progress-unit { font-size: 16px; font-weight: 500; line-height: 24px; color: var(--text-secondary); }
+.tr-progress-goal { font-size: 14px; font-weight: 500; line-height: 21px; color: var(--text-tertiary); }
+.tr-progress-bar {
+  width: 100%; height: 8px; border-radius: 4px;
+  background: var(--surface2); overflow: hidden;
+}
+.tr-progress-fill {
+  height: 100%; border-radius: 4px;
+  background: var(--primary);
+  transition: width 0.5s ease-in-out;
+}
+.tr-progress-hint {
+  font-size: 13px; line-height: 19.5px; font-weight: 500;
+  color: var(--text-tertiary); margin-top: 8px;
+}
+
+/* 사용처 — 통합 액션 카드 */
+.tr-action-list { display: flex; flex-direction: column; gap: 8px; }
+.tr-action {
+  display: flex; align-items: center; gap: 14px;
+  padding: 14px 16px; border-radius: 12px;
+  background: var(--surface2);
+}
+.tr-action--done { opacity: 0.5; }
+.tr-action-icon {
+  width: 40px; height: 40px; border-radius: 10px;
+  background: var(--primary-bg);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px; flex-shrink: 0;
+}
+.tr-action-body { flex: 1; min-width: 0; text-align: left; }
+.tr-action-label {
+  display: block; font-size: 15px; font-weight: 600;
+  line-height: 22.5px; color: var(--text);
+}
+.tr-action-desc {
+  display: block; font-size: 13px; font-weight: 400;
+  line-height: 19.5px; color: var(--text-tertiary); margin-top: 1px;
+}
+.tr-action-btn {
+  padding: 8px 16px; background: var(--primary); color: #fff;
+  border: none; border-radius: var(--seed-r-full, 999px);
+  font-size: 14px; font-weight: 600; cursor: pointer;
+  flex-shrink: 0; transition: all 0.1s ease-in-out;
+}
+.tr-action-btn:active { transform: scale(0.96); }
+.tr-action-btn.disabled { opacity: 0.35; cursor: not-allowed; }
+.tr-close-btn { width: 100%; margin-top: 20px; }
+
+/* 이웃 선물 피커 */
+.tr-friend-picker { animation: fadeIn 0.15s ease; }
+.tr-friend-list { display: flex; flex-direction: column; gap: 0; }
+.tr-friend-item {
+  display: flex; align-items: center; justify-content: space-between;
+  min-height: 44px; padding: 0 4px;
+  background: none; border: none; cursor: pointer;
+  border-bottom: 1px solid var(--seed-stroke-neutral, var(--border));
+  transition: background 0.1s ease-in-out;
+  width: 100%; text-align: left;
+}
+.tr-friend-item:last-child { border-bottom: none; }
+.tr-friend-item:active { background: var(--surface2); }
+.tr-friend-name {
+  font-size: 15px; font-weight: 500; line-height: 22.5px; color: var(--text);
+}
+.tr-friend-send {
+  font-size: 13px; font-weight: 600; color: var(--primary);
+}
+.tr-friend-empty {
+  font-size: 13px; color: var(--text-tertiary); text-align: center;
+  padding: 16px 0;
+}
+.tr-friend-loading {
+  font-size: 13px; color: var(--text-tertiary); text-align: center;
+  padding: 16px 0;
 }
 
 .tomato-kcal-status {
@@ -4713,70 +4816,7 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
 .tf-info-btn--light { color: #fff; font-size: 13px; font-weight: 700; opacity: 0.9; text-shadow: 0 1px 3px rgba(0,0,0,0.3); }
 .tf-info-btn--light:active { background: rgba(255,255,255,0.15); }
 
-.tomato-rule-tooltip {
-  position: fixed; left: 50%; top: 50%;
-  transform: translate(-50%, -50%);
-  width: calc(100% - 48px); max-width: 320px;
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--seed-r3, 12px);
-  padding: 24px 20px;
-  box-shadow: 0 16px 48px rgba(0,0,0,0.5);
-  z-index: 1000;
-  animation: fadeIn 0.2s ease;
-  text-align: center;
-}
-.tomato-rule-backdrop {
-  position: fixed; inset: 0;
-  background: rgba(0,0,0,0.5);
-  z-index: 999;
-  animation: fadeIn 0.15s ease;
-}
-.tomato-rule-title {
-  font-size: 15px; font-weight: 700; color: var(--text);
-  margin-bottom: 10px;
-}
-.tomato-rule-body {
-  font-size: 13px; color: var(--text-secondary); line-height: 1.6;
-}
-.tomato-rule-stages {
-  font-size: 20px; margin: 12px 0;
-  letter-spacing: 4px;
-}
-.tomato-rule-divider {
-  height: 1px; background: var(--border); margin: 14px 0;
-}
-.tomato-rule-section-title {
-  font-size: 12px; font-weight: 700; color: var(--text-tertiary);
-  margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;
-}
-.tomato-rule-freeze {
-  display: flex; align-items: center; gap: 10px;
-  margin-top: 14px; padding: 10px 14px;
-  background: var(--surface2); border-radius: var(--seed-r2, 8px);
-}
-.tomato-rule-freeze--used {
-  opacity: 0.6; justify-content: center;
-  font-size: 12px; color: var(--text-tertiary);
-}
-.tomato-rule-freeze-info { flex: 1; text-align: left; }
-.tomato-rule-freeze-label { display: block; font-size: 13px; font-weight: 600; color: var(--text); }
-.tomato-rule-freeze-desc { display: block; font-size: 11px; color: var(--text-tertiary); margin-top: 2px; }
-.tomato-rule-freeze-btn {
-  padding: 7px 14px; background: var(--primary); color: #fff;
-  border: none; border-radius: var(--seed-r-full);
-  font-size: 12px; font-weight: 700; cursor: pointer;
-  transition: all var(--seed-d3, 0.15s);
-}
-.tomato-rule-freeze-btn:active { transform: scale(0.96); }
-.tomato-rule-freeze-btn.disabled { opacity: 0.35; cursor: not-allowed; }
-.tomato-rule-close {
-  margin-top: 16px; padding: 10px 24px;
-  background: transparent; color: var(--text-secondary);
-  border: 1px solid var(--border); border-radius: var(--seed-r-full);
-  font-size: 13px; font-weight: 600; cursor: pointer;
-  transition: all var(--seed-d3, 0.15s);
-}
-.tomato-rule-close:active { background: var(--surface2); }
+/* (old tomato-rule-tooltip styles removed — replaced by .tr-* TDS bottom sheet) */
 
 /* ── Hero Social Proof ── */
 .hero-social-proof {

@@ -7,12 +7,13 @@ import { TODAY, getDiet, getDietPlan, calcDietMetrics, getBodyCheckins,
          getUnitGoalStart, saveUnitGoalStart, getDayTargetKcal,
          getTomatoState, saveTomatoState, saveTomatoCycle,
          getTomatoCycles, dateKey,
-         getStreakFreezes, useStreakFreeze }  from '../data.js';
+         getStreakFreezes, useStreakFreeze,
+         getMyFriends, getAccountList }  from '../data.js';
 import { calcTomatoCycle, evaluateCycleResult, getQuarterKey,
          isDietDaySuccess, isExerciseDaySuccess,
          getDayTargetKcal as calcDayTarget }  from '../calc.js';
 import { checkStreakMilestone } from './hero.js';
-import { showToast, haptic } from './utils.js';
+import { showToast, haptic, resolveNickname } from './utils.js';
 
 const TOMATO_STAGES = [
   { icon: '🌱', label: '씨앗을 심었어요' },
@@ -35,7 +36,7 @@ export function renderTomatoHero(el) {
   const state = getTomatoState();
   const qKey = getQuarterKey(TODAY);
   const qCount = state.quarterlyTomatoes[qKey] || 0;
-  const totalCount = state.totalTomatoes + state.giftedReceived - state.giftedSent;
+  const totalCount = Math.max(0, state.totalTomatoes + (state.giftedReceived || 0) - (state.giftedSent || 0));
 
   // 식단 상태 계산
   const dietStatuses = cycle.days.map((dayKey, i) => {
@@ -140,93 +141,166 @@ export function renderTomatoHero(el) {
   document.getElementById('tomato-rule-info')?.addEventListener('click', _showTomatoRuleTooltip);
 }
 
-// ── 토마토 규칙 팝오버 (스트릭 보호 통합) ─────────────────────
+// ── 토마토 규칙 바텀시트 (TDS Modal) ─────────────────────────
 function _closeTomatoRule() {
-  document.querySelector('.tomato-rule-backdrop')?.remove();
-  document.querySelector('.tomato-rule-tooltip')?.remove();
+  const modal = document.getElementById('tomato-rule-modal');
+  if (modal) {
+    modal.classList.remove('open');
+    setTimeout(() => modal.remove(), 200);
+  }
 }
 
 function _showTomatoRuleTooltip(e) {
   e.stopPropagation();
-  if (document.querySelector('.tomato-rule-tooltip')) {
+  if (document.getElementById('tomato-rule-modal')) {
     _closeTomatoRule();
     return;
   }
 
   const tomatoState = getTomatoState();
-  const available = tomatoState.totalTomatoes + (tomatoState.giftedReceived || 0) - (tomatoState.giftedSent || 0);
+  const available = Math.max(0, tomatoState.totalTomatoes + (tomatoState.giftedReceived || 0) - (tomatoState.giftedSent || 0));
   const freezes = getStreakFreezes();
   const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
   const usedThisWeek = freezes.filter(f => f.usedAt > weekAgo);
   const canFreeze = available > 0 && usedThisWeek.length === 0;
+  const progressPct = Math.min(Math.round(available / 30 * 100), 100);
 
   let freezeHtml = '';
   if (usedThisWeek.length > 0) {
-    freezeHtml = `<div class="tomato-rule-freeze tomato-rule-freeze--used">
-      <span>🍅 이번 주 스트릭 보호 사용 완료</span>
+    freezeHtml = `<div class="tr-action tr-action--done">
+      <div class="tr-action-icon">🍅</div>
+      <div class="tr-action-body">
+        <span class="tr-action-label">끊김없이 토마토 수확하기</span>
+        <span class="tr-action-desc">이번 주 사용 완료</span>
+      </div>
     </div>`;
   } else {
-    freezeHtml = `<div class="tomato-rule-freeze">
-      <div class="tomato-rule-freeze-info">
-        <span class="tomato-rule-freeze-label">🍅 스트릭 보호</span>
-        <span class="tomato-rule-freeze-desc">토마토 1개 · 주 1회 · 보유 ${available}개</span>
+    freezeHtml = `<div class="tr-action">
+      <div class="tr-action-icon">🍅</div>
+      <div class="tr-action-body">
+        <span class="tr-action-label">끊김없이 토마토 수확하기</span>
+        <span class="tr-action-desc">토마토 1개 · 주 1회</span>
       </div>
-      <button class="tomato-rule-freeze-btn${canFreeze ? '' : ' disabled'}" id="tooltip-freeze-btn" ${canFreeze ? '' : 'disabled'}>보호하기</button>
+      <button class="tr-action-btn${canFreeze ? '' : ' disabled'}" id="tooltip-freeze-btn" ${canFreeze ? '' : 'disabled'}>사용</button>
     </div>`;
   }
 
-  // backdrop
-  const backdrop = document.createElement('div');
-  backdrop.className = 'tomato-rule-backdrop';
-  backdrop.addEventListener('click', _closeTomatoRule);
-  document.body.appendChild(backdrop);
+  const canGift = available > 0;
+  const giftHtml = `<div class="tr-action">
+    <div class="tr-action-icon">🎁</div>
+    <div class="tr-action-body">
+      <span class="tr-action-label">이웃에게 선물하기</span>
+      <span class="tr-action-desc">토마토 1개 · 이웃 선택</span>
+    </div>
+    <button class="tr-action-btn${canGift ? '' : ' disabled'}" id="tooltip-gift-btn" ${canGift ? '' : 'disabled'}>사용</button>
+  </div>`;
 
-  // tooltip (fixed 중앙)
-  const tooltip = document.createElement('div');
-  tooltip.className = 'tomato-rule-tooltip';
-  tooltip.innerHTML = `
-    <div class="tomato-rule-title">🍅 토마토 획득 규칙</div>
-    <div class="tomato-rule-list">
-      <div class="tomato-rule-item">
-        <span class="tomato-rule-icon">🥗</span>
-        <span>식단 3일 연속 달성</span>
-        <span class="tomato-rule-reward">🍅 ×1</span>
+  const modal = document.createElement('div');
+  modal.id = 'tomato-rule-modal';
+  modal.className = 'modal-backdrop';
+  modal.onclick = (ev) => { if (ev.target === modal) _closeTomatoRule(); };
+  modal.innerHTML = `
+    <div class="modal-sheet tr-sheet" onclick="event.stopPropagation()">
+      <div class="sheet-handle"></div>
+
+      <div class="tr-header">
+        <div class="tr-title">토마토 획득 규칙</div>
       </div>
-      <div class="tomato-rule-item">
-        <span class="tomato-rule-icon">💪</span>
-        <span>운동 3일 연속 달성</span>
-        <span class="tomato-rule-reward">🍅 ×1</span>
+
+      <div class="tr-section">
+        <div class="tr-row">
+          <span class="tr-row-icon">🥗</span>
+          <span class="tr-row-text">식단 3일 연속 달성</span>
+          <span class="tr-row-badge">+1</span>
+        </div>
+        <div class="tr-row">
+          <span class="tr-row-icon">💪</span>
+          <span class="tr-row-text">운동 3일 연속 달성</span>
+          <span class="tr-row-badge">+1</span>
+        </div>
+        <div class="tr-row tr-row--highlight">
+          <span class="tr-row-icon">🥗+💪</span>
+          <span class="tr-row-text">둘 다 달성</span>
+          <span class="tr-row-badge tr-row-badge--double">+2</span>
+        </div>
       </div>
-      <div class="tomato-rule-item tomato-rule-item--double">
-        <span class="tomato-rule-icon">🥗+💪</span>
-        <span>둘 다 달성하면</span>
-        <span class="tomato-rule-reward">🍅🍅 ×2!</span>
+
+      <div class="tr-divider"></div>
+
+      <div class="tr-section">
+        <div class="tr-section-label">보유 현황</div>
+        <div class="tr-progress-row">
+          <span class="tr-progress-count">${available}<span class="tr-progress-unit">개</span></span>
+          <span class="tr-progress-goal">/ 30개</span>
+        </div>
+        <div class="tr-progress-bar">
+          <div class="tr-progress-fill" style="width:${progressPct}%"></div>
+        </div>
+        <div class="tr-progress-hint">30개 모으면 개발자로부터 실제 토마토 한 팩을 받아볼 수 있어요!</div>
       </div>
+
+      <div class="tr-divider"></div>
+
+      <div class="tr-section">
+        <div class="tr-section-label">사용처</div>
+        <div class="tr-action-list">
+          ${freezeHtml}
+          ${giftHtml}
+        </div>
+      </div>
+
+      <div id="tr-friend-picker" class="tr-friend-picker" style="display:none;">
+        <div class="tr-divider"></div>
+        <div class="tr-section-label">선물할 이웃 선택</div>
+        <div id="tr-friend-list" class="tr-friend-list">
+          <div class="tr-friend-loading">불러오는 중...</div>
+        </div>
+      </div>
+
+      <button class="tds-btn fill md tr-close-btn" onclick="_closeTomatoRuleGlobal()">확인</button>
     </div>
-    <div class="tomato-rule-stages">🌱 → 🌿 → 🍅</div>
-    <div class="tomato-rule-divider"></div>
-    <div class="tomato-rule-section-title">토마토 사용처</div>
-    <div class="tomato-rule-body">
-      스트릭 보호(🍅) · 이웃에게 선물(🎁)
-    </div>
-    <div class="tomato-rule-divider"></div>
-    <div class="tomato-rule-item" style="background:var(--primary-bg);margin-top:4px;">
-      <span class="tomato-rule-icon">📦</span>
-      <span style="flex:1;font-size:13px;line-height:1.4;">30개 모으면 실제 토마토 한 팩을<br>집으로 보내드려요!</span>
-      <span class="tomato-rule-reward" style="font-size:13px;">${available}/30</span>
-    </div>
-    ${freezeHtml}
-    <button class="tomato-rule-close" onclick="_closeTomatoRuleGlobal()">닫기</button>
   `;
-  document.body.appendChild(tooltip);
+  document.body.appendChild(modal);
+  requestAnimationFrame(() => modal.classList.add('open'));
 
-  tooltip.querySelector('#tooltip-freeze-btn')?.addEventListener('click', async () => {
+  modal.querySelector('#tooltip-freeze-btn')?.addEventListener('click', async () => {
     if (!confirm('토마토 1개를 사용하여 오늘의 스트릭을 보호할까요?')) return;
     const result = await useStreakFreeze('workout');
     if (result.error) { showToast(result.error, 2500, 'error'); return; }
     haptic('success');
     showToast('🍅 스트릭이 보호됐어요!', 2500, 'success');
     _closeTomatoRule();
+  });
+
+  modal.querySelector('#tooltip-gift-btn')?.addEventListener('click', async () => {
+    const picker = modal.querySelector('#tr-friend-picker');
+    if (picker.style.display !== 'none') { picker.style.display = 'none'; return; }
+    picker.style.display = '';
+    const listEl = modal.querySelector('#tr-friend-list');
+    try {
+      const [friends, accounts] = await Promise.all([getMyFriends(), getAccountList()]);
+      if (friends.length === 0) {
+        listEl.innerHTML = '<div class="tr-friend-empty">아직 이웃이 없어요</div>';
+        return;
+      }
+      listEl.innerHTML = friends.map(f => {
+        const acc = accounts.find(a => a.id === f.friendId);
+        const name = acc ? resolveNickname(acc, accounts) : f.friendId;
+        return `<button class="tr-friend-item" data-fid="${f.friendId}" data-fname="${name}">
+          <span class="tr-friend-name">${name}</span>
+          <span class="tr-friend-send">선물</span>
+        </button>`;
+      }).join('');
+      listEl.querySelectorAll('.tr-friend-item').forEach(btn => {
+        btn.addEventListener('click', () => {
+          _closeTomatoRule();
+          window.openTomatoGiftModal(btn.dataset.fid, btn.dataset.fname);
+        });
+      });
+    } catch (e) {
+      console.warn('[tomato-rule] friend list:', e);
+      listEl.innerHTML = '<div class="tr-friend-empty">이웃 목록을 불러올 수 없어요</div>';
+    }
   });
 }
 
@@ -278,6 +352,11 @@ export function settleTomatoCycleIfNeeded() {
         state.quarterlyTomatoes[c.quarter] = (state.quarterlyTomatoes[c.quarter] || 0) + c.tomatoesAwarded;
       }
     });
+    // giftedSent가 총 보유량을 초과하면 보정 (음수 표시 방지)
+    const maxSent = state.totalTomatoes + (state.giftedReceived || 0);
+    if ((state.giftedSent || 0) > maxSent) {
+      state.giftedSent = maxSent;
+    }
   }
   let newlyAwarded = 0;
 
@@ -343,7 +422,7 @@ export function settleTomatoCycleIfNeeded() {
   console.log(`[tomato] awarded ${newlyAwarded} tomatoes, total=${state.totalTomatoes}`);
   // 새로 수확한 토마토가 있으면 축하 모달 예약
   if (newlyAwarded > 0) {
-    const total = state.totalTomatoes + (state.giftedReceived || 0) - (state.giftedSent || 0);
+    const total = Math.max(0, state.totalTomatoes + (state.giftedReceived || 0) - (state.giftedSent || 0));
     setTimeout(() => _showHarvestCelebration(newlyAwarded, total), 800);
   }
 }
@@ -440,7 +519,7 @@ export function renderTomatoBasket() {
   const qCycles = getTomatoCycles(qKey);
   const qCount = state.quarterlyTomatoes[qKey] || 0;
   const giftCount = state.giftedReceived || 0;
-  const totalAvailable = state.totalTomatoes + state.giftedReceived - state.giftedSent;
+  const totalAvailable = Math.max(0, state.totalTomatoes + (state.giftedReceived || 0) - (state.giftedSent || 0));
 
   const qStart = new Date(TODAY.getFullYear(), Math.floor(TODAY.getMonth() / 3) * 3, 1);
   const qEnd = new Date(qStart.getFullYear(), qStart.getMonth() + 3, 0);
@@ -590,7 +669,7 @@ export function renderTomatoCard() {
   const tomatoState = getTomatoState();
   const qKey = getQuarterKey(TODAY);
   const qCount = tomatoState.quarterlyTomatoes[qKey] || 0;
-  const totalCount = tomatoState.totalTomatoes + (tomatoState.giftedReceived || 0) - (tomatoState.giftedSent || 0);
+  const totalCount = Math.max(0, tomatoState.totalTomatoes + (tomatoState.giftedReceived || 0) - (tomatoState.giftedSent || 0));
 
   let startStr = getUnitGoalStart();
   if (!startStr) {

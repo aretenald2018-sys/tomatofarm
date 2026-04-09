@@ -21,7 +21,7 @@ export function renderFarmDuolingo() {
   const tomatoState = getTomatoState();
   const qKey = getQuarterKey(TODAY);
   const qCount = tomatoState.quarterlyTomatoes[qKey] || 0;
-  const totalCount = tomatoState.totalTomatoes + (tomatoState.giftedReceived || 0) - (tomatoState.giftedSent || 0);
+  const totalCount = Math.max(0, tomatoState.totalTomatoes + (tomatoState.giftedReceived || 0) - (tomatoState.giftedSent || 0));
   const shopItems = getFarmShopItems();
   const spent = (farm.ownedItems || []).reduce((sum, i) => {
     const s = shopItems.find(x => x.id === i.itemId);
@@ -202,7 +202,7 @@ window.openFarmShop = function() {
   const shopItems = getFarmShopItems();
   const tomatoState = getTomatoState();
   const farm = getFarmState();
-  const totalCount = tomatoState.totalTomatoes + (tomatoState.giftedReceived || 0) - (tomatoState.giftedSent || 0);
+  const totalCount = Math.max(0, tomatoState.totalTomatoes + (tomatoState.giftedReceived || 0) - (tomatoState.giftedSent || 0));
   const spent = (farm.ownedItems || []).reduce((sum, i) => {
     const s = shopItems.find(x => x.id === i.itemId);
     return sum + (s ? s.price * i.quantity : 0);
@@ -251,7 +251,7 @@ export function renderFarmCyworld() {
   const state = getTomatoState();
   const qKey = getQuarterKey(TODAY);
   const qCount = state.quarterlyTomatoes[qKey] || 0;
-  const totalCount = state.totalTomatoes + (state.giftedReceived || 0) - (state.giftedSent || 0);
+  const totalCount = Math.max(0, state.totalTomatoes + (state.giftedReceived || 0) - (state.giftedSent || 0));
   const startStr = getUnitGoalStart();
   const cycle = startStr ? calcTomatoCycle(startStr, TODAY) : null;
   const dayIndex = cycle ? cycle.dayIndex : 0;
