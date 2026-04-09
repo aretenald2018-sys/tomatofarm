@@ -100,8 +100,12 @@ function _buildTitle(data) {
     case "announcement":    return "📢 운영자 공지";
     case "direct_message":  return data.title || "📬 개별 메시지";
     case "introduce":       return "👋 이웃 소개";
-    case "letter":          return "✉️ 새 편지";
-    default:                return "🍅 토마토팜 알림";
+    case "letter":              return "✉️ 새 편지";
+    case "guild_join_request":  return "🏠 길드원 확인 요청";
+    case "guild_join_approved":   return "🏠 길드 가입 승인";
+    case "guild_member_joined":   return "🏠 새 길드원";
+    case "guild_invite":          return "🏠 길드 초대";
+    default:                    return "🍅 토마토팜 알림";
   }
 }
 
@@ -184,6 +188,58 @@ async function _computeRanking() {
     weekStart,
     rankings: filtered,
   });
+
+  // 6. 길드 랭킹 계산
+  try {
+    const guildsSnap = await db.collection("_guilds").get();
+    const guildMap = {};
+    guildsSnap.forEach((d) => {
+      guildMap[d.id] = { ...d.data(), members: [] };
+    });
+
+    // accounts는 이미 조회됨 (line 126-130). guilds 필드 활용.
+    for (const account of accounts) {
+      const userGuilds = account.guilds || []; // pendingGuilds 제외
+      const userRank = rankings.find((r) => r.userId === account.id);
+      const activeDays = userRank ? userRank.activeDays : 0;
+      for (const guildId of userGuilds) {
+        if (guildMap[guildId]) {
+          guildMap[guildId].members.push({
+            userId: account.id,
+            name:
+              userRank?.name || account.nickname || account.firstName || account.id,
+            activeDays,
+          });
+        }
+      }
+    }
+
+    const guildRankings = Object.entries(guildMap)
+      .filter(([, g]) => g.members.length > 0)
+      .map(([guildId, g]) => ({
+        guildId,
+        guildName: g.name,
+        memberCount: g.members.length,
+        totalActiveDays: g.members.reduce((s, m) => s + m.activeDays, 0),
+        avgActiveDays: +(
+          g.members.reduce((s, m) => s + m.activeDays, 0) / g.members.length
+        ).toFixed(1),
+        members: g.members.sort((a, b) => b.activeDays - a.activeDays),
+      }))
+      .sort((a, b) => b.avgActiveDays - a.avgActiveDays);
+
+    await db.doc("_weekly_guild_ranking/current").set({
+      updatedAt: Date.now(),
+      weekStart,
+      rankings: guildRankings,
+    });
+
+    console.log(
+      `[GuildRanking] ${guildRankings.length} guilds ranked`
+    );
+  } catch (guildErr) {
+    console.warn("[GuildRanking] error:", guildErr);
+  }
 
   console.log(
     `[WeeklyRanking] ${filtered.length} ranked users, weekStart=${weekStart}`

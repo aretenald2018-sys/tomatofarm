@@ -30,6 +30,7 @@ const MODALS = [
   { id: 'fin-budget-item-modal', path: './modals/finance-budget-modal.js',   export: 'MODAL_HTML' },
   { id: 'stock-detail-modal',   path: './modals/stock-detail-modal.js',     export: 'MODAL_HTML' },
   { id: 'streak-milestone-modal', path: './modals/streak-milestone-modal.js', export: 'MODAL_HTML' },
+  { id: 'guild-modal',            path: './modals/guild-modal.js',            export: 'MODAL_HTML' },
 ];
 
 // 모달들이 로드되었는지 추적
@@ -44,7 +45,7 @@ export async function loadAndInjectModals() {
   const container = document.getElementById('modals-container');
   if (!container) return;
 
-  const cacheKey = '?v=20260408';
+  const cacheKey = '?v=20260409';
   const results = await Promise.allSettled(
     MODALS.map(cfg => import(cfg.path + cacheKey).then(m => m[cfg.export] || ''))
   );

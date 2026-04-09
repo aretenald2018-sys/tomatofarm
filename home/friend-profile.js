@@ -10,7 +10,8 @@ import { TODAY, getCurrentUser, getMyFriends, getAccountList,
          introduceFriend, markNotificationRead,
          isAdmin, isAdminGuest, getAdminId, getAdminGuestId,
          isAdminInstance, isSameInstance, getDataOwnerId,
-         getTomatoState, dateKey, recordAction }  from '../data.js';
+         getTomatoState, dateKey, recordAction,
+         getAllGuilds }  from '../data.js';
 import { resolveNickname, showToast, haptic, formatTimeAgo } from './utils.js';
 
 // 순환 참조 방지: renderHome, renderFriendFeed, refreshNotifCenter 주입
@@ -25,7 +26,7 @@ export function setFriendProfileDeps({ renderHome, renderFriendFeed, refreshNoti
 }
 
 // ── 친구 프로필 상세 ─────────────────────────────────────────────
-window.openFriendProfile = async function(friendId, friendName, scrollToSection) {
+window.openFriendProfile = async function(friendId, friendName, scrollToSection, overrideDateKey) {
   const user = getCurrentUser();
   const myDataId = getDataOwnerId();
 
@@ -54,7 +55,12 @@ window.openFriendProfile = async function(friendId, friendName, scrollToSection)
   const nickname = (rawNick && rawNick !== baseName) ? rawNick : baseName;
   const realName = baseName;
   const ini = nickname.charAt(0);
-  const tk = dateKey(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
+  const todayKey = dateKey(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
+  const tk = (overrideDateKey && overrideDateKey !== todayKey) ? overrideDateKey : todayKey;
+  const isHistorical = tk !== todayKey;
+  const dateLabel = isHistorical
+    ? (() => { const [y,m,d] = tk.split('-').map(Number); const dow = DOW[new Date(y,m-1,d).getDay()]; return `${m}/${d}(${dow})`; })()
+    : '오늘';
 
   const lookupId = isMyProfile ? myDataId : normalizedFriendId;
   const todayW = await getFriendWorkout(lookupId, tk);
@@ -181,28 +187,47 @@ window.openFriendProfile = async function(friendId, friendName, scrollToSection)
           ? (nickname !== realName ? `<div style="font-size:13px;color:var(--text-tertiary);margin-top:2px;-webkit-user-select:none;user-select:none;">${realName}</div>` : '')
           : ''
         }
+        ${(() => {
+          const userGuilds = friendAcc?.guilds || [];
+          const primaryG = friendAcc?.primaryGuild || '';
+          if (userGuilds.length > 0) {
+            const chips = userGuilds.map(g => {
+              const isPrimary = g === primaryG;
+              return `<span class="guild-chip${isPrimary ? ' primary' : ''}" style="font-size:11px;padding:3px 8px;">${isPrimary ? '★ ' : ''}${g}</span>`;
+            }).join('');
+            return `<div style="display:flex;flex-wrap:wrap;gap:4px;justify-content:center;margin-top:6px;">${chips}</div>`;
+          } else if (isMyProfile) {
+            return `<div style="margin-top:6px;font-size:12px;color:var(--text-tertiary);">소속 길드가 없습니다. <button onclick="document.getElementById('dynamic-modal')?.remove();openGuildModal()" style="background:none;border:none;color:var(--primary);font-size:12px;font-weight:600;cursor:pointer;padding:0;">추가하기</button></div>`;
+          }
+          return '';
+        })()}
+        ${!isMyProfile ? `<div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-top:8px;">
+          ${!isFriend ? `<button onclick="quickAddNeighbor('${friendId}')" style="padding:6px 12px;border:1px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text-secondary);font-size:11px;font-weight:500;cursor:pointer;transition:background 0.1s ease-in-out;">🤝 이웃 추가</button>` : ''}
+          <button onclick="openIntroduceFriend('${friendId}','${friendName}')" style="padding:6px 12px;border:1px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text-secondary);font-size:11px;font-weight:500;cursor:pointer;transition:background 0.1s ease-in-out;">👋 다른 이웃 소개</button>
+          <button onclick="openGuildInvite('${friendId}','${friendName}')" style="padding:6px 12px;border:1px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text-secondary);font-size:11px;font-weight:500;cursor:pointer;transition:background 0.1s ease-in-out;">🏠 길드 초대</button>
+        </div>` : ''}
       </div>
 
       <div style="display:flex;justify-content:space-around;padding:14px 0;border-top:1px solid var(--border);border-bottom:1px solid var(--border);margin:8px 0;">
         <div style="text-align:center;">
-          <div style="font-size:20px;font-weight:800;color:var(--text);">${workoutDays}<span style="font-size:11px;font-weight:400;color:var(--text-tertiary);">/7</span></div>
+          <div style="font-size:20px;font-weight:700;color:var(--text);">${workoutDays}<span style="font-size:11px;font-weight:400;color:var(--text-tertiary);">/7</span></div>
           <div style="font-size:10px;color:var(--text-tertiary);">이번 주</div>
         </div>
         <div style="width:1px;background:var(--border);"></div>
         <div style="text-align:center;">
-          <div style="font-size:20px;font-weight:800;color:var(--primary);">${streak}<span style="font-size:11px;font-weight:400;color:var(--text-tertiary);">일</span></div>
+          <div style="font-size:20px;font-weight:700;color:var(--primary);">${streak}<span style="font-size:11px;font-weight:400;color:var(--text-tertiary);">일</span></div>
           <div style="font-size:10px;color:var(--text-tertiary);">연속 기록</div>
         </div>
         <div style="width:1px;background:var(--border);"></div>
         <div style="text-align:center;">
-          <div style="font-size:20px;font-weight:800;color:var(--text);">${goalPct}</div>
+          <div style="font-size:20px;font-weight:700;color:var(--text);">${goalPct}</div>
           <div style="font-size:10px;color:var(--text-tertiary);">목표 달성</div>
         </div>
       </div>
 
       <div style="padding:10px 4px 6px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-          <span style="font-size:12px;font-weight:500;color:var(--text-tertiary);">오늘의 운동 ${volumeGrowth}</span>
+          <span style="font-size:12px;font-weight:500;color:var(--text-tertiary);">${dateLabel}의 운동 ${volumeGrowth}</span>
           ${(() => {
             const wReactCount = getReactionCount('workout');
             const wEmojis = getReactionEmojis('workout');
@@ -224,13 +249,13 @@ window.openFriendProfile = async function(friendId, friendName, scrollToSection)
       </div>
 
       <div style="padding:8px 4px;border-top:1px solid var(--border);margin-top:6px;">
-        <div style="font-size:12px;font-weight:500;color:var(--text-tertiary);margin-bottom:6px;">오늘의 식단</div>
+        <div style="font-size:12px;font-weight:500;color:var(--text-tertiary);margin-bottom:6px;">${dateLabel}의 식단</div>
         ${todayDietHtml}
       </div>
       <div style="padding:10px 4px;border-top:1px solid var(--border);margin-top:6px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
           <span style="font-size:12px;font-weight:500;color:var(--text-tertiary);">수확한 토마토</span>
-          <span style="font-size:18px;font-weight:800;color:var(--text);">${tomatoCount}<span style="font-size:11px;font-weight:400;color:var(--text-tertiary);"> 개</span></span>
+          <span style="font-size:18px;font-weight:700;color:var(--text);">${tomatoCount}<span style="font-size:11px;font-weight:400;color:var(--text-tertiary);"> 개</span></span>
         </div>
         <div style="display:flex;gap:3px;flex-wrap:wrap;">
           ${typeof tomatoCount === 'number' ? Array.from({length:Math.max(tomatoCount,1)},(_,i)=> i < tomatoCount
@@ -258,7 +283,6 @@ window.openFriendProfile = async function(friendId, friendName, scrollToSection)
           <button onclick="openTomatoGiftModal('${friendId}','${friendName}')" style="flex:1;padding:9px;border:none;border-radius:999px;background:var(--primary);color:#fff;font-size:12px;font-weight:600;cursor:pointer;">🍅 선물</button>
           <button onclick="document.getElementById('dynamic-modal')?.remove()" style="flex:1;padding:9px;border:1px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text-secondary);font-size:12px;font-weight:600;cursor:pointer;">닫기</button>
         </div>
-        ${!isMyProfile ? `<button onclick="openIntroduceFriend('${friendId}','${friendName}')" style="width:100%;padding:8px;border:none;background:none;color:var(--text-tertiary);font-size:12px;cursor:pointer;margin-bottom:4px;">이 이웃을 다른 이웃에게 소개하기 →</button>` : ''}
       ` : `
         <div style="display:flex;gap:6px;padding:14px 0 8px;">
           <button onclick="quickAddNeighbor('${friendId}')" style="flex:1;padding:9px;border:none;border-radius:999px;background:var(--primary);color:#fff;font-size:12px;font-weight:600;cursor:pointer;">이웃 추가하기</button>
@@ -290,8 +314,11 @@ window.openFriendProfile = async function(friendId, friendName, scrollToSection)
       } else if (scrollToSection?.startsWith('comments_')) {
         const cmtSection = scrollToSection.replace('comments_', '');
         if (cmtSection) {
-          await window.toggleCommentSection(normalizedFriendId, tk, cmtSection);
-          targetEl = document.getElementById(`comments-${cmtSection}`);
+          const cmtPanel = document.getElementById(`comments-${cmtSection}`);
+          if (cmtPanel && cmtPanel.style.display === 'none') {
+            await window.toggleCommentSection(normalizedFriendId, tk, cmtSection);
+          }
+          targetEl = cmtPanel;
         }
       }
       if (targetEl) {
@@ -402,6 +429,51 @@ window.confirmIntroduce = async function(idA, idB, nameA, nameB) {
   if (result.error) { showToast(result.error, 2500, 'error'); return; }
   recordAction('이웃소개');
   showToast(`${nameA}님과 ${nameB}님을 소개했어요! 👋`, 2500, 'success');
+};
+
+// 길드 초대 (내 길드 중 하나에 초대)
+window.openGuildInvite = async function(friendId, friendName) {
+  const user = getCurrentUser();
+  if (!user) return;
+  const myGuilds = user.guilds || [];
+  if (!myGuilds.length) { showToast('소속 길드가 없어요. 먼저 길드에 가입해주세요.', 2500, 'warning'); return; }
+
+  let listHtml = myGuilds.map(g =>
+    `<button onclick="confirmGuildInvite('${friendId}','${friendName}','${g.replace(/'/g, "\\'")}')" style="display:flex;align-items:center;gap:10px;width:100%;padding:12px;border:1px solid var(--border);border-radius:var(--radius-md,12px);background:var(--surface);cursor:pointer;margin-bottom:6px;text-align:left;transition:all 0.1s ease-in-out;">
+      <div style="width:32px;height:32px;border-radius:50%;background:var(--primary-bg);color:var(--primary);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;">🏠</div>
+      <span style="font-size:14px;font-weight:500;color:var(--text);">${g}</span>
+    </button>`
+  ).join('');
+
+  const modal = document.createElement('div'); modal.id = 'guild-invite-modal'; document.body.appendChild(modal);
+  modal.innerHTML = `<div class="modal-backdrop" style="display:flex;z-index:1100;" onclick="if(event.target===this){document.getElementById('guild-invite-modal')?.remove();}">
+    <div class="modal-sheet" style="max-width:360px;" onclick="event.stopPropagation()">
+      <div class="sheet-handle"></div>
+      <div class="modal-title" style="font-size:17px;font-weight:700;">길드에 초대하기</div>
+      <div style="text-align:center;font-size:13px;color:var(--text-secondary);margin-bottom:14px;">
+        <b>${friendName}</b>님을 초대할 길드를 선택하세요
+      </div>
+      <div style="max-height:240px;overflow-y:auto;">${listHtml}</div>
+      <button onclick="document.getElementById('guild-invite-modal')?.remove()" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text-secondary);font-size:13px;font-weight:600;cursor:pointer;margin-top:8px;">취소</button>
+    </div>
+  </div>`;
+};
+
+window.confirmGuildInvite = async function(friendId, friendName, guildName) {
+  document.getElementById('guild-invite-modal')?.remove();
+  const user = getCurrentUser();
+  if (!user) return;
+  const { sendNotification: sn } = await import('../data.js');
+  const myName = user.nickname || (user.lastName + user.firstName);
+  await sn(friendId, {
+    type: 'guild_invite',
+    from: isAdminGuest() ? getAdminId() : user.id,
+    guildId: guildName,
+    guildName,
+    message: `${myName}님이 ${guildName} 모임에 초대했어요! 프로필에서 가입할 수 있어요.`,
+  });
+  recordAction('길드초대');
+  showToast(`${friendName}님에게 ${guildName} 초대를 보냈어요!`, 2500, 'success');
 };
 
 window.openMyGuestbook = async function() {

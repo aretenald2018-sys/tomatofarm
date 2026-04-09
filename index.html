@@ -21,57 +21,109 @@
 <!-- 로그인 화면 -->
 <div class="login-screen" id="login-screen">
   <div class="login-card">
-    <div class="login-title">토마토 키우기</div>
-    <div class="login-subtitle">이름을 입력해주세요</div>
 
-    <div class="login-form">
-      <div style="display:flex;gap:8px;">
-        <input class="login-input" id="login-last-name" placeholder="성" style="flex:1;" maxlength="5">
-        <input class="login-input" id="login-first-name" placeholder="이름" style="flex:2;" maxlength="10">
-      </div>
-      <input class="login-input" id="login-nickname" placeholder="별명 (이웃에게 보여질 이름)" style="margin-top:8px;" maxlength="15">
-      <div class="login-nick-guide" style="display:none;"></div>
+    <!-- ===== 로그인 뷰 (기본) ===== -->
+    <div id="login-view">
+      <div class="login-title">토마토 키우기</div>
+      <div class="login-subtitle">이름으로 로그인하세요</div>
 
-      <!-- Admin/Guest 모드 선택 (김태우 전용) -->
-      <div id="login-mode-section" style="margin-top:12px;display:none;">
+      <div class="login-form">
         <div style="display:flex;gap:8px;">
-          <label style="flex:1;display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:var(--radius-md);background:var(--surface2);cursor:pointer;border:2px solid var(--primary);transition:border 0.15s;">
-            <input type="radio" name="login-mode" value="admin" checked style="accent-color:var(--primary);">
-            <div>
-              <div style="font-size:13px;font-weight:700;color:var(--text);">Admin</div>
-              <div style="font-size:10px;color:var(--text-tertiary);">전체 기능</div>
-            </div>
-          </label>
-          <label style="flex:1;display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:var(--radius-md);background:var(--surface2);cursor:pointer;border:2px solid transparent;transition:border 0.15s;">
-            <input type="radio" name="login-mode" value="guest" style="accent-color:var(--primary);">
-            <div>
-              <div style="font-size:13px;font-weight:700;color:var(--text);">Guest</div>
-              <div style="font-size:10px;color:var(--text-tertiary);">게스트 UX</div>
-            </div>
-          </label>
+          <input class="login-input" id="login-last-name" placeholder="성" style="flex:1;" maxlength="5">
+          <input class="login-input" id="login-first-name" placeholder="이름" style="flex:2;" maxlength="10">
+        </div>
+
+        <!-- Admin/Guest 모드 선택 (김태우 전용) -->
+        <div id="login-mode-section" style="margin-top:12px;display:none;">
+          <div style="display:flex;gap:8px;">
+            <label style="flex:1;display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:var(--radius-md);background:var(--surface2);cursor:pointer;border:2px solid var(--primary);transition:border 0.1s ease-in-out;">
+              <input type="radio" name="login-mode" value="admin" checked style="accent-color:var(--primary);">
+              <div>
+                <div style="font-size:13px;font-weight:700;color:var(--text);">Admin</div>
+                <div style="font-size:10px;color:var(--text-tertiary);">전체 기능</div>
+              </div>
+            </label>
+            <label style="flex:1;display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:var(--radius-md);background:var(--surface2);cursor:pointer;border:2px solid transparent;transition:border 0.1s ease-in-out;">
+              <input type="radio" name="login-mode" value="guest" style="accent-color:var(--primary);">
+              <div>
+                <div style="font-size:13px;font-weight:700;color:var(--text);">Guest</div>
+                <div style="font-size:10px;color:var(--text-tertiary);">게스트 UX</div>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <!-- 비밀번호 (기존 계정 전용) -->
+        <div id="login-pw-section" style="margin-top:12px;display:none;">
+          <input class="login-input" id="login-password" type="password" placeholder="비밀번호" onkeydown="if(event.key==='Enter')createAccountAndLogin()">
+        </div>
+
+        <div id="login-status" style="font-size:12px;color:var(--text-tertiary);margin-top:8px;min-height:18px;"></div>
+
+        <button class="login-btn" id="login-create-btn" onclick="createAccountAndLogin()">로그인</button>
+
+        <div style="text-align:center;margin-top:14px;">
+          <button onclick="showSignupView()" style="background:none;border:none;color:var(--primary);font-size:13px;font-weight:600;cursor:pointer;padding:8px 16px;">처음이신가요? 3초만에 가입하기</button>
         </div>
       </div>
-
-      <!-- 비밀번호 (기존 계정이면 입력, 신규면 선택 설정) -->
-      <div id="login-pw-section" style="margin-top:12px;display:none;">
-        <input class="login-input" id="login-password" type="password" placeholder="비밀번호" onkeydown="if(event.key==='Enter')createAccountAndLogin()">
-      </div>
-
-      <div id="login-new-pw-section" style="margin-top:12px;display:none;">
-        <label class="login-pw-label">
-          <input type="checkbox" id="login-use-pw" onchange="document.getElementById('login-new-pw-field').style.display=this.checked?'block':'none'">
-          비밀번호 설정
-        </label>
-        <p class="login-pw-hint">설정하면 내 기록을 보호할 수 있어요. 설정하지 않아도 사용에는 문제없어요.</p>
-        <div id="login-new-pw-field" style="display:none;margin-top:8px;">
-          <input class="login-input" id="login-new-password" type="password" placeholder="비밀번호">
-        </div>
-      </div>
-
-      <div id="login-status" style="font-size:12px;color:var(--text-tertiary);margin-top:8px;min-height:18px;"></div>
-
-      <button class="login-btn" id="login-create-btn" onclick="createAccountAndLogin()">시작하기</button>
     </div>
+
+    <!-- ===== 가입 뷰 ===== -->
+    <div id="signup-view" style="display:none;">
+      <div class="login-title">토마토 키우기</div>
+      <div class="login-subtitle">이름만 있으면 바로 시작할 수 있어요</div>
+
+      <div class="login-form">
+        <div style="display:flex;gap:8px;">
+          <input class="login-input" id="signup-last-name" placeholder="성" style="flex:1;" maxlength="5">
+          <input class="login-input" id="signup-first-name" placeholder="이름" style="flex:2;" maxlength="10">
+        </div>
+
+        <!-- 별명 (필수) -->
+        <div style="margin-top:8px;">
+          <input class="login-input" id="signup-nickname" placeholder="별명 (이웃에게 보여질 이름, 필수)" maxlength="15">
+        </div>
+
+        <!-- 선택사항 영역 -->
+        <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px;">
+          <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:10px;text-align:center;">아래는 나중에 설정해도 돼요</div>
+
+          <!-- 소속 길드 -->
+          <div id="signup-guild-section" style="margin-top:10px;">
+            <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px;">소속 길드</div>
+            <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:8px;line-height:1.5;">길드에 가입하면 길드 랭킹에 참여할 수 있어요.</div>
+            <div style="position:relative;">
+              <input class="login-input" id="signup-guild-input" placeholder="길드 이름을 검색하거나 입력하세요" maxlength="20" style="margin:0;" autocomplete="off"
+                     oninput="searchGuildsFor('signup')" onfocus="searchGuildsFor('signup')"
+                     onkeydown="if(event.key==='Enter'){event.preventDefault();addGuildChipFor('signup');}">
+              <div id="signup-guild-suggestions" class="guild-suggest-list" style="display:none;"></div>
+            </div>
+            <div id="signup-guild-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;"></div>
+          </div>
+
+          <!-- 비밀번호 -->
+          <div style="margin-top:10px;">
+            <label class="login-pw-label">
+              <input type="checkbox" id="signup-use-pw" onchange="document.getElementById('signup-pw-field').style.display=this.checked?'block':'none'">
+              비밀번호 설정
+            </label>
+            <p class="login-pw-hint">설정하면 내 기록을 보호할 수 있어요.</p>
+            <div id="signup-pw-field" style="display:none;margin-top:8px;">
+              <input class="login-input" id="signup-new-password" type="password" placeholder="비밀번호">
+            </div>
+          </div>
+        </div>
+
+        <div id="signup-status" style="font-size:12px;color:var(--text-tertiary);margin-top:8px;min-height:18px;"></div>
+
+        <button class="login-btn" onclick="createAccountFromSignup()" style="margin-top:4px;">시작하기</button>
+
+        <div style="text-align:center;margin-top:14px;">
+          <button onclick="showLoginView()" style="background:none;border:none;color:var(--text-tertiary);font-size:13px;cursor:pointer;padding:8px 16px;">이미 계정이 있어요</button>
+        </div>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -278,6 +330,11 @@
     <div class="home-card" id="card-leaderboard" style="display:none;">
       <div class="home-card-header">
         <span class="home-card-title">🏆 주간 랭킹</span>
+      </div>
+      <div class="tds-segmented" id="lb-segmented" style="margin-bottom:12px;">
+        <div class="tds-segmented-indicator" id="lb-seg-indicator"></div>
+        <button class="tds-segmented-item active" onclick="switchLeaderboardTab('individual')">개인</button>
+        <button class="tds-segmented-item" onclick="switchLeaderboardTab('guild')">길드</button>
       </div>
       <div id="leaderboard-content"></div>
     </div>
@@ -918,86 +975,95 @@ async function initLoginScreen() {
       setTimeout(() => document.getElementById('kim-lock-pw')?.focus(), 100);
       return;
     } else {
-      // 패치노트 팝업 (v1: 별명 재설정 + 비밀번호 설정 안내)
-      const patchKey = 'patchnote_v1_' + saved.id;
-      if (!localStorage.getItem(patchKey)) {
-        const { getAccountList, saveAccount, hashPassword, setCurrentUser } = await import('./data.js');
+      // 길드 온보딩 팝업 (기존 사용자가 길드 미설정 시)
+      const guildObKey = 'guild_onboarding_v1_' + saved.id;
+      if (!localStorage.getItem(guildObKey)) {
+        const { getAccountList, saveAccount, setCurrentUser, getAllGuilds, createGuild, createGuildJoinRequest, updateGuildMemberCount } = await import('./data.js');
         const accs = await getAccountList();
         const myAcc = accs.find(a => a.id === saved.id);
         const realName = myAcc ? myAcc.lastName + myAcc.firstName.replace(/\(.*\)/, '') : saved.id.replace(/_/g, '');
-        const currentNick = myAcc?.nickname || realName;
-        const hasNoPw = !myAcc?.hasPassword;
+        const displayName = myAcc?.nickname || realName;
 
         document.getElementById('loading').style.display = 'none';
         document.getElementById('login-screen').style.display = 'none';
 
+        // 길드 목록 미리 로드
+        _allGuildsCache = await getAllGuilds();
+        _selectedGuilds = [];
+
         const overlay = document.createElement('div');
-        overlay.id = 'patchnote-overlay';
+        overlay.id = 'guild-onboarding-overlay';
         overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;padding:20px;';
         overlay.innerHTML = `
-        <div style="background:var(--bg,#fff);border-radius:20px;max-width:360px;width:100%;padding:32px 24px 24px;box-shadow:0 8px 32px rgba(0,0,0,0.12);overflow-y:auto;max-height:90vh;">
+        <div style="background:var(--bg,#fff);border-radius:var(--radius-lg,16px);max-width:360px;width:100%;padding:32px 20px 20px;box-shadow:var(--seed-s1,0 8px 32px rgba(0,0,0,0.12));overflow-y:auto;max-height:90vh;">
           <div style="text-align:center;margin-bottom:24px;">
-            <div style="width:56px;height:56px;border-radius:50%;background:#fff3e0;display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 12px;">🍅</div>
-            <div style="font-size:18px;font-weight:700;color:var(--text,#191F28);line-height:1.4;">농장장 패치노트</div>
+            <div style="width:56px;height:56px;border-radius:50%;background:var(--primary-bg,#fdf0f0);display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 12px;">🏠</div>
+            <div style="font-size:17px;font-weight:700;color:var(--text,#191F28);line-height:25.5px;">소속 길드를 등록해보세요</div>
             <div style="font-size:13px;color:var(--text-tertiary,#8B95A1);margin-top:4px;">${realName}님, 안녕하세요</div>
           </div>
 
           <div style="background:var(--surface2,#F2F4F6);border-radius:14px;padding:16px;margin-bottom:20px;">
-            <div style="font-size:13px;font-weight:600;color:var(--text,#191F28);margin-bottom:8px;">무엇이 바뀌었나요?</div>
             <div style="font-size:12px;color:var(--text-secondary,#4E5968);line-height:1.7;">
-              이전에 앱을 사용하다 로그아웃되는 문제가 있었어요.<br>
-              이번 업데이트로 <b>한 번 로그인하면 계속 유지</b>됩니다.<br><br>
-              복구 과정에서 별명${hasNoPw ? '과 비밀번호' : ''} 정보가 초기화되었어요.<br>
-              아래에서 다시 설정해주시면 바로 반영됩니다.
+              길드에 가입하면 <b>길드 랭킹</b>에 참여할 수 있어요.<br>
+              여러 길드에 가입할 수 있고, 첫 번째가 대표 길드가 됩니다.<br>
+              기존 길드에 가입하면 길드원의 확인을 받아요.
             </div>
           </div>
 
-          <!-- 별명 입력 -->
-          <div style="margin-bottom:16px;">
-            <label style="font-size:13px;font-weight:600;color:var(--text,#191F28);display:block;margin-bottom:6px;">별명</label>
-            <div style="font-size:11px;color:var(--text-tertiary,#8B95A1);margin-bottom:8px;">이웃들에게 보이는 이름이에요</div>
-            <input id="patch-nickname" type="text" value="${currentNick !== realName ? currentNick.replace(/"/g,'&quot;') : ''}" placeholder="${realName}" style="width:100%;padding:14px 16px;border:1.5px solid var(--border,#E5E8EB);border-radius:12px;font-size:15px;color:var(--text,#191F28);background:var(--surface,#fff);outline:none;box-sizing:border-box;transition:border-color 0.15s;" onfocus="this.style.borderColor='#fa342c'" onblur="this.style.borderColor='var(--border,#E5E8EB)'">
+          <div id="ob-guild-section" style="margin-bottom:20px;">
+            <div style="position:relative;">
+              <div style="display:flex;gap:6px;">
+                <input class="login-input" id="ob-guild-input" placeholder="길드 이름을 검색하거나 입력하세요" maxlength="20" style="flex:1;margin:0;width:100%;padding:14px 16px;border:1.5px solid var(--border,#E5E8EB);border-radius:var(--radius-md,12px);font-size:15px;color:var(--text,#191F28);background:var(--surface,#fff);outline:none;box-sizing:border-box;transition:border-color 0.1s ease-in-out;" autocomplete="off"
+                       oninput="searchGuildsFor('ob')" onfocus="searchGuildsFor('ob');this.style.borderColor='var(--primary)'"
+                       onblur="this.style.borderColor='var(--border,#E5E8EB)'"
+                       onkeydown="if(event.key==='Enter'){event.preventDefault();addGuildChipFor('ob');}">
+                <button type="button" style="padding:0 14px;border:none;border-radius:var(--radius-md,12px);background:var(--primary,#fa342c);color:#fff;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;" onclick="addGuildChipFor('ob')">추가</button>
+              </div>
+              <div id="ob-guild-suggestions" class="guild-suggest-list" style="display:none;"></div>
+            </div>
+            <div id="ob-guild-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;"></div>
           </div>
 
-          <!-- 비밀번호 입력 -->
-          ${hasNoPw ? `
-          <div style="margin-bottom:20px;">
-            <label style="font-size:13px;font-weight:600;color:var(--text,#191F28);display:block;margin-bottom:6px;">비밀번호 <span style="font-size:11px;font-weight:400;color:var(--text-tertiary,#8B95A1);">선택</span></label>
-            <div style="font-size:11px;color:var(--text-tertiary,#8B95A1);margin-bottom:8px;">설정하지 않아도 자동 로그인이 유지돼요</div>
-            <input id="patch-password" type="password" placeholder="비밀번호 (미입력 시 자동 로그인만)" style="width:100%;padding:14px 16px;border:1.5px solid var(--border,#E5E8EB);border-radius:12px;font-size:15px;color:var(--text,#191F28);background:var(--surface,#fff);outline:none;box-sizing:border-box;transition:border-color 0.15s;" onfocus="this.style.borderColor='#fa342c'" onblur="this.style.borderColor='var(--border,#E5E8EB)'">
-          </div>
-          ` : ''}
-
-          <button id="patch-submit-btn" style="width:100%;padding:15px;border:none;border-radius:14px;background:#fa342c;color:#fff;font-size:15px;font-weight:600;cursor:pointer;transition:background 0.15s;margin-bottom:8px;">확인</button>
-          <button id="patch-skip-btn" style="width:100%;padding:12px;border:none;border-radius:14px;background:transparent;color:var(--text-tertiary,#8B95A1);font-size:13px;cursor:pointer;">나중에 하기</button>
+          <button id="ob-submit-btn" style="width:100%;padding:15px;border:none;border-radius:14px;background:var(--primary,#fa342c);color:#fff;font-size:15px;font-weight:600;cursor:pointer;transition:background 0.1s ease-in-out;margin-bottom:8px;">확인</button>
+          <button id="ob-skip-btn" style="width:100%;padding:12px;border:none;border-radius:14px;background:transparent;color:var(--text-tertiary,#8B95A1);font-size:13px;cursor:pointer;">건너뛰기</button>
         </div>`;
 
         document.body.appendChild(overlay);
 
-        const proceed = async (skip) => {
-          if (!skip && myAcc) {
-            const nickVal = document.getElementById('patch-nickname')?.value.trim();
-            if (nickVal) myAcc.nickname = nickVal;
-            const pwVal = document.getElementById('patch-password')?.value;
-            if (pwVal && pwVal.length > 0) {
-              myAcc.hasPassword = true;
-              myAcc.passwordHash = hashPassword(pwVal);
+        const proceedOnboarding = async (skip) => {
+          if (!skip && myAcc && _selectedGuilds.length > 0) {
+            const guilds = myAcc.guilds || [];
+            const pendingGuilds = myAcc.pendingGuilds || [];
+
+            for (const g of _selectedGuilds) {
+              if (g.isNew) {
+                await createGuild(g.name, myAcc.id);
+                if (!guilds.includes(g.name)) guilds.push(g.name);
+              } else {
+                if (!pendingGuilds.includes(g.name) && !guilds.includes(g.name)) {
+                  pendingGuilds.push(g.name);
+                  await createGuildJoinRequest(g.name, g.name, myAcc.id, displayName);
+                }
+              }
             }
+
+            myAcc.guilds = guilds;
+            myAcc.pendingGuilds = pendingGuilds;
+            if (!myAcc.primaryGuild && guilds.length > 0) myAcc.primaryGuild = guilds[0];
             await saveAccount(myAcc);
             setCurrentUser(myAcc);
           }
-          localStorage.setItem(patchKey, 'done');
+          localStorage.setItem(guildObKey, 'done');
           overlay.remove();
-          // 패치노트 완료 → 튜토리얼 대기 해제
           window._patchnoteDone = true;
           window.dispatchEvent(new Event('patchnote-done'));
           document.getElementById('loading').style.display = 'flex';
-          if (!skip) location.reload();
+          if (!skip && _selectedGuilds.length > 0) location.reload();
         };
 
-        document.getElementById('patch-submit-btn').onclick = () => proceed(false);
-        document.getElementById('patch-skip-btn').onclick = () => proceed(true);
-        setTimeout(() => document.getElementById('patch-nickname')?.focus(), 200);
+        document.getElementById('ob-submit-btn').onclick = () => proceedOnboarding(false);
+        document.getElementById('ob-skip-btn').onclick = () => proceedOnboarding(true);
+        setTimeout(() => document.getElementById('ob-guild-input')?.focus(), 200);
         return;
       }
 
@@ -1019,12 +1085,8 @@ async function initLoginScreen() {
     const fn = firstNameEl.value.trim();
     const statusEl = document.getElementById('login-status');
     const pwSection = document.getElementById('login-pw-section');
-    const newPwSection = document.getElementById('login-new-pw-section');
-    const nickSection = document.getElementById('login-nickname')?.parentElement;
-    const nickGuide = nickSection?.querySelector('.login-nick-guide');
     if (!ln || !fn) {
       pwSection.style.display = 'none';
-      newPwSection.style.display = 'none';
       statusEl.textContent = '';
       return;
     }
@@ -1037,33 +1099,21 @@ async function initLoginScreen() {
     if (modeSection) modeSection.style.display = 'none';
     if (ln === '김' && fn === '태우') {
       pwSection.style.display = 'block';
-      newPwSection.style.display = 'none';
-      document.getElementById('login-nickname').style.display = 'none';
-      document.querySelector('.login-nick-guide')?.style && (document.querySelector('.login-nick-guide').style.display = 'none');
       statusEl.innerHTML = '<span style="color:var(--primary);">비밀번호를 입력해주세요.</span>';
       return;
     }
 
     if (found) {
-      // 기존 계정: 별명 입력 숨김
-      document.getElementById('login-nickname').style.display = 'none';
-      document.querySelector('.login-nick-guide')?.style && (document.querySelector('.login-nick-guide').style.display = 'none');
       if (found.hasPassword) {
         pwSection.style.display = 'block';
-        newPwSection.style.display = 'none';
-        statusEl.innerHTML = '<span style="color:var(--primary);">기존 계정이에요. 비밀번호를 입력해주세요.</span>';
+        statusEl.innerHTML = '<span style="color:var(--primary);">비밀번호를 입력해주세요.</span>';
       } else {
         pwSection.style.display = 'none';
-        newPwSection.style.display = 'none';
-        statusEl.innerHTML = '<span style="color:var(--primary);">기존 계정이에요. 바로 시작할 수 있어요.</span>';
+        statusEl.innerHTML = '<span style="color:var(--primary);">기존 계정이에요. 바로 로그인할 수 있어요.</span>';
       }
     } else {
-      // 신규 계정: 별명 입력 표시
-      document.getElementById('login-nickname').style.display = '';
-      document.querySelector('.login-nick-guide')?.style && (document.querySelector('.login-nick-guide').style.display = '');
       pwSection.style.display = 'none';
-      newPwSection.style.display = 'block';
-      statusEl.innerHTML = '<span style="color:var(--text-tertiary);">새 계정이 만들어져요.</span>';
+      statusEl.innerHTML = '<span style="color:var(--text-tertiary);">계정이 없어요. 가입하기를 눌러주세요.</span>';
     }
   }
   window._checkAccountExists = checkAccountExists;
@@ -1188,76 +1238,218 @@ document.addEventListener('change', (e) => {
   });
 });
 
+// ── 로그인/가입 뷰 전환 ─────────────────────────────────────────
+function showSignupView() {
+  _selectedGuilds = [];
+  document.getElementById('login-view').style.display = 'none';
+  document.getElementById('signup-view').style.display = '';
+  document.getElementById('signup-last-name')?.focus();
+}
+function showLoginView() {
+  _selectedGuilds = [];
+  document.getElementById('signup-view').style.display = 'none';
+  document.getElementById('login-view').style.display = '';
+  document.getElementById('login-last-name')?.focus();
+}
+window.showSignupView = showSignupView;
+window.showLoginView = showLoginView;
+
+// ── 가입 전용 함수 ─────────────────────────────────────────────
+async function createAccountFromSignup() {
+  const lastName = document.getElementById('signup-last-name').value.trim();
+  const firstName = document.getElementById('signup-first-name').value.trim();
+  if (!lastName || !firstName) { alert('성과 이름을 입력해주세요.'); return; }
+
+  const { saveAccount, setCurrentUser, hashPassword, getAccountList } = await import('./data.js');
+  const { getAdminId: _gAI, getAdminGuestId: _gAGI, isAdminInstance: _isAI } = await import('./data.js');
+
+  let newId;
+  const _tryId = `${lastName}_${firstName}`.toLowerCase().replace(/\s/g, '');
+  if (_isAI(_tryId) || _tryId === _gAI()) { newId = _gAGI(); }
+  else { newId = _tryId; }
+
+  const existing = await getAccountList();
+  const found = existing.find(a => a.id === newId);
+  if (found) {
+    document.getElementById('signup-status').innerHTML = '<span style="color:#ef4444;">이미 존재하는 계정이에요. 로그인해주세요.</span>';
+    return;
+  }
+
+  const nickname = document.getElementById('signup-nickname')?.value.trim() || '';
+  if (!nickname) {
+    document.getElementById('signup-status').innerHTML = '<span style="color:#ef4444;">별명을 입력해주세요.</span>';
+    document.getElementById('signup-nickname')?.focus();
+    return;
+  }
+
+  const usePw = document.getElementById('signup-use-pw')?.checked;
+  const pw = document.getElementById('signup-new-password')?.value || '';
+
+  // 길드 처리
+  const { createGuild, createGuildJoinRequest } = await import('./data.js');
+  const guilds = [];
+  const pendingGuilds = [];
+
+  for (const g of _selectedGuilds) {
+    if (g.isNew) {
+      await createGuild(g.name, newId);
+      guilds.push(g.name);
+    } else {
+      pendingGuilds.push(g.name);
+    }
+  }
+
+  const primaryGuild = guilds.length > 0 ? guilds[0] : null;
+
+  const account = {
+    id: newId, lastName, firstName,
+    nickname,
+    hasPassword: usePw && pw.length > 0,
+    passwordHash: usePw && pw.length > 0 ? hashPassword(pw) : null,
+    createdAt: Date.now(),
+    guilds, pendingGuilds, primaryGuild,
+  };
+
+  await saveAccount(account);
+
+  // 길드 가입 요청 + 온보딩 플래그 설정
+  for (const gName of pendingGuilds) {
+    await createGuildJoinRequest(gName, gName, newId, nickname);
+  }
+  if (guilds.length > 0 || pendingGuilds.length > 0) {
+    localStorage.setItem('guild_onboarding_v1_' + newId, 'done');
+  }
+
+  setCurrentUser(account);
+  const { recordLogin: rl } = await import('./data.js');
+  rl();
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('loading').style.display = 'flex';
+  location.reload();
+}
+window.createAccountFromSignup = createAccountFromSignup;
+
+// ── 길드 입력 헬퍼 (파라미터화: prefix = 'signup' | 'ob') ──────
+let _allGuildsCache = null;
+let _selectedGuilds = []; // [{name, isNew}]
+
+async function _loadAllGuilds() {
+  if (_allGuildsCache) return _allGuildsCache;
+  const { getAllGuilds } = await import('./data.js');
+  _allGuildsCache = await getAllGuilds();
+  return _allGuildsCache;
+}
+
+// prefix별 ID: {prefix}-guild-input, {prefix}-guild-suggestions, {prefix}-guild-chips
+async function searchGuildsFor(prefix) {
+  const input = document.getElementById(prefix + '-guild-input');
+  const sugBox = document.getElementById(prefix + '-guild-suggestions');
+  if (!sugBox || !input) return;
+  const q = (input.value || '').trim().toLowerCase();
+  const guilds = await _loadAllGuilds();
+  // 빈 쿼리일 때도 전체 목록 표시 (드롭다운)
+  const filtered = guilds.filter(g => (!q || g.name.toLowerCase().includes(q)) && !_selectedGuilds.some(s => s.name === g.name));
+  if (!filtered.length) { sugBox.style.display = 'none'; return; }
+  sugBox.innerHTML = filtered.slice(0, 8).map(g =>
+    `<div class="guild-suggest-item" onclick="selectGuildFor('${prefix}','${g.name.replace(/'/g, "\\'")}')">
+      <span>${g.name}</span><span style="font-size:11px;color:var(--text-tertiary);">${g.memberCount || 0}명</span>
+    </div>`
+  ).join('');
+  sugBox.style.display = '';
+}
+
+function selectGuildFor(prefix, name) {
+  if (_selectedGuilds.some(g => g.name === name)) return;
+  _selectedGuilds.push({ name, isNew: false });
+  document.getElementById(prefix + '-guild-input').value = '';
+  document.getElementById(prefix + '-guild-suggestions').style.display = 'none';
+  _renderGuildChips(prefix + '-guild-chips');
+}
+
+function addGuildChipFor(prefix) {
+  const input = document.getElementById(prefix + '-guild-input');
+  const name = (input?.value || '').trim();
+  if (!name || _selectedGuilds.some(g => g.name === name)) { if (input) input.value = ''; return; }
+  const existing = (_allGuildsCache || []).find(g => g.name === name);
+  _selectedGuilds.push({ name, isNew: !existing });
+  input.value = '';
+  document.getElementById(prefix + '-guild-suggestions').style.display = 'none';
+  _renderGuildChips(prefix + '-guild-chips');
+}
+
+function removeGuildChip(name, containerId) {
+  _selectedGuilds = _selectedGuilds.filter(g => g.name !== name);
+  _renderGuildChips(containerId);
+}
+
+function _renderGuildChips(containerId) {
+  const box = document.getElementById(containerId);
+  if (!box) return;
+  box.innerHTML = _selectedGuilds.map((g, i) => {
+    const pendingBadge = g.isNew ? '' : '<span class="guild-chip-badge pending">승인 대기</span>';
+    const newBadge = g.isNew ? '<span class="guild-chip-badge new">새 길드</span>' : '';
+    const primaryMark = i === 0 && g.isNew ? ' primary' : '';
+    return `<span class="guild-chip${primaryMark}" title="${g.isNew ? '새로 만드는 길드 (바로 가입)' : '기존 길드 (승인 필요)'}">
+      ${g.name}${pendingBadge}${newBadge}
+      <button class="guild-chip-remove" onclick="removeGuildChip('${g.name.replace(/'/g, "\\'")}','${containerId}')">&times;</button>
+    </span>`;
+  }).join('');
+}
+
+window.searchGuildsFor = searchGuildsFor;
+window.selectGuildFor = selectGuildFor;
+window.addGuildChipFor = addGuildChipFor;
+window.removeGuildChip = removeGuildChip;
+
+// 클릭 외부 닫기
+document.addEventListener('click', (e) => {
+  ['signup-guild-suggestions', 'ob-guild-suggestions', 'gm-guild-suggestions'].forEach(id => {
+    const box = document.getElementById(id);
+    if (box && !e.target.closest('#' + id.replace('-suggestions', '-section').replace('gm-guild-section', 'guild-modal-input-section'))) {
+      box.style.display = 'none';
+    }
+  });
+});
+
 async function createAccountAndLogin() {
   const lastName = document.getElementById('login-last-name').value.trim();
   const firstName = document.getElementById('login-first-name').value.trim();
   if (!lastName || !firstName) { alert('성과 이름을 입력해주세요.'); return; }
 
-  const { saveAccount, setCurrentUser, hashPassword, getAccountList, verifyPassword } = await import('./data.js');
-
+  const { setCurrentUser, getAccountList, verifyPassword } = await import('./data.js');
   const { getAdminId: _gAI, getAdminGuestId: _gAGI, isAdminInstance: _isAI } = await import('./data.js');
-  // 관리자 이름으로 가입 시 → Guest 계정
+
   let newId;
   const _tryId = `${lastName}_${firstName}`.toLowerCase().replace(/\s/g, '');
-  if (_isAI(_tryId) || _tryId === _gAI()) {
-    newId = _gAGI();
-  } else {
-    newId = `${lastName}_${firstName}`.toLowerCase().replace(/\s/g, '');
-  }
+  if (_isAI(_tryId) || _tryId === _gAI()) { newId = _gAGI(); }
+  else { newId = _tryId; }
 
-  // 같은 이름 계정이 이미 존재하는지 확인
   const existing = await getAccountList();
   const found = existing.find(a => a.id === newId);
 
-  if (found) {
-    if (found.hasPassword) {
-      // 비밀번호 보호 계정 → 인라인 비밀번호 필드에서 검증
-      const pw = document.getElementById('login-password')?.value || '';
-      if (!pw) { document.getElementById('login-password')?.focus(); return; }
-      if (!verifyPassword(found, pw)) {
-        document.getElementById('login-status').innerHTML = '<span style="color:#ef4444;">비밀번호가 맞지 않아요.</span>';
-        return;
-      }
-      setCurrentUser(found);
-      localStorage.setItem('admin_authenticated', 'true');
-      const { backupAdminAuth: bkAuth, recordLogin: rl1 } = await import('./data.js');
-      bkAuth();
-      rl1();
-      document.getElementById('login-screen').style.display = 'none';
-      document.getElementById('loading').style.display = 'flex';
-      location.reload();
-      return;
-    } else {
-      // 비밀번호 없는 기존 계정 → 바로 로그인
-      setCurrentUser(found);
-      const { recordLogin: rl2 } = await import('./data.js');
-      rl2();
-      document.getElementById('login-screen').style.display = 'none';
-      document.getElementById('loading').style.display = 'flex';
-      location.reload();
-      return;
-    }
+  if (!found) {
+    document.getElementById('login-status').innerHTML = '<span style="color:var(--text-tertiary);">계정이 없어요. 가입하기를 눌러주세요.</span>';
+    return;
   }
 
-  // 새 계정 생성
-  const usePw = document.getElementById('login-use-pw')?.checked;
-  const pw = document.getElementById('login-new-password')?.value || '';
+  if (found.hasPassword) {
+    const pw = document.getElementById('login-password')?.value || '';
+    if (!pw) { document.getElementById('login-password')?.focus(); return; }
+    if (!verifyPassword(found, pw)) {
+      document.getElementById('login-status').innerHTML = '<span style="color:#ef4444;">비밀번호가 맞지 않아요.</span>';
+      return;
+    }
+    setCurrentUser(found);
+    localStorage.setItem('admin_authenticated', 'true');
+    const { backupAdminAuth: bkAuth, recordLogin: rl1 } = await import('./data.js');
+    bkAuth();
+    rl1();
+  } else {
+    setCurrentUser(found);
+    const { recordLogin: rl2 } = await import('./data.js');
+    rl2();
+  }
 
-  const nickname = document.getElementById('login-nickname')?.value.trim() || '';
-  const account = {
-    id: newId,
-    lastName,
-    firstName,
-    nickname: nickname || (lastName + firstName),
-    hasPassword: usePw && pw.length > 0,
-    passwordHash: usePw && pw.length > 0 ? hashPassword(pw) : null,
-    createdAt: Date.now(),
-  };
-
-  await saveAccount(account);
-  setCurrentUser(account);
-  const { recordLogin: rl3 } = await import('./data.js');
-  rl3();
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('loading').style.display = 'flex';
   location.reload();
@@ -1290,10 +1482,13 @@ async function logoutAccount() {
       <div class="modal-sheet" style="max-width:340px;padding:24px;text-align:center;">
         <div style="width:48px;height:48px;border-radius:50%;background:#fff3e0;display:flex;align-items:center;justify-content:center;font-size:28px;margin:0 auto 12px;">🍅</div>
         <div style="font-size:16px;font-weight:600;margin-bottom:2px;">${name || '계정'}</div>
-        <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:12px;">별명: ${user?.nickname || name}</div>
+        <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:12px;">
+          별명: ${user?.nickname || name}
+          <button onclick="openNicknameEdit()" style="background:none;border:none;color:var(--primary);font-size:11px;font-weight:600;cursor:pointer;padding:0 4px;">변경</button>
+        </div>
         <div style="display:flex;gap:6px;margin-bottom:8px;">
           <button onclick="document.getElementById('dynamic-modal')?.remove();openFriendProfile('${user?.id}','${name}')" style="flex:1;padding:9px;border:1px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text);font-size:12px;font-weight:500;cursor:pointer;">🏡 내 프로필</button>
-          <button onclick="openNicknameEdit()" style="flex:1;padding:9px;border:1px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text);font-size:12px;font-weight:500;cursor:pointer;">✏️ 별명 변경</button>
+          <button onclick="document.getElementById('dynamic-modal')?.remove();openGuildModal()" style="flex:1;padding:9px;border:1px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text);font-size:12px;font-weight:500;cursor:pointer;">🏠 길드 관리</button>
         </div>
         ${modeSwitch}
         <div style="display:flex;gap:8px;margin-top:12px;">
@@ -1356,6 +1551,292 @@ async function openNicknameEdit() {
   location.reload();
 }
 window.openNicknameEdit = openNicknameEdit;
+
+// ── 길드 모달 (프로필 CRUD) ──────────────────────────────────────
+let _guildModalGuilds = []; // [{name, status:'member'|'pending'}]
+let _guildModalPrimary = null;
+let _guildIconMap = {}; // guildName → icon emoji
+
+const GUILD_ICON_OPTIONS = ['🏠','🏃','💪','🧘','🏋️','🚴','⚽','🎾','🏊','🥊','🧗','🎯','🔥','🌿','🍅','⭐'];
+
+async function openGuildModal() {
+  const { getCurrentUser, getAllGuilds } = await import('./data.js');
+  const user = getCurrentUser();
+  if (!user) return;
+
+  _allGuildsCache = await getAllGuilds();
+  _guildIconMap = {};
+  _allGuildsCache.forEach(g => { if (g.icon) _guildIconMap[g.name] = g.icon; });
+
+  _guildModalGuilds = [
+    ...(user.guilds || []).map(g => ({ name: g, status: 'member' })),
+    ...(user.pendingGuilds || []).map(g => ({ name: g, status: 'pending' })),
+  ];
+  _guildModalPrimary = user.primaryGuild || null;
+
+  const modal = document.getElementById('guild-modal');
+  if (modal) {
+    modal.style.display = 'flex';
+    _renderGuildModalList();
+  }
+}
+
+function closeGuildModal(e) {
+  if (e && e.target !== e.currentTarget) return;
+  const modal = document.getElementById('guild-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+function _renderGuildModalList() {
+  const list = document.getElementById('guild-modal-list');
+  if (!list) return;
+  if (!_guildModalGuilds.length) {
+    list.innerHTML = '<div style="font-size:13px;color:var(--text-tertiary);text-align:center;padding:16px 0;">아직 소속 길드가 없어요</div>';
+    return;
+  }
+  list.innerHTML = _guildModalGuilds.map(g => {
+    const isPrimary = g.name === _guildModalPrimary;
+    const iconVal = _guildIconMap[g.name] || '🏠';
+    const isPhoto = iconVal.startsWith('data:');
+    const iconDisplay = isPhoto
+      ? `<img src="${iconVal}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;">`
+      : iconVal;
+    const starBtn = g.status === 'member'
+      ? `<button onclick="toggleGuildPrimary('${g.name.replace(/'/g, "\\'")}')" style="background:none;border:none;cursor:pointer;font-size:18px;padding:8px;min-width:36px;min-height:36px;display:flex;align-items:center;justify-content:center;" title="대표 길드 설정">${isPrimary ? '★' : '☆'}</button>`
+      : '';
+    const badge = g.status === 'pending'
+      ? '<span class="guild-chip-badge pending" style="margin-left:6px;">승인 대기 중</span>'
+      : '';
+    const memberBtn = g.status === 'member'
+      ? `<button onclick="toggleGuildMembers('${g.name.replace(/'/g, "\\'")}')" style="background:none;border:1px solid var(--border);border-radius:999px;cursor:pointer;font-size:11px;line-height:16.5px;color:var(--text-tertiary);padding:4px 10px;">멤버</button>`
+      : '';
+    const iconBtn = g.status === 'member'
+      ? `<button onclick="toggleGuildIconPicker('${g.name.replace(/'/g, "\\'")}')" style="background:none;border:1px dashed var(--border);border-radius:var(--seed-r2,8px);cursor:pointer;font-size:20px;padding:0;width:36px;height:36px;display:flex;align-items:center;justify-content:center;position:relative;transition:border-color 0.1s ease-in-out;" title="탭하여 아이콘 변경">${iconDisplay}<span style="position:absolute;bottom:-2px;right:-2px;font-size:8px;background:var(--surface2);border-radius:50%;width:14px;height:14px;display:flex;align-items:center;justify-content:center;">✎</span></button>`
+      : `<span style="font-size:20px;width:36px;text-align:center;">${iconDisplay}</span>`;
+    const safeId = g.name.replace(/[^a-zA-Z0-9가-힣]/g, '_');
+    return `<div>
+      <div style="display:flex;align-items:center;gap:6px;padding:10px 0;border-bottom:1px solid var(--border);">
+        ${starBtn}${iconBtn}
+        <span style="flex:1;font-size:14px;line-height:20px;font-weight:${isPrimary ? '700' : '500'};color:var(--text);">${g.name}${badge}</span>
+        ${memberBtn}
+        <button onclick="removeGuildFromModal('${g.name.replace(/'/g, "\\'")}')" style="background:none;border:none;cursor:pointer;font-size:14px;color:var(--text-tertiary);padding:8px;min-width:36px;min-height:36px;display:flex;align-items:center;justify-content:center;">✕</button>
+      </div>
+      <div id="gm-icon-picker-${safeId}" style="display:none;padding:8px 0 8px 36px;"></div>
+      <div id="gm-members-${safeId}" style="display:none;"></div>
+    </div>`;
+  }).join('');
+}
+
+async function toggleGuildMembers(guildName) {
+  const safeId = guildName.replace(/[^a-zA-Z0-9가-힣]/g, '_');
+  const el = document.getElementById('gm-members-' + safeId);
+  if (!el) return;
+  if (el.style.display !== 'none') { el.style.display = 'none'; return; }
+
+  // 길드원 목록 로드
+  const { getAccountList: gal } = await import('./data.js');
+  const accounts = await gal();
+  const members = accounts.filter(a => (a.guilds || []).includes(guildName));
+
+  if (!members.length) {
+    el.innerHTML = '<div style="padding:8px 0 8px 28px;font-size:12px;color:var(--text-tertiary);">길드원이 없어요</div>';
+  } else {
+    el.innerHTML = members.map(m => {
+      const isPrimary = m.primaryGuild === guildName;
+      const name = m.nickname || (m.lastName + m.firstName);
+      return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0 6px 28px;">
+        <div style="width:24px;height:24px;border-radius:50%;background:var(--surface3);color:var(--text-secondary);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;">${name.charAt(0)}</div>
+        <span style="font-size:13px;color:var(--text);flex:1;">${name}</span>
+        ${isPrimary ? '<span style="font-size:10px;color:#f59e0b;">★</span>' : ''}
+      </div>`;
+    }).join('');
+  }
+  el.style.display = '';
+}
+window.toggleGuildMembers = toggleGuildMembers;
+
+function toggleGuildIconPicker(guildName) {
+  const safeId = guildName.replace(/[^a-zA-Z0-9가-힣]/g, '_');
+  const el = document.getElementById('gm-icon-picker-' + safeId);
+  if (!el) return;
+  if (el.style.display !== 'none') { el.style.display = 'none'; return; }
+  el.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;">${
+    GUILD_ICON_OPTIONS.map(ic =>
+      `<button onclick="selectGuildIcon('${guildName.replace(/'/g, "\\'")}','${ic}')" style="width:40px;height:40px;border:1px solid var(--border);border-radius:var(--seed-r2,8px);background:${_guildIconMap[guildName] === ic ? 'var(--primary-bg)' : 'var(--surface)'};cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;transition:background 0.1s ease-in-out;">${ic}</button>`
+    ).join('')
+  }
+  <label style="width:36px;height:36px;border:1px dashed var(--border);border-radius:var(--seed-r2,8px);background:var(--surface);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-tertiary);" title="사진 업로드">
+    📷<input type="file" accept="image/*" style="display:none;" onchange="uploadGuildPhoto('${guildName.replace(/'/g, "\\'")}',this)">
+  </label>
+  </div>`;
+  el.style.display = '';
+}
+
+async function selectGuildIcon(guildName, icon) {
+  _guildIconMap[guildName] = icon;
+  const { updateGuildIcon } = await import('./data.js');
+  await updateGuildIcon(guildName, icon);
+  _renderGuildModalList();
+  const { showToast: _st } = await import('./home/utils.js');
+  _st('아이콘이 변경되었어요', 2000, 'success');
+}
+
+async function uploadGuildPhoto(guildName, input) {
+  const file = input.files?.[0];
+  if (!file) return;
+  if (file.size > 500 * 1024) {
+    const { showToast: _st } = await import('./home/utils.js');
+    _st('사진이 너무 커요. 500KB 이하로 올려주세요.', 3000, 'error');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    // 32x32 크기로 리사이즈
+    const img = new Image();
+    img.onload = async () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 64; canvas.height = 64;
+      const ctx = canvas.getContext('2d');
+      const size = Math.min(img.width, img.height);
+      const sx = (img.width - size) / 2, sy = (img.height - size) / 2;
+      ctx.beginPath(); ctx.arc(32, 32, 32, 0, Math.PI * 2); ctx.clip();
+      ctx.drawImage(img, sx, sy, size, size, 0, 0, 64, 64);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+      _guildIconMap[guildName] = dataUrl;
+      const { updateGuildIcon } = await import('./data.js');
+      await updateGuildIcon(guildName, dataUrl);
+      _renderGuildModalList();
+      const { showToast: _st } = await import('./home/utils.js');
+      _st('사진이 설정되었어요', 2000, 'success');
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+window.uploadGuildPhoto = uploadGuildPhoto;
+
+window.toggleGuildIconPicker = toggleGuildIconPicker;
+window.selectGuildIcon = selectGuildIcon;
+
+async function toggleGuildPrimary(name) {
+  const g = _guildModalGuilds.find(x => x.name === name);
+  if (!g || g.status !== 'member') return;
+  _guildModalPrimary = _guildModalPrimary === name ? null : name;
+  _renderGuildModalList();
+  if (_guildModalPrimary) {
+    const { showToast: _st } = await import('./home/utils.js');
+    _st(`${name}을(를) 대표 길드로 설정했어요`, 2500, 'success');
+  }
+}
+
+function removeGuildFromModal(name) {
+  if (!confirm(`${name} 길드에서 탈퇴할까요?\n길드 데이터는 유지됩니다.`)) return;
+  _guildModalGuilds = _guildModalGuilds.filter(g => g.name !== name);
+  if (_guildModalPrimary === name) {
+    const firstMember = _guildModalGuilds.find(g => g.status === 'member');
+    _guildModalPrimary = firstMember ? firstMember.name : null;
+  }
+  _renderGuildModalList();
+}
+
+async function searchGuildsForModal(query) {
+  const sugBox = document.getElementById('gm-guild-suggestions');
+  if (!sugBox) return;
+  const q = (query || '').trim().toLowerCase();
+  const guilds = _allGuildsCache || [];
+  // 빈 쿼리일 때도 전체 목록 표시 (드롭다운)
+  const filtered = guilds.filter(g => (!q || g.name.toLowerCase().includes(q)) && !_guildModalGuilds.some(s => s.name === g.name));
+  if (!filtered.length) { sugBox.style.display = 'none'; return; }
+  sugBox.innerHTML = filtered.slice(0, 8).map(g =>
+    `<div class="guild-suggest-item" onclick="selectGuildForModal('${g.name.replace(/'/g, "\\'")}')">
+      <span>${g.name}</span><span style="font-size:11px;color:var(--text-tertiary);">${g.memberCount || 0}명</span>
+    </div>`
+  ).join('');
+  sugBox.style.display = '';
+}
+
+function selectGuildForModal(name) {
+  if (_guildModalGuilds.some(g => g.name === name)) return;
+  const existing = (_allGuildsCache || []).find(g => g.name === name);
+  _guildModalGuilds.push({ name, status: existing ? 'pending' : 'member', isNew: !existing });
+  document.getElementById('gm-guild-input').value = '';
+  document.getElementById('gm-guild-suggestions').style.display = 'none';
+  _renderGuildModalList();
+}
+
+function addGuildFromModal() {
+  const input = document.getElementById('gm-guild-input');
+  const name = (input?.value || '').trim();
+  if (!name || _guildModalGuilds.some(g => g.name === name)) { if (input) input.value = ''; return; }
+  const existing = (_allGuildsCache || []).find(g => g.name === name);
+  _guildModalGuilds.push({ name, status: existing ? 'pending' : 'member', isNew: !existing });
+  input.value = '';
+  document.getElementById('gm-guild-suggestions').style.display = 'none';
+  _renderGuildModalList();
+}
+
+async function saveGuildFromModal() {
+  const { getCurrentUser, saveAccount, setCurrentUser, createGuild, createGuildJoinRequest, updateGuildMemberCount } = await import('./data.js');
+  const user = getCurrentUser();
+  if (!user) return;
+
+  const oldGuilds = new Set(user.guilds || []);
+  const oldPending = new Set(user.pendingGuilds || []);
+  const newGuilds = [];
+  const newPending = [];
+
+  for (const g of _guildModalGuilds) {
+    if (g.status === 'member') {
+      newGuilds.push(g.name);
+      // 새로 생성되는 길드
+      if (g.isNew && !oldGuilds.has(g.name)) {
+        await createGuild(g.name, user.id);
+      }
+      // 기존 길드에서 새로 가입 (이전에 없었던 것)
+      if (!g.isNew && !oldGuilds.has(g.name)) {
+        await updateGuildMemberCount(g.name, 1);
+      }
+    } else {
+      newPending.push(g.name);
+      // 새로운 pending 길드 → 가입 요청
+      if (!oldPending.has(g.name)) {
+        const displayName = user.nickname || (user.lastName + user.firstName);
+        await createGuildJoinRequest(g.name, g.name, user.id, displayName);
+      }
+    }
+  }
+
+  // 탈퇴한 길드 memberCount 감소
+  for (const oldG of oldGuilds) {
+    if (!newGuilds.includes(oldG)) {
+      await updateGuildMemberCount(oldG, -1);
+    }
+  }
+
+  // 승인된 멤버가 1개 이상이면 대표길드 필수
+  const primaryGuild = newGuilds.length > 0
+    ? (newGuilds.includes(_guildModalPrimary) ? _guildModalPrimary : newGuilds[0])
+    : null;
+
+  user.guilds = newGuilds;
+  user.pendingGuilds = newPending;
+  user.primaryGuild = primaryGuild;
+  await saveAccount(user);
+  setCurrentUser(user);
+
+  closeGuildModal();
+  const { showToast: _st } = await import('./home/utils.js');
+  _st('저장되었습니다', 3000, 'success');
+}
+
+window.openGuildModal = openGuildModal;
+window.closeGuildModal = closeGuildModal;
+window.toggleGuildPrimary = toggleGuildPrimary;
+window.removeGuildFromModal = removeGuildFromModal;
+window.searchGuildsForModal = searchGuildsForModal;
+window.selectGuildForModal = selectGuildForModal;
+window.addGuildFromModal = addGuildFromModal;
+window.saveGuildFromModal = saveGuildFromModal;
 
 async function manageAccountPassword(accountId) {
   const { getAccountList, saveAccount, hashPassword, verifyPassword } = await import('./data.js');

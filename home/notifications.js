@@ -4,7 +4,8 @@
 
 import { getCurrentUser, getMyNotifications, getAccountList,
          getPendingRequests, acceptFriendRequest, removeFriend,
-         markNotificationRead, recordAction }  from '../data.js';
+         markNotificationRead, recordAction,
+         approveGuildJoinRequest }  from '../data.js';
 import { resolveNickname, formatTimeAgo, showToast, haptic } from './utils.js';
 
 let _notifCenterOpen = false;
@@ -79,13 +80,22 @@ export async function refreshNotifCenter() {
     else if (n.type === 'guestbook')       { icon = '📝'; iconClass = 'default'; }
     else if (n.type === 'introduce')       { icon = '👋'; iconClass = 'friend-req'; }
     else if (n.type === 'announcement')    { icon = '📢'; iconClass = 'announce'; }
-    else if (n.type === 'comment')         { icon = '💬'; iconClass = 'default'; }
-    else if (n.type === 'comment_reply')   { icon = '💬'; iconClass = 'default'; }
-    else                                   { icon = '💬'; iconClass = 'default'; }
+    else if (n.type === 'comment')              { icon = '💬'; iconClass = 'default'; }
+    else if (n.type === 'comment_reply')        { icon = '💬'; iconClass = 'default'; }
+    else if (n.type === 'guild_join_request')   { icon = '🏠'; iconClass = 'default'; }
+    else if (n.type === 'guild_join_approved')  { icon = '🏠'; iconClass = 'friend-ok'; }
+    else if (n.type === 'guild_member_joined') { icon = '🏠'; iconClass = 'friend-ok'; }
+    else if (n.type === 'guild_invite')        { icon = '🏠'; iconClass = 'default'; }
+    else                                        { icon = '💬'; iconClass = 'default'; }
     const unreadCls = n.read ? '' : ' unread';
     const introAction = (n.type === 'introduce' && n.introducedId && !n.read)
       ? `<div class="notif-actions" style="margin-top:6px;">
           <button class="notif-accept-btn" onclick="event.stopPropagation();sendFriendFromIntro('${n.introducedId}','${n.id}')">이웃 추가하기</button>
+        </div>` : '';
+    const guildAction = (n.type === 'guild_join_request' && n.requestId && !n.read)
+      ? `<div class="notif-actions" style="margin-top:6px;">
+          <button class="notif-accept-btn" onclick="event.stopPropagation();approveGuildFromNotif('${n.requestId}','${n.id}')">맞음</button>
+          <button class="notif-reject-btn" onclick="event.stopPropagation();dismissGuildFromNotif('${n.id}',this)">아님</button>
         </div>` : '';
     if (n.type === 'announcement') {
       const annBody = n.body ? `<div style="font-size:11px;color:var(--text-secondary);margin-top:3px;line-height:1.4;">${(n.body || '').slice(0, 100)}${(n.body || '').length > 100 ? '…' : ''}</div>` : '';
@@ -104,14 +114,18 @@ export async function refreshNotifCenter() {
       : n.type === 'patchnote'
       ? `markNotifFromCenter('${n.id}',this);markPatchnoteReadFromNotif()`
       : (n.type === 'comment' || n.type === 'comment_reply')
-      ? `markNotifFromCenter('${n.id}',this);closeNotifCenter();openFriendProfile('${user.id}','${user.nickname || user.lastName + user.firstName}','comments_${n.section || ''}')`
+      ? `markNotifFromCenter('${n.id}',this);closeNotifCenter();openFriendProfile('${user.id}','${user.nickname || user.lastName + user.firstName}','comments_${n.section || ''}','${n.dateKey || ''}')`
       : `markNotifFromCenter('${n.id}',this)`;
     html += `<div class="notif-item${unreadCls}" onclick="${clickAction}">
       <div class="notif-icon ${iconClass}">${icon}</div>
       <div class="notif-body">
-        <div class="notif-message"><b style="cursor:pointer;text-decoration:underline;" onclick="event.stopPropagation();closeNotifCenter();openFriendProfile('${n.from}','${nm}')">${nm}</b>님이 ${n.message || ''}</div>
+        <div class="notif-message"><b style="cursor:pointer;text-decoration:underline;" onclick="event.stopPropagation();closeNotifCenter();openFriendProfile('${n.from}','${nm}')">${nm}</b>님이 ${
+          (n.type === 'comment' || n.type === 'comment_reply')
+            ? (n.message || '').replace(/(댓글|답글)/g, `<b style="cursor:pointer;text-decoration:underline;" onclick="event.stopPropagation();closeNotifCenter();openFriendProfile('${user.id}','${user.nickname || user.lastName + user.firstName}','comments_${n.section || ''}','${n.dateKey || ''}')">$1</b>`)
+            : (n.message || '')
+        }</div>
         <div class="notif-time">${formatTimeAgo(n.createdAt)}</div>
-        ${introAction}
+        ${introAction}${guildAction}
       </div>
     </div>`;
   }
@@ -169,6 +183,28 @@ window.markPatchnoteReadFromNotif = async function() {
     await markPatchnoteRead(pns[0].id);
   }
   recordAction('패치노트읽음');
+};
+
+window.approveGuildFromNotif = async function(requestId, notifId) {
+  await approveGuildJoinRequest(requestId);
+  await markNotificationRead(notifId);
+  haptic('success');
+  showToast('🏠 길드원을 확인했어요!', 2500, 'success');
+  refreshNotifCenter();
+};
+
+window.dismissGuildFromNotif = async function(notifId, el) {
+  await markNotificationRead(notifId);
+  if (el) {
+    const item = el.closest('.notif-item');
+    if (item) item.classList.remove('unread');
+  }
+  const badge = document.getElementById('notif-badge');
+  if (badge) {
+    const cnt = parseInt(badge.textContent) - 1;
+    if (cnt <= 0) badge.style.display = 'none';
+    else badge.textContent = cnt;
+  }
 };
 
 window.markNotifFromCenter = async function(id, el) {

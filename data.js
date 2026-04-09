@@ -472,6 +472,178 @@ export async function getGlobalWeeklyRanking() {
   } catch { return null; }
 }
 
+// ── 길드(소속 길드) 시스템 ────────────────────────────────────────
+
+// 전체 길드 목록 (자동완성용)
+export async function getAllGuilds() {
+  try {
+    const snap = await getDocs(collection(db, '_guilds'));
+    const guilds = [];
+    snap.forEach(d => guilds.push(d.data()));
+    return guilds;
+  } catch { return []; }
+}
+
+// 길드 생성 (새 길드명 직접 입력 시)
+export async function createGuild(name, createdBy) {
+  const guild = {
+    id: name,
+    name,
+    createdBy,
+    createdAt: Date.now(),
+    memberCount: 1,
+  };
+  await setDoc(doc(db, '_guilds', name), guild);
+  return guild;
+}
+
+// 길드 멤버 카운트 증감
+export async function updateGuildMemberCount(guildId, delta) {
+  try {
+    const snap = await getDoc(doc(db, '_guilds', guildId));
+    if (!snap.exists()) return;
+    const guild = snap.data();
+    guild.memberCount = Math.max(0, (guild.memberCount || 0) + delta);
+    await setDoc(doc(db, '_guilds', guildId), guild);
+  } catch(e) { console.warn('[guild] updateMemberCount:', e); }
+}
+
+// 길드 아이콘 업데이트
+export async function updateGuildIcon(guildId, icon) {
+  try {
+    const snap = await getDoc(doc(db, '_guilds', guildId));
+    if (!snap.exists()) return;
+    const guild = snap.data();
+    guild.icon = icon;
+    await setDoc(doc(db, '_guilds', guildId), guild);
+  } catch(e) { console.warn('[guild] updateIcon:', e); }
+}
+
+// 기존 길드 가입 요청
+export async function createGuildJoinRequest(guildId, guildName, userId, userName) {
+  const requestId = `${guildId}_${userId}_${Date.now()}`;
+  const request = {
+    id: requestId,
+    guildId,
+    guildName,
+    userId,
+    userName,
+    status: 'pending',
+    createdAt: Date.now(),
+    approvedBy: null,
+    approvedAt: null,
+  };
+  await setDoc(doc(db, '_guild_requests', requestId), request);
+
+  // 해당 길드의 모든 승인된 멤버에게 알림
+  const accounts = await getAccountList();
+  for (const acc of accounts) {
+    const memberGuilds = acc.guilds || [];
+    if (memberGuilds.includes(guildId) && acc.id !== userId) {
+      await sendNotification(acc.id, {
+        type: 'guild_join_request',
+        from: userId,
+        guildId,
+        guildName,
+        requestId,
+        userName,
+        message: `${userName}님이 ${guildName}의 길드원임을 확인받고 싶어합니다.`,
+      });
+    }
+  }
+  return request;
+}
+
+// 길드 가입 승인 (길드원 1명이 '맞음' 누를 때)
+export async function approveGuildJoinRequest(requestId) {
+  try {
+    const snap = await getDoc(doc(db, '_guild_requests', requestId));
+    if (!snap.exists()) return;
+    const request = snap.data();
+    if (request.status !== 'pending') return;
+
+    // 요청 상태 업데이트
+    request.status = 'approved';
+    request.approvedBy = _socialId();
+    request.approvedAt = Date.now();
+    await setDoc(doc(db, '_guild_requests', requestId), request);
+
+    // 요청자 계정에 길드 추가
+    const accounts = await getAccountList();
+    const requester = accounts.find(a => a.id === request.userId);
+    if (requester) {
+      const guilds = requester.guilds || [];
+      const pending = requester.pendingGuilds || [];
+      if (!guilds.includes(request.guildId)) guilds.push(request.guildId);
+      const newPending = pending.filter(g => g !== request.guildId);
+      requester.guilds = guilds;
+      requester.pendingGuilds = newPending;
+      if (!requester.primaryGuild && guilds.length > 0) requester.primaryGuild = guilds[0];
+      await saveAccount(requester);
+    }
+
+    // 멤버 카운트 증가
+    await updateGuildMemberCount(request.guildId, 1);
+
+    // 요청자에게 승인 알림
+    await sendNotification(request.userId, {
+      type: 'guild_join_approved',
+      from: _socialId(),
+      guildId: request.guildId,
+      guildName: request.guildName,
+      message: `${request.guildName} 길드 가입이 승인되었어요!`,
+    });
+
+    // 전체 길드원에게 신규 가입 알림
+    for (const acc of accounts) {
+      const memberGuilds = acc.guilds || [];
+      if (memberGuilds.includes(request.guildId) && acc.id !== request.userId && acc.id !== _socialId()) {
+        await sendNotification(acc.id, {
+          type: 'guild_member_joined',
+          from: request.userId,
+          guildId: request.guildId,
+          guildName: request.guildName,
+          message: `${request.userName}님이 ${request.guildName}에 합류했어요!`,
+        });
+      }
+    }
+  } catch(e) { console.warn('[guild] approve:', e); }
+}
+
+// 특정 길드의 pending 요청 조회
+export async function getGuildJoinRequests(guildId) {
+  try {
+    const snap = await getDocs(collection(db, '_guild_requests'));
+    const requests = [];
+    snap.forEach(d => {
+      const data = d.data();
+      if (data.guildId === guildId && data.status === 'pending') requests.push(data);
+    });
+    return requests;
+  } catch { return []; }
+}
+
+// 내 pending 길드 요청 조회
+export async function getMyPendingGuildRequests(userId) {
+  try {
+    const snap = await getDocs(collection(db, '_guild_requests'));
+    const requests = [];
+    snap.forEach(d => {
+      const data = d.data();
+      if (data.userId === userId && data.status === 'pending') requests.push(data);
+    });
+    return requests;
+  } catch { return []; }
+}
+
+// 글로벌 길드 주간 랭킹
+export async function getGlobalGuildWeeklyRanking() {
+  try {
+    const snap = await getDoc(doc(db, '_weekly_guild_ranking', 'current'));
+    return snap.exists() ? snap.data() : null;
+  } catch { return null; }
+}
+
 // ── 방명록 시스템 ────────────────────────────────────────────────
 export async function getGuestbook(targetUserId) {
   const snap = await getDocs(collection(db, '_guestbook'));

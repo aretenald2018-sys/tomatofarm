@@ -6,7 +6,8 @@ import { TODAY, calcStreaks, getMuscles, getDiet, getCF,
          getMilestoneShown, saveMilestoneShown,
          getStreakFreezes, getTomatoState, useStreakFreeze,
          getGlobalWeeklyRanking, getMyFriends, getAccountList, getCurrentUser,
-         getFriendWorkout, dateKey, isAdmin }  from '../data.js';
+         getFriendWorkout, dateKey, isAdmin,
+         getGlobalGuildWeeklyRanking }  from '../data.js';
 import { setText, showToast, haptic, resolveNickname } from './utils.js';
 
 // renderHome에서 주입됨 (순환 참조 방지)
@@ -211,6 +212,23 @@ function calcCFStreak() {
 }
 
 // ── 주간 리더보드 (글로벌 랭킹 + 이웃 폴백) ─────────────────────
+let _leaderboardTab = 'individual';
+
+export function switchLeaderboardTab(tab) {
+  _leaderboardTab = tab;
+  // 세그먼트 UI 업데이트
+  const btns = document.querySelectorAll('#lb-segmented .tds-segmented-item');
+  btns.forEach(b => b.classList.toggle('active', b.textContent.trim() === (tab === 'individual' ? '개인' : '길드')));
+  const indicator = document.getElementById('lb-seg-indicator');
+  if (indicator && btns.length === 2) {
+    const idx = tab === 'individual' ? 0 : 1;
+    indicator.style.left = `${btns[idx].offsetLeft}px`;
+    indicator.style.width = `${btns[idx].offsetWidth}px`;
+  }
+  renderLeaderboard();
+}
+window.switchLeaderboardTab = switchLeaderboardTab;
+
 export async function renderLeaderboard() {
   const cardEl = document.getElementById('card-leaderboard');
   const contentEl = document.getElementById('leaderboard-content');
@@ -220,18 +238,41 @@ export async function renderLeaderboard() {
     const user = getCurrentUser();
     if (!user) return;
 
+    // 길드 탭이면 길드 랭킹 렌더링
+    if (_leaderboardTab === 'guild') {
+      cardEl.style.display = '';
+      await _renderGuildLeaderboard(contentEl, user);
+      return;
+    }
+
     // 글로벌 랭킹 우선 시도, 없으면 이웃 기반 폴백
     const globalData = await getGlobalWeeklyRanking();
     let board, total, isGlobal;
 
     if (globalData && globalData.rankings && globalData.rankings.length) {
-      // ── 글로벌 랭킹 모드 ──
-      board = globalData.rankings.map((r, i) => ({
+      // ── 글로벌 랭킹 모드 (내 활동일은 로컬 실시간 계산) ──
+      // 내 이번 주 활동일 로컬 계산
+      const now = new Date(TODAY);
+      const dow = now.getDay() || 7;
+      const mon = new Date(now); mon.setDate(now.getDate() - dow + 1);
+      let myLocalDays = 0;
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(mon); d.setDate(mon.getDate() + i);
+        const muscles = getMuscles(d.getFullYear(), d.getMonth(), d.getDate());
+        const diet = getDiet(d.getFullYear(), d.getMonth(), d.getDate());
+        if ((muscles || []).length > 0 || diet.bKcal || diet.lKcal || diet.dKcal) myLocalDays++;
+      }
+
+      board = globalData.rankings.map((r) => ({
         userId: r.userId,
         name: r.userId === user.id ? '나' : r.name,
-        days: r.activeDays,
+        days: r.userId === user.id ? Math.max(r.activeDays, myLocalDays) : r.activeDays,
         isMe: r.userId === user.id,
       }));
+      // 내가 글로벌 랭킹에 없으면 추가
+      if (!board.some(b => b.isMe) && myLocalDays > 0) {
+        board.push({ userId: user.id, name: '나', days: myLocalDays, isMe: true });
+      }
       total = board.length;
       isGlobal = true;
     } else {
@@ -358,4 +399,111 @@ export async function renderLeaderboard() {
     contentEl.innerHTML = html;
     cardEl.style.display = '';
   } catch(e) { console.warn('[leaderboard]', e); }
+}
+
+// ── 길드 리더보드 ────────────────────────────────────────────────
+async function _renderGuildLeaderboard(contentEl, user) {
+  try {
+    const guildData = await getGlobalGuildWeeklyRanking();
+    const myGuilds = new Set(user.guilds || []);
+
+    // 길드 아이콘 로드
+    let guildIconMap = {};
+    try {
+      const { getAllGuilds } = await import('../data.js');
+      const allGuilds = await getAllGuilds();
+      allGuilds.forEach(g => { if (g.icon) guildIconMap[g.name] = g.icon; });
+    } catch {};
+
+    let rankings;
+
+    if (guildData && guildData.rankings && guildData.rankings.length) {
+      rankings = guildData.rankings;
+    } else if (myGuilds.size === 0) {
+      contentEl.innerHTML = `<div class="lb-context" style="text-align:center;padding:20px 0;">
+        길드에 가입하면 길드 랭킹에 참여할 수 있어요
+        <div style="margin-top:8px;"><button class="tds-btn fill md" onclick="openGuildModal()" style="font-size:12px;">길드 가입하기</button></div>
+      </div>`;
+      return;
+    } else {
+      // ── 로컬 폴백: 계정 데이터에서 길드 랭킹 계산 ──
+      const accounts = await getAccountList();
+      const now = new Date(TODAY);
+      const dow = now.getDay() || 7;
+      const mon = new Date(now); mon.setDate(now.getDate() - dow + 1);
+
+      // 전체 길드 → 멤버 매핑
+      const guildMembers = {};
+      for (const acc of accounts) {
+        for (const gName of (acc.guilds || [])) {
+          if (!guildMembers[gName]) guildMembers[gName] = [];
+          // 내 활동일은 로컬 계산
+          let days = 0;
+          if (acc.id === user.id) {
+            for (let i = 0; i < 7; i++) {
+              const d = new Date(mon); d.setDate(mon.getDate() + i);
+              const muscles = getMuscles(d.getFullYear(), d.getMonth(), d.getDate());
+              const diet = getDiet(d.getFullYear(), d.getMonth(), d.getDate());
+              if ((muscles || []).length > 0 || diet.bKcal || diet.lKcal || diet.dKcal) days++;
+            }
+          }
+          guildMembers[gName].push({ userId: acc.id, name: acc.nickname || acc.firstName || acc.id, activeDays: days });
+        }
+      }
+      rankings = Object.entries(guildMembers).map(([gName, members]) => ({
+        guildId: gName,
+        guildName: gName,
+        memberCount: members.length,
+        totalActiveDays: members.reduce((s, m) => s + m.activeDays, 0),
+        avgActiveDays: +(members.reduce((s, m) => s + m.activeDays, 0) / members.length).toFixed(1),
+        members,
+      })).sort((a, b) => b.avgActiveDays - a.avgActiveDays);
+
+      if (!rankings.length) {
+        contentEl.innerHTML = '<div class="lb-context" style="text-align:center;padding:16px 0;">아직 길드 데이터가 없어요</div>';
+        return;
+      }
+    }
+    const rankIcons = ['🥇', '🥈', '🥉'];
+    const maxAvg = Math.max(...rankings.map(r => r.avgActiveDays), 1);
+
+    let html = `<div class="lb-context">🏠 ${rankings.length}개 길드가 경쟁 중</div>`;
+
+    for (let i = 0; i < rankings.length; i++) {
+      const g = rankings[i];
+      const rank = rankIcons[i] || `${i + 1}`;
+      const pct = Math.round((g.avgActiveDays / 7) * 100);
+      const isMine = myGuilds.has(g.guildId);
+      const isPrimary = g.guildId === user.primaryGuild;
+      const primaryBadge = isPrimary ? ' <span class="lb-primary-badge">★ 대표</span>' : '';
+      const myCls = isMine ? ' lb-my-guild' : '';
+
+      html += `<div class="lb-row${myCls}">
+        <span class="lb-rank">${rank}</span>
+        <div class="lb-avatar active" style="font-size:14px;overflow:hidden;">${((guildIconMap[g.guildName] || '🏠').startsWith('data:')) ? `<img src="${guildIconMap[g.guildName]}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">` : (guildIconMap[g.guildName] || '🏠')}</div>
+        <span class="lb-name">${g.guildName}${primaryBadge}</span>
+        <div class="lb-bar-track"><div class="lb-bar-fill" style="width:${pct}%"></div></div>
+        <span class="lb-days"><span class="lb-guild-info">${g.memberCount}명</span> ${g.avgActiveDays}일</span>
+      </div>`;
+    }
+
+    // 업데이트 시각
+    if (guildData?.updatedAt) {
+      const diffMin = Math.floor((Date.now() - guildData.updatedAt) / 60000);
+      const freshness = diffMin < 1 ? '방금 업데이트' : diffMin < 60 ? `${diffMin}분 전 업데이트` : `${Math.floor(diffMin / 60)}시간 전 업데이트`;
+      html += `<div class="lb-freshness">${freshness}</div>`;
+    }
+
+    // 산정 방법 안내
+    html += `<div style="margin-top:12px;padding:10px 14px;background:var(--surface2);border-radius:var(--seed-r2,8px);font-size:11px;line-height:1.6;color:var(--text-tertiary);">
+      <span style="font-weight:600;color:var(--text-secondary);">산정 방법</span><br>
+      이번 주 (월~일) 멤버별 활동일의 평균으로 순위를 매겨요.<br>
+      운동 기록 또는 식단 입력이 있는 날을 활동일로 인정합니다.
+    </div>`;
+
+    contentEl.innerHTML = html;
+  } catch(e) {
+    console.warn('[guild-leaderboard]', e);
+    contentEl.innerHTML = '<div class="lb-context">길드 랭킹을 불러올 수 없어요</div>';
+  }
 }
