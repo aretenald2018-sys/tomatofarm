@@ -2318,48 +2318,81 @@ window.wtSelectStatus = function(status) {
   flow.classList.add('wt-show-type');
   document.getElementById('wt-memo-section').classList.add('wt-open');
   document.getElementById('wt-save-section').classList.add('wt-open');
-  // 운동 타이머 시작
-  document.getElementById('wt-workout-timer-bar')?.classList.add('wt-open');
-  wtStartWorkoutTimer();
   _wtSelectedTypes.clear();
 };
 
+const _WT_TYPE_SECTIONS = {
+  gym: 'wt-gym-section',
+  cf: 'wt-cf-section',
+  stretch: 'wt-stretch-section',
+  swimming: 'wt-swimming-section',
+  running: 'wt-running-section',
+};
+
 window.wtToggleType = function(type) {
-  const chip = document.getElementById('wt-chip-' + type);
+  const tab = document.getElementById('wt-chip-' + type);
   if (_wtSelectedTypes.has(type)) {
     _wtSelectedTypes.delete(type);
-    if (chip) chip.classList.remove('active');
+    if (tab) tab.classList.remove('active');
   } else {
     _wtSelectedTypes.add(type);
-    if (chip) chip.classList.add('active');
+    if (tab) tab.classList.add('active');
   }
-  // 헬스 종목 영역
-  const gym = document.getElementById('wt-gym-section');
-  if (_wtSelectedTypes.has('gym')) gym.classList.add('wt-open');
-  else gym.classList.remove('wt-open');
-  // 런닝 상세 영역
-  const runSec = document.getElementById('wt-running-section');
-  if (_wtSelectedTypes.has('running')) runSec?.classList.add('wt-open');
-  else runSec?.classList.remove('wt-open');
   // 상태 반영
   wtSetGymStatus(_wtSelectedTypes.has('gym') ? 'done' : 'none');
   wtSetCFStatus(_wtSelectedTypes.has('cf') ? 'done' : 'none');
   if (type === 'stretch') wtToggleStretching();
   if (type === 'swimming') wtToggleSwimming();
   if (type === 'running') wtToggleRunning();
+
+  // 세로 스택: 선택된 섹션은 모두 보이고, 해제된 섹션은 숨김
+  Object.entries(_WT_TYPE_SECTIONS).forEach(([t, id]) => {
+    const sec = document.getElementById(id);
+    if (!sec) return;
+    if (_wtSelectedTypes.has(t)) sec.classList.add('wt-open');
+    else sec.classList.remove('wt-open');
+  });
 };
 
 window.wtResetStatus = function() {
   _wtSelectedTypes.clear();
   const flow = document.getElementById('wt-flow');
   flow.classList.remove('wt-chosen', 'wt-show-type');
-  ['wt-gym-section','wt-running-section','wt-memo-section','wt-save-section'].forEach(id =>
+  Object.values(_WT_TYPE_SECTIONS).forEach(id =>
+    document.getElementById(id)?.classList.remove('wt-open'));
+  ['wt-memo-section','wt-save-section'].forEach(id =>
     document.getElementById(id)?.classList.remove('wt-open'));
   document.getElementById('wt-workout-timer-bar')?.classList.remove('wt-open');
   ['wt-chip-gym','wt-chip-cf','wt-chip-stretch','wt-chip-swimming','wt-chip-running'].forEach(id =>
     document.getElementById(id)?.classList.remove('active'));
   wtSetGymStatus('none'); wtSetCFStatus('none');
 };
+// 날짜 변경 시 flow UI만 초기화 (save 없이)
+window._wtResetFlowUI = function() {
+  _wtSelectedTypes.clear();
+  const flow = document.getElementById('wt-flow');
+  if (flow) flow.classList.remove('wt-chosen', 'wt-show-type');
+  Object.values(_WT_TYPE_SECTIONS).forEach(id =>
+    document.getElementById(id)?.classList.remove('wt-open'));
+  ['wt-memo-section','wt-save-section'].forEach(id =>
+    document.getElementById(id)?.classList.remove('wt-open'));
+  document.getElementById('wt-workout-timer-bar')?.classList.remove('wt-open');
+  ['wt-chip-gym','wt-chip-cf','wt-chip-stretch','wt-chip-swimming','wt-chip-running'].forEach(id =>
+    document.getElementById(id)?.classList.remove('active'));
+};
+
+// 날짜 복원 시 탭 + 섹션 재구성 (상태 토글 없이 UI만 설정)
+window._wtRestoreTypes = function(types) {
+  _wtSelectedTypes.clear();
+  types.forEach(t => _wtSelectedTypes.add(t));
+  // 탭 활성화 + 섹션 표시 (세로 스택)
+  types.forEach(t => {
+    document.getElementById('wt-chip-' + t)?.classList.add('active');
+    const secId = _WT_TYPE_SECTIONS[t];
+    if (secId) document.getElementById(secId)?.classList.add('wt-open');
+  });
+};
+
 window.wtToggleWineFree         = wtToggleWineFree;
 
 // 식단/운동 사진 업로드

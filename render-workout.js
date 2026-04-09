@@ -23,6 +23,9 @@ let _stretching = false;
 let _swimming   = false;
 let _running    = false;
 let _runData    = { distance: 0, durationMin: 0, durationSec: 0, memo: '' };
+let _cfData     = { wod: '', durationMin: 0, durationSec: 0, memo: '' };
+let _stretchData = { duration: 0, memo: '' };
+let _swimData   = { distance: 0, durationMin: 0, durationSec: 0, stroke: '', memo: '' };
 let _wineFree   = false;
 let _workoutStartTime = null;  // 운동 시작 시각 (ms timestamp)
 let _workoutDuration  = 0;     // 저장된 운동 시간 (초)
@@ -48,6 +51,9 @@ function _emptyDiet() {
 
 // ── 날짜 로드 ─────────────────────────────────────────────────────
 export function loadWorkoutDate(y, m, d) {
+  // flow UI 상태 초기화 (save 없이 UI만 리셋)
+  if (window._wtResetFlowUI) window._wtResetFlowUI();
+
   _date      = { y, m, d };
   const day  = getDay(y, m, d);
   _exercises = JSON.parse(JSON.stringify(day.exercises || []));
@@ -71,10 +77,36 @@ export function loadWorkoutDate(y, m, d) {
     durationSec: day.runDurationSec || 0,
     memo:        day.runMemo || '',
   };
+  _cfData = {
+    wod:         day.cfWod || '',
+    durationMin: day.cfDurationMin || 0,
+    durationSec: day.cfDurationSec || 0,
+    memo:        day.cfMemo || '',
+  };
+  _stretchData = {
+    duration:    day.stretchDuration || 0,
+    memo:        day.stretchMemo || '',
+  };
+  _swimData = {
+    distance:    day.swimDistance || 0,
+    durationMin: day.swimDurationMin || 0,
+    durationSec: day.swimDurationSec || 0,
+    stroke:      day.swimStroke || '',
+    memo:        day.swimMemo || '',
+  };
   _wineFree   = !!day.wine_free;
   _workoutDuration = day.workoutDuration || 0;
   _workoutStartTime = null;
   if (_workoutTimerInterval) { clearInterval(_workoutTimerInterval); _workoutTimerInterval = null; }
+  // 쉬는시간 타이머 정리
+  wtRestTimerSkip();
+  // 타이머 컨트롤 visibility 리셋
+  const timerControls = document.querySelector('.wt-timer-controls');
+  if (timerControls) timerControls.style.display = '';
+  const timerText = document.getElementById('wt-workout-timer');
+  if (timerText) timerText.style.display = '';
+  const resultEl = document.getElementById('wt-workout-duration-result');
+  if (resultEl) resultEl.style.display = 'none';
   _breakfastSkipped = !!day.breakfast_skipped;
   _lunchSkipped = !!day.lunch_skipped;
   _dinnerSkipped = !!day.dinner_skipped;
@@ -106,6 +138,9 @@ export function loadWorkoutDate(y, m, d) {
   document.getElementById('wt-chip-swimming')?.classList.toggle('active', _swimming);
   document.getElementById('wt-chip-running')?.classList.toggle('active', _running);
   _renderRunningForm();
+  _renderCfForm();
+  _renderStretchForm();
+  _renderSwimForm();
   _renderWorkoutTimer();
   _renderWineFreeToggle();
   _renderMealSkippedToggles();
@@ -143,13 +178,14 @@ function _restoreFlowState(day) {
   const timerBar   = document.getElementById('wt-workout-timer-bar');
   if (!flow) return;
 
-  const hasExercises = (day.exercises || []).length > 0;
-  const hasCf        = !!day.cf;
-  const hasSwimming  = !!day.swimming;
-  const hasRunning   = !!day.running;
-  const isSkip       = !!day.gym_skip;
-  const isHealth     = !!day.gym_health;
-  const hasWorkout   = hasExercises || hasCf || hasSwimming || hasRunning;
+  const hasExercises  = (day.exercises || []).length > 0;
+  const hasCf         = !!day.cf;
+  const hasStretching = !!day.stretching;
+  const hasSwimming   = !!day.swimming;
+  const hasRunning    = !!day.running;
+  const isSkip        = !!day.gym_skip;
+  const isHealth      = !!day.gym_health;
+  const hasWorkout    = hasExercises || hasCf || hasStretching || hasSwimming || hasRunning;
 
   if (!hasWorkout && !isSkip && !isHealth) return; // 데이터 없으면 초기 상태 유지
 
@@ -164,23 +200,40 @@ function _restoreFlowState(day) {
   } else {
     if (badge) { badge.className = 'wt-status-badge wt-active'; badge.textContent = '운동했어요 💪'; }
     flow.classList.add('wt-show-type');
-    // 칩 활성화 + 섹션 열기
-    if (hasExercises) {
-      document.getElementById('wt-chip-gym')?.classList.add('active');
-      document.getElementById('wt-gym-section')?.classList.add('wt-open');
-    }
-    if (hasCf) document.getElementById('wt-chip-cf')?.classList.add('active');
-    if (day.stretching) document.getElementById('wt-chip-stretch')?.classList.add('active');
-    if (hasSwimming) document.getElementById('wt-chip-swimming')?.classList.add('active');
-    if (hasRunning) {
-      document.getElementById('wt-chip-running')?.classList.add('active');
-      document.getElementById('wt-running-section')?.classList.add('wt-open');
-    }
+    // 칩 활성화 + 탭 바 구성 (상태 변수는 이미 loadWorkoutDate에서 설정됨)
+    const typesToRestore = [];
+    if (hasExercises) typesToRestore.push('gym');
+    if (hasCf) typesToRestore.push('cf');
+    if (hasStretching) typesToRestore.push('stretch');
+    if (hasSwimming) typesToRestore.push('swimming');
+    if (hasRunning) typesToRestore.push('running');
+    // 칩 활성화만 (wtToggleType은 상태를 토글하므로 직접 호출 안 함)
+    typesToRestore.forEach(t => {
+      document.getElementById('wt-chip-' + t)?.classList.add('active');
+    });
+    // 탭 바 구성을 위해 window._wtRestoreTypes 호출
+    if (window._wtRestoreTypes) window._wtRestoreTypes(typesToRestore);
     // 타이머 바 표시
     if (timerBar) timerBar.classList.add('wt-open');
   }
   document.getElementById('wt-memo-section')?.classList.add('wt-open');
-  _renderTimerControls();
+
+  // 과거 날짜: 타이머 컨트롤 숨기고 저장된 시간만 정적 표시
+  const isToday = _date && _date.y === TODAY.getFullYear() && _date.m === TODAY.getMonth() && _date.d === TODAY.getDate();
+  if (!isToday && timerBar) {
+    // 컨트롤 숨기기
+    const controls = timerBar.querySelector('.wt-timer-controls');
+    if (controls) controls.style.display = 'none';
+    // 저장된 duration 표시
+    if (_workoutDuration > 0) {
+      const resultEl = document.getElementById('wt-workout-duration-result');
+      if (resultEl) { resultEl.textContent = `총 ${_fmtDuration(_workoutDuration)}`; resultEl.style.display = ''; }
+      const timerText = document.getElementById('wt-workout-timer');
+      if (timerText) timerText.style.display = 'none';
+    }
+  } else {
+    _renderTimerControls();
+  }
 }
 
 function _setInputsDisabled(disabled) {
@@ -291,8 +344,13 @@ export function wtToggleSetDone(entryIdx, si) {
     _renderExerciseList();
     if (!wasDone) showToast('저장되었습니다', 1500, 'success');
   }).catch(e => console.error('Save error:', e));
-  // 세트 완료 시 휴식 타이머 자동 시작
-  if (!wasDone) wtRestTimerStart();
+  // 세트 완료 시 휴식 타이머 자동 시작 (리셋 후 재시작)
+  if (!wasDone) {
+    const ex = getExList().find(e => e.id === _exercises[entryIdx].exerciseId);
+    const exName = ex?.name || _exercises[entryIdx].exerciseId;
+    const setNum = si + 1;
+    wtRestTimerStart(null, `${exName} ${setNum}세트 후 휴식`);
+  }
 }
 
 export function wtUpdateSetType(entryIdx, si, val) {
@@ -431,6 +489,17 @@ export async function saveWorkoutDay() {
     runDurationMin: _runData.durationMin,
     runDurationSec: _runData.durationSec,
     runMemo:       _runData.memo,
+    cfWod:         _cfData.wod,
+    cfDurationMin: _cfData.durationMin,
+    cfDurationSec: _cfData.durationSec,
+    cfMemo:        _cfData.memo,
+    stretchDuration: _stretchData.duration,
+    stretchMemo:   _stretchData.memo,
+    swimDistance:   _swimData.distance,
+    swimDurationMin: _swimData.durationMin,
+    swimDurationSec: _swimData.durationSec,
+    swimStroke:    _swimData.stroke,
+    swimMemo:      _swimData.memo,
     workoutDuration: _workoutDuration,
     wine_free:  _wineFree,
     breakfast_skipped: _breakfastSkipped,
@@ -649,7 +718,9 @@ function _renderSets(entryIdx) {
 
     row.querySelector('.set-type-select').addEventListener('change', e => wtUpdateSetType(entryIdx, si, e.target.value));
     row.querySelectorAll('.set-input')[0].addEventListener('change', e => wtUpdateSet(entryIdx, si, 'kg',   e.target.value));
+    row.querySelectorAll('.set-input')[0].addEventListener('focus', () => { if (_restTimer.running) wtRestTimerSkip(); });
     row.querySelectorAll('.set-input')[1].addEventListener('change', e => wtUpdateSet(entryIdx, si, 'reps', e.target.value));
+    row.querySelectorAll('.set-input')[1].addEventListener('focus', () => { if (_restTimer.running) wtRestTimerSkip(); });
     row.querySelector('.set-done-btn').addEventListener('click', () => wtToggleSetDone(entryIdx, si));
     row.querySelector('.set-remove-btn').addEventListener('click', () => wtRemoveSet(entryIdx, si));
     el.appendChild(row);
@@ -1007,6 +1078,17 @@ async function _autoSaveDiet() {
       runDurationMin: _runData.durationMin,
       runDurationSec: _runData.durationSec,
       runMemo:       _runData.memo,
+      cfWod:         _cfData.wod,
+      cfDurationMin: _cfData.durationMin,
+      cfDurationSec: _cfData.durationSec,
+      cfMemo:        _cfData.memo,
+      stretchDuration: _stretchData.duration,
+      stretchMemo:   _stretchData.memo,
+      swimDistance:   _swimData.distance,
+      swimDurationMin: _swimData.durationMin,
+      swimDurationSec: _swimData.durationSec,
+      swimStroke:    _swimData.stroke,
+      swimMemo:      _swimData.memo,
       workoutDuration: _workoutDuration,
       wine_free:  _wineFree,
       breakfast_skipped: _breakfastSkipped,
@@ -1217,12 +1299,99 @@ function _initRunningEvents() {
 }
 setTimeout(_initRunningEvents, 0);
 
+// ── 크로스핏/스트레칭/수영 폼 렌더/이벤트 ─────────────────────────
+function _renderCfForm() {
+  const wod  = document.getElementById('wt-cf-wod');
+  const durM = document.getElementById('wt-cf-duration-min');
+  const durS = document.getElementById('wt-cf-duration-sec');
+  const memo = document.getElementById('wt-cf-memo');
+  if (wod)  wod.value  = _cfData.wod || '';
+  if (durM) durM.value = _cfData.durationMin || '';
+  if (durS) durS.value = _cfData.durationSec || '';
+  if (memo) memo.value = _cfData.memo || '';
+}
+
+function _renderStretchForm() {
+  const dur  = document.getElementById('wt-stretch-duration');
+  const memo = document.getElementById('wt-stretch-memo');
+  if (dur)  dur.value  = _stretchData.duration || '';
+  if (memo) memo.value = _stretchData.memo || '';
+}
+
+function _renderSwimForm() {
+  const dist   = document.getElementById('wt-swim-distance');
+  const durM   = document.getElementById('wt-swim-duration-min');
+  const durS   = document.getElementById('wt-swim-duration-sec');
+  const stroke = document.getElementById('wt-swim-stroke');
+  const memo   = document.getElementById('wt-swim-memo');
+  if (dist)   dist.value   = _swimData.distance || '';
+  if (durM)   durM.value   = _swimData.durationMin || '';
+  if (durS)   durS.value   = _swimData.durationSec || '';
+  if (stroke) stroke.value = _swimData.stroke || '';
+  if (memo)   memo.value   = _swimData.memo || '';
+}
+
+let _typeEventsBound = false;
+function _initTypeFormEvents() {
+  if (_typeEventsBound) return;
+  _typeEventsBound = true;
+
+  // 크로스핏
+  const cfWod  = document.getElementById('wt-cf-wod');
+  const cfDurM = document.getElementById('wt-cf-duration-min');
+  const cfDurS = document.getElementById('wt-cf-duration-sec');
+  const cfMemo = document.getElementById('wt-cf-memo');
+  function onCfChange() {
+    _cfData.wod         = cfWod?.value.trim() || '';
+    _cfData.durationMin = parseInt(cfDurM?.value) || 0;
+    _cfData.durationSec = parseInt(cfDurS?.value) || 0;
+    _cfData.memo        = cfMemo?.value.trim() || '';
+    saveWorkoutDay().catch(e => console.error('Save error:', e));
+  }
+  cfWod?.addEventListener('change', onCfChange);
+  cfDurM?.addEventListener('change', onCfChange);
+  cfDurS?.addEventListener('change', onCfChange);
+  cfMemo?.addEventListener('change', onCfChange);
+
+  // 스트레칭
+  const strDur  = document.getElementById('wt-stretch-duration');
+  const strMemo = document.getElementById('wt-stretch-memo');
+  function onStretchChange() {
+    _stretchData.duration = parseInt(strDur?.value) || 0;
+    _stretchData.memo     = strMemo?.value.trim() || '';
+    saveWorkoutDay().catch(e => console.error('Save error:', e));
+  }
+  strDur?.addEventListener('change', onStretchChange);
+  strMemo?.addEventListener('change', onStretchChange);
+
+  // 수영
+  const swimDist   = document.getElementById('wt-swim-distance');
+  const swimDurM   = document.getElementById('wt-swim-duration-min');
+  const swimDurS   = document.getElementById('wt-swim-duration-sec');
+  const swimStroke = document.getElementById('wt-swim-stroke');
+  const swimMemo   = document.getElementById('wt-swim-memo');
+  function onSwimChange() {
+    _swimData.distance    = parseFloat(swimDist?.value) || 0;
+    _swimData.durationMin = parseInt(swimDurM?.value) || 0;
+    _swimData.durationSec = parseInt(swimDurS?.value) || 0;
+    _swimData.stroke      = swimStroke?.value || '';
+    _swimData.memo        = swimMemo?.value.trim() || '';
+    saveWorkoutDay().catch(e => console.error('Save error:', e));
+  }
+  swimDist?.addEventListener('change', onSwimChange);
+  swimDurM?.addEventListener('change', onSwimChange);
+  swimDurS?.addEventListener('change', onSwimChange);
+  swimStroke?.addEventListener('change', onSwimChange);
+  swimMemo?.addEventListener('change', onSwimChange);
+}
+setTimeout(_initTypeFormEvents, 0);
+
 // ── 세트 간 휴식 타이머 ───────────────────────────────────────────
 let _restTimer = { interval: null, remaining: 0, total: 90, running: false };
 
-function _restTimerEl()  { return document.getElementById('rest-timer-bar'); }
-function _restTimeEl()   { return document.getElementById('rest-timer-time'); }
-function _restFillEl()   { return document.getElementById('rest-timer-fill'); }
+function _restTimerEl()  { return document.getElementById('wt-rest-section'); }
+function _restTimeEl()   { return document.getElementById('wt-rest-time'); }
+function _restFillEl()   { return document.getElementById('wt-rest-fill'); }
 
 function _formatTime(sec) {
   const m = Math.floor(Math.abs(sec) / 60);
@@ -1231,10 +1400,13 @@ function _formatTime(sec) {
   return `${sign}${m}:${String(s).padStart(2, '0')}`;
 }
 
-export function wtRestTimerStart(seconds) {
+export function wtRestTimerStart(seconds, context) {
   const bar = _restTimerEl();
   if (!bar) return;
   if (seconds) _restTimer.total = seconds;
+  // 맥락 텍스트 표시
+  const ctxEl = document.getElementById('wt-rest-context');
+  if (ctxEl) ctxEl.textContent = context || '';
   _restTimer.remaining = _restTimer.total;
   _restTimer.running = true;
 
