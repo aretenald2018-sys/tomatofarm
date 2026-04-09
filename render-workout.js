@@ -51,6 +51,9 @@ function _emptyDiet() {
 
 // ── 날짜 로드 ─────────────────────────────────────────────────────
 export function loadWorkoutDate(y, m, d) {
+  // 타이머가 running 중이고 동일 날짜를 다시 로드하는 경우 플래그
+  const _timerRunningForSameDate = _workoutStartTime && _date && _date.y === y && _date.m === m && _date.d === d;
+
   // flow UI 상태 초기화 (save 없이 UI만 리셋)
   if (window._wtResetFlowUI) window._wtResetFlowUI();
 
@@ -95,9 +98,13 @@ export function loadWorkoutDate(y, m, d) {
     memo:        day.swimMemo || '',
   };
   _wineFree   = !!day.wine_free;
-  _workoutDuration = day.workoutDuration || 0;
-  _workoutStartTime = null;
-  if (_workoutTimerInterval) { clearInterval(_workoutTimerInterval); _workoutTimerInterval = null; }
+  if (_timerRunningForSameDate) {
+    // running 중인 타이머 유지 — _workoutDuration, _workoutStartTime, _workoutTimerInterval 건드리지 않음
+  } else {
+    _workoutDuration = day.workoutDuration || 0;
+    _workoutStartTime = null;
+    if (_workoutTimerInterval) { clearInterval(_workoutTimerInterval); _workoutTimerInterval = null; }
+  }
   // 쉬는시간 타이머 정리
   wtRestTimerSkip();
   // 타이머 컨트롤 visibility 리셋
@@ -359,6 +366,15 @@ export function wtUpdateSetType(entryIdx, si, val) {
   saveWorkoutDay().catch(e => console.error('Save error:', e));
 }
 
+export function wtMoveSet(entryIdx, si, direction) {
+  const sets = _exercises[entryIdx].sets;
+  const targetIdx = si + direction;
+  if (targetIdx < 0 || targetIdx >= sets.length) return;
+  [sets[si], sets[targetIdx]] = [sets[targetIdx], sets[si]];
+  _renderSets(entryIdx);
+  saveWorkoutDay().then(() => showToast('순서가 변경되었습니다', 1500, 'success')).catch(e => console.error('Save error:', e));
+}
+
 export function wtRemoveExerciseEntry(entryIdx) {
   _exercises.splice(entryIdx, 1);
   _renderExerciseList();
@@ -500,7 +516,9 @@ export async function saveWorkoutDay() {
     swimDurationSec: _swimData.durationSec,
     swimStroke:    _swimData.stroke,
     swimMemo:      _swimData.memo,
-    workoutDuration: _workoutDuration,
+    workoutDuration: _workoutStartTime
+      ? _workoutDuration + Math.floor((Date.now() - _workoutStartTime) / 1000)
+      : _workoutDuration,
     wine_free:  _wineFree,
     breakfast_skipped: _breakfastSkipped,
     lunch_skipped: _lunchSkipped,
@@ -714,7 +732,8 @@ function _renderSets(entryIdx) {
       <span class="set-sep">회</span>
       <span class="set-vol">${vol}</span>
       <button class="set-done-btn ${isDone?'done':''}" title="완료 체크">✓</button>
-      <button class="set-remove-btn">✕</button>`;
+      <button class="set-remove-btn">✕</button>
+      <span class="set-drag-handle" title="드래그하여 순서 변경"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg></span>`;
 
     row.querySelector('.set-type-select').addEventListener('change', e => wtUpdateSetType(entryIdx, si, e.target.value));
     row.querySelectorAll('.set-input')[0].addEventListener('change', e => wtUpdateSet(entryIdx, si, 'kg',   e.target.value));
@@ -725,6 +744,24 @@ function _renderSets(entryIdx) {
     row.querySelector('.set-remove-btn').addEventListener('click', () => wtRemoveSet(entryIdx, si));
     el.appendChild(row);
   });
+
+  // Sortable 드래그 정렬
+  if (typeof Sortable !== 'undefined' && sets.length > 1) {
+    new Sortable(el, {
+      handle: '.set-drag-handle',
+      animation: 150,
+      ghostClass: 'set-row-ghost',
+      chosenClass: 'set-row-chosen',
+      onEnd(evt) {
+        const { oldIndex, newIndex } = evt;
+        if (oldIndex === newIndex) return;
+        const [moved] = _exercises[entryIdx].sets.splice(oldIndex, 1);
+        _exercises[entryIdx].sets.splice(newIndex, 0, moved);
+        _renderSets(entryIdx);
+        saveWorkoutDay().then(() => showToast('순서가 변경되었습니다', 1500, 'success')).catch(e => console.error('Save error:', e));
+      }
+    });
+  }
 }
 
 function _renderPickerList() {
@@ -1089,7 +1126,9 @@ async function _autoSaveDiet() {
       swimDurationSec: _swimData.durationSec,
       swimStroke:    _swimData.stroke,
       swimMemo:      _swimData.memo,
-      workoutDuration: _workoutDuration,
+      workoutDuration: _workoutStartTime
+        ? _workoutDuration + Math.floor((Date.now() - _workoutStartTime) / 1000)
+        : _workoutDuration,
       wine_free:  _wineFree,
       breakfast_skipped: _breakfastSkipped,
       lunch_skipped: _lunchSkipped,
