@@ -97,6 +97,11 @@ export async function refreshNotifCenter() {
           <button class="notif-accept-btn" onclick="event.stopPropagation();approveGuildFromNotif('${n.requestId}','${n.id}')">맞음</button>
           <button class="notif-reject-btn" onclick="event.stopPropagation();dismissGuildFromNotif('${n.id}',this)">아님</button>
         </div>` : '';
+    const guildInviteAction = (n.type === 'guild_invite' && n.guildId && !n.read)
+      ? `<div class="notif-actions" style="margin-top:6px;">
+          <button class="notif-accept-btn" onclick="event.stopPropagation();acceptGuildInvite('${(n.guildId || '').replace(/'/g, "\\'")}','${n.id}')">가입하기</button>
+          <button class="notif-reject-btn" onclick="event.stopPropagation();dismissGuildFromNotif('${n.id}',this)">괜찮아요</button>
+        </div>` : '';
     if (n.type === 'announcement') {
       const annBody = n.body ? `<div style="font-size:11px;color:var(--text-secondary);margin-top:3px;line-height:1.4;">${(n.body || '').slice(0, 100)}${(n.body || '').length > 100 ? '…' : ''}</div>` : '';
       html += `<div class="notif-item${unreadCls} notif-announce" onclick="markNotifFromCenter('${n.id}',this)">
@@ -125,7 +130,7 @@ export async function refreshNotifCenter() {
             : (n.message || '')
         }</div>
         <div class="notif-time">${formatTimeAgo(n.createdAt)}</div>
-        ${introAction}${guildAction}
+        ${introAction}${guildAction}${guildInviteAction}
       </div>
     </div>`;
   }
@@ -190,6 +195,30 @@ window.approveGuildFromNotif = async function(requestId, notifId) {
   await markNotificationRead(notifId);
   haptic('success');
   showToast('🏠 길드원을 확인했어요!', 2500, 'success');
+  refreshNotifCenter();
+};
+
+// 길드 초대 수락 — 초대자가 이미 길드원이므로 승인 없이 바로 가입
+window.acceptGuildInvite = async function(guildId, notifId) {
+  const { getCurrentUser, saveAccount, setCurrentUser, updateGuildMemberCount } = await import('../data.js');
+  const user = getCurrentUser();
+  if (!user) return;
+
+  const guilds = user.guilds || [];
+  const pending = user.pendingGuilds || [];
+  if (!guilds.includes(guildId)) {
+    guilds.push(guildId);
+    user.guilds = guilds;
+  }
+  // pendingGuilds에 있었다면 제거
+  user.pendingGuilds = pending.filter(g => g !== guildId);
+  if (!user.primaryGuild) user.primaryGuild = guildId;
+  await saveAccount(user);
+  setCurrentUser(user);
+  await updateGuildMemberCount(guildId, 1);
+  await markNotificationRead(notifId);
+  haptic('success');
+  showToast(`${guildId} 길드에 가입했어요!`, 2500, 'success');
   refreshNotifCenter();
 };
 

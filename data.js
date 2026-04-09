@@ -484,12 +484,13 @@ export async function getAllGuilds() {
   } catch { return []; }
 }
 
-// 길드 생성 (새 길드명 직접 입력 시)
+// 길드 생성 (새 길드명 직접 입력 시) — 생성자가 길드장
 export async function createGuild(name, createdBy) {
   const guild = {
     id: name,
     name,
     createdBy,
+    leader: createdBy,
     createdAt: Date.now(),
     memberCount: 1,
   };
@@ -642,6 +643,71 @@ export async function getGlobalGuildWeeklyRanking() {
     const snap = await getDoc(doc(db, '_weekly_guild_ranking', 'current'));
     return snap.exists() ? snap.data() : null;
   } catch { return null; }
+}
+
+// 길드장 정보 조회
+export async function getGuildLeader(guildId) {
+  try {
+    const snap = await getDoc(doc(db, '_guilds', guildId));
+    if (!snap.exists()) return null;
+    return snap.data().leader || snap.data().createdBy || null;
+  } catch { return null; }
+}
+
+// 길드장 위임
+export async function transferGuildLeadership(guildId, newLeaderId) {
+  try {
+    const snap = await getDoc(doc(db, '_guilds', guildId));
+    if (!snap.exists()) return false;
+    const guild = snap.data();
+    const oldLeader = guild.leader || guild.createdBy;
+    if (!_isMySocialId(oldLeader)) return false; // 길드장만 위임 가능
+    guild.leader = newLeaderId;
+    await setDoc(doc(db, '_guilds', guildId), guild);
+
+    // 새 길드장에게 알림
+    const accounts = await getAccountList();
+    const oldLeaderAcc = accounts.find(a => a.id === oldLeader);
+    const oldName = oldLeaderAcc ? (oldLeaderAcc.nickname || oldLeaderAcc.lastName + oldLeaderAcc.firstName) : '이전 길드장';
+    await sendNotification(newLeaderId, {
+      type: 'guild_leader_transfer',
+      from: oldLeader,
+      guildId,
+      guildName: guild.name,
+      message: `${oldName}님이 ${guild.name}의 길드장을 위임했어요. 이제 당신이 길드장이에요!`,
+    });
+    return true;
+  } catch(e) { console.warn('[guild] transferLeadership:', e); return false; }
+}
+
+// 길드원 강퇴 (길드장만 가능)
+export async function kickGuildMember(guildId, targetUserId) {
+  try {
+    const snap = await getDoc(doc(db, '_guilds', guildId));
+    if (!snap.exists()) return false;
+    const guild = snap.data();
+    const leader = guild.leader || guild.createdBy;
+    // 길드장만 강퇴 가능 — _isMySocialId로 admin/guest 매핑 포함 비교
+    if (!_isMySocialId(leader)) return false;
+
+    // 대상 유저 계정에서 길드 제거
+    const accounts = await getAccountList();
+    const target = accounts.find(a => a.id === targetUserId);
+    if (!target) return false;
+
+    target.guilds = (target.guilds || []).filter(g => g !== guildId);
+    target.pendingGuilds = (target.pendingGuilds || []).filter(g => g !== guildId);
+    if (target.primaryGuild === guildId) {
+      target.primaryGuild = target.guilds.length > 0 ? target.guilds[0] : null;
+    }
+    await saveAccount(target);
+
+    // 멤버 카운트 감소
+    await updateGuildMemberCount(guildId, -1);
+
+    // 강퇴 시 알림 보내지 않음 (조용히 처리)
+    return true;
+  } catch(e) { console.warn('[guild] kickMember:', e); return false; }
 }
 
 // ── 방명록 시스템 ────────────────────────────────────────────────

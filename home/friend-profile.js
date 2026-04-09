@@ -197,7 +197,7 @@ window.openFriendProfile = async function(friendId, friendName, scrollToSection,
             }).join('');
             return `<div style="display:flex;flex-wrap:wrap;gap:4px;justify-content:center;margin-top:6px;">${chips}</div>`;
           } else if (isMyProfile) {
-            return `<div style="margin-top:6px;font-size:12px;color:var(--text-tertiary);">소속 길드가 없습니다. <button onclick="document.getElementById('dynamic-modal')?.remove();openGuildModal()" style="background:none;border:none;color:var(--primary);font-size:12px;font-weight:600;cursor:pointer;padding:0;">추가하기</button></div>`;
+            return `<div style="margin-top:6px;font-size:12px;color:var(--text-tertiary);">소속 길드가 없습니다. <button onclick="openQuickGuildJoin()" style="background:none;border:none;color:var(--primary);font-size:12px;font-weight:600;cursor:pointer;padding:0;">추가하기</button></div><div id="quick-guild-join-list" style="display:none;margin-top:6px;"></div>`;
           }
           return '';
         })()}
@@ -474,6 +474,64 @@ window.confirmGuildInvite = async function(friendId, friendName, guildName) {
   });
   recordAction('길드초대');
   showToast(`${friendName}님에게 ${guildName} 초대를 보냈어요!`, 2500, 'success');
+};
+
+// 프로필에서 빠른 길드 가입 (추가하기 버튼)
+window.openQuickGuildJoin = async function() {
+  const listEl = document.getElementById('quick-guild-join-list');
+  if (!listEl) return;
+  if (listEl.style.display !== 'none') { listEl.style.display = 'none'; return; }
+
+  const { getAllGuilds } = await import('../data.js');
+  const guilds = await getAllGuilds();
+  if (!guilds.length) {
+    listEl.innerHTML = '<div style="font-size:11px;color:var(--text-tertiary);padding:4px 0;text-align:center;">아직 생성된 길드가 없어요</div>';
+    listEl.style.display = '';
+    return;
+  }
+  listEl.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:4px;justify-content:center;">${
+    guilds.slice(0, 12).map(g =>
+      `<button onclick="quickJoinGuild('${g.name.replace(/'/g, "\\'")}')" class="guild-chip" style="font-size:11px;padding:3px 8px;cursor:pointer;border:1px solid var(--border);background:var(--surface2);">
+        ${g.name}<span style="font-size:9px;color:var(--text-tertiary);margin-left:2px;">${g.memberCount || 0}명</span>
+      </button>`
+    ).join('')
+  }</div>`;
+  listEl.style.display = '';
+};
+
+window.quickJoinGuild = async function(guildName) {
+  const user = getCurrentUser();
+  if (!user) return;
+  const { createGuildJoinRequest, saveAccount, setCurrentUser, createGuild: cg, getAllGuilds } = await import('../data.js');
+  const allG = await getAllGuilds();
+  const existing = allG.find(g => g.name === guildName);
+
+  if (existing) {
+    // 기존 길드 → 가입 요청 (승인 대기)
+    const displayName = user.nickname || (user.lastName + user.firstName);
+    const pending = user.pendingGuilds || [];
+    if (!pending.includes(guildName) && !(user.guilds || []).includes(guildName)) {
+      pending.push(guildName);
+      user.pendingGuilds = pending;
+      await saveAccount(user);
+      setCurrentUser(user);
+      await createGuildJoinRequest(guildName, guildName, user.id, displayName);
+    }
+    showToast(`${guildName} 가입 요청을 보냈어요! 기존 멤버의 승인을 기다려주세요.`, 3000, 'success');
+  } else {
+    // 새 길드 → 바로 생성 & 가입
+    await cg(guildName, user.id);
+    const guilds = user.guilds || [];
+    guilds.push(guildName);
+    user.guilds = guilds;
+    if (!user.primaryGuild) user.primaryGuild = guildName;
+    await saveAccount(user);
+    setCurrentUser(user);
+    showToast(`${guildName} 길드를 만들고 가입했어요!`, 3000, 'success');
+  }
+  // 프로필 모달 닫고 새로고침
+  document.getElementById('dynamic-modal')?.remove();
+  openFriendProfile(isAdminGuest() ? getAdminId() : user.id);
 };
 
 window.openMyGuestbook = async function() {

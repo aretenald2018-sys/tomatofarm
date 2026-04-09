@@ -88,26 +88,39 @@
         <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px;">
           <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:10px;text-align:center;">아래는 나중에 설정해도 돼요</div>
 
-          <!-- 소속 길드 -->
+          <!-- 소속 길드 설정(선택) -->
           <div id="signup-guild-section" style="margin-top:10px;">
-            <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px;">소속 길드</div>
-            <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:8px;line-height:1.5;">길드에 가입하면 길드 랭킹에 참여할 수 있어요.</div>
-            <div style="position:relative;">
-              <input class="login-input" id="signup-guild-input" placeholder="길드 이름을 검색하거나 입력하세요" maxlength="20" style="margin:0;" autocomplete="off"
-                     oninput="searchGuildsFor('signup')" onfocus="searchGuildsFor('signup')"
-                     onkeydown="if(event.key==='Enter'){event.preventDefault();addGuildChipFor('signup');}">
-              <div id="signup-guild-suggestions" class="guild-suggest-list" style="display:none;"></div>
+            <div class="signup-toggle-row" onclick="toggleSignupGuild()">
+              <div style="flex:1;">
+                <div style="font-size:13px;font-weight:600;color:var(--text);">소속 길드 설정(선택)</div>
+                <div style="font-size:11px;color:var(--text-tertiary);line-height:1.5;margin-top:2px;">길드에 가입하면 길드 랭킹에 참여할 수 있어요.</div>
+              </div>
+              <button type="button" class="toggle-switch signup-toggle" id="signup-guild-toggle" role="switch" aria-checked="false">
+                <span class="toggle-knob"></span>
+              </button>
             </div>
-            <div id="signup-guild-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;"></div>
+            <div id="signup-guild-field" style="display:none;margin-top:8px;">
+              <div style="position:relative;">
+                <input class="login-input" id="signup-guild-input" placeholder="길드 이름을 검색하거나 입력하세요" maxlength="20" style="margin:0;" autocomplete="off"
+                       oninput="searchGuildsFor('signup')" onfocus="searchGuildsFor('signup')"
+                       onkeydown="if(event.key==='Enter'){event.preventDefault();addGuildChipFor('signup');}">
+                <div id="signup-guild-suggestions" class="guild-suggest-list" style="display:none;"></div>
+              </div>
+              <div id="signup-guild-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;"></div>
+            </div>
           </div>
 
-          <!-- 비밀번호 -->
+          <!-- 비밀번호 설정(선택) -->
           <div style="margin-top:10px;">
-            <label class="login-pw-label">
-              <input type="checkbox" id="signup-use-pw" onchange="document.getElementById('signup-pw-field').style.display=this.checked?'block':'none'">
-              비밀번호 설정
-            </label>
-            <p class="login-pw-hint">설정하면 내 기록을 보호할 수 있어요.</p>
+            <div class="signup-toggle-row" onclick="toggleSignupPw()">
+              <div style="flex:1;">
+                <div style="font-size:13px;font-weight:600;color:var(--text);">비밀번호 설정(선택)</div>
+                <div style="font-size:11px;color:var(--text-tertiary);line-height:1.5;margin-top:2px;">설정하면 내 기록을 보호할 수 있어요.</div>
+              </div>
+              <button type="button" class="toggle-switch signup-toggle" id="signup-pw-toggle" role="switch" aria-checked="false">
+                <span class="toggle-knob"></span>
+              </button>
+            </div>
             <div id="signup-pw-field" style="display:none;margin-top:8px;">
               <input class="login-input" id="signup-new-password" type="password" placeholder="비밀번호">
             </div>
@@ -1282,7 +1295,7 @@ async function createAccountFromSignup() {
     return;
   }
 
-  const usePw = document.getElementById('signup-use-pw')?.checked;
+  const usePw = document.getElementById('signup-pw-toggle')?.classList.contains('on');
   const pw = document.getElementById('signup-new-password')?.value || '';
 
   // 길드 처리
@@ -1328,6 +1341,33 @@ async function createAccountFromSignup() {
   location.reload();
 }
 window.createAccountFromSignup = createAccountFromSignup;
+
+// ── 가입 토글 (TDS Switch) ───────────────────────────────────────
+function toggleSignupGuild() {
+  const sw = document.getElementById('signup-guild-toggle');
+  const field = document.getElementById('signup-guild-field');
+  if (!sw || !field) return;
+  const on = sw.classList.toggle('on');
+  sw.setAttribute('aria-checked', on);
+  field.style.display = on ? 'block' : 'none';
+  if (on) {
+    // 드롭다운 자동 노출 (기존 길드 리스트)
+    const inp = document.getElementById('signup-guild-input');
+    if (inp) inp.focus();
+    _loadAllGuilds().then(() => searchGuildsFor('signup'));
+  }
+}
+function toggleSignupPw() {
+  const sw = document.getElementById('signup-pw-toggle');
+  const field = document.getElementById('signup-pw-field');
+  if (!sw || !field) return;
+  const on = sw.classList.toggle('on');
+  sw.setAttribute('aria-checked', on);
+  field.style.display = on ? 'block' : 'none';
+  if (on) document.getElementById('signup-new-password')?.focus();
+}
+window.toggleSignupGuild = toggleSignupGuild;
+window.toggleSignupPw = toggleSignupPw;
 
 // ── 길드 입력 헬퍼 (파라미터화: prefix = 'signup' | 'ob') ──────
 let _allGuildsCache = null;
@@ -1559,14 +1599,31 @@ let _guildIconMap = {}; // guildName → icon emoji
 
 const GUILD_ICON_OPTIONS = ['🏠','🏃','💪','🧘','🏋️','🚴','⚽','🎾','🏊','🥊','🧗','🎯','🔥','🌿','🍅','⭐'];
 
+let _guildLeaderMap = {}; // guildName → leaderId
+let _guildModalUserId = null;
+let _guildModalSocialId = null; // admin/guest 매핑 적용된 소셜 ID
+
+// 현재 유저가 해당 길드의 길드장인지 (admin/guest 매핑 포함)
+function _isMyGuildLeader(guildName) {
+  const leader = _guildLeaderMap[guildName];
+  if (!leader) return false;
+  return leader === _guildModalUserId || leader === _guildModalSocialId;
+}
+
 async function openGuildModal() {
-  const { getCurrentUser, getAllGuilds } = await import('./data.js');
+  const { getCurrentUser, getAllGuilds, isAdminGuest, getAdminId } = await import('./data.js');
   const user = getCurrentUser();
   if (!user) return;
+  _guildModalUserId = user.id;
+  _guildModalSocialId = isAdminGuest() ? getAdminId() : user.id;
 
   _allGuildsCache = await getAllGuilds();
   _guildIconMap = {};
-  _allGuildsCache.forEach(g => { if (g.icon) _guildIconMap[g.name] = g.icon; });
+  _guildLeaderMap = {};
+  _allGuildsCache.forEach(g => {
+    if (g.icon) _guildIconMap[g.name] = g.icon;
+    if (g.leader || g.createdBy) _guildLeaderMap[g.name] = g.leader || g.createdBy;
+  });
 
   _guildModalGuilds = [
     ...(user.guilds || []).map(g => ({ name: g, status: 'member' })),
@@ -1604,6 +1661,8 @@ function _renderGuildModalList() {
     const starBtn = g.status === 'member'
       ? `<button onclick="toggleGuildPrimary('${g.name.replace(/'/g, "\\'")}')" style="background:none;border:none;cursor:pointer;font-size:18px;padding:8px;min-width:36px;min-height:36px;display:flex;align-items:center;justify-content:center;" title="대표 길드 설정">${isPrimary ? '★' : '☆'}</button>`
       : '';
+    const amLeader = g.status === 'member' && _isMyGuildLeader(g.name);
+    const leaderBadge = amLeader ? ' <span class="guild-leader-badge">👑 길드장</span>' : '';
     const badge = g.status === 'pending'
       ? '<span class="guild-chip-badge pending" style="margin-left:6px;">승인 대기 중</span>'
       : '';
@@ -1617,7 +1676,7 @@ function _renderGuildModalList() {
     return `<div>
       <div style="display:flex;align-items:center;gap:6px;padding:10px 0;border-bottom:1px solid var(--border);">
         ${starBtn}${iconBtn}
-        <span style="flex:1;font-size:14px;line-height:20px;font-weight:${isPrimary ? '700' : '500'};color:var(--text);">${g.name}${badge}</span>
+        <span style="flex:1;font-size:14px;line-height:20px;font-weight:${isPrimary ? '700' : '500'};color:var(--text);">${g.name}${leaderBadge}${badge}</span>
         ${memberBtn}
         <button onclick="removeGuildFromModal('${g.name.replace(/'/g, "\\'")}')" style="background:none;border:none;cursor:pointer;font-size:14px;color:var(--text-tertiary);padding:8px;min-width:36px;min-height:36px;display:flex;align-items:center;justify-content:center;">✕</button>
       </div>
@@ -1633,27 +1692,158 @@ async function toggleGuildMembers(guildName) {
   if (!el) return;
   if (el.style.display !== 'none') { el.style.display = 'none'; return; }
 
-  // 길드원 목록 로드
-  const { getAccountList: gal } = await import('./data.js');
+  // 길드원 목록 + 길드장 정보 로드
+  const { getAccountList: gal, getGuildLeader, getCurrentUser } = await import('./data.js');
   const accounts = await gal();
   const members = accounts.filter(a => (a.guilds || []).includes(guildName));
+  const leaderId = await getGuildLeader(guildName);
+  const currentUser = getCurrentUser();
+  const amILeader = currentUser && (leaderId === currentUser.id || leaderId === _guildModalSocialId);
 
   if (!members.length) {
     el.innerHTML = '<div style="padding:8px 0 8px 28px;font-size:12px;color:var(--text-tertiary);">길드원이 없어요</div>';
   } else {
     el.innerHTML = members.map(m => {
-      const isPrimary = m.primaryGuild === guildName;
+      const isLeader = m.id === leaderId;
       const name = m.nickname || (m.lastName + m.firstName);
+      const leaderBadge = isLeader ? '<span class="guild-leader-badge">👑 길드장</span>' : '';
+      const isMe = currentUser && (m.id === currentUser.id || (m.id === _guildModalSocialId));
+      // 액션 버튼 결정
+      let actionBtns = '';
+      const safeName = guildName.replace(/'/g, "\\'");
+      if (amILeader && !isMe) {
+        // 길드장 → 다른 멤버에게: 위임 + 강퇴
+        const safeTargetId = m.id.replace(/'/g, "\\'");
+        const safeTargetName = name.replace(/'/g, "\\'");
+        actionBtns = `<button class="guild-member-action transfer" onclick="transferLeadership('${safeName}','${safeTargetId}','${safeTargetName}')">위임</button>
+          <button class="guild-member-action kick" onclick="kickMember('${safeName}','${safeTargetId}','${safeTargetName}')">강퇴</button>`;
+      } else if (isMe && !isLeader) {
+        // 일반 멤버 본인 → 탈퇴
+        actionBtns = `<button class="guild-member-action kick" onclick="leaveGuildFromMembers('${safeName}')">탈퇴</button>`;
+      } else if (isMe && isLeader) {
+        // 길드장 본인 → 위임 후 탈퇴
+        actionBtns = `<button class="guild-member-action kick" onclick="leaderLeaveGuild('${safeName}')">탈퇴</button>`;
+      }
       return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0 6px 28px;">
         <div style="width:24px;height:24px;border-radius:50%;background:var(--surface3);color:var(--text-secondary);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;">${name.charAt(0)}</div>
-        <span style="font-size:13px;color:var(--text);flex:1;">${name}</span>
-        ${isPrimary ? '<span style="font-size:10px;color:#f59e0b;">★</span>' : ''}
+        <span style="font-size:13px;color:var(--text);flex:1;">${name}${leaderBadge ? ' ' + leaderBadge : ''}</span>
+        ${actionBtns}
       </div>`;
     }).join('');
   }
   el.style.display = '';
 }
 window.toggleGuildMembers = toggleGuildMembers;
+
+// 길드장 위임
+async function transferLeadership(guildName, targetId, targetName) {
+  if (!confirm(`${targetName}님에게 길드장을 위임하시겠습니까?\n위임 후에는 되돌릴 수 없습니다.`)) return;
+  const { transferGuildLeadership } = await import('./data.js');
+  const ok = await transferGuildLeadership(guildName, targetId);
+  const { showToast: _st } = await import('./home/utils.js');
+  if (ok) {
+    _guildLeaderMap[guildName] = targetId;
+    _st(`${targetName}님에게 길드장을 위임했어요`, 3000, 'success');
+    _renderGuildModalList();
+    // 멤버 목록 새로고침
+    const safeId = guildName.replace(/[^a-zA-Z0-9가-힣]/g, '_');
+    const el = document.getElementById('gm-members-' + safeId);
+    if (el) { el.style.display = 'none'; toggleGuildMembers(guildName); }
+  } else {
+    _st('위임에 실패했어요', 3000, 'error');
+  }
+}
+window.transferLeadership = transferLeadership;
+
+// 길드원 강퇴
+async function kickMember(guildName, targetId, targetName) {
+  if (!confirm(`정말 ${targetName}님을 강퇴하시겠습니까?`)) return;
+  const { kickGuildMember } = await import('./data.js');
+  const ok = await kickGuildMember(guildName, targetId);
+  const { showToast: _st } = await import('./home/utils.js');
+  if (ok) {
+    _st(`${targetName}님을 내보냈어요`, 3000, 'success');
+    // 멤버 목록 새로고침
+    const safeId = guildName.replace(/[^a-zA-Z0-9가-힣]/g, '_');
+    const el = document.getElementById('gm-members-' + safeId);
+    if (el) { el.style.display = 'none'; toggleGuildMembers(guildName); }
+  } else {
+    _st('강퇴에 실패했어요. 길드장만 강퇴할 수 있어요.', 3000, 'error');
+  }
+}
+window.kickMember = kickMember;
+
+// 일반 멤버 자진 탈퇴
+async function leaveGuildFromMembers(guildName) {
+  if (!confirm(`${guildName} 길드에서 탈퇴할까요?`)) return;
+  const { getCurrentUser, saveAccount, setCurrentUser, updateGuildMemberCount } = await import('./data.js');
+  const user = getCurrentUser();
+  if (!user) return;
+  user.guilds = (user.guilds || []).filter(g => g !== guildName);
+  user.pendingGuilds = (user.pendingGuilds || []).filter(g => g !== guildName);
+  if (user.primaryGuild === guildName) {
+    user.primaryGuild = user.guilds.length > 0 ? user.guilds[0] : null;
+  }
+  await saveAccount(user);
+  setCurrentUser(user);
+  await updateGuildMemberCount(guildName, -1);
+  // 모달 상태도 동기화
+  _guildModalGuilds = _guildModalGuilds.filter(g => g.name !== guildName);
+  if (_guildModalPrimary === guildName) {
+    const first = _guildModalGuilds.find(g => g.status === 'member');
+    _guildModalPrimary = first ? first.name : null;
+  }
+  _renderGuildModalList();
+  const { showToast: _st } = await import('./home/utils.js');
+  _st(`${guildName}에서 탈퇴했어요`, 3000, 'success');
+}
+window.leaveGuildFromMembers = leaveGuildFromMembers;
+
+// 길드장 탈퇴: 위임할 사람 선택 후 탈퇴
+async function leaderLeaveGuild(guildName) {
+  const { getAccountList } = await import('./data.js');
+  const accounts = await getAccountList();
+  const members = accounts.filter(a => (a.guilds || []).includes(guildName) && a.id !== _guildModalUserId && a.id !== _guildModalSocialId);
+
+  if (!members.length) {
+    // 혼자 남은 길드장 → 그냥 탈퇴
+    if (!confirm(`${guildName}의 마지막 멤버입니다. 탈퇴하면 길드가 비게 됩니다. 탈퇴할까요?`)) return;
+    await leaveGuildFromMembers(guildName);
+    return;
+  }
+
+  // 위임할 멤버 선택 UI
+  const safeId = guildName.replace(/[^a-zA-Z0-9가-힣]/g, '_');
+  const el = document.getElementById('gm-members-' + safeId);
+  if (!el) return;
+
+  const memberList = members.map(m => {
+    const name = m.nickname || (m.lastName + m.firstName);
+    return `<button class="guild-member-action transfer" style="margin:2px;" onclick="transferAndLeave('${guildName.replace(/'/g, "\\'")}','${m.id.replace(/'/g, "\\'")}','${name.replace(/'/g, "\\'")}')">${name}에게 위임</button>`;
+  }).join('');
+
+  el.innerHTML = `<div style="padding:10px 0 10px 28px;">
+    <div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px;font-weight:600;">길드장을 위임할 멤버를 선택하세요</div>
+    <div style="display:flex;flex-wrap:wrap;gap:4px;">${memberList}</div>
+    <button class="guild-member-action kick" style="margin-top:8px;" onclick="toggleGuildMembers('${guildName.replace(/'/g, "\\'")}')">취소</button>
+  </div>`;
+}
+window.leaderLeaveGuild = leaderLeaveGuild;
+
+// 위임 후 탈퇴
+async function transferAndLeave(guildName, newLeaderId, newLeaderName) {
+  if (!confirm(`${newLeaderName}님에게 길드장을 위임하고 탈퇴할까요?`)) return;
+  const { transferGuildLeadership } = await import('./data.js');
+  const ok = await transferGuildLeadership(guildName, newLeaderId);
+  if (!ok) {
+    const { showToast: _st } = await import('./home/utils.js');
+    _st('위임에 실패했어요', 3000, 'error');
+    return;
+  }
+  _guildLeaderMap[guildName] = newLeaderId;
+  await leaveGuildFromMembers(guildName);
+}
+window.transferAndLeave = transferAndLeave;
 
 function toggleGuildIconPicker(guildName) {
   const safeId = guildName.replace(/[^a-zA-Z0-9가-힣]/g, '_');
@@ -1729,8 +1919,14 @@ async function toggleGuildPrimary(name) {
   }
 }
 
-function removeGuildFromModal(name) {
-  if (!confirm(`${name} 길드에서 탈퇴할까요?\n길드 데이터는 유지됩니다.`)) return;
+async function removeGuildFromModal(name) {
+  // 길드장이면 위임 먼저 요구
+  if (_isMyGuildLeader(name)) {
+    const { showToast: _st } = await import('./home/utils.js');
+    _st('길드장은 탈퇴 전에 다른 멤버에게 길드장을 위임해주세요.', 3000, 'warning');
+    return;
+  }
+  if (!confirm(`${name} 길드에서 탈퇴할까요?\n길드 데이터��� 유지됩니다.`)) return;
   _guildModalGuilds = _guildModalGuilds.filter(g => g.name !== name);
   if (_guildModalPrimary === name) {
     const firstMember = _guildModalGuilds.find(g => g.status === 'member');
