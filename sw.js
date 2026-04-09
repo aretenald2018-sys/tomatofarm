@@ -3,7 +3,7 @@
 
 // 캐시 버전: 타임스탬프 기반 자동 생성 — 파일 수정 시 SW 자동 업데이트
 // (SW 파일 내용이 1바이트라도 바뀌면 브라우저가 새 SW로 인식)
-const CACHE_VERSION = 'tomatofarm-v20260409w';
+const CACHE_VERSION = 'tomatofarm-v20260409-refactor-lite';
 const RUNTIME_CACHE = 'dashboard3-runtime';
 const STATIC_ASSETS = [
   './',
@@ -33,39 +33,25 @@ const STATIC_ASSETS = [
   './home/friend-feed.js',
   './home/friend-profile.js',
   './render-workout.js',
-  './render-calendar.js',
   './render-cooking.js',
-  './render-wine.js',
-  './render-movie.js',
   './render-stats.js',
-  './render-dev.js',
   './render-admin.js',
-  './render-monthly-calendar.js',
-  './render-finance.js',
-  './finance/index.js',
-  './finance/core.js',
-  './finance/state.js',
-  './finance/api.js',
-  './finance/utils.js',
-  './finance/market.js',
-  './finance/stock-detail.js',
-  './finance/charts.js',
-  './finance/positions.js',
-  './finance/assets.js',
-  './finance/swing.js',
-  './finance/pullback.js',
-  './finance/ai.js',
-  './finance/modals.js',
-  './finance/budget.js',
-  './finance-calc.js',
+  // 분리 모듈
+  './feature-nutrition.js',
+  './feature-tutorial.js',
+  './feature-diet-plan.js',
+  './feature-fatsecret.js',
+  './feature-checkin.js',
+  './feature-misc.js',
+  './workout-ui.js',
+  './navigation.js',
+  './pwa-fcm.js',
   // 모달 핸들러
   './app-modal-goals.js',
   './app-modal-quests.js',
   // 유틸리티
   './fatsecret-api.js',
-  './wine-data.js',
   './sheet.js',
-  './stocks.js',
 ];
 
 self.addEventListener('install', (event) => {
