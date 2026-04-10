@@ -50,7 +50,12 @@ export function renderCheerCard(cheers, onAfterAction) {
   }
 
   const names = _friendNames(uniqueCheers);
-  const title = names.length === 1 ? `${names[0]}님이 응원을 보냈어요!` : '응원이 도착했어요!';
+  let title;
+  if (names.length <= 2) {
+    title = `${names.map(n => `<strong>${n}</strong>님`).join(', ')}이 당신 편이에요!`;
+  } else {
+    title = `<strong>${names[0]}</strong>님, <strong>${names[1]}</strong>님 외 ${names.length - 2}명이 당신 편이에요!`;
+  }
 
   clearCheerCard();
 
@@ -59,13 +64,12 @@ export function renderCheerCard(cheers, onAfterAction) {
   overlay.className = 'cheer-card-overlay';
   overlay.innerHTML = `
     <div class="cheer-card-modal" role="dialog" aria-modal="true">
-      <div class="cheer-card-badge">응원 도착</div>
+      <div class="cheer-card-badge">🎉 응원 도착!</div>
       <div class="cheer-card-title">${title}</div>
-      <div class="cheer-card-names">${names.join(', ')}</div>
-      <div class="cheer-card-message">같이 힘내요! 오늘도 한 칸 전진해봐요.</div>
+      <div class="cheer-card-message">응원에 답하면 서로 더 가까워져요!</div>
       <div class="cheer-card-actions">
-        <button type="button" class="tds-btn fill md" id="cheer-card-reciprocate-btn">나도 응원하기!</button>
-        <button type="button" class="tds-btn ghost md" id="cheer-card-close-btn">닫기</button>
+        <button type="button" class="tds-btn fill md" id="cheer-card-reciprocate-btn">나도 응원 보내기 💪</button>
+        <button type="button" class="tds-btn ghost md" id="cheer-card-close-btn">나중에요</button>
       </div>
     </div>
   `;
@@ -88,17 +92,28 @@ export function renderCheerCard(cheers, onAfterAction) {
     }));
     _showHandshakeConfetti();
     await saveCheerLastSeen(Math.max(...uniqueCheers.map(c => c.createdAt || 0), Date.now()));
+    const first = uniqueCheers[0];
+    const firstName = first.fromName || first.from?.replace(/_/g, '') || '이웃';
+    const profileQuestion = uniqueCheers.length === 1
+      ? `${firstName}님 오늘 뭐 했을까?`
+      : `${firstName}님 외 ${uniqueCheers.length - 1}명, 오늘 뭐 했을까?`;
     overlay.innerHTML = `
       <div class="cheer-card-modal cheer-card-modal--done" role="dialog" aria-modal="true">
-        <div class="cheer-card-badge">응원 완료</div>
-        <div class="cheer-card-title">서로 응원하는 사이!</div>
-        <div class="cheer-card-message">함께 달려봐요. 오늘 기록도 기대할게요.</div>
+        <div class="cheer-card-badge">🤝 맞응원 완료!</div>
+        <div class="cheer-card-title">이웃에게도 응원이 전달되었어요!</div>
+        <div class="cheer-card-message">${profileQuestion}</div>
         <div class="cheer-card-actions">
-          <button type="button" class="tds-btn ghost md" id="cheer-card-done-close-btn">닫기</button>
+          <button type="button" class="tds-btn fill md" id="cheer-card-profile-btn">프로필 보러 가기</button>
+          <button type="button" class="tds-btn ghost md" id="cheer-card-done-close-btn">좋아요!</button>
         </div>
       </div>
     `;
     showToast('응원 완료!', 1800, 'success');
+    overlay.querySelector('#cheer-card-profile-btn')?.addEventListener('click', () => {
+      clearCheerCard();
+      if (window.openFriendProfile) window.openFriendProfile(first.from, firstName);
+      if (onAfterAction) onAfterAction();
+    });
     overlay.querySelector('#cheer-card-done-close-btn')?.addEventListener('click', () => {
       clearCheerCard();
       if (onAfterAction) onAfterAction();

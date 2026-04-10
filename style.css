@@ -4550,39 +4550,43 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
 .cheer-card-badge {
   display: inline-flex;
   align-items: center;
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: rgba(250, 52, 44, 0.1);
+  padding: 5px 12px;
+  border-radius: 9px;
+  background: rgba(250, 52, 44, 0.08);
   color: var(--primary);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
+  letter-spacing: 0.02em;
 }
 .cheer-card-title {
-  margin-top: 12px;
-  font-size: 20px;
-  line-height: 1.4;
+  margin-top: 16px;
+  font-size: 16px;
+  line-height: 1.45;
   font-weight: 800;
   color: var(--text);
 }
-.cheer-card-message {
+.cheer-card-names {
   margin-top: 8px;
   font-size: 14px;
-  line-height: 1.7;
+  line-height: 1.5;
+  color: var(--primary);
+  font-weight: 700;
+}
+.cheer-card-message {
+  margin-top: 8px;
+  font-size: 15px;
+  line-height: 1.6;
   color: var(--text-secondary);
 }
 .cheer-card-actions {
   position: relative;
   z-index: 1;
   display: flex;
+  flex-direction: column;
   gap: 8px;
-  margin-top: 16px;
+  margin-top: 20px;
 }
 .cheer-card-actions .tds-btn { flex: 1; }
-.cheer-card--done {
-  background:
-    radial-gradient(circle at top left, rgba(34, 197, 94, 0.14), transparent 34%),
-    linear-gradient(180deg, #f7fffa 0%, #ffffff 100%);
-}
 
 .cheer-card-overlay {
   position: fixed;
@@ -4592,53 +4596,23 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: rgba(13, 18, 22, 0.46);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: rgba(13, 18, 22, 0.5);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   animation: fadeIn 0.2s ease;
 }
 .cheer-card-modal {
   position: relative;
-  width: min(100%, 420px);
-  padding: 22px 20px 18px;
-  border-radius: 24px;
-  border: 1px solid rgba(250, 52, 44, 0.12);
-  box-shadow: 0 24px 80px rgba(19, 25, 32, 0.18);
+  width: min(calc(100% - 48px), 420px);
+  padding: 32px 24px 20px;
+  border-radius: 20px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.16);
   overflow: hidden;
-  background:
-    radial-gradient(circle at top left, rgba(252, 106, 102, 0.18), transparent 32%),
-    linear-gradient(180deg, #fff8f7 0%, #ffffff 100%);
-}
-.cheer-card-modal::after {
-  content: '';
-  position: absolute;
-  inset: auto -24px -24px auto;
-  width: 120px;
-  height: 120px;
-  border-radius: 50%;
-  background: rgba(250, 52, 44, 0.06);
-}
-.cheer-card-title {
-  position: relative;
-  z-index: 1;
-}
-.cheer-card-names {
-  position: relative;
-  z-index: 1;
-  margin-top: 10px;
-  font-size: 13px;
-  line-height: 1.7;
-  color: var(--primary);
-  font-weight: 700;
-}
-.cheer-card-message {
-  position: relative;
-  z-index: 1;
+  background: #ffffff;
+  text-align: center;
 }
 .cheer-card-modal--done {
-  background:
-    radial-gradient(circle at top left, rgba(34, 197, 94, 0.14), transparent 34%),
-    linear-gradient(180deg, #f7fffa 0%, #ffffff 100%);
+  background: #ffffff;
 }
 .handshake-confetti {
   position: fixed;
