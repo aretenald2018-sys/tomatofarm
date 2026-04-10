@@ -105,7 +105,7 @@ export async function refreshNotifCenter() {
         </div>` : '';
     if (n.type === 'announcement') {
       const annBody = n.body ? `<div style="font-size:11px;color:var(--text-secondary);margin-top:3px;line-height:1.4;">${(n.body || '').slice(0, 100)}${(n.body || '').length > 100 ? '…' : ''}</div>` : '';
-      html += `<div class="notif-item${unreadCls} notif-announce" onclick="markNotifFromCenter('${n.id}',this)">
+      html += `<div class="notif-item${unreadCls} notif-announce" data-notif-id="${n.id}" onclick="markNotifFromCenter('${n.id}',this)">
         <div class="notif-icon announce">📢</div>
         <div class="notif-body">
           <div class="notif-message" style="font-weight:700;color:var(--primary);">${n.title || n.message}</div>
@@ -122,7 +122,7 @@ export async function refreshNotifCenter() {
       : (n.type === 'comment' || n.type === 'comment_reply')
       ? `markNotifFromCenter('${n.id}',this);closeNotifCenter();openCommentNotif('${n.targetUserId || ''}','${n.from || ''}','${n.section || ''}','${n.dateKey || ''}')`
       : `markNotifFromCenter('${n.id}',this)`;
-    html += `<div class="notif-item${unreadCls}" onclick="${clickAction}">
+    html += `<div class="notif-item${unreadCls}" data-notif-id="${n.id}" onclick="${clickAction}">
       <div class="notif-icon ${iconClass}">${icon}</div>
       <div class="notif-body">
         <div class="notif-message"><b style="cursor:pointer;text-decoration:underline;" onclick="event.stopPropagation();closeNotifCenter();openFriendProfile('${n.from}','${nm}')">${nm}</b>님이 ${
@@ -171,7 +171,34 @@ window.markAllNotifsRead = async function() {
   const { getFirestore } = await import("https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js");
   const db = getFirestore();
   const notifs = await getMyNotifications();
-  await Promise.all(notifs.map(n => deleteDoc(doc(db, '_notifications', n.id)).catch(() => {})));
+
+  if (!notifs.length) {
+    showToast('지울 알림이 없어요', 2000, 'info');
+    return;
+  }
+
+  const list = document.getElementById('notif-center-list');
+  const nodes = notifs
+    .map((n) => list?.querySelector(`[data-notif-id="${n.id}"]`))
+    .filter(Boolean);
+
+  await Promise.all(nodes.map((node, index) => new Promise((resolve) => {
+    setTimeout(() => {
+      node.animate([
+        { opacity: 1, transform: 'translateX(0)', height: `${node.offsetHeight}px`, marginBottom: getComputedStyle(node).marginBottom },
+        { opacity: 0, transform: 'translateX(26px)', height: '0px', marginBottom: '0px' },
+      ], {
+        duration: 260,
+        easing: 'cubic-bezier(.22,.61,.36,1)',
+        fill: 'forwards',
+      }).onfinish = () => {
+        node.remove();
+        resolve();
+      };
+    }, index * 55);
+  })));
+
+  await Promise.all(notifs.map((n) => deleteDoc(doc(db, '_notifications', n.id)).catch(() => {})));
   refreshNotifCenter();
   if (_renderFriendFeedFn) _renderFriendFeedFn();
   showToast('알림을 모두 지웠어요', 2500, 'info');

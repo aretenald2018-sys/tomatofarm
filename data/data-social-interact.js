@@ -247,6 +247,30 @@ export async function getUnseenCheers(lastSeenAt = 0) {
   }
 }
 
+export async function getHeroMessage(userId, dateKey) {
+  try {
+    const snap = await getDoc(doc(db, '_hero_messages', `${userId}_${dateKey}`));
+    return snap.exists() ? snap.data() : null;
+  } catch (e) {
+    console.warn('[hero-message] get:', e);
+    return null;
+  }
+}
+
+export async function saveHeroMessage(targetUserId, dateKey, message, emoji = '') {
+  const docId = `${targetUserId}_${dateKey}`;
+  await setDoc(doc(db, '_hero_messages', docId), {
+    id: docId,
+    targetUserId,
+    dateKey,
+    message: (message || '').trim(),
+    emoji: emoji || '',
+    createdBy: _socialId(),
+    createdAt: Date.now(),
+  });
+  return { ok: true, id: docId };
+}
+
 // ── FCM 토큰 ────────────────────────────────────────────────────
 export async function saveFcmToken(token) {
   if (!getCurrentUserRef() || !token) return;

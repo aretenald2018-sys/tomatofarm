@@ -13,11 +13,13 @@ export {
 
 export {
   getAllGuilds, createGuild,
-  updateGuildMemberCount, updateGuildIcon,
+  updateGuildMemberCount, updateGuildIcon, updateGuildLeader,
   createGuildJoinRequest, approveGuildJoinRequest,
   getGuildJoinRequests, getMyPendingGuildRequests,
   getGlobalGuildWeeklyRanking,
   getGuildLeader, transferGuildLeadership, kickGuildMember,
+  deleteGuild, updateGuild, adminAddGuildMember, adminRemoveGuildMember,
+  inviteUserToGuild,
 } from './data-social-guild.js';
 
 export {
@@ -25,6 +27,7 @@ export {
   getGuestbook, writeGuestbook, deleteGuestbookEntry,
   findCommentProfileOwner, getComments, writeComment, editComment, deleteComment,
   toggleLike, getCheerStatus, getLikes, getUnseenCheers,
+  getHeroMessage, saveHeroMessage,
   saveFcmToken, removeFcmToken,
 } from './data-social-interact.js';
 

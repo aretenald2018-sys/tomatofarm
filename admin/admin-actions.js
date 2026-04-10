@@ -4,13 +4,59 @@
 
 import {
   getAccountList, isAdminInstance, getAdminId,
-  deleteUserAccount, sendNotification,
+  deleteUserAccount, sendNotification, getHeroMessage, saveHeroMessage, dateKey, TODAY, saveAccount,
 } from '../data.js';
 import {
-  db, doc, setDoc,
+  db, doc, setDoc, deleteDoc,
 } from '../data/data-core.js';
 import { showToast } from '../render-home.js';
 import { fmtDate, nameResolver, CARD_STYLE, SECTION_TITLE } from './admin-utils.js';
+
+function _escapeHtml(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+let _heroMessageUsers = [];
+let _welcomeBackUsers = [];
+const _actionsExpanded = {
+  letters: false,
+  patchnotes: false,
+  direct_push: false,
+  announcements: false,
+  hero_messages: false,
+  welcome_back: false,
+};
+
+function _todayDateKey() {
+  const now = new Date();
+  return dateKey(now.getFullYear(), now.getMonth(), now.getDate());
+}
+
+function _renderActionCard(key, title, rightHtml, bodyHtml, subtitle = '') {
+  const expanded = !!_actionsExpanded[key];
+  return `
+    <div style="${CARD_STYLE}">
+      <button onclick="window._toggleAdminActionCard('${key}')" style="display:flex;align-items:center;justify-content:space-between;width:100%;padding:0;border:none;background:transparent;cursor:pointer;text-align:left;">
+        <div>
+          <div style="${SECTION_TITLE};margin-bottom:0;">${title}</div>
+          ${subtitle ? `<div style="font-size:11px;color:var(--text-tertiary);margin-top:4px;">${subtitle}</div>` : ''}
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+          ${rightHtml || ''}
+          <span style="font-size:16px;color:var(--text-tertiary);transform:${expanded ? 'rotate(180deg)' : 'rotate(0deg)'};transition:transform .18s ease;">⌃</span>
+        </div>
+      </button>
+      <div style="display:${expanded ? 'block' : 'none'};margin-top:${expanded ? '12px' : '0'};">
+        ${bodyHtml}
+      </div>
+    </div>
+  `;
+}
 
 /**
  * 관리도구 섹션 렌더
@@ -25,13 +71,11 @@ export function renderActionsSection(container, data, rerender) {
   const unreadCount = letters.filter(l => !l.read).length;
 
   container.innerHTML = `
-    <!-- 개발자에게 온 편지 -->
-    <div style="${CARD_STYLE}">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-        <div style="${SECTION_TITLE};margin-bottom:0;">편지 <span style="font-size:11px;font-weight:400;color:var(--text-tertiary);">${letters.length}통</span></div>
-        ${unreadCount > 0 ? `<span style="font-size:10px;font-weight:600;color:#fff;background:#ef4444;border-radius:999px;padding:2px 8px;">${unreadCount} 안 읽음</span>` : ''}
-      </div>
-      ${letters.length === 0 ? '<div style="font-size:12px;color:var(--text-tertiary);text-align:center;padding:12px;">아직 편지가 없어요</div>' :
+    ${_renderActionCard(
+      'letters',
+      `편지 <span style="font-size:11px;font-weight:400;color:var(--text-tertiary);">${letters.length}통</span>`,
+      unreadCount > 0 ? `<span style="font-size:10px;font-weight:600;color:#fff;background:#ef4444;border-radius:999px;padding:2px 8px;">${unreadCount} 안 읽음</span>` : '',
+      letters.length === 0 ? '<div style="font-size:12px;color:var(--text-tertiary);text-align:center;padding:12px;">아직 편지가 없어요</div>' :
         letters.slice(0, 15).map(l => `
           <div style="padding:10px 0;border-bottom:1px solid var(--border);${!l.read ? 'background:rgba(49,130,246,0.04);margin:0 -16px;padding-left:16px;padding-right:16px;' : ''}" data-letter-id="${l.id}">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
@@ -40,19 +84,21 @@ export function renderActionsSection(container, data, rerender) {
               <span style="font-size:10px;color:var(--text-tertiary);margin-left:auto;">${fmtDate(l.createdAt)}</span>
             </div>
             <div style="font-size:12px;color:var(--text-secondary);line-height:1.5;white-space:pre-wrap;word-break:break-word;">${(l.message || '').slice(0, 200)}${(l.message || '').length > 200 ? '…' : ''}</div>
-            ${!l.read ? `<button onclick="window._adminMarkLetterRead('${l.id}')" style="margin-top:6px;padding:4px 12px;border:none;border-radius:8px;background:var(--surface2,#F2F4F6);color:var(--text-secondary);font-size:11px;cursor:pointer;">읽음 처리</button>` : ''}
+            <div style="display:flex;gap:6px;align-items:center;margin-top:6px;">
+              ${!l.read ? `<button onclick="window._adminMarkLetterRead('${l.id}')" style="padding:4px 12px;border:none;border-radius:8px;background:var(--surface2,#F2F4F6);color:var(--text-secondary);font-size:11px;cursor:pointer;">읽음 처리</button>` : ''}
+              <button onclick="window._adminDeleteLetter('${l.id}')" style="padding:4px 12px;border:none;border-radius:8px;background:#FEE2E2;color:#ef4444;font-size:11px;font-weight:700;cursor:pointer;">삭제</button>
+            </div>
           </div>
         `).join('')
-      }
-    </div>
+      ,
+      '개발자에게 온 편지를 확인하고 정리합니다.',
+    )}
 
-    <!-- 패치노트 관리 -->
-    <div style="${CARD_STYLE}">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-        <div style="${SECTION_TITLE};margin-bottom:0;">패치노트 발행</div>
-        <button onclick="window._adminOpenPatchnoteEditor()" style="padding:6px 14px;border:none;border-radius:8px;background:#fa342c;color:#fff;font-size:12px;font-weight:600;cursor:pointer;">+ 새 패치노트</button>
-      </div>
-      ${patchnotes.length === 0 ? '<div style="font-size:12px;color:var(--text-tertiary);text-align:center;padding:12px;">발행된 패치노트가 없어요</div>' :
+    ${_renderActionCard(
+      'patchnotes',
+      '패치노트 발행',
+      `<button onclick="event.stopPropagation();window._adminOpenPatchnoteEditor()" style="padding:6px 14px;border:none;border-radius:8px;background:#fa342c;color:#fff;font-size:12px;font-weight:600;cursor:pointer;">+ 새 패치노트</button>`,
+      patchnotes.length === 0 ? '<div style="font-size:12px;color:var(--text-tertiary);text-align:center;padding:12px;">발행된 패치노트가 없어요</div>' :
         patchnotes.slice(0, 10).map(p => `
           <div style="padding:10px 0;border-bottom:1px solid var(--border);">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
@@ -63,27 +109,57 @@ export function renderActionsSection(container, data, rerender) {
             <div style="font-size:10px;color:var(--text-tertiary);margin-top:4px;">읽은 사용자: ${(p.readBy || []).length}명</div>
           </div>
         `).join('')
-      }
-    </div>
+      ,
+      '새 패치노트를 발행하고 읽음 현황을 봅니다.',
+    )}
 
-    <!-- 개별 푸시 -->
-    <div style="${CARD_STYLE}">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-        <div style="${SECTION_TITLE};margin-bottom:0;">개별 푸시</div>
-        <button onclick="window._adminOpenDirectPushEditor()" style="padding:6px 14px;border:none;border-radius:8px;background:#6366F1;color:#fff;font-size:12px;font-weight:600;cursor:pointer;">+ 보내기</button>
-      </div>
-      <div style="font-size:11px;color:var(--text-tertiary);">특정 사용자에게 인앱 알림 + 폰 푸시를 보냅니다.</div>
-    </div>
+    ${_renderActionCard(
+      'direct_push',
+      '개별 푸시',
+      `<button onclick="event.stopPropagation();window._adminOpenDirectPushEditor()" style="padding:6px 14px;border:none;border-radius:8px;background:#6366F1;color:#fff;font-size:12px;font-weight:600;cursor:pointer;">+ 보내기</button>`,
+      '<div style="font-size:11px;color:var(--text-tertiary);">특정 사용자에게 인앱 알림 + 폰 푸시를 보냅니다.</div>',
+      '필요할 때만 열어서 개별 메시지를 발송합니다.',
+    )}
 
-    <!-- 운영자 공지 -->
-    <div style="${CARD_STYLE}">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-        <div style="${SECTION_TITLE};margin-bottom:0;">운영자 공지</div>
-        <button onclick="window._adminOpenAnnouncementEditor()" style="padding:6px 14px;border:none;border-radius:8px;background:#F97316;color:#fff;font-size:12px;font-weight:600;cursor:pointer;">+ 새 공지</button>
+    ${_renderActionCard(
+      'announcements',
+      '운영자 공지',
+      `<button onclick="event.stopPropagation();window._adminOpenAnnouncementEditor()" style="padding:6px 14px;border:none;border-radius:8px;background:#F97316;color:#fff;font-size:12px;font-weight:600;cursor:pointer;">+ 새 공지</button>`,
+      '<div style="font-size:11px;color:var(--text-tertiary);">공지는 모든 사용자의 알림 목록에 표시됩니다.</div>',
+      '전체 또는 선택 사용자에게 운영 공지를 발송합니다.',
+    )}
+
+    ${_renderActionCard(
+      'hero_messages',
+      '오늘의 개인 메시지',
+      `<input id="hero-msg-date" type="date" value="${_todayDateKey()}" onchange="window._adminRenderHeroMessages()" style="padding:6px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:12px;">`,
+      `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+        <input id="hero-msg-bulk-emoji" type="text" maxlength="4" placeholder="✉️" style="width:72px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);font-size:14px;box-sizing:border-box;">
+        <input id="hero-msg-bulk-text" type="text" placeholder="미설정 사용자에게 같은 메시지 채우기" style="flex:1;min-width:180px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);font-size:13px;box-sizing:border-box;">
+        <button onclick="window._adminFillHeroMessages()" style="padding:0 14px;border:none;border-radius:10px;background:#6366F1;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">채우기</button>
       </div>
-      <div style="font-size:11px;color:var(--text-tertiary);">공지는 모든 사용자의 알림 목록에 표시됩니다.</div>
-    </div>
+      <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:10px;">저장하지 않으면 기존 자동 메시지가 그대로 표시됩니다.</div>
+      <div id="admin-hero-message-list">
+        <div style="font-size:12px;color:var(--text-tertiary);text-align:center;padding:12px;">불러오는 중...</div>
+      </div>
+      `,
+      '히어로 카드 상단 문구를 사용자별로 지정합니다.',
+    )}
+
+    ${_renderActionCard(
+      'welcome_back',
+      '복귀 팝업 설정',
+      `<div style="font-size:11px;color:var(--text-tertiary);">사용자별 기준일/메시지</div>`,
+      `<div id="admin-welcome-back-list">
+        <div style="font-size:12px;color:var(--text-tertiary);text-align:center;padding:12px;">불러오는 중...</div>
+      </div>
+      `,
+      '며칠 이상 미접속 시 복귀 팝업을 띄울지 멤버별로 설정합니다.',
+    )}
   `;
+
+  window._adminRenderHeroMessages?.();
+  window._adminRenderWelcomeBackSettings?.();
 }
 
 // ── window 함수 등록 (모달 에디터들) ─────────────────────────────
@@ -91,11 +167,28 @@ export function renderActionsSection(container, data, rerender) {
 let _rerenderFn = null;
 export function setRerender(fn) { _rerenderFn = fn; }
 
+window._toggleAdminActionCard = function(key) {
+  _actionsExpanded[key] = !_actionsExpanded[key];
+  if (_rerenderFn) _rerenderFn();
+};
+
 window._adminMarkLetterRead = async function(letterId) {
   try {
     await setDoc(doc(db, '_letters', letterId), { read: true }, { merge: true });
     if (_rerenderFn) _rerenderFn();
   } catch(e) { console.error('[admin] mark read:', e); }
+};
+
+window._adminDeleteLetter = async function(letterId) {
+  if (!confirm('이 편지를 삭제할까요?')) return;
+  try {
+    await deleteDoc(doc(db, '_letters', letterId));
+    showToast('편지를 삭제했어요', 2500, 'success');
+    if (_rerenderFn) _rerenderFn();
+  } catch (e) {
+    console.error('[admin] delete letter:', e);
+    showToast('편지 삭제 실패: ' + e.message, 3000, 'error');
+  }
 };
 
 window._adminOpenPatchnoteEditor = function() {
@@ -348,4 +441,103 @@ window._adminExecDeleteUser = async function(userId, nick) {
     showToast('삭제 실패: ' + e.message, 3000, 'error');
     btn.textContent = '삭제하기'; btn.disabled = false;
   }
+};
+
+window._adminRenderHeroMessages = async function() {
+  const wrap = document.getElementById('admin-hero-message-list');
+  if (!wrap) return;
+
+  const selectedDate = document.getElementById('hero-msg-date')?.value || _todayDateKey();
+  const accs = await getAccountList();
+  _heroMessageUsers = accs
+    .filter((acc) => acc.id && !isAdminInstance(acc.id) && !acc.id.includes('(guest)'))
+    .sort((a, b) => (a.nickname || `${a.lastName || ''}${a.firstName || ''}`).localeCompare(b.nickname || `${b.lastName || ''}${b.firstName || ''}`));
+
+  const messages = await Promise.all(_heroMessageUsers.map((acc) => getHeroMessage(acc.id, selectedDate)));
+
+  wrap.innerHTML = _heroMessageUsers.map((acc, idx) => {
+    const nick = acc.nickname || `${acc.lastName || ''}${acc.firstName || ''}` || acc.id;
+    const msg = messages[idx];
+    return `
+      <div style="display:flex;gap:8px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border);">
+        <div style="width:92px;flex-shrink:0;padding-top:10px;">
+          <div style="font-size:13px;font-weight:700;color:var(--text);">${_escapeHtml(nick)}</div>
+          <div style="font-size:10px;color:var(--text-tertiary);margin-top:3px;">${_escapeHtml(acc.id)}</div>
+        </div>
+        <input id="hero-msg-emoji-${idx}" type="text" maxlength="4" value="${_escapeHtml(msg?.emoji || '')}" placeholder="✉️" style="width:58px;padding:10px 8px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);font-size:13px;text-align:center;box-sizing:border-box;">
+        <input id="hero-msg-text-${idx}" type="text" value="${_escapeHtml(msg?.message || '')}" placeholder="미설정 시 자동 메시지 유지" style="flex:1;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);font-size:13px;box-sizing:border-box;">
+        <button onclick="window._adminSaveHeroMessage(${idx})" style="padding:10px 12px;border:none;border-radius:10px;background:#fa342c;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">저장</button>
+      </div>
+    `;
+  }).join('') || '<div style="font-size:12px;color:var(--text-tertiary);text-align:center;padding:12px;">대상 사용자가 없어요</div>';
+};
+
+window._adminFillHeroMessages = function() {
+  const emoji = document.getElementById('hero-msg-bulk-emoji')?.value || '';
+  const text = document.getElementById('hero-msg-bulk-text')?.value?.trim() || '';
+  if (!text) {
+    showToast('채울 메시지를 입력해주세요', 2500, 'warning');
+    return;
+  }
+
+  _heroMessageUsers.forEach((_, idx) => {
+    const textEl = document.getElementById(`hero-msg-text-${idx}`);
+    const emojiEl = document.getElementById(`hero-msg-emoji-${idx}`);
+    if (textEl && !textEl.value.trim()) textEl.value = text;
+    if (emojiEl && !emojiEl.value.trim() && emoji) emojiEl.value = emoji;
+  });
+};
+
+window._adminSaveHeroMessage = async function(index) {
+  const acc = _heroMessageUsers[index];
+  if (!acc) return;
+  const selectedDate = document.getElementById('hero-msg-date')?.value || _todayDateKey();
+  const text = document.getElementById(`hero-msg-text-${index}`)?.value?.trim() || '';
+  const emoji = document.getElementById(`hero-msg-emoji-${index}`)?.value?.trim() || '';
+
+  if (!text) {
+    showToast('메시지를 입력해주세요', 2500, 'warning');
+    return;
+  }
+
+  await saveHeroMessage(acc.id, selectedDate, text, emoji);
+  showToast('개인 메시지를 저장했어요', 2500, 'success');
+};
+
+window._adminRenderWelcomeBackSettings = async function() {
+  const wrap = document.getElementById('admin-welcome-back-list');
+  if (!wrap) return;
+
+  const accs = await getAccountList();
+  _welcomeBackUsers = accs
+    .filter((acc) => acc.id && !isAdminInstance(acc.id) && !acc.id.includes('(guest)'))
+    .sort((a, b) => (a.nickname || `${a.lastName || ''}${a.firstName || ''}`).localeCompare(b.nickname || `${b.lastName || ''}${b.firstName || ''}`));
+
+  wrap.innerHTML = _welcomeBackUsers.map((acc, idx) => {
+    const nick = acc.nickname || `${acc.lastName || ''}${acc.firstName || ''}` || acc.id;
+    const thresholdDays = Number(acc.welcomeBackThresholdHours || 24) / 24;
+    return `
+      <div style="display:flex;gap:8px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border);">
+        <div style="width:92px;flex-shrink:0;padding-top:10px;">
+          <div style="font-size:13px;font-weight:700;color:var(--text);">${_escapeHtml(nick)}</div>
+          <div style="font-size:10px;color:var(--text-tertiary);margin-top:3px;">${_escapeHtml(acc.id)}</div>
+        </div>
+        <input id="welcome-back-days-${idx}" type="number" min="0" step="1" value="${thresholdDays}" style="width:68px;padding:10px 8px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);font-size:13px;text-align:center;box-sizing:border-box;">
+        <input id="welcome-back-text-${idx}" type="text" value="${_escapeHtml(acc.welcomeBackCustomMessage || '')}" placeholder="비우면 자동 메시지" style="flex:1;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);font-size:13px;box-sizing:border-box;">
+        <button onclick="window._adminSaveWelcomeBack(${idx})" style="padding:10px 12px;border:none;border-radius:10px;background:#F97316;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">저장</button>
+      </div>
+    `;
+  }).join('') || '<div style="font-size:12px;color:var(--text-tertiary);text-align:center;padding:12px;">대상 사용자가 없어요</div>';
+};
+
+window._adminSaveWelcomeBack = async function(index) {
+  const acc = _welcomeBackUsers[index];
+  if (!acc) return;
+
+  const days = Math.max(0, Number(document.getElementById(`welcome-back-days-${index}`)?.value || 0));
+  const customMessage = document.getElementById(`welcome-back-text-${index}`)?.value?.trim() || '';
+  acc.welcomeBackThresholdHours = Math.round(days * 24);
+  acc.welcomeBackCustomMessage = customMessage;
+  await saveAccount(acc);
+  showToast('복귀 팝업 설정을 저장했어요', 2500, 'success');
 };

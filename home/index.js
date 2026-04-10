@@ -17,6 +17,7 @@ import { renderFriendFeed, setFriendFeedDeps }               from './friend-feed
 import { setFriendProfileDeps }                              from './friend-profile.js';
 import { refreshNotifCenter, setNotificationsDeps }          from './notifications.js';
 import { clearCheerCard, renderCheerCard }                   from './cheer-card.js';
+import { renderGuildCard }                                   from './guild-card.js';
 
 let _lastCheerSignature = '';
 
@@ -55,6 +56,7 @@ export function renderHome() {
     if (dietGoalEl) dietGoalEl.style.display = 'none';
     renderFriendFeed();
     renderLeaderboard();
+    renderGuildCard().catch(e => console.warn('[guild-card]', e));
     _renderCheerCardIfNeeded().catch(e => console.warn('[cheer-card]', e));
   } catch(e) {
     console.error('[renderHome] 렌더링 오류:', e);

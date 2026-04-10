@@ -45,6 +45,20 @@ export async function updateGuildIcon(guildId, icon) {
   } catch(e) { console.warn('[guild] updateIcon:', e); }
 }
 
+export async function updateGuildLeader(guildId, newLeaderId) {
+  try {
+    const snap = await getDoc(doc(db, '_guilds', guildId));
+    if (!snap.exists()) return false;
+    const guild = snap.data();
+    guild.leader = newLeaderId;
+    await setDoc(doc(db, '_guilds', guildId), guild);
+    return true;
+  } catch (e) {
+    console.warn('[guild] updateLeader:', e);
+    return false;
+  }
+}
+
 export async function createGuildJoinRequest(guildId, guildName, userId, userName) {
   const { sendNotification } = await import('./data-social-interact.js');
   const { getAccountList } = await import('./data-account.js');
@@ -203,4 +217,117 @@ export async function kickGuildMember(guildId, targetUserId) {
     await updateGuildMemberCount(guildId, -1);
     return true;
   } catch(e) { console.warn('[guild] kickMember:', e); return false; }
+}
+
+export async function updateGuild(guildId, updates) {
+  try {
+    const snap = await getDoc(doc(db, '_guilds', guildId));
+    if (!snap.exists()) return false;
+    const guild = snap.data();
+    await setDoc(doc(db, '_guilds', guildId), { ...guild, ...updates });
+    return true;
+  } catch (e) {
+    console.warn('[guild] update:', e);
+    return false;
+  }
+}
+
+export async function inviteUserToGuild(guildId, targetUserId, inviterName = '') {
+  const { sendNotification } = await import('./data-social-interact.js');
+  try {
+    await sendNotification(targetUserId, {
+      type: 'guild_invite',
+      from: _socialId(),
+      guildId,
+      guildName: guildId,
+      inviterName: inviterName || _socialId(),
+      message: `${inviterName || '길드장'}님이 ${guildId} 길드에 초대했어요!`,
+    });
+    return { ok: true };
+  } catch (e) {
+    console.warn('[guild] invite:', e);
+    return { error: e?.message || '길드 초대에 실패했어요.' };
+  }
+}
+
+export async function adminAddGuildMember(guildId, userId) {
+  const { getAccountList, saveAccount } = await import('./data-account.js');
+  try {
+    const accounts = await getAccountList();
+    const target = accounts.find((a) => a.id === userId);
+    if (!target) return false;
+    target.guilds = target.guilds || [];
+    target.pendingGuilds = (target.pendingGuilds || []).filter((g) => g !== guildId);
+    if (!target.guilds.includes(guildId)) {
+      target.guilds.push(guildId);
+      await updateGuildMemberCount(guildId, 1);
+    }
+    if (!target.primaryGuild) target.primaryGuild = guildId;
+    await saveAccount(target);
+    return true;
+  } catch (e) {
+    console.warn('[guild] adminAddMember:', e);
+    return false;
+  }
+}
+
+export async function adminRemoveGuildMember(guildId, userId) {
+  const { getAccountList, saveAccount } = await import('./data-account.js');
+  try {
+    const accounts = await getAccountList();
+    const target = accounts.find((a) => a.id === userId);
+    if (!target) return false;
+    const before = (target.guilds || []).length;
+    target.guilds = (target.guilds || []).filter((g) => g !== guildId);
+    target.pendingGuilds = (target.pendingGuilds || []).filter((g) => g !== guildId);
+    if (target.primaryGuild === guildId) {
+      target.primaryGuild = target.guilds[0] || null;
+    }
+    await saveAccount(target);
+    if (before !== target.guilds.length) await updateGuildMemberCount(guildId, -1);
+    return true;
+  } catch (e) {
+    console.warn('[guild] adminRemoveMember:', e);
+    return false;
+  }
+}
+
+export async function deleteGuild(guildId) {
+  const { getAccountList, saveAccount } = await import('./data-account.js');
+  try {
+    const accounts = await getAccountList();
+    for (const acc of accounts) {
+      const nextGuilds = (acc.guilds || []).filter((g) => g !== guildId);
+      const nextPending = (acc.pendingGuilds || []).filter((g) => g !== guildId);
+      if (nextGuilds.length !== (acc.guilds || []).length || nextPending.length !== (acc.pendingGuilds || []).length) {
+        acc.guilds = nextGuilds;
+        acc.pendingGuilds = nextPending;
+        if (acc.primaryGuild === guildId) acc.primaryGuild = nextGuilds[0] || null;
+        await saveAccount(acc);
+      }
+    }
+
+    const reqSnap = await getDocs(collection(db, '_guild_requests'));
+    const notifSnap = await getDocs(collection(db, '_notifications'));
+
+    await Promise.all(reqSnap.docs
+      .filter((d) => {
+        const data = d.data();
+        return data.guildId === guildId || data.guildName === guildId;
+      })
+      .map((d) => deleteDoc(doc(db, '_guild_requests', d.id))));
+
+    await Promise.all(notifSnap.docs
+      .filter((d) => {
+        const data = d.data();
+        return data.guildId === guildId || data.guildName === guildId;
+      })
+      .map((d) => deleteDoc(doc(db, '_notifications', d.id))));
+
+    await deleteDoc(doc(db, '_guilds', guildId));
+    return true;
+  } catch (e) {
+    console.warn('[guild] delete:', e);
+    return false;
+  }
 }

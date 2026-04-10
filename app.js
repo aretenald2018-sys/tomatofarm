@@ -20,6 +20,7 @@ import { initFCM, showPWAInstallBanner, updateInstallBtn } from './pwa-fcm.js';
 import { initTabDrag, initSwipeNavigation, applyTabOrder, applyVisibleTabs } from './navigation.js';
 // ── 코어 탭 (즉시 로드) ──
 import { renderHome, refreshNotifCenter, showToast } from './render-home.js';
+import { showWelcomeBackPopup } from './home/welcome-back.js';
 import {
   loadWorkoutDate, changeWorkoutDate, goToTodayWorkout, saveWorkoutDay,
   wtSetGymStatus, wtSetCFStatus, wtToggleStretching, wtToggleSwimming, wtToggleRunning,
@@ -180,6 +181,7 @@ async function init() {
     // 로그인 안 되어있으면 모달만 로드하고 대기
     const { getCurrentUser, loadSavedUser } = await import('./data.js');
     const user = loadSavedUser() || getCurrentUser();
+    const previousLastLoginAt = user?.lastLoginAt || 0;
     if (!user) {
       await loadAndInjectModals();
       document.getElementById('loading').style.display = 'none';
@@ -226,6 +228,10 @@ async function init() {
       await switchTab('admin');
     } else {
       renderHome();
+      if (previousLastLoginAt) {
+        const hoursSinceLogin = (Date.now() - previousLastLoginAt) / 3600000;
+        showWelcomeBackPopup(hoursSinceLogin).catch(e => console.warn('[welcome-back]', e));
+      }
     }
 
     // 첫 이용자 튜토리얼

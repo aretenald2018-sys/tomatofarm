@@ -7,8 +7,13 @@ import { TODAY, calcStreaks, getMuscles, getDiet, getCF,
          getStreakFreezes, getTomatoState, useStreakFreeze,
          getGlobalWeeklyRanking, getMyFriends, getAccountList, getCurrentUser,
          getFriendWorkout, dateKey, isAdmin, _isMySocialId,
-         getGlobalGuildWeeklyRanking }  from '../data.js';
+         getGlobalGuildWeeklyRanking, getHeroMessage }  from '../data.js';
 import { setText, showToast, haptic, resolveNickname } from './utils.js';
+
+function _currentDateKey() {
+  const now = new Date();
+  return dateKey(now.getFullYear(), now.getMonth(), now.getDate());
+}
 
 // renderHome에서 주입됨 (순환 참조 방지)
 let _renderTomatoHeroFn = null;
@@ -20,7 +25,7 @@ export function setHeroDeps({ renderTomatoHero, renderHome }) {
 }
 
 // ── 히어로 카드 (토스 스타일 핵심 메시지) ─────────────────────────
-export function renderHero() {
+export async function renderHero() {
   const el = document.getElementById('hero-content');
   if (!el) return;
 
@@ -32,7 +37,7 @@ export function renderHero() {
   const { workout, diet } = calcStreaks();
   const mainStreak = Math.max(workout, diet);
   const streakLabel = workout >= diet ? '운동' : '식단';
-  const streakEmoji = mainStreak >= 7 ? '🔥' : mainStreak >= 3 ? '💪' : '👋';
+  let streakEmoji = mainStreak >= 7 ? '🔥' : mainStreak >= 3 ? '💪' : '👋';
 
   const m = TODAY.getMonth() + 1;
   const d = TODAY.getDate();
@@ -48,7 +53,12 @@ export function renderHero() {
   }
 
   let message = '';
-  if (mainStreak >= 14) message = _pick([
+  const todayDateKey = _currentDateKey();
+  const customMsg = await getHeroMessage(getCurrentUser()?.id, todayDateKey);
+  if (customMsg?.message) {
+    message = customMsg.message;
+    streakEmoji = customMsg.emoji || '✉️';
+  } else if (mainStreak >= 14) message = _pick([
     `대단해요! ${streakLabel} ${mainStreak}일 연속`,
     `${mainStreak}일째, 완전히 습관이 됐어요!`,
     `멈출 수 없는 기세! ${streakLabel} ${mainStreak}일`,
@@ -77,7 +87,7 @@ export function renderHero() {
   el.innerHTML = `
     <div class="hero-date">${m}월 ${d}일 ${dow}요일</div>
     <div class="hero-streak">${streakEmoji} ${mainStreak}<span class="hero-streak-unit">일</span></div>
-    <div class="hero-message">${message}</div>
+    <div class="hero-message${customMsg?.message ? ' hero-message-custom' : ''}" onclick="${customMsg?.message ? 'this.animate([{transform:\'scale(1)\'},{transform:\'scale(1.03)\'},{transform:\'scale(1)\'}],{duration:320,easing:\'ease-out\'})' : ''}">${message}</div>
     <div class="hero-sub-streaks">
       <span class="hero-sub">🏋️ 운동 ${workout}일</span>
       <span class="hero-sub-dot">·</span>
@@ -421,8 +431,30 @@ export async function renderLeaderboard() {
 // ── 길드 리더보드 ────────────────────────────────────────────────
 async function _renderGuildLeaderboard(contentEl, user) {
   try {
-    const guildData = await getGlobalGuildWeeklyRanking();
+    const [guildData, accounts, individualRanking] = await Promise.all([
+      getGlobalGuildWeeklyRanking(),
+      getAccountList(),
+      getGlobalWeeklyRanking(),
+    ]);
     const myGuilds = new Set(user.guilds || []);
+    const normalizeGuildKey = (value) => String(value || '').trim();
+    const rankMap = {};
+    (individualRanking?.rankings || []).forEach((item) => {
+      rankMap[item.userId] = item.activeDays || 0;
+    });
+    const liveGuildMembers = {};
+    for (const acc of accounts) {
+      for (const guildName of (acc.guilds || [])) {
+        const key = normalizeGuildKey(guildName);
+        if (!key) continue;
+        if (!liveGuildMembers[key]) liveGuildMembers[key] = [];
+        liveGuildMembers[key].push({
+          userId: acc.id,
+          name: acc.nickname || acc.firstName || acc.id,
+          activeDays: rankMap[acc.id] || 0,
+        });
+      }
+    }
 
     // 길드 아이콘 로드
     let guildIconMap = {};
@@ -435,7 +467,33 @@ async function _renderGuildLeaderboard(contentEl, user) {
     let rankings;
 
     if (guildData && guildData.rankings && guildData.rankings.length) {
-      rankings = guildData.rankings;
+      const rankingMap = new Map();
+      guildData.rankings.forEach((item) => {
+        rankingMap.set(normalizeGuildKey(item.guildId || item.guildName), item);
+      });
+      const guildIds = new Set([
+        ...Object.keys(liveGuildMembers),
+        ...guildData.rankings.map((item) => normalizeGuildKey(item.guildId || item.guildName)),
+      ]);
+      rankings = [...guildIds].map((guildKey) => {
+        const ranked = rankingMap.get(guildKey);
+        const liveMembers = liveGuildMembers[guildKey] || [];
+        const members = liveMembers.length ? liveMembers : (ranked?.members || []);
+        const memberCount = liveMembers.length || ranked?.memberCount || 0;
+        const totalActiveDays = members.reduce((sum, member) => sum + (member.activeDays || 0), 0);
+        const avgActiveDays = memberCount
+          ? +(totalActiveDays / memberCount).toFixed(1)
+          : (ranked?.avgActiveDays || 0);
+        return {
+          guildId: ranked?.guildId || guildKey,
+          guildName: ranked?.guildName || guildKey,
+          memberCount,
+          totalActiveDays,
+          avgActiveDays,
+          members,
+        };
+      }).filter((item) => item.memberCount > 0)
+        .sort((a, b) => b.avgActiveDays - a.avgActiveDays);
     } else if (myGuilds.size === 0) {
       contentEl.innerHTML = `<div class="lb-context" style="text-align:center;padding:20px 0;">
         길드에 가입하면 길드 랭킹에 참여할 수 있어요
@@ -444,7 +502,6 @@ async function _renderGuildLeaderboard(contentEl, user) {
       return;
     } else {
       // ── 로컬 폴백: 계정 데이터에서 길드 랭킹 계산 ──
-      const accounts = await getAccountList();
       const now = new Date(TODAY);
       const dow = now.getDay() || 7;
       const mon = new Date(now); mon.setDate(now.getDate() - dow + 1);
@@ -454,9 +511,9 @@ async function _renderGuildLeaderboard(contentEl, user) {
       for (const acc of accounts) {
         for (const gName of (acc.guilds || [])) {
           if (!guildMembers[gName]) guildMembers[gName] = [];
-          // 내 활동일은 로컬 계산
-          let days = 0;
+          let days = rankMap[acc.id] || 0;
           if (acc.id === user.id) {
+            days = 0;
             for (let i = 0; i < 7; i++) {
               const d = new Date(mon); d.setDate(mon.getDate() + i);
               const muscles = getMuscles(d.getFullYear(), d.getMonth(), d.getDate());
@@ -496,9 +553,14 @@ async function _renderGuildLeaderboard(contentEl, user) {
       const nameLen = g.guildName.length;
       const nameFontSize = nameLen > 4 ? '11px' : '13px';
 
-      html += `<div class="lb-row${myCls}">
+      const guildIcon = guildIconMap[g.guildName] || '🏠';
+      const avatarHtml = String(guildIcon).startsWith('data:')
+        ? `<div class="lb-avatar lb-avatar-photo"><img src="${guildIcon}" alt="${String(g.guildName || '').replace(/"/g, '&quot;')}"></div>`
+        : `<div class="lb-avatar active" style="font-size:14px;overflow:hidden;">${guildIcon}</div>`;
+
+      html += `<div class="lb-row${myCls}" onclick="openGuildInfoModal('${String(g.guildName || '').replace(/'/g, "\\'")}')" style="cursor:pointer;">
         <span class="lb-rank">${rank}</span>
-        <div class="lb-avatar active" style="font-size:14px;overflow:hidden;">${((guildIconMap[g.guildName] || '🏠').startsWith('data:')) ? `<img src="${guildIconMap[g.guildName]}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">` : (guildIconMap[g.guildName] || '🏠')}</div>
+        ${avatarHtml}
         <span class="lb-name lb-name-guild" style="font-size:${nameFontSize};">${g.guildName}</span>
         <div class="lb-bar-track"><div class="lb-bar-fill" style="width:${pct}%"></div></div>
         <span class="lb-days"><span class="lb-guild-info">${g.memberCount}명</span> ${g.avgActiveDays}일</span>

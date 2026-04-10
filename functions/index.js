@@ -123,6 +123,10 @@ function _isActiveDay(workoutData) {
   return false;
 }
 
+function _normalizeGuildId(value) {
+  return String(value || "").trim();
+}
+
 async function _computeRanking() {
   const db = getFirestore();
 
@@ -158,9 +162,12 @@ async function _computeRanking() {
     const batch = accounts.slice(b, b + batchSize);
     const batchResults = await Promise.all(
       batch.map(async (account) => {
+        const workoutOwnerId = /\(guest\)$/.test(account.id)
+          ? account.id.replace(/\(guest\)$/, "").trim()
+          : account.id;
         const dayResults = await Promise.allSettled(
           weekKeys.map((dk) =>
-            db.doc(`users/${account.id}/workouts/${dk}`).get()
+            db.doc(`users/${workoutOwnerId}/workouts/${dk}`).get()
           )
         );
         let activeDays = 0;
@@ -194,12 +201,13 @@ async function _computeRanking() {
     const guildsSnap = await db.collection("_guilds").get();
     const guildMap = {};
     guildsSnap.forEach((d) => {
-      guildMap[d.id] = { ...d.data(), members: [] };
+      const normalizedId = _normalizeGuildId(d.id);
+      guildMap[normalizedId] = { ...d.data(), members: [] };
     });
 
     // accounts는 이미 조회됨 (line 126-130). guilds 필드 활용.
     for (const account of accounts) {
-      const userGuilds = account.guilds || []; // pendingGuilds 제외
+      const userGuilds = (account.guilds || []).map(_normalizeGuildId).filter(Boolean); // pendingGuilds 제외
       const userRank = rankings.find((r) => r.userId === account.id);
       const activeDays = userRank ? userRank.activeDays : 0;
       for (const guildId of userGuilds) {
@@ -210,6 +218,8 @@ async function _computeRanking() {
               userRank?.name || account.nickname || account.firstName || account.id,
             activeDays,
           });
+        } else if (guildId) {
+          console.log(`[GuildRanking] unmatched guild mapping account=${account.id} guild="${guildId}"`);
         }
       }
     }

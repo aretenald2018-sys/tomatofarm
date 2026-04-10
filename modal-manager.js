@@ -22,6 +22,7 @@ const MODALS = [
   { id: 'fatsecret-modal',        path: './modals/fatsecret-modal.js',        export: 'MODAL_HTML' },
   { id: 'streak-milestone-modal', path: './modals/streak-milestone-modal.js', export: 'MODAL_HTML' },
   { id: 'guild-modal',            path: './modals/guild-modal.js',            export: 'MODAL_HTML' },
+  { id: 'guild-info-modal',       path: './modals/guild-info-modal.js',       export: 'MODAL_HTML' },
 ];
 
 // 모달들이 로드되었는지 추적
@@ -36,7 +37,7 @@ export async function loadAndInjectModals() {
   const container = document.getElementById('modals-container');
   if (!container) return;
 
-  const cacheKey = '?v=20260410f';
+  const cacheKey = '?v=20260411b';
   const results = await Promise.allSettled(
     MODALS.map(cfg => import(cfg.path + cacheKey).then(m => m[cfg.export] || ''))
   );

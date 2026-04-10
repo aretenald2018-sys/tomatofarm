@@ -355,6 +355,14 @@
       <div id="friend-feed"></div>
     </div>
 
+    <div class="home-card" id="card-guild" style="display:none;">
+      <div class="home-card-header">
+        <span class="home-card-title">길드</span>
+        <button class="section-title-edit-btn" onclick="openGuildModal()">관리</button>
+      </div>
+      <div id="guild-card-content"></div>
+    </div>
+
   </div>
 </div>
 
@@ -1559,8 +1567,7 @@ async function logoutAccount() {
           <button onclick="openNicknameEdit()" style="background:none;border:none;color:var(--primary);font-size:11px;font-weight:600;cursor:pointer;padding:0 4px;">변경</button>
         </div>
         <div style="display:flex;gap:6px;margin-bottom:8px;">
-          <button onclick="document.getElementById('dynamic-modal')?.remove();openFriendProfile('${user?.id}','${name}')" style="flex:1;padding:9px;border:1px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text);font-size:12px;font-weight:500;cursor:pointer;">🏡 내 프로필</button>
-          <button onclick="document.getElementById('dynamic-modal')?.remove();openGuildModal()" style="flex:1;padding:9px;border:1px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text);font-size:12px;font-weight:500;cursor:pointer;">🏠 길드 관리</button>
+          <button onclick="document.getElementById('dynamic-modal')?.remove();openFriendProfile('${user?.id}','${name}')" style="width:100%;padding:9px;border:1px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text);font-size:12px;font-weight:500;cursor:pointer;">🏡 내 프로필</button>
         </div>
         ${modeSwitch}
         <div style="display:flex;gap:8px;margin-top:12px;">
@@ -1676,11 +1683,21 @@ function closeGuildModal(e) {
   if (modal) modal.style.display = 'none';
 }
 
+function _closeOtherGuildPanels(targetGuildName, panelType) {
+  _guildModalGuilds.forEach(g => {
+    const safeId = g.name.replace(/[^a-zA-Z0-9가-힣]/g, '_');
+    const membersEl = document.getElementById('gm-members-' + safeId);
+    const iconEl = document.getElementById('gm-icon-picker-' + safeId);
+    if (membersEl && !(panelType === 'members' && g.name === targetGuildName)) membersEl.style.display = 'none';
+    if (iconEl && !(panelType === 'icon' && g.name === targetGuildName)) iconEl.style.display = 'none';
+  });
+}
+
 function _renderGuildModalList() {
   const list = document.getElementById('guild-modal-list');
   if (!list) return;
   if (!_guildModalGuilds.length) {
-    list.innerHTML = '<div style="font-size:13px;color:var(--text-tertiary);text-align:center;padding:16px 0;">아직 소속 길드가 없어요</div>';
+    list.innerHTML = '<div class="gm-empty-state">아직 소속 길드가 없어요</div>';
     return;
   }
   list.innerHTML = _guildModalGuilds.map(g => {
@@ -1688,32 +1705,35 @@ function _renderGuildModalList() {
     const iconVal = _guildIconMap[g.name] || '🏠';
     const isPhoto = iconVal.startsWith('data:');
     const iconDisplay = isPhoto
-      ? `<img src="${iconVal}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;">`
+      ? `<img src="${iconVal}">`
       : iconVal;
+    const safeName = g.name.replace(/'/g, "\\'");
     const starBtn = g.status === 'member'
-      ? `<button onclick="toggleGuildPrimary('${g.name.replace(/'/g, "\\'")}')" style="background:none;border:none;cursor:pointer;font-size:18px;padding:8px;min-width:36px;min-height:36px;display:flex;align-items:center;justify-content:center;" title="대표 길드 설정">${isPrimary ? '★' : '☆'}</button>`
+      ? `<button class="gm-primary-btn${isPrimary ? ' is-active' : ''}" onclick="toggleGuildPrimary('${safeName}')" title="대표 길드 설정">${isPrimary ? '★' : '☆'}</button>`
       : '';
     const amLeader = g.status === 'member' && _isMyGuildLeader(g.name);
     const leaderBadge = amLeader ? ' <span class="guild-leader-badge">👑 길드장</span>' : '';
     const badge = g.status === 'pending'
-      ? '<span class="guild-chip-badge pending" style="margin-left:6px;">승인 대기 중</span>'
+      ? '<span class="guild-chip-badge pending">승인 대기 중</span>'
       : '';
     const memberBtn = g.status === 'member'
-      ? `<button onclick="toggleGuildMembers('${g.name.replace(/'/g, "\\'")}')" style="background:none;border:1px solid var(--border);border-radius:999px;cursor:pointer;font-size:11px;line-height:16.5px;color:var(--text-tertiary);padding:4px 10px;">멤버</button>`
+      ? `<button class="gm-action-pill" type="button" onclick="toggleGuildMembers('${safeName}')">멤버보기</button>`
       : '';
     const iconBtn = g.status === 'member'
-      ? `<button onclick="toggleGuildIconPicker('${g.name.replace(/'/g, "\\'")}')" style="background:none;border:1px dashed var(--border);border-radius:var(--seed-r2,8px);cursor:pointer;font-size:20px;padding:0;width:36px;height:36px;display:flex;align-items:center;justify-content:center;position:relative;transition:border-color 0.1s ease-in-out;" title="탭하여 아이콘 변경">${iconDisplay}<span style="position:absolute;bottom:-2px;right:-2px;font-size:8px;background:var(--surface2);border-radius:50%;width:14px;height:14px;display:flex;align-items:center;justify-content:center;">✎</span></button>`
-      : `<span style="font-size:20px;width:36px;text-align:center;">${iconDisplay}</span>`;
+      ? `<button class="gm-icon-btn" type="button" onclick="toggleGuildIconPicker('${safeName}')" title="탭하여 아이콘 변경">${iconDisplay}<span class="gm-icon-edit-badge">✎</span></button>`
+      : `<span class="gm-icon-static">${iconDisplay}</span>`;
     const safeId = g.name.replace(/[^a-zA-Z0-9가-힣]/g, '_');
     return `<div>
-      <div style="display:flex;align-items:center;gap:6px;padding:10px 0;border-bottom:1px solid var(--border);">
+      <div class="gm-guild-row">
         ${starBtn}${iconBtn}
-        <span style="flex:1;font-size:14px;line-height:20px;font-weight:${isPrimary ? '700' : '500'};color:var(--text);">${g.name}${leaderBadge}${badge}</span>
-        ${memberBtn}
-        <button onclick="removeGuildFromModal('${g.name.replace(/'/g, "\\'")}')" style="background:none;border:none;cursor:pointer;font-size:14px;color:var(--text-tertiary);padding:8px;min-width:36px;min-height:36px;display:flex;align-items:center;justify-content:center;">✕</button>
+        <div class="gm-guild-info"><span class="gm-guild-name${isPrimary ? ' is-primary' : ''}">${g.name}</span>${leaderBadge}${badge}</div>
+        <div class="gm-guild-actions">
+          ${memberBtn}
+          <button class="gm-action-pill gm-remove" type="button" onclick="removeGuildFromModal('${safeName}')">삭제</button>
+        </div>
       </div>
-      <div id="gm-icon-picker-${safeId}" style="display:none;padding:8px 0 8px 36px;"></div>
-      <div id="gm-members-${safeId}" style="display:none;"></div>
+      <div class="gm-icon-picker" id="gm-icon-picker-${safeId}"></div>
+      <div class="gm-members-panel" id="gm-members-${safeId}"></div>
     </div>`;
   }).join('');
 }
@@ -1722,7 +1742,8 @@ async function toggleGuildMembers(guildName) {
   const safeId = guildName.replace(/[^a-zA-Z0-9가-힣]/g, '_');
   const el = document.getElementById('gm-members-' + safeId);
   if (!el) return;
-  if (el.style.display !== 'none') { el.style.display = 'none'; return; }
+  if (getComputedStyle(el).display !== 'none') { el.style.display = 'none'; return; }
+  _closeOtherGuildPanels(guildName, 'members');
 
   // 길드원 목록 + 길드장 정보 로드
   const { getAccountList: gal, getGuildLeader, getCurrentUser } = await import('./data.js');
@@ -1733,37 +1754,33 @@ async function toggleGuildMembers(guildName) {
   const amILeader = currentUser && (leaderId === currentUser.id || leaderId === _guildModalSocialId);
 
   if (!members.length) {
-    el.innerHTML = '<div style="padding:8px 0 8px 28px;font-size:12px;color:var(--text-tertiary);">길드원이 없어요</div>';
+    el.innerHTML = '<div class="gm-member-row"><span class="gm-member-name" style="color:var(--text-tertiary);">길드원이 없어요</span></div>';
   } else {
     el.innerHTML = members.map(m => {
       const isLeader = m.id === leaderId;
       const name = m.nickname || (m.lastName + m.firstName);
       const leaderBadge = isLeader ? '<span class="guild-leader-badge">👑 길드장</span>' : '';
       const isMe = currentUser && (m.id === currentUser.id || (m.id === _guildModalSocialId));
-      // 액션 버튼 결정
       let actionBtns = '';
       const safeName = guildName.replace(/'/g, "\\'");
       if (amILeader && !isMe) {
-        // 길드장 → 다른 멤버에게: 위임 + 강퇴
         const safeTargetId = m.id.replace(/'/g, "\\'");
         const safeTargetName = name.replace(/'/g, "\\'");
-        actionBtns = `<button class="guild-member-action transfer" onclick="transferLeadership('${safeName}','${safeTargetId}','${safeTargetName}')">위임</button>
-          <button class="guild-member-action kick" onclick="kickMember('${safeName}','${safeTargetId}','${safeTargetName}')">강퇴</button>`;
+        actionBtns = `<div class="gm-member-actions"><button class="guild-member-action transfer" onclick="transferLeadership('${safeName}','${safeTargetId}','${safeTargetName}')">위임</button>
+          <button class="guild-member-action kick" onclick="kickMember('${safeName}','${safeTargetId}','${safeTargetName}')">강퇴</button></div>`;
       } else if (isMe && !isLeader) {
-        // 일반 멤버 본인 → 탈퇴
-        actionBtns = `<button class="guild-member-action kick" onclick="leaveGuildFromMembers('${safeName}')">탈퇴</button>`;
+        actionBtns = `<div class="gm-member-actions"><button class="guild-member-action kick" onclick="leaveGuildFromMembers('${safeName}')">탈퇴</button></div>`;
       } else if (isMe && isLeader) {
-        // 길드장 본인 → 위임 후 탈퇴
-        actionBtns = `<button class="guild-member-action kick" onclick="leaderLeaveGuild('${safeName}')">탈퇴</button>`;
+        actionBtns = `<div class="gm-member-actions"><button class="guild-member-action kick" onclick="leaderLeaveGuild('${safeName}')">탈퇴</button></div>`;
       }
-      return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0 6px 28px;">
-        <div style="width:24px;height:24px;border-radius:50%;background:var(--surface3);color:var(--text-secondary);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;">${name.charAt(0)}</div>
-        <span style="font-size:13px;color:var(--text);flex:1;">${name}${leaderBadge ? ' ' + leaderBadge : ''}</span>
+      return `<div class="gm-member-row">
+        <div class="gm-member-avatar">${name.charAt(0)}</div>
+        <span class="gm-member-name">${name}${leaderBadge ? ' ' + leaderBadge : ''}</span>
         ${actionBtns}
       </div>`;
     }).join('');
   }
-  el.style.display = '';
+  el.style.display = 'block';
 }
 window.toggleGuildMembers = toggleGuildMembers;
 
@@ -1849,15 +1866,16 @@ async function leaderLeaveGuild(guildName) {
   const el = document.getElementById('gm-members-' + safeId);
   if (!el) return;
 
+  const safeName = guildName.replace(/'/g, "\\'");
   const memberList = members.map(m => {
     const name = m.nickname || (m.lastName + m.firstName);
-    return `<button class="guild-member-action transfer" style="margin:2px;" onclick="transferAndLeave('${guildName.replace(/'/g, "\\'")}','${m.id.replace(/'/g, "\\'")}','${name.replace(/'/g, "\\'")}')">${name}에게 위임</button>`;
+    return `<button class="guild-member-action transfer" onclick="transferAndLeave('${safeName}','${m.id.replace(/'/g, "\\'")}','${name.replace(/'/g, "\\'")}')">${name}에게 위임</button>`;
   }).join('');
 
-  el.innerHTML = `<div style="padding:10px 0 10px 28px;">
-    <div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px;font-weight:600;">길드장을 위임할 멤버를 선택하세요</div>
-    <div style="display:flex;flex-wrap:wrap;gap:4px;">${memberList}</div>
-    <button class="guild-member-action kick" style="margin-top:8px;" onclick="toggleGuildMembers('${guildName.replace(/'/g, "\\'")}')">취소</button>
+  el.innerHTML = `<div class="gm-transfer-panel">
+    <div class="gm-transfer-title">길드장을 위임할 멤버를 선택하세요</div>
+    <div class="gm-transfer-list">${memberList}</div>
+    <button class="guild-member-action kick" style="margin-top:8px;" onclick="toggleGuildMembers('${safeName}')">취소</button>
   </div>`;
 }
 window.leaderLeaveGuild = leaderLeaveGuild;
@@ -1881,17 +1899,19 @@ function toggleGuildIconPicker(guildName) {
   const safeId = guildName.replace(/[^a-zA-Z0-9가-힣]/g, '_');
   const el = document.getElementById('gm-icon-picker-' + safeId);
   if (!el) return;
-  if (el.style.display !== 'none') { el.style.display = 'none'; return; }
-  el.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;">${
+  if (getComputedStyle(el).display !== 'none') { el.style.display = 'none'; return; }
+  _closeOtherGuildPanels(guildName, 'icon');
+  const safeName = guildName.replace(/'/g, "\\'");
+  el.innerHTML = `<div class="gm-icon-grid">${
     GUILD_ICON_OPTIONS.map(ic =>
-      `<button onclick="selectGuildIcon('${guildName.replace(/'/g, "\\'")}','${ic}')" style="width:40px;height:40px;border:1px solid var(--border);border-radius:var(--seed-r2,8px);background:${_guildIconMap[guildName] === ic ? 'var(--primary-bg)' : 'var(--surface)'};cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;transition:background 0.1s ease-in-out;">${ic}</button>`
+      `<button class="gm-icon-option${_guildIconMap[guildName] === ic ? ' is-selected' : ''}" type="button" onclick="selectGuildIcon('${safeName}','${ic}')">${ic}</button>`
     ).join('')
   }
-  <label style="width:36px;height:36px;border:1px dashed var(--border);border-radius:var(--seed-r2,8px);background:var(--surface);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-tertiary);" title="사진 업로드">
-    📷<input type="file" accept="image/*" style="display:none;" onchange="uploadGuildPhoto('${guildName.replace(/'/g, "\\'")}',this)">
+  <label class="gm-icon-upload" title="사진 업로드">
+    📷<input type="file" accept="image/*" onchange="uploadGuildPhoto('${safeName}',this)">
   </label>
   </div>`;
-  el.style.display = '';
+  el.style.display = 'block';
 }
 
 async function selectGuildIcon(guildName, icon) {
@@ -1945,10 +1965,7 @@ async function toggleGuildPrimary(name) {
   if (!g || g.status !== 'member') return;
   _guildModalPrimary = _guildModalPrimary === name ? null : name;
   _renderGuildModalList();
-  if (_guildModalPrimary) {
-    const { showToast: _st } = await import('./home/utils.js');
-    _st(`${name}을(를) 대표 길드로 설정했어요`, 2500, 'success');
-  }
+  await syncGuildModalState({ successMessage: _guildModalPrimary ? `${name}을(를) 대표 길드로 설정했어요` : '대표 길드 설정을 해제했어요', successType: 'success', refreshCache: false });
 }
 
 async function removeGuildFromModal(name) {
@@ -1998,6 +2015,7 @@ async function removeGuildFromModal(name) {
     _guildModalPrimary = firstMember ? firstMember.name : null;
   }
   _renderGuildModalList();
+  await syncGuildModalState({ refreshCache: false });
 }
 
 async function searchGuildsForModal(query) {
@@ -2016,28 +2034,60 @@ async function searchGuildsForModal(query) {
   sugBox.style.display = '';
 }
 
-function selectGuildForModal(name) {
+async function selectGuildForModal(name) {
   if (_guildModalGuilds.some(g => g.name === name)) return;
   const existing = (_allGuildsCache || []).find(g => g.name === name);
-  _guildModalGuilds.push({ name, status: existing ? 'pending' : 'member', isNew: !existing });
+  if (!existing) return;
+  _guildModalGuilds.push({ name, status: (existing && (existing.memberCount || 0) > 0) ? 'pending' : 'member', isNew: !existing });
   document.getElementById('gm-guild-input').value = '';
   document.getElementById('gm-guild-suggestions').style.display = 'none';
   _renderGuildModalList();
+  await syncGuildModalState({ refreshCache: true });
 }
 
-function addGuildFromModal() {
+async function addGuildFromModal() {
   const input = document.getElementById('gm-guild-input');
   const name = (input?.value || '').trim();
   if (!name || _guildModalGuilds.some(g => g.name === name)) { if (input) input.value = ''; return; }
   const existing = (_allGuildsCache || []).find(g => g.name === name);
-  _guildModalGuilds.push({ name, status: existing ? 'pending' : 'member', isNew: !existing });
+  if (!existing) {
+    const { showToast: _st } = await import('./home/utils.js');
+    _st('검색 결과에 없는 길드는 아래에서 새로 만들어주세요.', 2600, 'info');
+    return;
+  }
+  _guildModalGuilds.push({ name, status: (existing.memberCount || 0) > 0 ? 'pending' : 'member', isNew: false });
   input.value = '';
   document.getElementById('gm-guild-suggestions').style.display = 'none';
   _renderGuildModalList();
+  await syncGuildModalState({ refreshCache: true });
 }
 
-async function saveGuildFromModal() {
-  const { getCurrentUser, saveAccount, setCurrentUser, createGuild, createGuildJoinRequest, updateGuildMemberCount } = await import('./data.js');
+async function createGuildFromModal() {
+  const input = document.getElementById('gm-create-guild-input');
+  const name = (input?.value || '').trim();
+  if (!name) return;
+  if (_guildModalGuilds.some(g => g.name === name)) {
+    const { showToast: _st } = await import('./home/utils.js');
+    _st('이미 목록에 담긴 길드예요.', 2200, 'info');
+    if (input) input.value = '';
+    return;
+  }
+  const existing = (_allGuildsCache || []).find(g => g.name === name);
+  if (existing) {
+    const { showToast: _st } = await import('./home/utils.js');
+    _st('이미 있는 길드예요. 위에서 검색해서 추가해 주세요.', 2600, 'warning');
+    if (input) input.value = '';
+    return;
+  }
+  _guildModalGuilds.push({ name, status: 'member', isNew: true });
+  if (input) input.value = '';
+  _renderGuildModalList();
+  await syncGuildModalState({ successMessage: `${name} 길드를 만들었어요.`, successType: 'success', refreshCache: true });
+}
+
+async function syncGuildModalState(options = {}) {
+  const { closeAfter = false, successMessage = '', successType = 'success', refreshCache = true } = options;
+  const { getCurrentUser, saveAccount, setCurrentUser, createGuild, createGuildJoinRequest, updateGuildMemberCount, updateGuildLeader } = await import('./data.js');
   const user = getCurrentUser();
   if (!user) return;
 
@@ -2056,6 +2106,10 @@ async function saveGuildFromModal() {
       // 기존 길드에서 새로 가입 (이전에 없었던 것)
       if (!g.isNew && !oldGuilds.has(g.name)) {
         await updateGuildMemberCount(g.name, 1);
+        const guildMeta = (_allGuildsCache || []).find(item => item.name === g.name);
+        if ((guildMeta?.memberCount || 0) === 0) {
+          await updateGuildLeader(g.name, user.id);
+        }
       }
     } else {
       newPending.push(g.name);
@@ -2105,18 +2159,30 @@ async function saveGuildFromModal() {
   await saveAccount(user);
   setCurrentUser(user);
 
-  closeGuildModal();
-  const { showToast: _st } = await import('./home/utils.js');
-  _st('저장되었습니다', 3000, 'success');
+  if (refreshCache) {
+    const { getAllGuilds } = await import('./data.js');
+    _allGuildsCache = await getAllGuilds();
+  }
+  if (closeAfter) closeGuildModal();
+  if (successMessage) {
+    const { showToast: _st } = await import('./home/utils.js');
+    _st(successMessage, 2600, successType);
+  }
+}
+
+async function saveGuildFromModal() {
+  await syncGuildModalState({ closeAfter: true, successMessage: '저장되었습니다', successType: 'success' });
 }
 
 window.openGuildModal = openGuildModal;
+window.openGuildInfoModal = (...args) => import('./modals/guild-info-modal.js').then(m => m.openGuildInfoModal(...args));
 window.closeGuildModal = closeGuildModal;
 window.toggleGuildPrimary = toggleGuildPrimary;
 window.removeGuildFromModal = removeGuildFromModal;
 window.searchGuildsForModal = searchGuildsForModal;
 window.selectGuildForModal = selectGuildForModal;
 window.addGuildFromModal = addGuildFromModal;
+window.createGuildFromModal = createGuildFromModal;
 window.saveGuildFromModal = saveGuildFromModal;
 
 async function manageAccountPassword(accountId) {
