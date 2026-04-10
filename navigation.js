@@ -64,6 +64,8 @@ export function initSwipeNavigation() {
   const W = () => window.innerWidth;
 
   function getSwipeableTabs() {
+    // 어드민 탭에서는 스와이프 비활성화
+    if (window._getCurrentTab() === 'admin') return [];
     return [...document.querySelectorAll('#tab-nav .tab-btn[data-tab]')]
       .filter(b => b.style.display !== 'none' && !b.closest('.more-menu-dynamic-tabs'))
       .map(b => b.dataset.tab)

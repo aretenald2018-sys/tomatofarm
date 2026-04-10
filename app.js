@@ -4,7 +4,7 @@
 
 import { loadAll, TODAY, getTabOrder,
          getRawVisibleTabs, DEFAULT_VIS_TABS,
-         isAdmin, isAdminGuest } from './data.js';
+         isAdmin, isAdminGuest, trackEvent } from './data.js';
 import { loadCSVDatabase } from './fatsecret-api.js';
 import { getDietRec, getWorkoutRec,
          analyzeGoalFeasibility }                 from './ai.js';
@@ -99,12 +99,24 @@ window._getCurrentTab = () => _currentTab;
 
 async function switchTab(tab) {
   _currentTab = tab;
+  trackEvent('nav', 'tab_visit', { tab });
   document.querySelectorAll('.tab-btn[data-tab]').forEach(b =>
     b.classList.toggle('active', b.dataset.tab === tab)
   );
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
   const panel = document.getElementById('tab-' + tab);
   if (panel) panel.classList.add('active');
+
+  // 어드민 모드: 하단 탭 바 + 상단 네비 완전 제거/복원
+  const tabNav = document.getElementById('tab-nav');
+  const topNav = document.querySelector('.top-nav');
+  if (tab === 'admin') {
+    if (tabNav) tabNav.style.display = 'none';
+    if (topNav) topNav.style.display = 'none';
+  } else {
+    if (tabNav) tabNav.style.display = '';
+    if (topNav) topNav.style.display = '';
+  }
 
   // 코어 탭 (즉시 로드)
   if (tab === 'home')     renderHome();
