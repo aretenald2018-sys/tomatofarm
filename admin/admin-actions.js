@@ -23,6 +23,7 @@ function _escapeHtml(value) {
 
 let _heroMessageUsers = [];
 let _welcomeBackUsers = [];
+let _heroMessageSelected = new Set();
 const _actionsExpanded = {
   letters: false,
   patchnotes: false,
@@ -133,10 +134,19 @@ export function renderActionsSection(container, data, rerender) {
       'hero_messages',
       '오늘의 개인 메시지',
       `<input id="hero-msg-date" type="date" value="${_todayDateKey()}" onchange="window._adminRenderHeroMessages()" style="padding:6px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:12px;">`,
-      `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
-        <input id="hero-msg-bulk-emoji" type="text" maxlength="4" placeholder="✉️" style="width:72px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);font-size:14px;box-sizing:border-box;">
-        <input id="hero-msg-bulk-text" type="text" placeholder="미설정 사용자에게 같은 메시지 채우기" style="flex:1;min-width:180px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);font-size:13px;box-sizing:border-box;">
-        <button onclick="window._adminFillHeroMessages()" style="padding:0 14px;border:none;border-radius:10px;background:#6366F1;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">채우기</button>
+      `<div style="margin-bottom:10px;padding:12px;border:1px solid var(--border);border-radius:12px;background:var(--surface2);">
+        <div style="font-size:11px;font-weight:700;color:var(--text-secondary);margin-bottom:8px;">선택 사용자 일괄 메시지</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px;">
+          <input id="hero-msg-bulk-emoji" type="text" maxlength="4" placeholder="앞 이모지" aria-label="메시지 앞 이모지" title="메시지 앞 이모지" style="width:88px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);font-size:13px;box-sizing:border-box;text-align:center;">
+          <input id="hero-msg-bulk-text" type="text" placeholder="체크한 사용자에게 보낼 같은 메시지" style="flex:1;min-width:180px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);font-size:13px;box-sizing:border-box;">
+          <button onclick="window._adminFillHeroMessages()" style="padding:0 14px;border:none;border-radius:10px;background:#6366F1;color:#fff;font-size:12px;font-weight:700;cursor:pointer;min-height:40px;">빈칸 채우기</button>
+        </div>
+        <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:10px;">앞 이모지는 메시지 맨 앞에 붙습니다. 예: ✉️ 오늘도 한 번만 더!</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+          <button class="tds-btn secondary sm" onclick="window._adminToggleAllHeroTargets()">전체 선택/해제</button>
+          <button class="tds-btn tonal sm" onclick="window._adminApplyHeroMessageToSelected()">선택 사용자에게 보내기</button>
+          <div style="font-size:11px;color:var(--text-tertiary);margin-left:auto;">선택 <span id="hero-msg-selected-count">0</span>명</div>
+        </div>
       </div>
       <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:10px;">저장하지 않으면 기존 자동 메시지가 그대로 표시됩니다.</div>
       <div id="admin-hero-message-list">
@@ -454,22 +464,28 @@ window._adminRenderHeroMessages = async function() {
     .sort((a, b) => (a.nickname || `${a.lastName || ''}${a.firstName || ''}`).localeCompare(b.nickname || `${b.lastName || ''}${b.firstName || ''}`));
 
   const messages = await Promise.all(_heroMessageUsers.map((acc) => getHeroMessage(acc.id, selectedDate)));
+  const validIds = new Set(_heroMessageUsers.map((acc) => acc.id));
+  _heroMessageSelected = new Set([..._heroMessageSelected].filter((id) => validIds.has(id)));
 
   wrap.innerHTML = _heroMessageUsers.map((acc, idx) => {
     const nick = acc.nickname || `${acc.lastName || ''}${acc.firstName || ''}` || acc.id;
     const msg = messages[idx];
+    const checked = _heroMessageSelected.has(acc.id);
     return `
-      <div style="display:flex;gap:8px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border);">
-        <div style="width:92px;flex-shrink:0;padding-top:10px;">
+      <div style="display:flex;gap:10px;align-items:flex-start;padding:12px 0;border-bottom:1px solid var(--border);">
+        <button type="button" class="hero-msg-target-toggle" data-user-id="${acc.id}" aria-pressed="${checked ? 'true' : 'false'}" onclick="window._adminToggleHeroTarget('${acc.id}')" style="margin-top:4px;min-width:68px;min-height:36px;padding:0 12px;border:${checked ? '1px solid #fa342c' : '1px solid var(--border)'};border-radius:999px;background:${checked ? 'var(--primary-bg)' : 'var(--surface)'};color:${checked ? '#fa342c' : 'var(--text-secondary)'};display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;cursor:pointer;flex-shrink:0;box-sizing:border-box;">${checked ? '선택됨' : '선택'}</button>
+        <div style="width:108px;flex-shrink:0;padding-top:6px;">
           <div style="font-size:13px;font-weight:700;color:var(--text);">${_escapeHtml(nick)}</div>
           <div style="font-size:10px;color:var(--text-tertiary);margin-top:3px;">${_escapeHtml(acc.id)}</div>
         </div>
-        <input id="hero-msg-emoji-${idx}" type="text" maxlength="4" value="${_escapeHtml(msg?.emoji || '')}" placeholder="✉️" style="width:58px;padding:10px 8px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);font-size:13px;text-align:center;box-sizing:border-box;">
+        <input id="hero-msg-emoji-${idx}" type="text" maxlength="4" value="${_escapeHtml(msg?.emoji || '')}" placeholder="앞 이모지" aria-label="개별 메시지 이모지" title="개별 메시지 앞 이모지" style="width:72px;padding:10px 8px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);font-size:12px;text-align:center;box-sizing:border-box;">
         <input id="hero-msg-text-${idx}" type="text" value="${_escapeHtml(msg?.message || '')}" placeholder="미설정 시 자동 메시지 유지" style="flex:1;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);font-size:13px;box-sizing:border-box;">
-        <button onclick="window._adminSaveHeroMessage(${idx})" style="padding:10px 12px;border:none;border-radius:10px;background:#fa342c;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">저장</button>
+        <button onclick="window._adminSaveHeroMessage(${idx})" style="padding:10px 12px;border:none;border-radius:10px;background:#fa342c;color:#fff;font-size:12px;font-weight:700;cursor:pointer;min-height:40px;">저장</button>
       </div>
     `;
   }).join('') || '<div style="font-size:12px;color:var(--text-tertiary);text-align:center;padding:12px;">대상 사용자가 없어요</div>';
+  const countEl = document.getElementById('hero-msg-selected-count');
+  if (countEl) countEl.textContent = _heroMessageSelected.size;
 };
 
 window._adminFillHeroMessages = function() {
@@ -486,6 +502,58 @@ window._adminFillHeroMessages = function() {
     if (textEl && !textEl.value.trim()) textEl.value = text;
     if (emojiEl && !emojiEl.value.trim() && emoji) emojiEl.value = emoji;
   });
+};
+
+window._adminToggleHeroTarget = function(userId, checked) {
+  if (!userId) return;
+  const nextChecked = typeof checked === 'boolean' ? checked : !_heroMessageSelected.has(userId);
+  if (nextChecked) _heroMessageSelected.add(userId);
+  else _heroMessageSelected.delete(userId);
+  const btn = [...document.querySelectorAll('.hero-msg-target-toggle')].find((el) => el.dataset.userId === userId);
+  if (btn) {
+    btn.setAttribute('aria-pressed', nextChecked ? 'true' : 'false');
+    btn.style.border = nextChecked ? '1px solid #fa342c' : '1px solid var(--border)';
+    btn.style.background = nextChecked ? 'var(--primary-bg)' : 'var(--surface)';
+    btn.style.color = nextChecked ? '#fa342c' : 'var(--text-secondary)';
+    btn.textContent = nextChecked ? '선택됨' : '선택';
+  }
+  const countEl = document.getElementById('hero-msg-selected-count');
+  if (countEl) countEl.textContent = _heroMessageSelected.size;
+};
+
+window._adminToggleAllHeroTargets = function() {
+  const allIds = _heroMessageUsers.map((acc) => acc.id);
+  const shouldSelectAll = allIds.some((id) => !_heroMessageSelected.has(id));
+  _heroMessageSelected = shouldSelectAll ? new Set(allIds) : new Set();
+  document.querySelectorAll('.hero-msg-target-toggle').forEach((btn) => {
+    btn.setAttribute('aria-pressed', shouldSelectAll ? 'true' : 'false');
+    btn.style.border = shouldSelectAll ? '1px solid #fa342c' : '1px solid var(--border)';
+    btn.style.background = shouldSelectAll ? 'var(--primary-bg)' : 'var(--surface)';
+    btn.style.color = shouldSelectAll ? '#fa342c' : 'var(--text-secondary)';
+    btn.textContent = shouldSelectAll ? '선택됨' : '선택';
+  });
+  const countEl = document.getElementById('hero-msg-selected-count');
+  if (countEl) countEl.textContent = _heroMessageSelected.size;
+};
+
+window._adminApplyHeroMessageToSelected = async function() {
+  const selectedDate = document.getElementById('hero-msg-date')?.value || _todayDateKey();
+  const text = document.getElementById('hero-msg-bulk-text')?.value?.trim() || '';
+  const emoji = document.getElementById('hero-msg-bulk-emoji')?.value?.trim() || '';
+  const selectedUsers = _heroMessageUsers.filter((acc) => _heroMessageSelected.has(acc.id));
+
+  if (!selectedUsers.length) {
+    showToast('메시지를 보낼 사용자를 선택해주세요', 2500, 'warning');
+    return;
+  }
+  if (!text) {
+    showToast('같이 보낼 메시지를 입력해주세요', 2500, 'warning');
+    return;
+  }
+
+  await Promise.all(selectedUsers.map((acc) => saveHeroMessage(acc.id, selectedDate, text, emoji)));
+  await window._adminRenderHeroMessages();
+  showToast(`${selectedUsers.length}명에게 같은 개인 메시지를 적용했어요`, 2500, 'success');
 };
 
 window._adminSaveHeroMessage = async function(index) {
@@ -517,14 +585,22 @@ window._adminRenderWelcomeBackSettings = async function() {
     const nick = acc.nickname || `${acc.lastName || ''}${acc.firstName || ''}` || acc.id;
     const thresholdDays = Number(acc.welcomeBackThresholdHours || 24) / 24;
     return `
-      <div style="display:flex;gap:8px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border);">
+      <div style="display:flex;gap:10px;align-items:flex-start;padding:12px 0;border-bottom:1px solid var(--border);">
         <div style="width:92px;flex-shrink:0;padding-top:10px;">
           <div style="font-size:13px;font-weight:700;color:var(--text);">${_escapeHtml(nick)}</div>
           <div style="font-size:10px;color:var(--text-tertiary);margin-top:3px;">${_escapeHtml(acc.id)}</div>
         </div>
-        <input id="welcome-back-days-${idx}" type="number" min="0" step="1" value="${thresholdDays}" style="width:68px;padding:10px 8px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);font-size:13px;text-align:center;box-sizing:border-box;">
-        <input id="welcome-back-text-${idx}" type="text" value="${_escapeHtml(acc.welcomeBackCustomMessage || '')}" placeholder="비우면 자동 메시지" style="flex:1;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);font-size:13px;box-sizing:border-box;">
-        <button onclick="window._adminSaveWelcomeBack(${idx})" style="padding:10px 12px;border:none;border-radius:10px;background:#F97316;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">저장</button>
+        <div style="flex:1;display:flex;flex-direction:column;gap:8px;">
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input id="welcome-back-days-${idx}" type="number" min="0" step="1" value="${thresholdDays}" style="width:68px;padding:10px 8px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);font-size:13px;text-align:center;box-sizing:border-box;">
+            <input id="welcome-back-title-${idx}" type="text" value="${_escapeHtml(acc.welcomeBackCustomTitle || '')}" placeholder="제목 비우면 자동" style="flex:1;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);font-size:13px;box-sizing:border-box;">
+          </div>
+          <input id="welcome-back-badge-${idx}" type="text" value="${_escapeHtml(acc.welcomeBackCustomBadge || '')}" placeholder="보조 문구 비우면 자동 예: 8일... 보고 싶었어요" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);font-size:13px;box-sizing:border-box;">
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input id="welcome-back-text-${idx}" type="text" value="${_escapeHtml(acc.welcomeBackCustomMessage || '')}" placeholder="본문 비우면 자동 메시지" style="flex:1;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);font-size:13px;box-sizing:border-box;">
+            <button onclick="window._adminSaveWelcomeBack(${idx})" style="padding:10px 12px;border:none;border-radius:10px;background:#F97316;color:#fff;font-size:12px;font-weight:700;cursor:pointer;min-height:40px;">저장</button>
+          </div>
+        </div>
       </div>
     `;
   }).join('') || '<div style="font-size:12px;color:var(--text-tertiary);text-align:center;padding:12px;">대상 사용자가 없어요</div>';
@@ -535,8 +611,12 @@ window._adminSaveWelcomeBack = async function(index) {
   if (!acc) return;
 
   const days = Math.max(0, Number(document.getElementById(`welcome-back-days-${index}`)?.value || 0));
+  const customTitle = document.getElementById(`welcome-back-title-${index}`)?.value?.trim() || '';
+  const customBadge = document.getElementById(`welcome-back-badge-${index}`)?.value?.trim() || '';
   const customMessage = document.getElementById(`welcome-back-text-${index}`)?.value?.trim() || '';
   acc.welcomeBackThresholdHours = Math.round(days * 24);
+  acc.welcomeBackCustomTitle = customTitle;
+  acc.welcomeBackCustomBadge = customBadge;
   acc.welcomeBackCustomMessage = customMessage;
   await saveAccount(acc);
   showToast('복귀 팝업 설정을 저장했어요', 2500, 'success');

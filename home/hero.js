@@ -29,75 +29,35 @@ export async function renderHero() {
   const el = document.getElementById('hero-content');
   if (!el) return;
 
-  if (!isAdmin()) {
-    if (_renderTomatoHeroFn) _renderTomatoHeroFn(el);
+  const currentUser = getCurrentUser();
+  const todayDateKey = _currentDateKey();
+  const customMsg = await getHeroMessage(currentUser?.id, todayDateKey);
+  if (!customMsg?.message) return;
+
+  const labelEl = el.querySelector('.tf-hero-label');
+  if (labelEl) {
+    labelEl.textContent = customMsg.emoji ? `${customMsg.emoji} ${customMsg.message}` : customMsg.message;
+    labelEl.classList.add('hero-message-custom');
+    labelEl.onclick = () => {
+      labelEl.animate(
+        [{ transform: 'scale(1)' }, { transform: 'scale(1.03)' }, { transform: 'scale(1)' }],
+        { duration: 320, easing: 'ease-out' }
+      );
+    };
     return;
   }
 
-  const { workout, diet } = calcStreaks();
-  const mainStreak = Math.max(workout, diet);
-  const streakLabel = workout >= diet ? '운동' : '식단';
-  let streakEmoji = mainStreak >= 7 ? '🔥' : mainStreak >= 3 ? '💪' : '👋';
-
-  const m = TODAY.getMonth() + 1;
-  const d = TODAY.getDate();
-  const dow = ['일','월','화','수','목','금','토'][TODAY.getDay()];
-  const hour = new Date().getHours();
-  const dayOfWeek = TODAY.getDay();
-  const isMonday = dayOfWeek === 1;
-  const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-
-  function _pick(pool) {
-    const seed = TODAY.getDate() * 31 + hour;
-    return pool[seed % pool.length];
+  const msgEl = el.querySelector('.tomato-message');
+  if (msgEl) {
+    msgEl.textContent = customMsg.emoji ? `${customMsg.emoji} ${customMsg.message}` : customMsg.message;
+    msgEl.classList.add('hero-message-custom');
+    msgEl.onclick = () => {
+      msgEl.animate(
+        [{ transform: 'scale(1)' }, { transform: 'scale(1.03)' }, { transform: 'scale(1)' }],
+        { duration: 320, easing: 'ease-out' }
+      );
+    };
   }
-
-  let message = '';
-  const todayDateKey = _currentDateKey();
-  const customMsg = await getHeroMessage(getCurrentUser()?.id, todayDateKey);
-  if (customMsg?.message) {
-    message = customMsg.message;
-    streakEmoji = customMsg.emoji || '✉️';
-  } else if (mainStreak >= 14) message = _pick([
-    `대단해요! ${streakLabel} ${mainStreak}일 연속`,
-    `${mainStreak}일째, 완전히 습관이 됐어요!`,
-    `멈출 수 없는 기세! ${streakLabel} ${mainStreak}일`,
-  ]);
-  else if (mainStreak >= 7) message = _pick([
-    `대단해요! ${streakLabel} ${mainStreak}일 연속`,
-    `일주일 넘었어요! ${streakLabel} ${mainStreak}일째`,
-    `꾸준함이 빛나요! ${mainStreak}일 연속`,
-  ]);
-  else if (mainStreak >= 3) message = _pick([
-    `좋은 흐름이에요. ${streakLabel} ${mainStreak}일째`,
-    `리듬을 타고 있어요! ${mainStreak}일째`,
-    `${mainStreak}일째, 이대로만!`,
-  ]);
-  else if (mainStreak >= 1) message = _pick([
-    `${streakLabel} ${mainStreak}일째, 이어가 볼까요?`,
-    isMonday ? '새로운 한 주, 이어가볼까요?' : '오늘도 한 번 더!',
-    '기록 하나면 연속 유지!',
-  ]);
-  else message = _pick([
-    '오늘부터 시작해볼까요?',
-    '다시 시작하는 것도 멋져요',
-    isWeekend ? '주말이니까 가볍게!' : '새로운 1일차를 만들어봐요',
-  ]);
-
-  el.innerHTML = `
-    <div class="hero-date">${m}월 ${d}일 ${dow}요일</div>
-    <div class="hero-streak">${streakEmoji} ${mainStreak}<span class="hero-streak-unit">일</span></div>
-    <div class="hero-message${customMsg?.message ? ' hero-message-custom' : ''}" onclick="${customMsg?.message ? 'this.animate([{transform:\'scale(1)\'},{transform:\'scale(1.03)\'},{transform:\'scale(1)\'}],{duration:320,easing:\'ease-out\'})' : ''}">${message}</div>
-    <div class="hero-sub-streaks">
-      <span class="hero-sub">🏋️ 운동 ${workout}일</span>
-      <span class="hero-sub-dot">·</span>
-      <span class="hero-sub">🥗 식단 ${diet}일</span>
-    </div>
-    <div class="hero-social-proof" id="hero-social-proof" style="display:none;"></div>
-  `;
-
-  checkStreakMilestone('workout', workout);
-  checkStreakMilestone('diet', diet);
 }
 
 // ── 마일스톤 체크 ────────────────────────────────────────────────
@@ -247,6 +207,8 @@ export async function renderLeaderboard() {
   try {
     const user = getCurrentUser();
     if (!user) return;
+    const friends = await getMyFriends();
+    const friendIdSet = new Set(friends.map((f) => f.friendId));
 
     // 길드 탭이면 길드 랭킹 렌더링
     if (_leaderboardTab === 'guild') {
@@ -304,7 +266,6 @@ export async function renderLeaderboard() {
       isGlobal = true;
     } else {
       // ── 이웃 폴백 모드 ──
-      const friends = await getMyFriends();
       if (!friends.length) { cardEl.style.display = 'none'; return; }
       const accounts = await getAccountList();
 
@@ -368,7 +329,10 @@ export async function renderLeaderboard() {
     const activeCount = active.length;
 
     // 히어로 소셜프루프 업데이트
-    const proofNames = active.filter(p => !p.isMe).slice(0, 2).map(p => p.name);
+    const proofNames = active
+      .filter((p) => !p.isMe && friendIdSet.has(p.userId))
+      .slice(0, 2)
+      .map((p) => p.name);
     if (proofNames.length > 0) updateHeroSocialProof(proofNames);
 
     // 집단 컨텍스트 문구
