@@ -92,11 +92,6 @@ export async function saveStreakSettingsAndClose() {
   await saveStreakSettings('fontSizeMode', fontSizeMode);
   await saveStreakSettings('cellWidthMode', cellWidthMode);
 
-  // 캘린더 재렌더링
-  if (window.renderCalendar) {
-    window.renderCalendar();
-  }
-
   // 모달 닫기
   document.getElementById('streak-settings-modal').style.display = 'none';
   window._streakSettingsData = null;

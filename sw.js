@@ -3,7 +3,7 @@
 
 // 캐시 버전: 타임스탬프 기반 자동 생성 — 파일 수정 시 SW 자동 업데이트
 // (SW 파일 내용이 1바이트라도 바뀌면 브라우저가 새 SW로 인식)
-const CACHE_VERSION = 'tomatofarm-v20260410-workout-refactor';
+const CACHE_VERSION = 'tomatofarm-v20260410-admin-analytics';
 const RUNTIME_CACHE = 'dashboard3-runtime';
 const STATIC_ASSETS = [
   './',
@@ -74,6 +74,15 @@ const STATIC_ASSETS = [
   './data/data-social-guild.js',
   './data/data-social-interact.js',
   './data/data-social-log.js',
+  './data/data-analytics.js',
+  // 어드민 모듈
+  './admin/admin-overview.js',
+  './admin/admin-users.js',
+  './admin/admin-engagement.js',
+  './admin/admin-social.js',
+  './admin/admin-actions.js',
+  './admin/admin-charts.js',
+  './admin/admin-utils.js',
 ];
 
 self.addEventListener('install', (event) => {

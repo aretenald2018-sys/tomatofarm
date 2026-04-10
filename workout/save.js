@@ -6,7 +6,7 @@ import { S }                        from './state.js';
 import { showCenterToast }          from '../home/utils.js';
 import { saveDay, dateKey,
          getDietPlan, getDayTargetKcal,
-         isDietDaySuccess }         from '../data.js';
+         isDietDaySuccess, trackEvent } from '../data.js';
 
 // ── 공통 저장 페이로드 빌더 ──────────────────────────────────────
 // saveWorkoutDay()와 _autoSaveDiet() 양쪽에서 호출하여 필드 누락 방지
@@ -109,7 +109,13 @@ export async function saveWorkoutDay() {
   const btn = document.getElementById('wt-save-btn');
   if (btn) { btn.disabled = true; btn.textContent = '저장 중...'; }
 
-  await saveDay(dateKey(y, m, d), _buildSavePayload(cleanEx, isDietSuccess));
+  const payload = _buildSavePayload(cleanEx, isDietSuccess);
+  await saveDay(dateKey(y, m, d), payload);
+
+  // analytics 계측
+  if (cleanEx.length > 0 || S.cf || S.swimming || S.running) {
+    trackEvent('core', 'exercise_logged');
+  }
 
   if (btn) { btn.disabled = false; btn.textContent = '저장'; }
   document.dispatchEvent(new CustomEvent('sheet:saved'));
@@ -134,7 +140,19 @@ export async function _autoSaveDiet() {
   console.log('[render-workout] 식단 자동 저장 시작:', { dateKey: dateKey(y, m, d), foods: { b: S.diet.bFoods?.length || 0, l: S.diet.lFoods?.length || 0, d: S.diet.dFoods?.length || 0 } });
 
   try {
-    await saveDay(dateKey(y, m, d), _buildSavePayload(cleanEx, isDietSuccess));
+    const payload = _buildSavePayload(cleanEx, isDietSuccess);
+    await saveDay(dateKey(y, m, d), payload);
+
+    // analytics 계측
+    const totalFoods = (S.diet.bFoods?.length || 0) + (S.diet.lFoods?.length || 0)
+      + (S.diet.dFoods?.length || 0) + (S.diet.sFoods?.length || 0);
+    if (totalFoods > 0) {
+      const meals = [S.diet.bFoods, S.diet.lFoods, S.diet.dFoods, S.diet.sFoods]
+        .filter(f => f?.length > 0).length;
+      const kcal = (payload.bKcal || 0) + (payload.lKcal || 0) + (payload.dKcal || 0) + (payload.sKcal || 0);
+      trackEvent('core', 'diet_logged', { meals, kcal });
+    }
+
     console.log('[render-workout] 식단 자동 저장 완료');
     showCenterToast('저장되었습니다');
   } catch(e) {

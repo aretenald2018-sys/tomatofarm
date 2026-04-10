@@ -200,12 +200,6 @@
   <button class="tab-btn" data-tab="workout" onclick="switchTab('workout')">
     <span class="tab-icon">💪</span><span>운동</span>
   </button>
-  <button class="tab-btn" data-tab="calendar" onclick="switchTab('calendar')" style="display:none">
-    <span class="tab-icon">📆</span><span>캘린더</span>
-  </button>
-  <button class="tab-btn" data-tab="finance" onclick="switchTab('finance')" style="display:none">
-    <span class="tab-icon">💰</span><span>재무</span>
-  </button>
   <button class="tab-btn" data-tab="stats" onclick="switchTab('stats')">
     <span class="tab-icon">📊</span><span>통계</span>
   </button>
@@ -220,12 +214,9 @@
   <div class="more-menu-sheet">
     <div id="more-menu-dynamic-tabs"></div>
     <button class="more-menu-item tab-btn" data-tab="cooking" onclick="switchTab('cooking');toggleMoreMenu()">🍳 요리</button>
-    <button class="more-menu-item tab-btn" data-tab="wine" onclick="switchTab('wine');toggleMoreMenu()">🍷 와인</button>
-    <button class="more-menu-item tab-btn" data-tab="movie" onclick="switchTab('movie');toggleMoreMenu()">🎬 영화</button>
     <div id="admin-menu-items" style="display:none;">
       <div style="border-top:1px solid var(--border);margin-top:4px;padding-top:4px">
         <button class="more-menu-item tab-btn" data-tab="admin" onclick="switchTab('admin');toggleMoreMenu()">🍅 토마토어드민</button>
-        <button class="more-menu-item tab-btn" data-tab="dev" onclick="switchTab('dev');toggleMoreMenu()">🛠️ 개발 요청</button>
       </div>
     </div>
     <div style="border-top:1px solid var(--border);margin-top:4px;padding-top:4px">
@@ -816,27 +807,6 @@
   <div id="cooking-list" class="cooking-list"></div>
 </div>
 
-<!-- ═══ 연간 달력 탭 ═══ -->
-<div id="tab-calendar" class="tab-panel">
-  <div class="nav-bar">
-    <button class="nav-btn" onclick="changeYear(-1)">◀</button>
-    <span class="nav-year" id="year-label"></span>
-    <button class="nav-btn" onclick="changeYear(1)">▶</button>
-    <button class="event-view-toggle" id="event-view-toggle" onclick="toggleEventViewMode()" style="margin-left:auto">━ 바</button>
-    <button class="nav-btn" onclick="openStreakSettingsModal()">⚙️</button>
-  </div>
-  <div class="legend">
-    <div class="legend-item"><div class="legend-dot" style="background:var(--gym)"></div>헬스</div>
-    <div class="legend-item"><div class="legend-dot" style="background:var(--cf)"></div>크핏</div>
-    <div class="legend-item"><div class="legend-dot" style="background:var(--diet-ok)"></div>식단OK</div>
-    <div class="legend-item"><div class="legend-dot" style="background:var(--diet-bad)"></div>식단NG</div>
-    <div class="legend-item"><div class="legend-dot" style="background:#374151;border:1px solid #6b7280"></div>쉬었음</div>
-    <div class="legend-item"><div class="legend-dot legend-health"></div>건강이슈</div>
-    <div class="legend-item" style="color:var(--muted)">빈칸 = 미기록</div>
-  </div>
-  <div class="calendar-wrap" id="calendar"></div>
-</div>
-
 <div id="tab-stats" class="tab-panel">
 <div class="stats-section">
 <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
@@ -967,48 +937,8 @@ async function saveStreakSettingsAndClose() {
 </script>
 
 <!-- 월간 캘린더 모달 -->
-<div class="modal-backdrop" id="monthly-calendar-modal" onclick="closeMonthlyCalendarModal(event)">
-  <div class="modal-sheet" style="max-height:90vh;overflow-y:auto;max-width:600px;padding:12px;">
-    <div class="sheet-handle"></div>
-    <div id="monthly-calendar-modal-content" style="padding:12px 16px 80px;"></div>
-  </div>
-</div>
-
-<div id="tab-dev" class="tab-panel">
-  <div id="dev-container"></div>
-</div>
-
 <div id="tab-admin" class="tab-panel">
   <div id="admin-container"></div>
-</div>
-
-<!-- ═══ 영화 탭 ═══ -->
-<div id="tab-movie" class="tab-panel">
-  <div class="movie-tab-header">
-    <button class="month-nav-btn" onclick="changeMovieMonth(-1)">◀</button>
-    <span class="movie-tab-title" id="movie-label">2026년 3월</span>
-    <button class="month-nav-btn" onclick="changeMovieMonth(1)">▶</button>
-    <button class="movie-refresh-btn" id="movie-refresh-btn" onclick="startMovieCrawl()" title="최신 영화 데이터 새로고침">🔄 새로고침</button>
-  </div>
-  <div id="movie-tag-filters" class="movie-tag-filters"></div>
-  <div id="movie-calendar-content" class="movie-calendar-content"></div>
-</div>
-
-<!-- ═══ 재무 탭 ═══ -->
-<div id="tab-finance" class="tab-panel">
-  <div class="fin-header">
-    <span class="fin-title">💰 재무 대시보드</span>
-    <span class="fin-fx" id="fin-fx-rate">USD/KRW: -</span>
-  </div>
-  <div id="fin-content"></div>
-</div>
-
-<div id="tab-wine" class="tab-panel">
-  <div class="wine-tab-header">
-    <span class="wine-tab-title">🍷 와인 테이스팅 노트</span>
-    <button class="wine-add-btn" onclick="openWineModal()">+ 기록 추가</button>
-  </div>
-  <div id="wine-list" class="wine-list"></div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>

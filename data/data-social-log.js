@@ -5,10 +5,12 @@
 import {
   db, doc, setDoc, getDoc, getCurrentUserRef,
 } from './data-core.js';
+import { trackEvent } from './data-analytics.js';
 
 export async function recordLogin() {
   if (!getCurrentUserRef()?.id) return;
   const uid = getCurrentUserRef().id;
+  trackEvent('session', 'session_start');
   try {
     await setDoc(doc(db, '_accounts', uid), { lastLoginAt: Date.now() }, { merge: true });
   } catch(e) { console.warn('[track] login:', e); }
@@ -40,6 +42,7 @@ export async function markPatchnoteRead(patchnoteId) {
 export async function recordAction(action) {
   if (!getCurrentUserRef()?.id) return;
   const uid = getCurrentUserRef().id;
+  trackEvent('social', action);
   try {
     const accDoc = await getDoc(doc(db, '_accounts', uid));
     const data = accDoc.exists() ? accDoc.data() : {};

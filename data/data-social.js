@@ -31,3 +31,7 @@ export {
 export {
   recordLogin, recordTutorialDone, markPatchnoteRead, recordAction,
 } from './data-social-log.js';
+
+export {
+  trackEvent, flushAnalytics, getAnalytics, getAllAnalytics,
+} from './data-analytics.js';

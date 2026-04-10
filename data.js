@@ -85,6 +85,7 @@ export {
   toggleLike, getCheerStatus, getLikes,
   saveFcmToken, removeFcmToken,
   recordLogin, recordTutorialDone, markPatchnoteRead, recordAction,
+  trackEvent, flushAnalytics, getAnalytics, getAllAnalytics,
 } from './data/data-social.js';
 
 // ═══════════════════════════════════════════════════════════════

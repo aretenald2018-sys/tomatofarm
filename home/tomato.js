@@ -8,7 +8,7 @@ import { TODAY, getDiet, getDietPlan, calcDietMetrics, getBodyCheckins,
          getTomatoState, saveTomatoState, saveTomatoCycle,
          getTomatoCycles, dateKey,
          getStreakFreezes, useStreakFreeze,
-         getMyFriends, getAccountList }  from '../data.js';
+         getMyFriends, getAccountList, trackEvent }  from '../data.js';
 import { calcTomatoCycle, evaluateCycleResult, getQuarterKey,
          isDietDaySuccess, isExerciseDaySuccess,
          getDayTargetKcal as calcDayTarget }  from '../calc.js';
@@ -420,6 +420,8 @@ export function settleTomatoCycleIfNeeded() {
   saveTomatoState(state);
 
   console.log(`[tomato] awarded ${newlyAwarded} tomatoes, total=${state.totalTomatoes}`);
+  // analytics 계측
+  if (newlyAwarded > 0) trackEvent('gamification', 'tomato_harvested');
   // 새로 수확한 토마토가 있으면 축하 모달 예약
   if (newlyAwarded > 0) {
     const total = Math.max(0, state.totalTomatoes + (state.giftedReceived || 0) - (state.giftedSent || 0));
