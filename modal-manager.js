@@ -15,6 +15,7 @@ const MODALS = [
   { id: 'settings-modal',         path: './modals/settings-modal.js',         export: 'MODAL_HTML' },
   { id: 'diet-plan-modal',        path: './modals/diet-plan-modal.js',        export: 'MODAL_HTML' },
   { id: 'checkin-modal',          path: './modals/checkin-modal.js',          export: 'MODAL_HTML' },
+  { id: 'weight-result-modal',    path: './modals/weight-result-modal.js',    export: 'MODAL_HTML' },
   { id: 'nutrition-search-modal', path: './modals/nutrition-search-modal.js', export: 'MODAL_HTML' },
   { id: 'nutrition-item-modal',   path: './modals/nutrition-item-modal.js',   export: 'MODAL_HTML' },
   { id: 'nutrition-weight-modal', path: './modals/nutrition-weight-modal.js', export: 'WEIGHT_MODAL_HTML' },
@@ -35,7 +36,7 @@ export async function loadAndInjectModals() {
   const container = document.getElementById('modals-container');
   if (!container) return;
 
-  const cacheKey = '?v=20260409';
+  const cacheKey = '?v=20260410f';
   const results = await Promise.allSettled(
     MODALS.map(cfg => import(cfg.path + cacheKey).then(m => m[cfg.export] || ''))
   );

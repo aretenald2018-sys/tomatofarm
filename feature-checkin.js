@@ -3,8 +3,21 @@
 // ================================================================
 
 import { dateKey, TODAY, saveBodyCheckin, deleteBodyCheckin, getBodyCheckins } from './data.js';
+import { showToast } from './home/utils.js';
+import { openWeightResultModal } from './modals/weight-result-modal.js';
 
 let _checkinId = null;
+let _bodyFatEnabled = false;
+
+function _setBodyFatEnabled(enabled, { clearWhenOff = false } = {}) {
+  _bodyFatEnabled = !!enabled;
+  document.getElementById('ci-bodyfat-toggle')?.classList.toggle('on', _bodyFatEnabled);
+  document.getElementById('ci-bodyfat-wrap')?.classList.toggle('open', _bodyFatEnabled);
+  if (!_bodyFatEnabled && clearWhenOff) {
+    const input = document.getElementById('ci-bodyfat');
+    if (input) input.value = '';
+  }
+}
 
 function openCheckinModal(id) {
   _checkinId = id || null;
@@ -15,6 +28,7 @@ function openCheckinModal(id) {
       document.getElementById('ci-weight').value = rec.weight || '';
       document.getElementById('ci-bodyfat').value= rec.bodyFatPct || '';
       document.getElementById('ci-note').value   = rec.note || '';
+      _setBodyFatEnabled(rec.bodyFatPct !== null && rec.bodyFatPct !== undefined);
     }
     document.getElementById('ci-delete-btn').style.display = 'inline-block';
   } else {
@@ -24,11 +38,13 @@ function openCheckinModal(id) {
     document.getElementById('ci-bodyfat').value= '';
     document.getElementById('ci-note').value   = '';
     document.getElementById('ci-delete-btn').style.display = 'none';
+    _setBodyFatEnabled(false, { clearWhenOff: true });
   }
   document.getElementById('checkin-modal').classList.add('open');
 }
 
 function closeCheckinModal(e) { window._closeModal('checkin-modal', e); }
+function toggleCheckinBodyFat() { _setBodyFatEnabled(!_bodyFatEnabled, { clearWhenOff: !_bodyFatEnabled ? false : true }); }
 
 async function saveCheckinFromModal() {
   const date   = document.getElementById('ci-date').value;
@@ -40,13 +56,22 @@ async function saveCheckinFromModal() {
     id:         _checkinId || `ci_${Date.now()}`,
     date,
     weight,
-    bodyFatPct: bf || null,
+    bodyFatPct: _bodyFatEnabled && Number.isFinite(bf) ? bf : null,
     note:       note || null,
   };
   await saveBodyCheckin(rec);
 
+  const checkins = getBodyCheckins().sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
   document.getElementById('checkin-modal').classList.remove('open');
   window.renderAll();
+  if (checkins.length < 2) {
+    showToast('첫 기록 완료!', 1800, 'success');
+    return;
+  }
+  const recent = checkins.slice(-2);
+  const delta = Number(((recent[1].weight || 0) - (recent[0].weight || 0)).toFixed(1));
+  requestAnimationFrame(() => openWeightResultModal(delta, checkins));
 }
 
 async function deleteCheckinFromModal() {
@@ -60,6 +85,7 @@ async function deleteCheckinFromModal() {
 Object.assign(window, {
   openCheckinModal,
   closeCheckinModal,
+  toggleCheckinBodyFat,
   saveCheckinFromModal,
   deleteCheckinFromModal,
 });

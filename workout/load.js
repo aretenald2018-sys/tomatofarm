@@ -113,6 +113,7 @@ export function loadWorkoutDate(y, m, d) {
   _renderStretchForm();
   _renderSwimForm();
   _renderWorkoutTimer();
+  _renderTimerControls();
   _renderWineFreeToggle();
   _renderMealSkippedToggles();
   _initButtonEventListeners();

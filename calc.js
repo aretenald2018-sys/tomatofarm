@@ -376,3 +376,61 @@ export function getLastSession(cache, exerciseId) {
   const entry = day.exercises.find(e => e.exerciseId === exerciseId);
   return { date, sets: entry.sets };
 }
+
+/**
+ * 특정 activity 타입의 마지막 세션
+ * @param {object} cache - 전체 캐시 데이터
+ * @param {'cf'|'running'|'swimming'|'stretching'} type
+ * @param {string|null} excludeDateKey - 제외할 날짜 key
+ */
+export function getLastActivitySession(cache, type, excludeDateKey = null) {
+  const matchers = {
+    cf: (day) => !!day.cf,
+    running: (day) => !!day.running,
+    swimming: (day) => !!day.swimming,
+    stretching: (day) => !!day.stretching,
+  };
+  const isMatch = matchers[type];
+  if (!isMatch) return null;
+
+  const entries = Object.entries(cache)
+    .filter(([key, day]) => key !== excludeDateKey && isMatch(day))
+    .sort(([a], [b]) => b.localeCompare(a));
+
+  if (!entries.length) return null;
+
+  const [date, day] = entries[0];
+  if (type === 'cf') {
+    return {
+      date,
+      wod: day.cfWod || '',
+      durationMin: day.cfDurationMin || 0,
+      durationSec: day.cfDurationSec || 0,
+      memo: day.cfMemo || '',
+    };
+  }
+  if (type === 'running') {
+    return {
+      date,
+      distance: day.runDistance || 0,
+      durationMin: day.runDurationMin || 0,
+      durationSec: day.runDurationSec || 0,
+      memo: day.runMemo || '',
+    };
+  }
+  if (type === 'swimming') {
+    return {
+      date,
+      distance: day.swimDistance || 0,
+      durationMin: day.swimDurationMin || 0,
+      durationSec: day.swimDurationSec || 0,
+      stroke: day.swimStroke || '',
+      memo: day.swimMemo || '',
+    };
+  }
+  return {
+    date,
+    duration: day.stretchDuration || 0,
+    memo: day.stretchMemo || '',
+  };
+}

@@ -6,7 +6,7 @@ import { TODAY, calcStreaks, getMuscles, getDiet, getCF,
          getMilestoneShown, saveMilestoneShown,
          getStreakFreezes, getTomatoState, useStreakFreeze,
          getGlobalWeeklyRanking, getMyFriends, getAccountList, getCurrentUser,
-         getFriendWorkout, dateKey, isAdmin,
+         getFriendWorkout, dateKey, isAdmin, _isMySocialId,
          getGlobalGuildWeeklyRanking }  from '../data.js';
 import { setText, showToast, haptic, resolveNickname } from './utils.js';
 
@@ -263,12 +263,29 @@ export async function renderLeaderboard() {
         if ((muscles || []).length > 0 || diet.bKcal || diet.lKcal || diet.dKcal) myLocalDays++;
       }
 
-      board = globalData.rankings.map((r) => ({
-        userId: r.userId,
-        name: r.userId === user.id ? '나' : r.name,
-        days: r.userId === user.id ? Math.max(r.activeDays, myLocalDays) : r.activeDays,
-        isMe: r.userId === user.id,
-      }));
+      const mergedBoard = new Map();
+      globalData.rankings.forEach((r) => {
+        const isMe = _isMySocialId(r.userId);
+        const key = isMe ? '__me__' : r.userId;
+        const next = {
+          userId: r.userId,
+          name: isMe ? '나' : r.name,
+          days: isMe ? Math.max(r.activeDays, myLocalDays) : r.activeDays,
+          isMe,
+        };
+        const prev = mergedBoard.get(key);
+        if (!prev) {
+          mergedBoard.set(key, next);
+          return;
+        }
+        mergedBoard.set(key, {
+          userId: prev.userId,
+          name: prev.isMe || isMe ? '나' : (prev.name || next.name),
+          days: Math.max(prev.days || 0, next.days || 0),
+          isMe: prev.isMe || isMe,
+        });
+      });
+      board = [...mergedBoard.values()];
       // 내가 글로벌 랭킹에 없으면 추가
       if (!board.some(b => b.isMe) && myLocalDays > 0) {
         board.push({ userId: user.id, name: '나', days: myLocalDays, isMe: true });
@@ -296,7 +313,7 @@ export async function renderLeaderboard() {
       for (const f of friends) {
         const acc = accounts.find(a => a.id === f.friendId);
         const name = acc ? resolveNickname(acc, accounts) : f.friendId.replace(/_/g, '');
-        participants.push({ id: f.friendId, name, isMe: false });
+        participants.push({ id: f.friendId, name, isMe: _isMySocialId(f.friendId) });
       }
 
       const results = await Promise.allSettled(

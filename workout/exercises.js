@@ -112,7 +112,7 @@ export function _renderExerciseList() {
     const copyBtn = block.querySelector('.ex-copy-btn');
     if (copyBtn && last) {
       copyBtn.addEventListener('click', () => {
-        S.exercises[idx].sets = JSON.parse(JSON.stringify(last.sets));
+        S.exercises[idx].sets = JSON.parse(JSON.stringify(last.sets)).map(s => ({ ...s, done: false }));
         saveWorkoutDay().then(() => _renderExerciseList()).catch(e => console.error('Save error:', e));
       });
     }

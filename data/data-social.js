@@ -24,7 +24,7 @@ export {
   sendNotification, getMyNotifications, markNotificationRead, sendAnnouncement,
   getGuestbook, writeGuestbook, deleteGuestbookEntry,
   findCommentProfileOwner, getComments, writeComment, editComment, deleteComment,
-  toggleLike, getCheerStatus, getLikes,
+  toggleLike, getCheerStatus, getLikes, getUnseenCheers,
   saveFcmToken, removeFcmToken,
 } from './data-social-interact.js';
 

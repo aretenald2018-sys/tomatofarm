@@ -34,6 +34,7 @@ import {
   calcVolumeAll    as _calcVolumeAll,
   getVolumeHistory as _getVolumeHistory,
   getLastSession          as _getLastSession,
+  getLastActivitySession  as _getLastActivitySession,
   getDayTargetKcal        as _getDayTargetKcal,
   calcExerciseCalorieCredit as _calcExerciseCalorieCredit,
 } from './calc.js';
@@ -82,7 +83,7 @@ export {
   sendNotification, getMyNotifications, markNotificationRead, sendAnnouncement,
   getGuestbook, writeGuestbook, deleteGuestbookEntry,
   findCommentProfileOwner, getComments, writeComment, editComment, deleteComment,
-  toggleLike, getCheerStatus, getLikes,
+  toggleLike, getCheerStatus, getLikes, getUnseenCheers,
   saveFcmToken, removeFcmToken,
   recordLogin, recordTutorialDone, markPatchnoteRead, recordAction,
   trackEvent, flushAnalytics, getAnalytics, getAllAnalytics,
@@ -196,6 +197,7 @@ export async function loadAll() {
     _settings.streak_settings= fbMap.streak_settings ?? { fontSizeMode: 'default', cellWidthMode: 'default' };
     _settings.home_streak_days = fbMap.home_streak_days ?? 6;
     _settings.unit_goal_start  = fbMap.unit_goal_start  ?? null;
+    _settings.cheer_last_seen  = fbMap.cheer_last_seen  ?? 0;
     _settings.tomato_state     = fbMap.tomato_state     ?? { quarterlyTomatoes: {}, totalTomatoes: 0, giftedReceived: 0, giftedSent: 0 };
     _settings.farm_state       = fbMap.farm_state       ?? null;
     _settings.milestone_shown  = fbMap.milestone_shown  ?? {};
@@ -484,6 +486,7 @@ export const calcVolume = _calcVolume;
 export const calcVolumeAll = _calcVolumeAll;
 export const getVolumeHistory = (exerciseId) => _getVolumeHistory(_cache, exerciseId);
 export const getLastSession = (exerciseId) => _getLastSession(_cache, exerciseId);
+export const getLastActivitySession = (type, excludeDateKey = null) => _getLastActivitySession(_cache, type, excludeDateKey);
 
 export function calcStreaks() {
   return _calcStreaks(_cache, TODAY, getDietPlan(), dateKey);
@@ -551,6 +554,12 @@ export const getUnitGoalStart = () => _settings.unit_goal_start ?? null;
 export async function saveUnitGoalStart(dateStr) {
   _settings.unit_goal_start = dateStr;
   await _saveSetting('unit_goal_start', dateStr);
+}
+
+export const getCheerLastSeen = () => _settings.cheer_last_seen ?? 0;
+export async function saveCheerLastSeen(ts) {
+  _settings.cheer_last_seen = ts || 0;
+  await _saveSetting('cheer_last_seen', _settings.cheer_last_seen);
 }
 
 // ═══════════════════════════════════════════════════════════════

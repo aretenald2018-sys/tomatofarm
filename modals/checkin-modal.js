@@ -5,8 +5,20 @@ export const MODAL_HTML = `
     <div class="modal-title">📊 주간 체크인</div>
     <div class="ex-editor-form">
       <div><div class="ex-editor-label">날짜</div><input class="ex-editor-input" id="ci-date" type="date"></div>
-      <div class="diet-plan-row">
-        <div><div class="ex-editor-label">체중 (kg)</div><input class="ex-editor-input" id="ci-weight" type="number" step="0.1" placeholder="74.5"></div>
+      <div>
+        <div class="ex-editor-label">체중 (kg)</div>
+        <input class="ex-editor-input" id="ci-weight" type="number" step="0.1" placeholder="74.5">
+      </div>
+      <div class="ci-toggle-row" onclick="toggleCheckinBodyFat()">
+        <div class="ci-toggle-copy">
+          <div class="ex-editor-label" style="margin-bottom:2px;">체지방률도 입력할래요?</div>
+          <div class="ci-toggle-sub">원할 때만 같이 기록해도 돼요</div>
+        </div>
+        <button type="button" class="toggle-switch" id="ci-bodyfat-toggle" aria-label="체지방률 입력 토글">
+          <span class="toggle-knob"></span>
+        </button>
+      </div>
+      <div class="ci-bodyfat-wrap" id="ci-bodyfat-wrap">
         <div><div class="ex-editor-label">체지방률 (%)</div><input class="ex-editor-input" id="ci-bodyfat" type="number" step="0.1" placeholder="16.5"></div>
       </div>
       <div><div class="ex-editor-label">메모</div><input class="ex-editor-input" id="ci-note" placeholder="이번 주 컨디션이나 변화 기록..."></div>

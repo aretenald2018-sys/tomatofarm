@@ -228,6 +228,25 @@ export async function getLikes(targetUserId, dateKey) {
   } catch { return []; }
 }
 
+export async function getUnseenCheers(lastSeenAt = 0) {
+  if (!getCurrentUserRef()) return [];
+  try {
+    const snap = await getDocs(collection(db, '_likes'));
+    const cheers = [];
+    snap.forEach(d => {
+      const data = d.data();
+      if (data.field !== 'cheer') return;
+      if (!_isMySocialId(data.to)) return;
+      if ((data.createdAt || 0) <= (lastSeenAt || 0)) return;
+      cheers.push(data);
+    });
+    cheers.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    return cheers;
+  } catch {
+    return [];
+  }
+}
+
 // ── FCM 토큰 ────────────────────────────────────────────────────
 export async function saveFcmToken(token) {
   if (!getCurrentUserRef() || !token) return;

@@ -17,17 +17,29 @@ export function renderOverviewSection(container, data) {
 
   const todayTs = new Date(TODAY).setHours(0,0,0,0);
   const todayKey = dk(TODAY);
+  const analyticsMap = Object.fromEntries((analytics || []).map(a => [a.dk, a]));
+  const todayAnalyticsUsers = analyticsMap[todayKey]?.users || {};
 
   // ── KPI 계산 (workoutMap 기반 — 실제 운동/식단 데이터) ──
   const totalUsers = realAccs.length;
 
-  // DAU: 오늘 활동한 유저 (운동 or 식단 기록)
+  // DAU: 오늘 활동한 유저 (운동/식단 또는 앱 접속)
   const todayWk = workoutMap[todayKey] || {};
   const dauSet = new Set();
   for (const [uid, w] of Object.entries(todayWk)) {
     if (w.any) dauSet.add(uid);
   }
+  for (const [uid, stats] of Object.entries(todayAnalyticsUsers)) {
+    if ((stats.sessions || 0) > 0) dauSet.add(uid);
+  }
   const dau = dauSet.size;
+
+  const dauSessionUsers = [...dauSet]
+    .map((uid) => ({
+      uid,
+      sessions: todayAnalyticsUsers[uid]?.sessions || 0,
+    }))
+    .sort((a, b) => b.sessions - a.sessions);
 
   // WAU: 최근 7일 유니크
   const wauSet = new Set();
@@ -42,7 +54,15 @@ export function renderOverviewSection(container, data) {
   // 7일 전 DAU (비교용)
   const weekAgoDk = dateKeys30[7];
   const weekAgoWk = workoutMap[weekAgoDk] || {};
-  const dauWeekAgo = Object.values(weekAgoWk).filter(w => w.any).length;
+  const weekAgoAnalyticsUsers = analyticsMap[weekAgoDk]?.users || {};
+  const dauWeekAgoSet = new Set();
+  for (const [uid, w] of Object.entries(weekAgoWk)) {
+    if (w.any) dauWeekAgoSet.add(uid);
+  }
+  for (const [uid, stats] of Object.entries(weekAgoAnalyticsUsers)) {
+    if ((stats.sessions || 0) > 0) dauWeekAgoSet.add(uid);
+  }
+  const dauWeekAgo = dauWeekAgoSet.size;
 
   // 7일 전 WAU (비교용)
   const wauPrevSet = new Set();
@@ -133,7 +153,15 @@ export function renderOverviewSection(container, data) {
     <!-- KPI 카드 -->
     <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:16px;">
       ${[
-        { label: 'DAU / 전체', value: `${dau}<span style="font-size:13px;font-weight:400;color:var(--text-tertiary);">/${totalUsers}</span>`, delta: deltaText(dau, dauWeekAgo), color: '#fa342c' },
+        {
+          label: 'DAU / 전체',
+          value: `${dau}<span style="font-size:13px;font-weight:400;color:var(--text-tertiary);">/${totalUsers}</span>`,
+          delta: deltaText(dau, dauWeekAgo),
+          color: '#fa342c',
+          subHtml: dauSessionUsers.length
+            ? `<div style="display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:6px;">${dauSessionUsers.map(({ uid, sessions }) => `<span style="font-size:10px;color:var(--text-tertiary);">${_name(uid)} · ${sessions}회</span>`).join('')}</div>`
+            : '<div style="font-size:10px;color:var(--text-tertiary);margin-top:6px;">오늘 활동 유저 없음</div>',
+        },
         { label: 'WAU', value: wau, delta: deltaText(wau, wauPrev), color: 'var(--text)' },
         { label: '코어루프 완료율', value: `${coreLoopRate}<span style="font-size:12px;font-weight:400;color:var(--text-tertiary);">%</span>`, delta: '', color: coreLoopRate >= 50 ? '#22c55e' : '#f59e0b' },
         { label: '오늘 소셜', value: todaySocial, delta: '', color: 'var(--text)', sub: `리액션 ${todayLikes} · 방명록 ${todayGb}` },
@@ -144,6 +172,7 @@ export function renderOverviewSection(container, data) {
             <span style="font-size:22px;font-weight:800;color:${m.color};">${m.value}</span>
             ${m.delta || ''}
           </div>
+          ${m.subHtml || ''}
           ${m.sub ? `<div style="font-size:10px;color:var(--text-tertiary);margin-top:2px;">${m.sub}</div>` : ''}
         </div>
       `).join('')}

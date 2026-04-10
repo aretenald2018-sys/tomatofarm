@@ -4,6 +4,37 @@
 
 import { S }              from './state.js';
 import { saveWorkoutDay } from './save.js';
+import { dateKey, getLastActivitySession } from '../data.js';
+
+function _currentDateKey() {
+  if (!S.date) return null;
+  return dateKey(S.date.y, S.date.m, S.date.d);
+}
+
+function _fmtShortDate(dk) {
+  if (!dk) return '';
+  const [, mm, dd] = dk.split('-');
+  return `${Number(mm)}/${Number(dd)}`;
+}
+
+function _renderActivityCopyHint(type, applyCopy) {
+  const el = document.getElementById(`wt-${type}-last-copy`);
+  if (!el) return;
+
+  const last = getLastActivitySession(type, _currentDateKey());
+  if (!last) {
+    el.style.display = 'none';
+    el.innerHTML = '';
+    return;
+  }
+
+  el.style.display = '';
+  el.innerHTML = `
+    <span class="wt-activity-copy-text">직전(${_fmtShortDate(last.date)}) 기록 불러오기</span>
+    <button type="button" class="wt-activity-copy-btn">복사</button>
+  `;
+  el.querySelector('.wt-activity-copy-btn')?.addEventListener('click', () => applyCopy(last));
+}
 
 // ── 런닝 폼 ─────────────────────────────────────────────────────
 export function _renderRunningForm() {
@@ -16,6 +47,15 @@ export function _renderRunningForm() {
   if (durS) durS.value = S.runData.durationSec || '';
   if (memo) memo.value = S.runData.memo || '';
   _calcRunPace();
+  _renderActivityCopyHint('running', (last) => {
+    S.runData = {
+      distance: last.distance || 0,
+      durationMin: last.durationMin || 0,
+      durationSec: last.durationSec || 0,
+      memo: last.memo || '',
+    };
+    _renderRunningForm();
+  });
 }
 
 function _calcRunPace() {
@@ -66,6 +106,15 @@ export function _renderCfForm() {
   if (durM) durM.value = S.cfData.durationMin || '';
   if (durS) durS.value = S.cfData.durationSec || '';
   if (memo) memo.value = S.cfData.memo || '';
+  _renderActivityCopyHint('cf', (last) => {
+    S.cfData = {
+      wod: last.wod || '',
+      durationMin: last.durationMin || 0,
+      durationSec: last.durationSec || 0,
+      memo: last.memo || '',
+    };
+    _renderCfForm();
+  });
 }
 
 // ── 스트레칭 폼 ─────────────────────────────────────────────────
@@ -74,6 +123,13 @@ export function _renderStretchForm() {
   const memo = document.getElementById('wt-stretch-memo');
   if (dur)  dur.value  = S.stretchData.duration || '';
   if (memo) memo.value = S.stretchData.memo || '';
+  _renderActivityCopyHint('stretching', (last) => {
+    S.stretchData = {
+      duration: last.duration || 0,
+      memo: last.memo || '',
+    };
+    _renderStretchForm();
+  });
 }
 
 // ── 수영 폼 ─────────────────────────────────────────────────────
@@ -88,6 +144,16 @@ export function _renderSwimForm() {
   if (durS)   durS.value   = S.swimData.durationSec || '';
   if (stroke) stroke.value = S.swimData.stroke || '';
   if (memo)   memo.value   = S.swimData.memo || '';
+  _renderActivityCopyHint('swimming', (last) => {
+    S.swimData = {
+      distance: last.distance || 0,
+      durationMin: last.durationMin || 0,
+      durationSec: last.durationSec || 0,
+      stroke: last.stroke || '',
+      memo: last.memo || '',
+    };
+    _renderSwimForm();
+  });
 }
 
 // ── CF/스트레칭/수영 공통 이벤트 바인딩 ──────────────────────────

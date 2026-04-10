@@ -2,10 +2,10 @@
 // home/index.js — 홈 탭 오케스트레이터
 // ================================================================
 
-import { shouldShow, isAdmin } from '../data.js';
+import { shouldShow, isAdmin, getCheerLastSeen, getUnseenCheers } from '../data.js';
 
 // 서브 모듈 import
-import { showToast }                                         from './utils.js';
+import { showToast, showConfetti }                           from './utils.js';
 import { renderHero, renderLeaderboard, setHeroDeps }        from './hero.js';
 import { renderWeeklyStreak }                                from './weekly-streak.js';
 import { renderUnitGoal, setUnitGoalDeps }                   from './unit-goal.js';
@@ -16,6 +16,9 @@ import { renderTomatoCard, settleTomatoCycleIfNeeded,
 import { renderFriendFeed, setFriendFeedDeps }               from './friend-feed.js';
 import { setFriendProfileDeps }                              from './friend-profile.js';
 import { refreshNotifCenter, setNotificationsDeps }          from './notifications.js';
+import { clearCheerCard, renderCheerCard }                   from './cheer-card.js';
+
+let _lastCheerSignature = '';
 
 // ── 순환 참조 해결: 콜백 주입 ────────────────────────────────────
 setHeroDeps({ renderTomatoHero, renderHome });
@@ -52,6 +55,7 @@ export function renderHome() {
     if (dietGoalEl) dietGoalEl.style.display = 'none';
     renderFriendFeed();
     renderLeaderboard();
+    _renderCheerCardIfNeeded().catch(e => console.warn('[cheer-card]', e));
   } catch(e) {
     console.error('[renderHome] 렌더링 오류:', e);
   }
@@ -70,6 +74,22 @@ function _applyCardVisibility() {
     const el = document.getElementById(id);
     if (el) el.style.display = shouldShow('homeCards', key) ? '' : 'none';
   }
+}
+
+async function _renderCheerCardIfNeeded() {
+  const cheers = await getUnseenCheers(getCheerLastSeen());
+  if (!cheers.length) {
+    _lastCheerSignature = '';
+    clearCheerCard();
+    return;
+  }
+
+  const signature = cheers.map(c => c.id || `${c.from}_${c.createdAt}`).join('|');
+  if (_lastCheerSignature !== signature) {
+    showConfetti(3000);
+    _lastCheerSignature = signature;
+  }
+  renderCheerCard(cheers, () => { _lastCheerSignature = ''; });
 }
 
 // ── Export ────────────────────────────────────────────────────────
