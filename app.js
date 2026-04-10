@@ -35,7 +35,7 @@ async function _lazy(name, path) {
 
 // ── 레이지 프록시: 탭 전환 시 모듈 로드, window.* 자동 등록 ──
 async function _lazyRenderStats() { const m = await _lazy('stats', './render-stats.js'); m.renderStats(); return m; }
-async function _lazyRenderAdmin() { const m = await _lazy('admin', './render-admin.js'); m.renderAdmin(); return m; }
+async function _lazyRenderAdmin() { const m = await _lazy('admin', './render-admin.js?v=20260410e'); m.renderAdmin(); return m; }
 async function _lazyRenderCooking() { const m = await _lazy('cooking', './render-cooking.js'); m.renderCooking(); return m; }
 import { loadAndInjectModals } from './modal-manager.js';
 
@@ -97,26 +97,47 @@ window._closeModal = _closeModal;
 let _currentTab = 'home';
 window._getCurrentTab = () => _currentTab;
 
+function _syncNavigationForCurrentRole() {
+  const adminOnlyMode = isAdmin();
+  const tabNav = document.getElementById('tab-nav');
+  const topNav = document.querySelector('.top-nav');
+  const moreMenu = document.getElementById('more-menu');
+  const adminMenu = document.getElementById('admin-menu-items');
+  const moreBtn = tabNav?.querySelector('.tab-more-btn');
+
+  ['home', 'diet', 'workout', 'stats'].forEach((tabId) => {
+    const btn = tabNav?.querySelector(`.tab-btn[data-tab="${tabId}"]`);
+    if (btn) btn.style.display = adminOnlyMode ? 'none' : '';
+  });
+
+  if (moreBtn) {
+    moreBtn.style.display = '';
+    moreBtn.dataset.mode = adminOnlyMode ? 'admin-only' : 'default';
+    moreBtn.innerHTML = adminOnlyMode
+      ? '<span class="tab-icon">🍅</span><span>토마토어드민</span>'
+      : '<span class="tab-icon">⋯</span><span>더보기</span>';
+    moreBtn.onclick = adminOnlyMode ? (() => switchTab('admin')) : (() => toggleMoreMenu());
+    moreBtn.classList.toggle('active', _currentTab === 'admin' && adminOnlyMode);
+  }
+
+  if (adminMenu) adminMenu.style.display = isAdmin() ? '' : 'none';
+
+  if (tabNav) tabNav.style.display = '';
+  if (topNav) topNav.style.display = adminOnlyMode && _currentTab === 'admin' ? 'none' : '';
+  if (moreMenu && adminOnlyMode) moreMenu.style.display = 'none';
+}
+
 async function switchTab(tab) {
+  if (isAdmin() && tab !== 'admin') tab = 'admin';
   _currentTab = tab;
   trackEvent('nav', 'tab_visit', { tab });
-  document.querySelectorAll('.tab-btn[data-tab]').forEach(b =>
+  _syncNavigationForCurrentRole();
+  document.querySelectorAll('#tab-nav .tab-btn[data-tab]').forEach(b =>
     b.classList.toggle('active', b.dataset.tab === tab)
   );
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
   const panel = document.getElementById('tab-' + tab);
   if (panel) panel.classList.add('active');
-
-  // 어드민 모드: 하단 탭 바 + 상단 네비 완전 제거/복원
-  const tabNav = document.getElementById('tab-nav');
-  const topNav = document.querySelector('.top-nav');
-  if (tab === 'admin') {
-    if (tabNav) tabNav.style.display = 'none';
-    if (topNav) topNav.style.display = 'none';
-  } else {
-    if (tabNav) tabNav.style.display = '';
-    if (topNav) topNav.style.display = '';
-  }
 
   // 코어 탭 (즉시 로드)
   if (tab === 'home')     renderHome();
@@ -130,6 +151,11 @@ async function switchTab(tab) {
 }
 
 async function renderAll() {
+  if (_currentTab === 'admin') {
+    await _lazyRenderAdmin();
+    return;
+  }
+
   renderHome();
   if (_currentTab === 'stats')    await _lazyRenderStats();
   if (_currentTab === 'cooking')  await _lazyRenderCooking();
@@ -188,23 +214,22 @@ async function init() {
       return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
     });
     applyVisibleTabs(visTabs);
+    _syncNavigationForCurrentRole();
 
     initTabDrag();
     initSwipeNavigation();
-
-    // 어드민 전용 메뉴 표시
-    if (isAdmin()) {
-      const adminMenu = document.getElementById('admin-menu-items');
-      if (adminMenu) adminMenu.style.display = '';
-    }
     // 편지 버튼 표시 (모든 사용자)
     const letterBtn = document.getElementById('letter-btn');
     if (letterBtn) letterBtn.style.display = '';
 
-    renderHome();
+    if (isAdmin()) {
+      await switchTab('admin');
+    } else {
+      renderHome();
+    }
 
     // 첫 이용자 튜토리얼
-    showTutorialIfNeeded();
+    if (!isAdmin()) showTutorialIfNeeded();
 
     // 홈 렌더링 후 즉시 로딩 화면 숨기기 (나머지는 백그라운드)
     const loadEl2 = document.getElementById('loading');
@@ -212,10 +237,12 @@ async function init() {
 
     // 나머지 초기화는 비동기로 (체감 속도 개선)
     const bellBtn = document.getElementById('notif-bell');
-    if (bellBtn) bellBtn.style.display = '';
+    if (bellBtn) bellBtn.style.display = isAdmin() ? 'none' : '';
     requestAnimationFrame(() => {
-      refreshNotifCenter();
-      loadWorkoutDate(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
+      if (!isAdmin()) {
+        refreshNotifCenter();
+        loadWorkoutDate(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
+      }
     });
 
     // FCM 푸시 알림 초기화 (백그라운드)

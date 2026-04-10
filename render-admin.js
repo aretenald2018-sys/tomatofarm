@@ -6,7 +6,7 @@ import {
   isAdmin, getAnalytics, dateKey, TODAY,
 } from './data.js';
 import {
-  db, doc, getDoc, collection, getDocs,
+  db, collection, getDocs, query, where, documentId,
 } from './data/data-core.js';
 import { renderOverviewSection } from './admin/admin-overview.js';
 import { renderUsersSection } from './admin/admin-users.js';
@@ -54,18 +54,29 @@ export async function renderAdmin() {
     <div style="padding:16px 16px 100px;">
       <!-- 헤더 -->
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
-        <button onclick="window.switchTab('home')" style="width:36px;height:36px;border:none;border-radius:10px;background:var(--surface2,#F2F4F6);display:flex;align-items:center;justify-content:center;font-size:16px;cursor:pointer;flex-shrink:0;" title="홈으로 나가기">←</button>
         <div style="width:40px;height:40px;border-radius:12px;background:#fa342c;display:flex;align-items:center;justify-content:center;font-size:20px;color:#fff;font-weight:800;">🍅</div>
         <div style="flex:1;">
           <div style="font-size:17px;font-weight:700;color:var(--text);">토마토어드민</div>
           <div style="font-size:12px;color:var(--text-tertiary);">데이터 분석 대시보드</div>
         </div>
-        <div style="position:relative;flex-shrink:0;">
+        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+          <div style="position:relative;flex-shrink:0;">
           <button id="admin-export-btn" onclick="window._adminToggleExportMenu()" style="width:36px;height:36px;border:none;border-radius:10px;background:var(--surface2,#F2F4F6);display:flex;align-items:center;justify-content:center;font-size:16px;cursor:pointer;" title="데이터 내보내기">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           </button>
           <div id="admin-export-menu" style="display:none;position:absolute;right:0;top:42px;z-index:100;min-width:220px;background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:0 8px 24px rgba(0,0,0,0.12);padding:6px;"></div>
+          </div>
         </div>
+      </div>
+
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin:-4px 0 16px;padding:12px 14px;border:1px solid var(--border);border-radius:14px;background:var(--surface);">
+        <div>
+          <div style="font-size:13px;font-weight:700;color:var(--text);">현재 김태우 Admin 모드</div>
+          <div style="font-size:11px;color:var(--text-tertiary);margin-top:2px;">일반 화면으로 돌아가려면 게스트 모드로 전환하세요.</div>
+        </div>
+        <button onclick="window.switchKimMode && window.switchKimMode('Guest')" style="height:38px;padding:0 14px;border:1px solid var(--primary);border-radius:10px;background:var(--primary-bg);color:var(--primary);font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;" title="게스트 모드로 전환">
+          게스트로 돌아가기
+        </button>
       </div>
 
       <!-- 세그먼티드 컨트롤 -->
@@ -80,6 +91,15 @@ export async function renderAdmin() {
 
       <!-- 섹션 컨테이너 -->
       <div id="admin-section-container"></div>
+
+      <button
+        id="admin-exit-guest-btn"
+        onclick="window.switchKimMode && window.switchKimMode('Guest')"
+        style="position:fixed;right:16px;bottom:88px;z-index:1200;height:48px;padding:0 16px;border:none;border-radius:999px;background:#fa342c;color:#fff;font-size:13px;font-weight:800;box-shadow:0 10px 24px rgba(250,52,44,0.28);cursor:pointer;"
+        title="게스트 모드로 전환"
+      >
+        게스트로 돌아가기
+      </button>
     </div>`;
 
     // 현재 섹션 렌더
@@ -197,11 +217,30 @@ function _renderSection(sectionId) {
 function _dk(d) { return dateKey(d.getFullYear(), d.getMonth(), d.getDate()); }
 function _daysAgo(n) { const d = new Date(TODAY); d.setDate(d.getDate() - n); return d; }
 
-async function _getWorkout(userId, dk) {
-  try {
-    const snap = await getDoc(doc(db, 'users', userId, 'workouts', dk));
-    return snap.exists() ? snap.data() : null;
-  } catch { return null; }
+function _chunk(items, size) {
+  const chunks = [];
+  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
+  return chunks;
+}
+
+async function _getRecentWorkouts(userId, dateKeys) {
+  const workouts = [];
+  const batches = _chunk(dateKeys, 30);
+
+  for (const batch of batches) {
+    if (!batch.length) continue;
+    const snap = await getDocs(
+      query(
+        collection(db, 'users', userId, 'workouts'),
+        where(documentId(), 'in', batch),
+      ),
+    );
+    snap.forEach((docSnap) => {
+      workouts.push({ dk: docSnap.id, w: docSnap.data() });
+    });
+  }
+
+  return workouts;
 }
 
 function _hasActivity(w) {
@@ -246,34 +285,30 @@ async function _loadData() {
   const realAccs = accs.filter(a => a.id && !a.id.includes('(guest)'));
   const unreadLetters = letters.filter(l => !l.read).length;
 
-  // 2단계: 최근 30일 워크아웃 데이터 병렬 로드
-  // workoutMap[dateKey][userId] = { exercise: bool, diet: bool, any: bool, raw: workoutData }
-  const workoutMap = {};
+  // 2단계: 최근 30일 워크아웃 데이터 로드
+  // 사용자별로 필요한 날짜만 묶어서 읽어 초기 로딩 시간을 줄인다.
   const dateKeys30 = [];
   for (let i = 0; i < 30; i++) {
     const d = _daysAgo(i);
     dateKeys30.push(_dk(d));
   }
+  const workoutMap = Object.fromEntries(dateKeys30.map(dk => [dk, {}]));
 
-  // 유저 × 날짜 전부 병렬 로드
-  const workoutPromises = [];
-  for (const dk of dateKeys30) {
-    for (const acc of realAccs) {
-      workoutPromises.push(
-        _getWorkout(acc.id, dk).then(w => ({ dk, uid: acc.id, w }))
-      );
+  const workoutResults = await Promise.all(
+    realAccs.map(async (acc) => ({
+      uid: acc.id,
+      workouts: await _getRecentWorkouts(acc.id, dateKeys30),
+    })),
+  );
+
+  for (const { uid, workouts } of workoutResults) {
+    for (const { dk, w } of workouts) {
+      workoutMap[dk][uid] = {
+        exercise: _hasExercise(w),
+        diet: _hasDiet(w),
+        any: _hasActivity(w),
+      };
     }
-  }
-
-  const workoutResults = await Promise.all(workoutPromises);
-  for (const { dk, uid, w } of workoutResults) {
-    if (!workoutMap[dk]) workoutMap[dk] = {};
-    workoutMap[dk][uid] = {
-      exercise: _hasExercise(w),
-      diet: _hasDiet(w),
-      any: _hasActivity(w),
-      raw: w,
-    };
   }
 
   return {
