@@ -176,7 +176,12 @@
       "Bash(node -c modals/finance-budget-modal.js)",
       "Bash(cp render-finance.js app.js modal-manager.js style.css www/)",
       "Bash(cp modals/finance-budget-modal.js www/modals/)",
-      "Bash(export JAVA_HOME=\"C:/Program Files/Android/Android Studio/jbr\")"
+      "Bash(export JAVA_HOME=\"C:/Program Files/Android/Android Studio/jbr\")",
+      "Bash(node generate-icons.cjs)",
+      "Bash(taskkill //F //PID 44932)",
+      "Bash(taskkill //F //PID 48720)",
+      "Bash(taskkill //F //PID 45552)",
+      "Bash(taskkill //F //PID 49044)"
     ],
     "defaultMode": "bypassPermissions",
     "skipDangerousModePermissionPrompt": true

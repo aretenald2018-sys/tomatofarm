@@ -4,7 +4,7 @@
 
 import {
   getCurrentUserRef, setCurrentUserRef,
-  ADMIN_ID, ADMIN_GUEST_ID,
+  ADMIN_ID, ADMIN_GUEST_ID, getKimMode, setKimMode,
   _idbSet, _idbGet, _idbRemove,
 } from './data-core.js';
 
@@ -13,11 +13,11 @@ export function getAdminId() { return ADMIN_ID; }
 export function getAdminGuestId() { return ADMIN_GUEST_ID; }
 
 export function isAdmin() {
-  return getCurrentUserRef()?.id === ADMIN_ID;
+  return getCurrentUserRef()?.id === ADMIN_ID && getKimMode() === 'admin';
 }
 
 export function isAdminGuest() {
-  return getCurrentUserRef()?.id === ADMIN_GUEST_ID;
+  return getCurrentUserRef()?.id === ADMIN_ID && getKimMode() === 'guest';
 }
 
 export function isSameInstance(id1, id2) {
@@ -49,10 +49,11 @@ export function shouldShow(section, key) {
 }
 
 export function setCurrentUser(user) {
-  setCurrentUserRef(user);
-  if (user) {
-    localStorage.setItem('currentUser', JSON.stringify(user));
-    _idbSet('currentUser', user);
+  const normalizedUser = _normalizeKimUser(user);
+  setCurrentUserRef(normalizedUser);
+  if (normalizedUser) {
+    localStorage.setItem('currentUser', JSON.stringify(normalizedUser));
+    _idbSet('currentUser', normalizedUser);
   } else {
     localStorage.removeItem('currentUser');
     _idbRemove('currentUser');
@@ -64,7 +65,10 @@ export function setCurrentUser(user) {
 export function loadSavedUser() {
   try {
     const saved = localStorage.getItem('currentUser');
-    if (saved) { setCurrentUserRef(JSON.parse(saved)); return getCurrentUserRef(); }
+    if (saved) {
+      setCurrentUser(_normalizeKimUser(JSON.parse(saved)));
+      return getCurrentUserRef();
+    }
   } catch {}
   return null;
 }
@@ -79,14 +83,24 @@ export async function restoreUserFromBackup() {
   try {
     const backup = await _idbGet('currentUser');
     if (backup) {
-      setCurrentUserRef(backup);
-      localStorage.setItem('currentUser', JSON.stringify(backup));
+      const normalizedBackup = _normalizeKimUser(backup);
+      setCurrentUserRef(normalizedBackup);
+      localStorage.setItem('currentUser', JSON.stringify(normalizedBackup));
       const adminAuth = await _idbGet('admin_authenticated') || await _idbGet('kim_authenticated');
       if (adminAuth) localStorage.setItem('admin_authenticated', 'true');
       return getCurrentUserRef();
     }
   } catch {}
   return null;
+}
+
+function _normalizeKimUser(user) {
+  if (!user || user.id !== ADMIN_GUEST_ID) return user;
+  setKimMode('guest');
+  const normalizedFirstName = typeof user.firstName === 'string'
+    ? user.firstName.replace(/\(guest\)/i, '').replace(/\(Guest\)/g, '').trim()
+    : user.firstName;
+  return { ...user, id: ADMIN_ID, firstName: normalizedFirstName };
 }
 
 // ── 비밀번호 (단순 해시) ────────────────────────────────────────

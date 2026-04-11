@@ -6,7 +6,7 @@
   "main": "app.js",
   "scripts": {
     "start": "node tools/api-server.js",
-    "dev": "python -m http.server 5500",
+    "dev": "bash scripts/dev-start.sh",
     "build": "node scripts/copy-www.js",
     "cap:sync": "npm run build && npx cap sync android",
     "cap:open": "npx cap open android",

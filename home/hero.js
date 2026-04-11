@@ -1,13 +1,13 @@
-// ================================================================
+﻿// ================================================================
 // home/hero.js — 히어로 카드, 스트릭 대시보드, 리더보드
 // ================================================================
 
-import { TODAY, calcStreaks, getMuscles, getDiet, getCF,
+import { TODAY, calcStreaks, countLocalWeeklyActiveDays, getCF,
          getMilestoneShown, saveMilestoneShown,
          getStreakFreezes, getTomatoState, useStreakFreeze,
          getGlobalWeeklyRanking, getMyFriends, getAccountList, getCurrentUser,
-         getFriendWorkout, dateKey, isAdmin, _isMySocialId,
-         getGlobalGuildWeeklyRanking, getHeroMessage }  from '../data.js';
+         getFriendWorkout, dateKey, isAdmin, _isMySocialId, isActiveWorkoutDayData,
+         computeGuildStats, getHeroMessage }  from '../data.js';
 import { setText, showToast, haptic, resolveNickname } from './utils.js';
 
 function _currentDateKey() {
@@ -224,16 +224,7 @@ export async function renderLeaderboard() {
     if (globalData && globalData.rankings && globalData.rankings.length) {
       // ── 글로벌 랭킹 모드 (내 활동일은 로컬 실시간 계산) ──
       // 내 이번 주 활동일 로컬 계산
-      const now = new Date(TODAY);
-      const dow = now.getDay() || 7;
-      const mon = new Date(now); mon.setDate(now.getDate() - dow + 1);
-      let myLocalDays = 0;
-      for (let i = 0; i < 7; i++) {
-        const d = new Date(mon); d.setDate(mon.getDate() + i);
-        const muscles = getMuscles(d.getFullYear(), d.getMonth(), d.getDate());
-        const diet = getDiet(d.getFullYear(), d.getMonth(), d.getDate());
-        if ((muscles || []).length > 0 || diet.bKcal || diet.lKcal || diet.dKcal) myLocalDays++;
-      }
+      const myLocalDays = countLocalWeeklyActiveDays(TODAY);
 
       const mergedBoard = new Map();
       globalData.rankings.forEach((r) => {
@@ -290,22 +281,14 @@ export async function renderLeaderboard() {
       const results = await Promise.allSettled(
         participants.map(async p => {
           if (p.isMe) {
-            let days = 0;
-            for (const wk of weekKeys) {
-              const [y, m, d] = wk.split('-').map(Number);
-              const muscles = getMuscles(y, m - 1, d);
-              const diet = getDiet(y, m - 1, d);
-              const hasDiet = diet.bKcal || diet.lKcal || diet.dKcal;
-              if ((muscles || []).length > 0 || hasDiet) days++;
-            }
+            const days = countLocalWeeklyActiveDays(TODAY);
             return { ...p, days };
           } else {
             let days = 0;
             const dayResults = await Promise.allSettled(weekKeys.map(k => getFriendWorkout(p.id, k)));
             for (const r of dayResults) {
               if (r.status !== 'fulfilled' || !r.value) continue;
-              const w = r.value;
-              if ((w.muscles||[]).length || w.exercises?.length || w.breakfast || w.lunch || w.dinner || w.bFoods?.length || w.lFoods?.length || w.dFoods?.length) days++;
+              if (isActiveWorkoutDayData(r.value)) days++;
             }
             return { ...p, days };
           }
@@ -395,115 +378,22 @@ export async function renderLeaderboard() {
 // ── 길드 리더보드 ────────────────────────────────────────────────
 async function _renderGuildLeaderboard(contentEl, user) {
   try {
-    const [guildData, accounts, individualRanking] = await Promise.all([
-      getGlobalGuildWeeklyRanking(),
-      getAccountList(),
-      getGlobalWeeklyRanking(),
-    ]);
     const myGuilds = new Set(user.guilds || []);
-    const normalizeGuildKey = (value) => String(value || '').trim();
-    const rankMap = {};
-    (individualRanking?.rankings || []).forEach((item) => {
-      rankMap[item.userId] = item.activeDays || 0;
-    });
-    const liveGuildMembers = {};
-    for (const acc of accounts) {
-      for (const guildName of (acc.guilds || [])) {
-        const key = normalizeGuildKey(guildName);
-        if (!key) continue;
-        if (!liveGuildMembers[key]) liveGuildMembers[key] = [];
-        liveGuildMembers[key].push({
-          userId: acc.id,
-          name: acc.nickname || acc.firstName || acc.id,
-          activeDays: rankMap[acc.id] || 0,
-        });
-      }
-    }
+    const myLocalDays = countLocalWeeklyActiveDays(TODAY);
+    const { guilds: rankings, updatedAt } = await computeGuildStats({ myLocalDays });
 
-    // 길드 아이콘 로드
-    let guildIconMap = {};
-    try {
-      const { getAllGuilds } = await import('../data.js');
-      const allGuilds = await getAllGuilds();
-      allGuilds.forEach(g => { if (g.icon) guildIconMap[g.name] = g.icon; });
-    } catch {};
-
-    let rankings;
-
-    if (guildData && guildData.rankings && guildData.rankings.length) {
-      const rankingMap = new Map();
-      guildData.rankings.forEach((item) => {
-        rankingMap.set(normalizeGuildKey(item.guildId || item.guildName), item);
-      });
-      const guildIds = new Set([
-        ...Object.keys(liveGuildMembers),
-        ...guildData.rankings.map((item) => normalizeGuildKey(item.guildId || item.guildName)),
-      ]);
-      rankings = [...guildIds].map((guildKey) => {
-        const ranked = rankingMap.get(guildKey);
-        const liveMembers = liveGuildMembers[guildKey] || [];
-        const members = liveMembers.length ? liveMembers : (ranked?.members || []);
-        const memberCount = liveMembers.length || ranked?.memberCount || 0;
-        const totalActiveDays = members.reduce((sum, member) => sum + (member.activeDays || 0), 0);
-        const avgActiveDays = memberCount
-          ? +(totalActiveDays / memberCount).toFixed(1)
-          : (ranked?.avgActiveDays || 0);
-        return {
-          guildId: ranked?.guildId || guildKey,
-          guildName: ranked?.guildName || guildKey,
-          memberCount,
-          totalActiveDays,
-          avgActiveDays,
-          members,
-        };
-      }).filter((item) => item.memberCount > 0)
-        .sort((a, b) => b.avgActiveDays - a.avgActiveDays);
-    } else if (myGuilds.size === 0) {
+    if (!rankings.length && myGuilds.size === 0) {
       contentEl.innerHTML = `<div class="lb-context" style="text-align:center;padding:20px 0;">
         길드에 가입하면 길드 랭킹에 참여할 수 있어요
         <div style="margin-top:8px;"><button class="tds-btn fill md" onclick="openGuildModal()" style="font-size:12px;">길드 가입하기</button></div>
       </div>`;
       return;
-    } else {
-      // ── 로컬 폴백: 계정 데이터에서 길드 랭킹 계산 ──
-      const now = new Date(TODAY);
-      const dow = now.getDay() || 7;
-      const mon = new Date(now); mon.setDate(now.getDate() - dow + 1);
-
-      // 전체 길드 → 멤버 매핑
-      const guildMembers = {};
-      for (const acc of accounts) {
-        for (const gName of (acc.guilds || [])) {
-          if (!guildMembers[gName]) guildMembers[gName] = [];
-          let days = rankMap[acc.id] || 0;
-          if (acc.id === user.id) {
-            days = 0;
-            for (let i = 0; i < 7; i++) {
-              const d = new Date(mon); d.setDate(mon.getDate() + i);
-              const muscles = getMuscles(d.getFullYear(), d.getMonth(), d.getDate());
-              const diet = getDiet(d.getFullYear(), d.getMonth(), d.getDate());
-              if ((muscles || []).length > 0 || diet.bKcal || diet.lKcal || diet.dKcal) days++;
-            }
-          }
-          guildMembers[gName].push({ userId: acc.id, name: acc.nickname || acc.firstName || acc.id, activeDays: days });
-        }
-      }
-      rankings = Object.entries(guildMembers).map(([gName, members]) => ({
-        guildId: gName,
-        guildName: gName,
-        memberCount: members.length,
-        totalActiveDays: members.reduce((s, m) => s + m.activeDays, 0),
-        avgActiveDays: +(members.reduce((s, m) => s + m.activeDays, 0) / members.length).toFixed(1),
-        members,
-      })).sort((a, b) => b.avgActiveDays - a.avgActiveDays);
-
-      if (!rankings.length) {
-        contentEl.innerHTML = '<div class="lb-context" style="text-align:center;padding:16px 0;">아직 길드 데이터가 없어요</div>';
-        return;
-      }
+    }
+    if (!rankings.length) {
+      contentEl.innerHTML = '<div class="lb-context" style="text-align:center;padding:16px 0;">아직 길드 데이터가 없어요</div>';
+      return;
     }
     const rankIcons = ['🥇', '🥈', '🥉'];
-    const maxAvg = Math.max(...rankings.map(r => r.avgActiveDays), 1);
 
     let html = `<div class="lb-context">🏠 ${rankings.length}개 길드가 경쟁 중</div>`;
 
@@ -517,7 +407,7 @@ async function _renderGuildLeaderboard(contentEl, user) {
       const nameLen = g.guildName.length;
       const nameFontSize = nameLen > 4 ? '11px' : '13px';
 
-      const guildIcon = guildIconMap[g.guildName] || '🏠';
+      const guildIcon = g.guildIcon || '🏠';
       const avatarHtml = String(guildIcon).startsWith('data:')
         ? `<div class="lb-avatar lb-avatar-photo"><img src="${guildIcon}" alt="${String(g.guildName || '').replace(/"/g, '&quot;')}"></div>`
         : `<div class="lb-avatar active" style="font-size:14px;overflow:hidden;">${guildIcon}</div>`;
@@ -527,13 +417,13 @@ async function _renderGuildLeaderboard(contentEl, user) {
         ${avatarHtml}
         <span class="lb-name lb-name-guild" style="font-size:${nameFontSize};">${g.guildName}</span>
         <div class="lb-bar-track"><div class="lb-bar-fill" style="width:${pct}%"></div></div>
-        <span class="lb-days"><span class="lb-guild-info">${g.memberCount}명</span> ${g.avgActiveDays}일</span>
+        <span class="lb-days"><span class="lb-guild-info">${g.memberCount}명</span> ${Number(g.avgActiveDays || 0).toFixed(1)}일</span>
       </div>`;
     }
 
     // 업데이트 시각
-    if (guildData?.updatedAt) {
-      const diffMin = Math.floor((Date.now() - guildData.updatedAt) / 60000);
+    if (updatedAt) {
+      const diffMin = Math.floor((Date.now() - updatedAt) / 60000);
       const freshness = diffMin < 1 ? '방금 업데이트' : diffMin < 60 ? `${diffMin}분 전 업데이트` : `${Math.floor(diffMin / 60)}시간 전 업데이트`;
       html += `<div class="lb-freshness">${freshness}</div>`;
     }
@@ -551,3 +441,4 @@ async function _renderGuildLeaderboard(contentEl, user) {
     contentEl.innerHTML = '<div class="lb-context">길드 랭킹을 불러올 수 없어요</div>';
   }
 }
+

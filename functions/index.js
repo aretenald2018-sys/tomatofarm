@@ -117,10 +117,64 @@ function _isActiveDay(workoutData) {
   if ((w.exercises || []).length > 0) return true;
   if (w.cf || w.swimming || w.running || w.stretching) return true;
   if ((w.muscles || []).length > 0) return true;
+  if ((w.workoutDuration || 0) > 0) return true;
+  if ((w.runDistance || 0) > 0) return true;
+  if ((w.runDurationMin || 0) > 0) return true;
+  if ((w.runDurationSec || 0) > 0) return true;
+  if ((w.cfDurationMin || 0) > 0) return true;
+  if ((w.cfDurationSec || 0) > 0) return true;
+  if ((w.cfWod || "").toString().trim()) return true;
+  if ((w.stretchDuration || 0) > 0) return true;
+  if ((w.swimDistance || 0) > 0) return true;
+  if ((w.swimDurationMin || 0) > 0) return true;
+  if ((w.swimDurationSec || 0) > 0) return true;
+  if ((w.swimStroke || "").toString().trim()) return true;
   if (w.bKcal || w.lKcal || w.dKcal) return true;
+  if (w.sKcal) return true;
   if ((w.bFoods || []).length || (w.lFoods || []).length || (w.dFoods || []).length) return true;
+  if ((w.sFoods || []).length) return true;
   if (w.breakfast || w.lunch || w.dinner) return true;
+  if (w.snack) return true;
+  if (w.bPhoto || w.lPhoto || w.dPhoto || w.sPhoto || w.workoutPhoto) return true;
+  if (w.workoutPhoto) return true;
   return false;
+}
+
+function _candidateWorkoutOwnerIds(account) {
+  const ids = [
+    account?.ownerId,
+    account?.dataOwnerId,
+    account?.socialId,
+    account?.dataId,
+    account?.id,
+    String(account?.id || "").replace(/\(guest\)$/, "").trim(),
+    String(account?.id || "").replace(/\(guest\)$/, "").trim()
+      ? `${String(account?.id || "").replace(/\(guest\)$/, "").trim()}(guest)`
+      : "",
+    String(account?.id || "").replace(/\s+/g, "").trim(),
+    String(account?.id || "").replace(/\s+/g, "").trim()
+      ? `${String(account?.id || "").replace(/\s+/g, "").trim()}(guest)`
+      : "",
+    `${account?.lastName || ""}_${account?.firstName || ""}`.toLowerCase().replace(/\s/g, ""),
+  ];
+  return [...new Set(ids.filter(Boolean))];
+}
+
+async function _resolveActiveDaysForAccount(db, account, weekKeys) {
+  const ownerIds = _candidateWorkoutOwnerIds(account);
+  for (const ownerId of ownerIds) {
+    const dayResults = await Promise.allSettled(
+      weekKeys.map((dk) => db.doc(`users/${ownerId}/workouts/${dk}`).get())
+    );
+    let activeDays = 0;
+    for (const r of dayResults) {
+      if (r.status === "fulfilled" && r.value.exists) {
+        if (_isActiveDay(r.value.data())) activeDays++;
+      }
+    }
+    if (activeDays > 0) return activeDays;
+  }
+  return 0;
 }
 
 function _normalizeGuildId(value) {
@@ -136,6 +190,7 @@ async function _computeRanking() {
   accountsSnap.forEach((d) => {
     accounts.push({ id: d.id, ...d.data() });
   });
+  const uniqueAccounts = accounts.filter((account) => !/\(guest\)$/.test(account.id));
 
   // 2. 이번 주 월~일 dateKey 계산 (KST = UTC+9)
   const nowKST = new Date(Date.now() + 9 * 60 * 60 * 1000);
@@ -158,24 +213,11 @@ async function _computeRanking() {
   const batchSize = 10;
   const rankings = [];
 
-  for (let b = 0; b < accounts.length; b += batchSize) {
-    const batch = accounts.slice(b, b + batchSize);
+  for (let b = 0; b < uniqueAccounts.length; b += batchSize) {
+    const batch = uniqueAccounts.slice(b, b + batchSize);
     const batchResults = await Promise.all(
       batch.map(async (account) => {
-        const workoutOwnerId = /\(guest\)$/.test(account.id)
-          ? account.id.replace(/\(guest\)$/, "").trim()
-          : account.id;
-        const dayResults = await Promise.allSettled(
-          weekKeys.map((dk) =>
-            db.doc(`users/${workoutOwnerId}/workouts/${dk}`).get()
-          )
-        );
-        let activeDays = 0;
-        for (const r of dayResults) {
-          if (r.status === "fulfilled" && r.value.exists) {
-            if (_isActiveDay(r.value.data())) activeDays++;
-          }
-        }
+        const activeDays = await _resolveActiveDaysForAccount(db, account, weekKeys);
         const name =
           account.nickname || account.firstName || account.id;
         return { userId: account.id, name, activeDays };
@@ -205,20 +247,24 @@ async function _computeRanking() {
       guildMap[normalizedId] = { ...d.data(), members: [] };
     });
 
-    // accounts는 이미 조회됨 (line 126-130). guilds 필드 활용.
+    // accounts 전체(guest 포함)로 길드 멤버 매핑 — 중복 방지
+    const addedGuildMembers = new Set();
     for (const account of accounts) {
-      const userGuilds = (account.guilds || []).map(_normalizeGuildId).filter(Boolean); // pendingGuilds 제외
-      const userRank = rankings.find((r) => r.userId === account.id);
+      const canonicalId = String(account.id || "").replace(/\(guest\)$/, "").trim();
+      const userGuilds = (account.guilds || []).map(_normalizeGuildId).filter(Boolean);
+      const userRank = rankings.find((r) => r.userId === canonicalId || r.userId === account.id);
       const activeDays = userRank ? userRank.activeDays : 0;
       for (const guildId of userGuilds) {
-        if (guildMap[guildId]) {
+        const memberKey = `${canonicalId}::${guildId}`;
+        if (guildMap[guildId] && !addedGuildMembers.has(memberKey)) {
+          addedGuildMembers.add(memberKey);
           guildMap[guildId].members.push({
             userId: account.id,
             name:
               userRank?.name || account.nickname || account.firstName || account.id,
             activeDays,
           });
-        } else if (guildId) {
+        } else if (guildId && !guildMap[guildId]) {
           console.log(`[GuildRanking] unmatched guild mapping account=${account.id} guild="${guildId}"`);
         }
       }

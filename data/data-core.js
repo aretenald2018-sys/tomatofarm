@@ -78,6 +78,13 @@ export function setCurrentUserRef(u) { _currentUser = u; }
 export const ADMIN_ID       = '김_태우';
 export const ADMIN_GUEST_ID = '김_태우(guest)';
 
+let _kimMode = localStorage.getItem('kimMode') || 'admin';
+export function getKimMode() { return _kimMode; }
+export function setKimMode(mode) {
+  _kimMode = mode === 'guest' ? 'guest' : 'admin';
+  localStorage.setItem('kimMode', _kimMode);
+}
+
 export function getDataOwnerId() {
   if (!_currentUser) return null;
   if (_currentUser.id === ADMIN_GUEST_ID) return ADMIN_ID;

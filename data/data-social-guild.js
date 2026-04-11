@@ -4,8 +4,11 @@
 
 import {
   db, doc, setDoc, deleteDoc, getDoc, collection, getDocs,
+  ADMIN_ID, ADMIN_GUEST_ID,
 } from './data-core.js';
-import { _socialId, _isMySocialId } from './data-social-friends.js';
+import { _socialId, _isMySocialId, getFriendWorkout } from './data-social-friends.js';
+import { getAccountList } from './data-account.js';
+import { getGlobalWeeklyRanking } from './data-social-friends.js';
 
 export async function getAllGuilds() {
   try {
@@ -14,6 +17,236 @@ export async function getAllGuilds() {
     snap.forEach(d => guilds.push(d.data()));
     return guilds;
   } catch { return []; }
+}
+
+function _normalizeGuildKey(value) {
+  return String(value || '').trim();
+}
+
+function _getAccountDisplayName(account) {
+  if (!account) return '';
+  return account.nickname || `${account.lastName || ''}${account.firstName || ''}` || account.id || '';
+}
+
+function _sortMembers(members) {
+  return [...members].sort((a, b) => {
+    const diff = (b.activeDays || 0) - (a.activeDays || 0);
+    if (diff !== 0) return diff;
+    return String(a.name || '').localeCompare(String(b.name || ''));
+  });
+}
+
+function _buildWeekKeys(baseDate = new Date()) {
+  const now = new Date(baseDate);
+  const dayOfWeek = now.getDay() || 7;
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - dayOfWeek + 1);
+
+  const weekKeys = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    weekKeys.push(
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    );
+  }
+  return weekKeys;
+}
+
+function _isActiveDay(workoutData) {
+  if (!workoutData) return false;
+  const w = workoutData;
+  if ((w.exercises || []).length > 0) return true;
+  if (w.cf || w.swimming || w.running || w.stretching) return true;
+  if ((w.muscles || []).length > 0) return true;
+  if ((w.workoutDuration || 0) > 0) return true;
+  if ((w.runDistance || 0) > 0) return true;
+  if ((w.runDurationMin || 0) > 0) return true;
+  if ((w.runDurationSec || 0) > 0) return true;
+  if ((w.cfDurationMin || 0) > 0) return true;
+  if ((w.cfDurationSec || 0) > 0) return true;
+  if ((w.cfWod || '').toString().trim()) return true;
+  if ((w.stretchDuration || 0) > 0) return true;
+  if ((w.swimDistance || 0) > 0) return true;
+  if ((w.swimDurationMin || 0) > 0) return true;
+  if ((w.swimDurationSec || 0) > 0) return true;
+  if ((w.swimStroke || '').toString().trim()) return true;
+  if (w.bKcal || w.lKcal || w.dKcal) return true;
+  if (w.sKcal) return true;
+  if ((w.bFoods || []).length || (w.lFoods || []).length || (w.dFoods || []).length) return true;
+  if ((w.sFoods || []).length) return true;
+  if (w.breakfast || w.lunch || w.dinner) return true;
+  if (w.snack) return true;
+  if (w.bPhoto || w.lPhoto || w.dPhoto || w.sPhoto || w.workoutPhoto) return true;
+  if (w.workoutPhoto) return true;
+  return false;
+}
+
+function _candidateWorkoutOwnerIds(accountId) {
+  const raw = String(accountId || '').trim();
+  const stripped = raw.replace(/\(guest\)$/, '').trim();
+  const compact = stripped.replace(/\s+/g, '').trim();
+  const ids = [raw];
+  if (stripped) ids.push(stripped);
+  if (compact) ids.push(compact);
+  if (stripped) ids.push(`${stripped}(guest)`);
+  if (compact) ids.push(`${compact}(guest)`);
+  if (raw === ADMIN_ID) ids.push(ADMIN_GUEST_ID);
+  if (raw === ADMIN_GUEST_ID) ids.push(ADMIN_ID);
+  return [...new Set(ids.filter(Boolean))];
+}
+
+async function _resolveActiveDaysFromWorkouts(accountId, weekKeys) {
+  const ownerIds = _candidateWorkoutOwnerIds(accountId);
+  let best = 0;
+
+  for (const ownerId of ownerIds) {
+    const results = await Promise.allSettled(weekKeys.map((dk) => getFriendWorkout(ownerId, dk)));
+    let activeDays = 0;
+    for (const result of results) {
+      if (result.status === 'fulfilled' && _isActiveDay(result.value)) {
+        activeDays++;
+      }
+    }
+    best = Math.max(best, activeDays);
+  }
+
+  return best;
+}
+
+export async function computeGuildStats({ myLocalDays = 0, filterGuild } = {}) {
+  try {
+    const [guildDocs, accounts, guildRanking, individualRanking] = await Promise.all([
+      getAllGuilds().catch(() => []),
+      getAccountList().catch(() => []),
+      getGlobalGuildWeeklyRanking().catch(() => null),
+      getGlobalWeeklyRanking().catch(() => null),
+    ]);
+
+    const uniqueAccounts = accounts.filter((acc) => !/\(guest\)$/.test(acc.id || ''));
+    const rankMap = new Map();
+    for (const item of individualRanking?.rankings || []) {
+      rankMap.set(item.userId, item.activeDays || 0);
+    }
+    const weekKeys = _buildWeekKeys();
+
+    const aliasMap = new Map();
+    const registerAlias = (value, canonicalKey) => {
+      const alias = _normalizeGuildKey(value);
+      if (!alias || !canonicalKey) return;
+      if (!aliasMap.has(alias)) aliasMap.set(alias, canonicalKey);
+    };
+    const resolveGuildKey = (value) => aliasMap.get(_normalizeGuildKey(value)) || _normalizeGuildKey(value);
+
+    const guildMetaMap = new Map();
+    for (const guild of guildDocs || []) {
+      const key = _normalizeGuildKey(guild?.id || guild?.name);
+      if (!key) continue;
+      guildMetaMap.set(key, guild);
+      registerAlias(guild?.id, key);
+      registerAlias(guild?.name, key);
+    }
+
+    const rankingMap = new Map();
+    for (const item of guildRanking?.rankings || []) {
+      const key = resolveGuildKey(item?.guildId || item?.guildName);
+      if (!key) continue;
+      rankingMap.set(key, item);
+      registerAlias(item?.guildId, key);
+      registerAlias(item?.guildName, key);
+    }
+
+    const liveMembersMap = new Map();
+    const addedGuildMembers = new Set();
+    for (const acc of accounts) {
+      const canonicalId = String(acc.id || '').replace(/\(guest\)$/, '').trim();
+      const rankDays = rankMap.get(canonicalId) ?? rankMap.get(acc.id);
+      const activeDays = _isMySocialId(acc.id) || _isMySocialId(canonicalId)
+        ? myLocalDays
+        : (typeof rankDays === 'number' && rankDays > 0
+          ? rankDays
+          : await _resolveActiveDaysFromWorkouts(acc.id, weekKeys));
+      const memberName = _getAccountDisplayName(acc);
+      for (const guildName of (acc.guilds || [])) {
+        const key = resolveGuildKey(guildName);
+        if (!key) continue;
+        const memberKey = `${canonicalId}::${key}`;
+        if (addedGuildMembers.has(memberKey)) continue;
+        addedGuildMembers.add(memberKey);
+        if (!liveMembersMap.has(key)) liveMembersMap.set(key, []);
+        liveMembersMap.get(key).push({
+          userId: acc.id,
+          name: memberName || acc.id,
+          activeDays,
+        });
+      }
+    }
+
+    const guildKeys = new Set([
+      ...guildMetaMap.keys(),
+      ...liveMembersMap.keys(),
+      ...rankingMap.keys(),
+    ]);
+
+    const guilds = [...guildKeys].map((guildKey) => {
+      const guild = guildMetaMap.get(guildKey) || {};
+      const ranked = rankingMap.get(guildKey) || {};
+      const liveMembers = liveMembersMap.get(guildKey) || [];
+      const rankedMembers = Array.isArray(ranked.members) ? ranked.members : [];
+      const members = liveMembers.length
+        ? liveMembers
+        : rankedMembers.map((member) => ({
+          userId: member.userId || member.id || '',
+          name: member.name || member.nickname || member.userId || member.id || '',
+          activeDays: member.activeDays || 0,
+        }));
+
+      if (!members.length) return null;
+
+      const normalizedMembers = _sortMembers(members);
+      const memberCount = normalizedMembers.length;
+      const totalActiveDays = normalizedMembers.reduce((sum, member) => sum + (member.activeDays || 0), 0);
+      const avgActiveDays = memberCount ? +(totalActiveDays / memberCount).toFixed(1) : 0;
+      const weekStreak = normalizedMembers.reduce((min, member) => Math.min(min, member.activeDays || 0), 7);
+
+      return {
+        _key: guildKey,
+        guildId: guild.id || ranked.guildId || guild.name || ranked.guildName || guildKey,
+        guildName: guild.name || ranked.guildName || guild.id || ranked.guildId || guildKey,
+        guildIcon: guild.icon || ranked.icon || '🏠',
+        description: guild.description || ranked.description || '',
+        leaderId: guild.leader || guild.createdBy || ranked.leaderId || null,
+        memberCount,
+        totalActiveDays,
+        avgActiveDays,
+        weekStreak,
+        members: normalizedMembers,
+      };
+    }).filter(Boolean);
+
+    guilds.sort((a, b) => {
+      const diff = (b.avgActiveDays || 0) - (a.avgActiveDays || 0);
+      if (diff !== 0) return diff;
+      return String(a.guildName || '').localeCompare(String(b.guildName || ''));
+    });
+
+    guilds.forEach((guild, index) => {
+      guild.rank = index + 1;
+    });
+
+    const filterKey = filterGuild ? resolveGuildKey(filterGuild) : '';
+    const filtered = filterKey
+      ? guilds.filter((guild) => guild._key === filterKey)
+      : guilds;
+
+    return {
+      guilds: filtered.map(({ _key, ...guild }) => guild),
+      updatedAt: guildRanking?.updatedAt || individualRanking?.updatedAt || null,
+    };
+  } catch (e) {
+    console.warn('[guild] computeGuildStats:', e);
+    return { guilds: [], updatedAt: null };
+  }
 }
 
 export async function createGuild(name, createdBy) {

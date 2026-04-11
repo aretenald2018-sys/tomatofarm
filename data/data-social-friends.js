@@ -4,9 +4,9 @@
 
 import {
   db, doc, setDoc, deleteDoc, getDoc, collection, getDocs,
-  getCurrentUserRef, ADMIN_ID, ADMIN_GUEST_ID,
+  getCurrentUserRef, ADMIN_ID,
 } from './data-core.js';
-import { isAdmin, isAdminGuest } from './data-auth.js';
+import { isAdminGuest } from './data-auth.js';
 
 export function _socialId() {
   if (!getCurrentUserRef()) return null;
@@ -18,7 +18,6 @@ export function _isMySocialId(id) {
   if (!getCurrentUserRef()) return false;
   if (id === getCurrentUserRef().id) return true;
   if (isAdminGuest() && id === ADMIN_ID) return true;
-  if (isAdmin() && id === ADMIN_GUEST_ID) return true;
   return false;
 }
 

@@ -60,7 +60,7 @@ export {
   verifyPassword, hashPassword,
 } from './data/data-auth.js';
 // core
-export { getDataOwnerId } from './data/data-core.js';
+export { getDataOwnerId, getKimMode, setKimMode } from './data/data-core.js';
 // account
 export {
   getAccountList, saveAccount, refreshCurrentUserFromDB,
@@ -91,6 +91,8 @@ export {
   recordLogin, recordTutorialDone, markPatchnoteRead, recordAction,
   trackEvent, flushAnalytics, getAnalytics, getAllAnalytics,
 } from './data/data-social.js';
+
+export { computeGuildStats } from './data/data-social-guild.js';
 
 // ═══════════════════════════════════════════════════════════════
 // loadAll — 앱 시작 시 전체 데이터 로드
@@ -147,7 +149,10 @@ export async function loadAll() {
       getDocs(_col('settings')),
     ]);
 
-    snap.forEach(d => { _cache[d.id] = d.data(); });
+      snap.forEach(d => { _cache[d.id] = d.data(); });
+      if (getCurrentUserRef()) {
+        await _mergeWorkoutTwinCache(getDataOwnerId());
+      }
 
     const custom = [];
     exSnap.forEach(d => custom.push(d.data()));
@@ -447,6 +452,65 @@ export const getCache     = ()      => _cache;
 export const getAllDateKeys = () => Object.keys(_cache).filter(k => /^\d{4}-\d{2}-\d{2}$/.test(k));
 export const getDay       = (y,m,d) => _cache[dateKey(y,m,d)] || {};
 export const getExercises = (y,m,d) => getDay(y,m,d).exercises || [];
+export function isActiveWorkoutDayData(workoutData) {
+  if (!workoutData) return false;
+  const w = workoutData;
+  if ((w.exercises || []).length > 0) return true;
+  if (w.cf || w.swimming || w.running || w.stretching) return true;
+  if ((w.muscles || []).length > 0) return true;
+  if ((w.workoutDuration || 0) > 0) return true;
+  if ((w.runDistance || 0) > 0) return true;
+  if ((w.runDurationMin || 0) > 0) return true;
+  if ((w.runDurationSec || 0) > 0) return true;
+  if ((w.cfDurationMin || 0) > 0) return true;
+  if ((w.cfDurationSec || 0) > 0) return true;
+  if ((w.cfWod || '').toString().trim()) return true;
+  if ((w.stretchDuration || 0) > 0) return true;
+  if ((w.swimDistance || 0) > 0) return true;
+  if ((w.swimDurationMin || 0) > 0) return true;
+  if ((w.swimDurationSec || 0) > 0) return true;
+  if ((w.swimStroke || '').toString().trim()) return true;
+  if (w.bKcal || w.lKcal || w.dKcal) return true;
+  if (w.sKcal) return true;
+  if ((w.bFoods || []).length || (w.lFoods || []).length || (w.dFoods || []).length) return true;
+  if ((w.sFoods || []).length) return true;
+  if (w.breakfast || w.lunch || w.dinner) return true;
+  if (w.snack) return true;
+  if (w.bPhoto || w.lPhoto || w.dPhoto || w.sPhoto || w.workoutPhoto) return true;
+  if (w.workoutPhoto) return true;
+  return false;
+}
+export const isActiveLocalDay = (y,m,d) => isActiveWorkoutDayData(getDay(y,m,d));
+
+function _getWorkoutTwinOwnerId(ownerId) {
+  const id = String(ownerId || '').trim();
+  if (!id) return '';
+  if (/\(guest\)$/i.test(id)) return id.replace(/\(guest\)$/i, '').trim();
+  return `${id}(guest)`;
+}
+
+async function _mergeWorkoutTwinCache(ownerId) {
+  const twinOwnerId = _getWorkoutTwinOwnerId(ownerId);
+  if (!ownerId || !twinOwnerId || twinOwnerId === ownerId) return;
+
+  try {
+    const twinSnap = await getDocs(collection(db, 'users', twinOwnerId, 'workouts'));
+    twinSnap.forEach((d) => {
+      const incoming = d.data();
+      const existing = _cache[d.id];
+      if (!existing) {
+        _cache[d.id] = incoming;
+        return;
+      }
+      if (!isActiveWorkoutDayData(existing) && isActiveWorkoutDayData(incoming)) {
+        _cache[d.id] = { ...existing, ...incoming };
+      }
+    });
+  } catch (e) {
+    console.warn('[data] workout twin merge failed:', e.message);
+  }
+}
+
 export const getMuscles   = (y,m,d) => {
   const day = getDay(y,m,d);
   const ids = new Set(getExercises(y,m,d).map(e => e.muscleId));
@@ -493,6 +557,20 @@ export const getLastActivitySession = (type, excludeDateKey = null) => _getLastA
 
 export function calcStreaks() {
   return _calcStreaks(_cache, TODAY, getDietPlan(), dateKey);
+}
+
+export function countLocalWeeklyActiveDays(baseDateLike = TODAY) {
+  const now = new Date(baseDateLike);
+  const dayOfWeek = now.getDay() || 7;
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - dayOfWeek + 1);
+  let activeDays = 0;
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    if (isActiveLocalDay(d.getFullYear(), d.getMonth(), d.getDate())) activeDays++;
+  }
+  return activeDays;
 }
 
 // ═══════════════════════════════════════════════════════════════

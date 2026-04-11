@@ -3,10 +3,10 @@
   "configurations": [
     {
       "name": "dashboard-server",
-      "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "5500"],
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["scripts/dev-start.sh"],
       "port": 5500,
-      "autoPort": false
+      "autoPort": true
     },
     {
       "name": "api-server",

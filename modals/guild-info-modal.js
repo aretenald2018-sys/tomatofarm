@@ -16,11 +16,6 @@ function _escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
-function _getWeekStreak(members) {
-  if (!members.length) return 0;
-  return members.reduce((min, member) => Math.min(min, member.activeDays || 0), 7);
-}
-
 function _displayName(account) {
   if (!account) return '미정';
   return account.nickname || `${account.lastName || ''}${account.firstName || ''}` || account.id;
@@ -76,40 +71,37 @@ async function _renderGuildInfo(guildName) {
   if (!content) return;
 
   const {
-    getAllGuilds, getAccountList, getCurrentUser, getGlobalGuildWeeklyRanking,
-    updateGuild, inviteUserToGuild, isAdmin, _isMySocialId,
+    getAccountList, getCurrentUser,
+    computeGuildStats, countLocalWeeklyActiveDays,
+    updateGuild, inviteUserToGuild, isAdmin,
   } = await import('../data.js');
 
   const user = getCurrentUser();
-  const [guilds, accounts, guildRanking] = await Promise.all([
-    getAllGuilds(),
+  const myLocalDays = countLocalWeeklyActiveDays();
+  const [accounts, statsResult] = await Promise.all([
     getAccountList(),
-    getGlobalGuildWeeklyRanking(),
+    computeGuildStats({ myLocalDays, filterGuild: guildName }),
   ]);
 
-  const guildMeta = guilds.find((g) => g.name === guildName || g.id === guildName);
-  const members = accounts.filter((acc) => (acc.guilds || []).includes(guildName));
-  const rankingList = guildRanking?.rankings || [];
-  const rankingItem = rankingList.find((item) => item.guildId === guildName || item.guildName === guildName);
-  const guildMembers = (rankingItem?.members || members.map((acc) => ({
-    userId: acc.id,
-    name: _displayName(acc),
-    activeDays: 0,
-  }))).sort((a, b) => (b.activeDays || 0) - (a.activeDays || 0));
+  const guildStats = statsResult.guilds[0];
+  if (!guildStats) {
+    content.innerHTML = '<div style="font-size:13px;color:var(--text-secondary);line-height:1.6;">길드 정보를 불러올 수 없어요.</div>';
+    return;
+  }
 
-  const leaderId = guildMeta?.leader || guildMeta?.createdBy;
+  const guildMembers = guildStats.members || [];
+  const leaderId = guildStats.leaderId || null;
   const leaderAcc = accounts.find((acc) => acc.id === leaderId);
   const leaderName = _displayName(leaderAcc);
-  const guildIcon = guildMeta?.icon || '🏠';
-  const memberCount = rankingItem?.memberCount || guildMeta?.memberCount || members.length;
-  const avgActiveDays = typeof rankingItem?.avgActiveDays === 'number'
-    ? rankingItem.avgActiveDays.toFixed(1)
-    : (guildMembers.length ? (guildMembers.reduce((sum, member) => sum + (member.activeDays || 0), 0) / guildMembers.length).toFixed(1) : '0.0');
-  const rank = rankingList.findIndex((item) => item.guildId === guildName || item.guildName === guildName) + 1;
-  const weekStreak = _getWeekStreak(guildMembers);
-  const isMember = !!user && (user.guilds || []).includes(guildName);
-  const isPending = !!user && (user.pendingGuilds || []).includes(guildName);
-  const canManage = !!user && (_isMySocialId?.(leaderId) || user.id === leaderId || isAdmin());
+  const guildIcon = guildStats.guildIcon || '🏠';
+  const memberCount = guildStats.memberCount || guildMembers.length;
+  const avgActiveDays = guildStats.avgActiveDays.toFixed(1);
+  const rank = guildStats.rank || 0;
+  const weekStreak = guildStats.weekStreak || 0;
+  const guildKeys = new Set([guildName, guildStats.guildId, guildStats.guildName].filter(Boolean));
+  const isMember = !!user && (user.guilds || []).some((g) => guildKeys.has(g));
+  const isPending = !!user && (user.pendingGuilds || []).some((g) => guildKeys.has(g));
+  const canManage = !!user && (user.id === leaderId || isAdmin());
   const actionLabel = isPending ? '가입 승인 대기 중' : '가입 신청';
   const actionDisabled = isPending ? 'disabled' : '';
   const actionFn = "openGuildModal(); closeGuildInfoModal();";
@@ -131,7 +123,7 @@ async function _renderGuildInfo(guildName) {
   }).join('') || '<div style="font-size:12px;color:var(--text-tertiary);padding:12px 0;">표시할 멤버가 없어요</div>';
 
   const inviteableAccounts = accounts
-    .filter((acc) => acc.id && !acc.id.includes('(guest)') && !(acc.guilds || []).includes(guildName))
+    .filter((acc) => acc.id && !acc.id.includes('(guest)') && !(acc.guilds || []).some((g) => guildKeys.has(g)))
     .sort((a, b) => _displayName(a).localeCompare(_displayName(b)));
 
   content.innerHTML = `
@@ -148,7 +140,7 @@ async function _renderGuildInfo(guildName) {
           ` : ''}
         </div>
         <div style="flex:1;min-width:0;">
-          <div style="font-size:20px;font-weight:800;color:var(--text);line-height:1.2;">${_escapeHtml(guildName)}</div>
+          <div style="font-size:20px;font-weight:800;color:var(--text);line-height:1.2;">${_escapeHtml(guildStats.guildName || guildName)}</div>
           <div style="font-size:12px;color:var(--text-tertiary);margin-top:4px;">리더 ${_escapeHtml(leaderName)}</div>
         </div>
       </div>
@@ -174,7 +166,7 @@ async function _renderGuildInfo(guildName) {
     </div>
 
     <div style="margin-bottom:12px;padding:12px 14px;border-radius:12px;background:var(--surface2);font-size:13px;line-height:1.6;color:var(--text-secondary);">
-      ${_escapeHtml(guildMeta?.description || '아직 길드 소개가 없어요.')}
+      ${_escapeHtml(guildStats.description || '아직 길드 소개가 없어요.')}
     </div>
 
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;padding:12px 14px;border-radius:12px;background:linear-gradient(135deg,rgba(250,52,44,0.08),rgba(255,138,61,0.12));">

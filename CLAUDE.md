@@ -10,13 +10,31 @@
 3. **배포 금지** — 코드 변경 중 push/배포 절대 금지. localhost 확인 후 유저가 직접 `tomatofarm` 리모트에만 push.
 4. **순수 로직은 calc.js** — BMR, 칼로리, 스트릭 계산 등 사이드이펙트 없는 함수만.
 
+## 🖥️ Dev Server (MANDATORY)
+
+코드 변경 후 반드시 `bash scripts/dev-start.sh`로 서버를 시작할 것.
+- 이 스크립트는 **포트 충돌을 자동 해결**함:
+  - 기존 Python 서버(이전 인스턴스)가 포트를 점유 중이면 → kill 후 재시작
+  - 다른 프로그램이 포트를 점유 중이면 → 5501, 5502... 순서로 빈 포트 자동 탐색
+- `python -m http.server 5500`을 직접 실행하지 말 것 — 반드시 스크립트 사용
+- 수동으로 `taskkill`이나 포트 kill을 하지 말 것 — 스크립트가 처리함
+- 스크립트 출력에서 **실제 사용 포트를 확인**하고 사용자에게 알려줄 것
+- 다른 프로젝트(biz 등)가 돌아가고 있어도 그 프로세스를 건드리지 않음
+
+## Communication Protocol
+- 작업 시작 전 `/docs/COMMUNICATION_RULES.md`를 읽고 Active Rules를 따른다.
+- 구현 전에 이해한 요구사항을 한 줄로 요약해서 확인받는다.
+- 세션 종료 시 사용자가 요청하면 `/docs/COMMUNICATION_LOG.md`에 Part B를 채운다.
+- 커뮤니케이션 관련 상세 규칙은 COMMUNICATION_RULES.md에서 단일 관리한다. 이 섹션에 중복하지 않는다.
+- 세션 종료 시 `communication-insight.md`의 지시에 따라 이번 세션 인사이트를 작성한다.
+
 ## 🔥 과거에 터졌던 것들 (반드시 확인)
-- `saveWorkoutDay()`와 `_autoSaveDiet()` 두 곳에서 **동일한 필드를 저장**함. 새 필드 추가 시 **반드시 양쪽 다** 수정해야 함. 한쪽만 수정하면 다른 경로로 저장될 때 필드가 누락됨.
-- `window.*`에 함수를 노출하지 않으면 HTML의 `onclick="함수명()"` 이 작동 안 함. render-workout.js 하단의 `window.xxx = xxx` 블록 확인.
-- `app.js`에서 `import { ... } from './render-workout.js'`에 새 함수를 추가하지 않으면 다른 모듈에서 호출 불가.
+- `saveWorkoutDay()`와 `_autoSaveDiet()`는 공통 헬퍼 `_buildSavePayload()`를 호출하여 저장 객체를 생성함(`workout/save.js`). 새 필드 추가 시 **`_buildSavePayload()` 한 곳만 수정**하면 양쪽에 반영됨.
+- `window.*`에 함수를 노출하지 않으면 HTML의 `onclick="함수명()"` 이 작동 안 함. `workout/index.js` 하단의 `window.xxx = xxx` 블록 확인.
+- `app.js`에서 `import { ... } from './render-workout.js'`에 새 함수를 추가하지 않으면 다른 모듈에서 호출 불가. (`render-workout.js`는 `workout/index.js`를 re-export하는 shim)
 - 사진 필드(`bPhoto`, `lPhoto`, `dPhoto`, `sPhoto`, `workoutPhoto`)를 저장 객체에 빠뜨리면 setDoc 전체 덮어쓰기로 인해 사진이 삭제됨.
-- **레이지 로드 모듈의 함수를 즉시 실행 코드에서 직접 호출하면 `ReferenceError`** — `render-cooking.js` 등 `_lazy()`로 로드되는 모듈의 export 함수(`calcPerServing` 등)를 `app.js`의 동기 함수(`_buildRecipeResultsHtml` 등)에서 바로 쓰면 모듈 로드 전이라 에러. 해결: app.js에 로컬 헬퍼로 복사하거나, 호출부를 async로 바꿔 `await _lazy()`로 가져올 것.
-- **이벤트 위임(`document.addEventListener`)과 HTML `onclick`이 같은 버튼에 동시 등록되면 핸들러가 2번 실행됨** — 토글 함수가 2번 호출되면 원복되어 "안 눌리는" 증상. 하나의 버튼에는 **이벤트 위임 또는 onclick 중 하나만** 사용할 것. 새 버튼 추가 시 기존 이벤트 위임 블록(`_initButtonEventListeners`)에 동일 ID가 등록되어 있지 않은지 반드시 확인.
+- **레이지 로드 모듈의 함수를 즉시 실행 코드에서 직접 호출하면 `ReferenceError`** — `render-cooking.js` 등 `_lazy()`로 로드되는 모듈의 export 함수를 동기 함수에서 바로 쓰면 모듈 로드 전이라 에러. 해결: 호출부를 async로 바꿔 `await _lazy()`로 가져올 것.
+- **이벤트 위임(`document.addEventListener`)과 HTML `onclick`이 같은 버튼에 동시 등록되면 핸들러가 2번 실행됨** — 토글 함수가 2번 호출되면 원복되어 "안 눌리는" 증상. 하나의 버튼에는 **이벤트 위임 또는 onclick 중 하나만** 사용할 것.
 - **SW 캐시 버전을 안 올리면 코드 변경이 배포에 반영 안 됨** — `sw.js`의 `CACHE_VERSION`을 올리지 않으면 Service Worker가 구버전 파일을 서빙. **`sw.js` STATIC_ASSETS에 등록된 파일을 수정했으면 반드시 `CACHE_VERSION` 범프 + `sw.js`도 같이 커밋/푸시.** 실수 방지: 배포 커밋 시 `sw.js`가 빠져 있는지 항상 확인.
 - **커밋 시 의존 파일 누락 → 배포 사이트 런타임 에러** — `home/tomato.js`가 `calc.js`의 `isExerciseDaySuccess`를 import하는데, `calc.js`를 커밋 안 하면 `SyntaxError: does not provide an export named`. **파일 A를 커밋할 때, A가 import하는 다른 파일의 미커밋 변경이 있는지 반드시 확인.** 특히 `calc.js ↔ home/tomato.js`, `data.js ↔ home/*.js` 간 export/import 의존성 주의.
 - **`localStorage`는 기기 단위, 유저별 아님** — 멀티 유저 환경에서 마이그레이션 플래그 등을 `localStorage`에 저장하면 다른 유저에게도 적용됨. 유저별 상태는 **Firebase `_settings`(tomato_state 등)에 저장**해야 함. `localStorage`는 UI 상태/캐시 용도만.
@@ -27,49 +45,51 @@
 
 새 운동 유형을 추가할 때 건드려야 하는 파일과 위치:
 
-### 1. `render-workout.js`
-- [ ] 상단에 상태 변수 추가: `let _newType = false;`
-- [ ] `loadWorkoutDate()`: `day.newType`에서 상태 복원
-- [ ] `wtToggleNewType()` export 함수 생성
-- [ ] `saveWorkoutDay()`: 저장 객체에 `newType: _newType` 추가
-- [ ] `_autoSaveDiet()`: **동일하게** 저장 객체에 추가 (이거 빠뜨리면 버그)
-- [ ] `_restoreFlowState()`: 기존 데이터 있을 때 칩/섹션 자동 복원
-- [ ] 하단 `window.wtToggleNewType = wtToggleNewType;` 추가
+### 1. `workout/` 디렉토리 (render-workout.js는 shim — 실제 코드는 여기)
+- [ ] `workout/state.js`: 상태 변수 추가 (예: `S.newType = false`, `S.newTypeData = {}`)
+- [ ] `workout/load.js`: `loadWorkoutDate()`에서 `day.newType` 상태 복원
+- [ ] `workout/status.js`: `wtToggleNewType()` 함수 생성 + export
+- [ ] `workout/save.js`: `_buildSavePayload()`에 새 필드 추가 (한 곳만 수정하면 양쪽 저장에 반영)
+- [ ] `workout/index.js`: 새 함수 re-export + `window.wtToggleNewType = wtToggleNewType;` 추가
+- [ ] `render-workout.js` (shim): export 목록에 새 함수 추가
 
-### 2. `app.js`
-- [ ] import 문에 `wtToggleNewType` 추가
+### 2. `workout-ui.js`
 - [ ] `wtToggleType()` 함수에 `if (type === 'newType') wtToggleNewType();` 추가
 - [ ] `wtResetStatus()`에 칩 ID 추가: `'wt-chip-newType'`
 - [ ] 상세 섹션이 있다면 `wt-newType-section` 토글 로직 추가
 
-### 3. `index.html`
+### 3. `app.js`
+- [ ] import 문에 `wtToggleNewType` 추가 (render-workout.js에서 re-export 필요)
+
+### 4. `index.html`
 - [ ] `wt-type-chips`에 칩 버튼 추가: `<button class="wt-type-chip" id="wt-chip-newType" onclick="wtToggleType('newType')">🏊 수영</button>`
 - [ ] 상세 입력이 필요하면 `wt-detail-section` 블록 추가
 
-### 4. `style.css`
+### 5. `style.css`
 - [ ] 상세 섹션 스타일은 Seed Design 토큰 사용 (ex-block 패턴 참고)
 
-### 5. `data.js` (Streak 연동이 필요한 경우만)
+### 6. `data.js` (Streak 연동이 필요한 경우만)
 - [ ] getMuscles() 등에서 새 타입 인식하도록 추가
 
 ## 📋 레시피: 운동탭에 새 데이터 필드 추가
 
 예: 런닝에 심박수 필드 추가
 
-- [ ] `render-workout.js` 상태 변수에 추가 (예: `_runData.heartRate`)
-- [ ] `loadWorkoutDate()`에서 `day.runHeartRate`로 복원
-- [ ] `saveWorkoutDay()` 저장 객체에 `runHeartRate: _runData.heartRate` 추가
-- [ ] **`_autoSaveDiet()`에도 동일하게 추가** ← 이거 빠뜨리면 음식 추가 시 필드 날아감
+- [ ] `workout/state.js`: 상태 변수에 추가 (예: `S.runData.heartRate`)
+- [ ] `workout/load.js`: `loadWorkoutDate()`에서 `day.runHeartRate`로 복원
+- [ ] `workout/save.js`: `_buildSavePayload()`에 `runHeartRate: S.runData.heartRate` 추가 (한 곳만 수정하면 OK)
 - [ ] `index.html`에 입력 UI 추가
 - [ ] 이벤트 바인딩 (`change` → saveWorkoutDay)
 
 ## 🏗️ 운동탭 Flow UI 상태 머신
 
+상태 머신 로직은 `workout-ui.js`가 소유 (`wtSelectStatus`, `wtToggleType`).
+
 ```
 [초기: wt-ask 표시]
-  ↓ "운동 기록하기" 클릭
+  ↓ "운동 기록하기" 클릭 → workout-ui.js wtSelectStatus()
 [wt-chosen + wt-show-type]  ← 칩 선택 영역 노출
-  ↓ 칩 클릭 (gym, cf, running...)
+  ↓ 칩 클릭 (gym, cf, running...) → workout-ui.js wtToggleType()
 [해당 wt-detail-section.wt-open]  ← 상세 섹션 노출
   ↓ 날짜 변경 시
 [_restoreFlowState()]  ← 저장된 데이터 기반으로 위 상태 자동 복원
@@ -128,6 +148,8 @@ CSS 클래스 의미:
 
 - [ ] **SW 캐시 버전 범프** — `sw.js`의 `CACHE_VERSION` 날짜/버전 올렸는가? STATIC_ASSETS에 등록된 파일을 하나라도 수정했으면 필수.
 - [ ] **import 의존성 파일 포함** — 커밋 대상 파일이 import하는 다른 파일에 미커밋 변경이 있는가? 있으면 같이 커밋.
+  - `workout/*.js` → `data.js`, `workout/state.js` (상태/저장 변경 시 연쇄)
+  - `render-workout.js` (shim) → `workout/index.js` (export 목록 동기화)
   - `home/tomato.js` → `calc.js`, `data.js` (export 추가/변경 시 같이 커밋)
   - `home/index.js` → `home/tomato.js` (함수 시그니처 변경 시)
   - `calc.js` 사이클 로직 변경 → `home/farm.js`, `home/unit-goal.js` 동기화
@@ -135,16 +157,21 @@ CSS 클래스 의미:
 - [ ] **`git diff --stat`으로 미커밋 파일 확인** — 관련 변경이 남아있지 않은지 체크.
 
 ## 📁 파일 패턴
-- 새 탭: `render-*.js`
+- 새 탭: `render-*.js` (shim) + 실제 로직은 하위 디렉토리 (예: `workout/`)
+- 새 기능 모듈: `feature-*.js` (checkin, diet-plan, fatsecret, misc, nutrition, tutorial)
 - 새 모달: `modals/*-modal.js`
+- 운동 탭 UX 상태 머신: `workout-ui.js` (wtSelectStatus, wtToggleType 등)
+- 탭 네비게이션: `navigation.js` (드래그 정렬, 스와이프)
+- DOM 유틸: `utils/dom.js` ($, setText, openModal 등)
 - 탭 오케스트레이터: `app.js`에서 import + `switchTab()`에 등록
 - 모달 등록: `modal-manager.js`의 MODALS 배열
 
 ## 데이터 흐름
 ```
-사용자 입력 → render-*.js → data.js (saveDay) → Firebase + _cache
+사용자 입력 → workout/*.js 또는 render-*.js → data.js (saveDay) → Firebase + _cache
   → document.dispatchEvent('sheet:saved') → app.js renderAll() → UI 갱신
 ```
+- `sheet.js`(과거 날짜 편집 시트)도 `sheet:saved` 이벤트를 발생시킴
 
 ## "go" 워크플로우
 1. `@plan.md`에서 다음 미완료 체크박스 확인
@@ -182,6 +209,7 @@ CSS 클래스 의미:
 3. **Phase 3 리팩토링**: data-guardian(베이스라인) → refactor-architect → data-guardian(검증) + vitest run
 
 ### 자동 트리거
-- `render-workout.js` 또는 `data.js` 변경 → **data-guardian 필수 실행**
+- `workout/*.js`, `render-workout.js` 또는 `data.js` 변경 → **data-guardian 필수 실행**
 - `style.css` 또는 `index.html` 변경 → **tds-reviewer 필수 실행**
 - `calc.js` 변경 → test-writer에게 관련 테스트 업데이트 요청
+

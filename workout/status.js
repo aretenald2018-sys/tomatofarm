@@ -6,61 +6,84 @@ import { S }              from './state.js';
 import { saveWorkoutDay } from './save.js';
 import { _renderGymStatusBtns, _renderCFStatusBtns,
          _renderStretchingToggle, _renderWineFreeToggle,
-         _renderMealSkippedToggles, _renderDietResults,
+         _renderMealSkippedToggles, _renderDietResults, _renderMealFoodItems,
          renderCalorieTracker as _renderCalorieTracker }
                           from './render.js';
 
-export function wtSetGymStatus(status) {
+function _persist(skipSave) {
+  if (!skipSave) saveWorkoutDay().catch(e => console.error('Save error:', e));
+}
+
+function _clearMealState(meal) {
+  const prefix = meal === 'breakfast' ? 'b' : meal === 'lunch' ? 'l' : meal === 'dinner' ? 'd' : 's';
+  const textKey = meal;
+  const foodsKey = `${prefix}Foods`;
+
+  S.diet[textKey] = '';
+  S.diet[foodsKey] = [];
+  S.diet[`${prefix}Kcal`] = 0;
+  S.diet[`${prefix}Ok`] = null;
+  S.diet[`${prefix}Reason`] = '';
+  S.diet[`${prefix}Protein`] = 0;
+  S.diet[`${prefix}Carbs`] = 0;
+  S.diet[`${prefix}Fat`] = 0;
+
+  const input = document.getElementById(`wt-meal-${meal}`);
+  if (input) input.value = '';
+  _renderMealFoodItems(meal);
+}
+
+export function wtSetGymStatus(status, skipSave = false) {
   S.gymStatus = status;
   _renderGymStatusBtns();
   const list = document.getElementById('wt-exercise-list');
   if (list) list.style.opacity = (status === 'done' || status === 'none') ? '1' : '0.4';
-  saveWorkoutDay().catch(e => console.error('Save error:', e));
+  _persist(skipSave);
 }
 
-export function wtSetCFStatus(status) {
+export function wtSetCFStatus(status, skipSave = false) {
   S.cfStatus = status;
   _renderCFStatusBtns();
-  saveWorkoutDay().catch(e => console.error('Save error:', e));
+  _persist(skipSave);
 }
 
-export function wtToggleStretching() {
+export function wtToggleStretching(skipSave = false) {
   S.stretching = !S.stretching;
   _renderStretchingToggle();
-  saveWorkoutDay().catch(e => console.error('Save error:', e));
+  _persist(skipSave);
 }
 
-export function wtToggleSwimming() {
+export function wtToggleSwimming(skipSave = false) {
   S.swimming = !S.swimming;
-  saveWorkoutDay().catch(e => console.error('Save error:', e));
+  _persist(skipSave);
 }
 
-export function wtToggleRunning() {
+export function wtToggleRunning(skipSave = false) {
   S.running = !S.running;
-  saveWorkoutDay().catch(e => console.error('Save error:', e));
+  _persist(skipSave);
 }
 
-export function wtToggleWineFree() {
+export function wtToggleWineFree(skipSave = false) {
   S.wineFree = !S.wineFree;
   _renderWineFreeToggle();
-  saveWorkoutDay().catch(e => console.error('Save error:', e));
+  _persist(skipSave);
 }
 
-export function wtToggleMealSkipped(meal) {
+export function wtToggleMealSkipped(meal, skipSave = false) {
   if (meal === 'breakfast') {
     S.breakfastSkipped = !S.breakfastSkipped;
-    if (S.breakfastSkipped) { S.diet.bKcal = 0; S.diet.bOk = null; }
+    if (S.breakfastSkipped) _clearMealState(meal);
   } else if (meal === 'lunch') {
     S.lunchSkipped = !S.lunchSkipped;
-    if (S.lunchSkipped) { S.diet.lKcal = 0; S.diet.lOk = null; }
+    if (S.lunchSkipped) _clearMealState(meal);
   } else if (meal === 'dinner') {
     S.dinnerSkipped = !S.dinnerSkipped;
-    if (S.dinnerSkipped) { S.diet.dKcal = 0; S.diet.dOk = null; }
+    if (S.dinnerSkipped) _clearMealState(meal);
   }
   _renderMealSkippedToggles();
   _renderDietResults();
   _renderCalorieTracker();
-  saveWorkoutDay().catch(e => console.error('Save error:', e));
+  _persist(skipSave);
 }
 
 // ── 이벤트 위임: 상태 버튼 클릭 ─────────────────────────────────

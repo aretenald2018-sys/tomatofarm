@@ -1,11 +1,7 @@
-import { getAllGuilds, getCurrentUser, getAccountList, getGlobalGuildWeeklyRanking, getGlobalWeeklyRanking } from '../data.js';
+import { getCurrentUser, countLocalWeeklyActiveDays, computeGuildStats } from '../data.js';
 
 const PAGE_SIZE = 7;
 let _guildCardPage = 0;
-
-function _normalizeGuildKey(value) {
-  return String(value || '').trim();
-}
 
 function _escapeHtml(value) {
   return String(value || '')
@@ -41,67 +37,21 @@ export async function renderGuildCard() {
 
   card.style.display = '';
 
-  const [guilds, accounts, guildRanking, individualRanking] = await Promise.all([
-    getAllGuilds(),
-    getAccountList(),
-    getGlobalGuildWeeklyRanking(),
-    getGlobalWeeklyRanking(),
-  ]);
-  const rankingList = guildRanking?.rankings || [];
-  const rankMap = {};
-  (individualRanking?.rankings || []).forEach((item) => {
-    rankMap[item.userId] = item.activeDays || 0;
-  });
-  const liveGuildMembers = {};
-  accounts.forEach((acc) => {
-    (acc.guilds || []).forEach((guildName) => {
-      const key = _normalizeGuildKey(guildName);
-      if (!key) return;
-      if (!liveGuildMembers[key]) liveGuildMembers[key] = [];
-      liveGuildMembers[key].push({
-        userId: acc.id,
-        activeDays: rankMap[acc.id] || 0,
-      });
-    });
-  });
   const myGuilds = new Set(user.guilds || []);
-  const allGuildRows = guilds.filter((guild) => guild && (guild.id || guild.name) && guild.name).map((guild) => {
-    const guildId = guild.id || guild.name;
-    const guildKey = _normalizeGuildKey(guildId || guild.name);
-    const rankingItem = rankingList.find((item) => item.guildId === guildId || item.guildName === guild.name);
-    const rank = rankingList.findIndex((item) => item.guildId === guildId || item.guildName === guild.name) + 1;
-    const members = accounts.filter((acc) => (acc.guilds || []).includes(guildId) || (acc.guilds || []).includes(guild.name));
-    const liveMembers = liveGuildMembers[guildKey] || liveGuildMembers[_normalizeGuildKey(guild.name)] || [];
-    const intro = guild.description || '길드 소개가 아직 없어요.';
-    const effectiveMembers = liveMembers.length
-      ? liveMembers
-      : (rankingItem?.members || []).map((member) => ({
-        userId: member.userId,
-        activeDays: member.activeDays || 0,
-      }));
-    const totalActiveDays = effectiveMembers.reduce((sum, member) => sum + (member.activeDays || 0), 0);
-    const avgActiveDays = effectiveMembers.length
-      ? +(totalActiveDays / effectiveMembers.length).toFixed(1)
-      : (typeof rankingItem?.avgActiveDays === 'number' ? rankingItem.avgActiveDays : 0);
-    const weekStreak = effectiveMembers.length
-      ? effectiveMembers.reduce((min, member) => Math.min(min, member.activeDays || 0), 7)
-      : 0;
-    return {
-      guildId,
-      guildName: guild.name,
-      guildIcon: guild.icon || '🏠',
-      memberCount: members.length || guild.memberCount || 0,
-      intro,
-      rank,
-      avgActiveDays,
-      weekStreak,
-      isMine: myGuilds.has(guildId) || myGuilds.has(guild.name),
-    };
-  }).sort((a, b) => {
-    if (a.isMine !== b.isMine) return a.isMine ? -1 : 1;
-    if ((a.rank || 9999) !== (b.rank || 9999)) return (a.rank || 9999) - (b.rank || 9999);
-    return a.guildName.localeCompare(b.guildName);
-  });
+  const myLocalDays = countLocalWeeklyActiveDays();
+  const { guilds } = await computeGuildStats({ myLocalDays });
+
+  const allGuildRows = guilds
+    .map((guild) => ({
+      ...guild,
+      intro: guild.description || 'No guild description.',
+      isMine: myGuilds.has(guild.guildId) || myGuilds.has(guild.guildName),
+    }))
+    .sort((a, b) => {
+      if (a.isMine !== b.isMine) return a.isMine ? -1 : 1;
+      if ((a.rank || 9999) !== (b.rank || 9999)) return (a.rank || 9999) - (b.rank || 9999);
+      return a.guildName.localeCompare(b.guildName);
+    });
 
   if (!allGuildRows.length) {
     content.innerHTML = `
@@ -125,9 +75,14 @@ export async function renderGuildCard() {
     <div style="display:flex;flex-direction:column;gap:10px;">
       ${pageItems.map((item) => {
         const progress = Math.max(8, Math.round((item.avgActiveDays / 7) * 100));
+        const avgActiveDaysLabel = Number(item.avgActiveDays || 0).toFixed(1);
         const streakLabel = item.weekStreak > 0
           ? `전원 활동 ${item.weekStreak}일째`
-          : `평균 ${item.avgActiveDays.toFixed(1)}일`;
+          : item.avgActiveDays > 0
+            ? `평균 ${avgActiveDaysLabel}일`
+            : '이번 주 활동 없음';
+        const avgPrefix = item.avgActiveDays > 0 ? `${avgActiveDaysLabel}일 · ` : '';
+
         return `
           <div onclick="openGuildInfoModal('${String(item.guildName).replace(/'/g, "\\'")}')" style="cursor:pointer;padding:14px;border-radius:18px;border:1px solid ${item.isMine ? 'rgba(250,52,44,0.24)' : 'var(--border)'};background:${item.isMine ? 'linear-gradient(135deg,rgba(250,52,44,0.08),rgba(255,138,61,0.12))' : 'var(--surface)'};box-shadow:${item.isMine ? '0 10px 24px rgba(250,52,44,0.08)' : 'none'};">
             <div style="display:flex;align-items:flex-start;gap:12px;">
@@ -146,7 +101,7 @@ export async function renderGuildCard() {
             <div style="margin-top:12px;">
               <div style="display:flex;align-items:center;justify-content:space-between;font-size:12px;color:var(--text-secondary);margin-bottom:6px;">
                 <span>이번 주 평균 활동</span>
-                <span>${item.avgActiveDays.toFixed(1)}일 · ${streakLabel}</span>
+                <span>${avgPrefix}${streakLabel}</span>
               </div>
               <div style="height:8px;border-radius:999px;background:var(--surface2);overflow:hidden;">
                 <div style="width:${progress}%;height:100%;background:linear-gradient(90deg,#fa342c,#ff8a3d);"></div>
