@@ -136,7 +136,7 @@ export function wtRestTimerStart(seconds, context) {
   S.restTimer.running = true;
 
   bar.style.display = '';
-  bar.classList.remove('expired', 'done');
+  bar.classList.remove('expired', 'done', 'wt-idle');
   _restTimeEl().textContent = _formatTime(S.restTimer.remaining);
   _restFillEl().style.width = '100%';
   _updatePresetActive();
@@ -159,13 +159,32 @@ export function wtRestTimerStart(seconds, context) {
   }, 1000);
 }
 
+export function wtRestTimerShowIdle() {
+  const bar = _restTimerEl();
+  if (!bar || S.restTimer.running) return;
+  bar.style.display = '';
+  bar.classList.remove('expired', 'done');
+  bar.classList.add('wt-idle');
+  _restTimeEl().textContent = _formatTime(S.restTimer.total);
+  _restFillEl().style.width = '100%';
+  _updatePresetActive();
+}
+
+export function wtRestTimerHideIdle() {
+  const bar = _restTimerEl();
+  if (!bar || S.restTimer.running) return;
+  bar.style.display = 'none';
+  bar.classList.remove('wt-idle');
+}
+
 export function wtRestTimerSkip() {
   const bar = _restTimerEl();
   if (!bar) return;
   if (S.restTimer.interval) clearInterval(S.restTimer.interval);
+  S.restTimer.interval = null;
   S.restTimer.running = false;
   bar.style.display = 'none';
-  bar.classList.remove('expired', 'done');
+  bar.classList.remove('expired', 'done', 'wt-idle');
 }
 
 export function wtRestTimerAdjust(delta) {
@@ -186,7 +205,13 @@ function _updatePresetActive() {
 export function _initRestTimerPresets() {
   document.querySelectorAll('.rest-preset-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      wtRestTimerStart(+btn.dataset.sec);
+      const seconds = +btn.dataset.sec;
+      if (S.restTimer.running) {
+        wtRestTimerStart(seconds);
+        return;
+      }
+      S.restTimer.total = seconds;
+      wtRestTimerShowIdle();
     });
   });
 }

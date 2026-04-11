@@ -1863,6 +1863,7 @@ body {
 }
 .wt-rest-section.expired .wt-rest-time { color: var(--seed-fg-critical, var(--diet-bad)); }
 .wt-rest-section.done .wt-rest-time { color: var(--seed-fg-positive, var(--streak)); }
+.wt-rest-section.wt-idle .wt-rest-time { opacity: 0.5; }
 
 .wt-rest-context {
   font-size: var(--seed-t1); color: var(--seed-fg-muted, var(--text-tertiary));
@@ -1918,6 +1919,7 @@ body {
 }
 .wt-rest-section.expired .wt-rest-fill { background: var(--seed-red-700, var(--diet-bad)); }
 .wt-rest-section.done .wt-rest-fill { background: var(--seed-green-600, var(--streak)); }
+.wt-rest-section.wt-idle .wt-rest-fill { background: var(--seed-stroke-neutral); }
 
 /* ══════════════════════════════════════════════════════════════════
    Cooking Tab

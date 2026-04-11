@@ -10,6 +10,7 @@ import {
   wtSaveExerciseFromEditor, wtDeleteExerciseFromEditor,
   wtAddFoodItem, wtRemoveFoodItem,
   openNutritionPhotoUpload,
+  wtStartWorkoutTimer, wtRestTimerShowIdle, wtRestTimerHideIdle,
 } from './render-workout.js';
 
 // ── 운동 상태 머신 ──────────────────────────────────────────────
@@ -58,6 +59,7 @@ window.wtSelectStatus = function(status) {
 
 window.wtToggleType = function(type) {
   const tab = document.getElementById('wt-chip-' + type);
+  const wasSelected = _wtSelectedTypes.has(type);
   if (_wtSelectedTypes.has(type)) {
     _wtSelectedTypes.delete(type);
     if (tab) tab.classList.remove('active');
@@ -77,6 +79,17 @@ window.wtToggleType = function(type) {
     if (_wtSelectedTypes.has(t)) sec.classList.add('wt-open');
     else sec.classList.remove('wt-open');
   });
+
+  if (type === 'gym') {
+    const timerBar = document.getElementById('wt-workout-timer-bar');
+    if (!wasSelected) {
+      if (timerBar) timerBar.classList.add('wt-open');
+      wtStartWorkoutTimer();
+      wtRestTimerShowIdle();
+    } else {
+      wtRestTimerHideIdle();
+    }
+  }
 };
 
 window.wtResetStatus = function() {
@@ -102,6 +115,7 @@ window._wtResetFlowUI = function() {
   ['wt-memo-section','wt-save-section'].forEach(id =>
     document.getElementById(id)?.classList.remove('wt-open'));
   document.getElementById('wt-workout-timer-bar')?.classList.remove('wt-open');
+  wtRestTimerHideIdle();
   ['wt-chip-gym','wt-chip-cf','wt-chip-stretch','wt-chip-swimming','wt-chip-running'].forEach(id =>
     document.getElementById(id)?.classList.remove('active'));
 };

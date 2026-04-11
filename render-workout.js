@@ -19,4 +19,5 @@ export {
   wtResetWorkoutTimer, wtTogglePauseWorkoutTimer,
   wtFinishWorkout,
   wtRestTimerStart, wtRestTimerSkip, wtRestTimerAdjust,
+  wtRestTimerShowIdle, wtRestTimerHideIdle,
 } from './workout/index.js';

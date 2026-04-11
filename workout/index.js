@@ -30,7 +30,8 @@ export { wtAddSet, wtRemoveSet, wtUpdateSet,
 export { wtStartWorkoutTimer, wtPauseWorkoutTimer,
          wtResetWorkoutTimer, wtTogglePauseWorkoutTimer,
          wtFinishWorkout,
-         wtRestTimerStart, wtRestTimerSkip, wtRestTimerAdjust }
+         wtRestTimerStart, wtRestTimerSkip, wtRestTimerAdjust,
+         wtRestTimerShowIdle, wtRestTimerHideIdle }
   from './timers.js';
 
 // ── 내부 import (window 등록 + 초기화용) ─────────────────────────
@@ -45,7 +46,8 @@ import { wtOpenExercisePicker, wtCloseExercisePicker,
 import { wtStartWorkoutTimer, wtTogglePauseWorkoutTimer,
          wtResetWorkoutTimer, wtFinishWorkout,
          wtRestTimerStart, wtRestTimerSkip,
-         wtRestTimerAdjust }                       from './timers.js';
+         wtRestTimerAdjust, wtRestTimerShowIdle,
+         wtRestTimerHideIdle }                    from './timers.js';
 import { _initRestTimerPresets }                   from './timers.js';
 import { _initRunningEvents }                      from './activity-forms.js';
 import { _initTypeFormEvents }                     from './activity-forms.js';
@@ -68,6 +70,8 @@ window.wtFinishWorkout = wtFinishWorkout;
 window.wtRestTimerStart = wtRestTimerStart;
 window.wtRestTimerSkip = wtRestTimerSkip;
 window.wtRestTimerAdjust = wtRestTimerAdjust;
+window.wtRestTimerShowIdle = wtRestTimerShowIdle;
+window.wtRestTimerHideIdle = wtRestTimerHideIdle;
 window.wtAddFoodItem = wtAddFoodItem;
 window.wtRemoveFoodItem = wtRemoveFoodItem;
 

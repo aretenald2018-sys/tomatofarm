@@ -21,7 +21,18 @@ import { getDay, isFuture, TODAY }   from '../data.js';
 
 // ── 날짜 로드 ────────────────────────────────────────────────────
 export function loadWorkoutDate(y, m, d) {
-  const _timerRunningForSameDate = S.workoutStartTime && S.date && S.date.y === y && S.date.m === m && S.date.d === d;
+  const isSameDate = S.date && S.date.y === y && S.date.m === m && S.date.d === d;
+
+  if (isSameDate) {
+    _renderDateLabel();
+    _renderExerciseList();
+    _renderWorkoutTimer();
+    _renderTimerControls();
+    _renderDietResults();
+    _renderCalorieTracker();
+    _renderMealPhotos();
+    return;
+  }
 
   if (window._wtResetFlowUI) window._wtResetFlowUI();
 
@@ -66,13 +77,9 @@ export function loadWorkoutDate(y, m, d) {
     memo:        day.swimMemo || '',
   };
   S.wineFree   = !!day.wine_free;
-  if (_timerRunningForSameDate) {
-    // running 중인 타이머 유지
-  } else {
-    S.workoutDuration = day.workoutDuration || 0;
-    S.workoutStartTime = null;
-    if (S.workoutTimerInterval) { clearInterval(S.workoutTimerInterval); S.workoutTimerInterval = null; }
-  }
+  S.workoutDuration = day.workoutDuration || 0;
+  S.workoutStartTime = null;
+  if (S.workoutTimerInterval) { clearInterval(S.workoutTimerInterval); S.workoutTimerInterval = null; }
   wtRestTimerSkip();
   const timerControls = document.querySelector('.wt-timer-controls');
   if (timerControls) timerControls.style.display = '';
