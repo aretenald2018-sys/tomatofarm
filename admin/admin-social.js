@@ -93,9 +93,9 @@ async function _renderGuildAdminPanel() {
           </div>
         </div>
         <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;">
-          <button onclick="window._adminOpenGuildEditor('${_enc(guildId)}')" style="padding:6px 10px;border:none;border-radius:8px;background:#3182F6;color:#fff;font-size:11px;font-weight:700;cursor:pointer;">편집</button>
-          <button type="button" data-guild-members="${_enc(guildId)}" style="padding:6px 10px;border:none;border-radius:8px;background:#10B981;color:#fff;font-size:11px;font-weight:700;cursor:pointer;">멤버 관리</button>
-          <button onclick="window._adminDeleteGuild('${_enc(guildId)}')" style="padding:6px 10px;border:none;border-radius:8px;background:#EF4444;color:#fff;font-size:11px;font-weight:700;cursor:pointer;">삭제</button>
+          <button onclick="window._adminOpenGuildEditor('${_enc(guildId)}')" style="padding:6px 10px;border:none;border-radius:12px;background:var(--primary);color:#fff;font-size:11px;font-weight:700;cursor:pointer;">편집</button>
+          <button type="button" data-guild-members="${_enc(guildId)}" style="padding:6px 10px;border:none;border-radius:12px;background:var(--hig-green,#079171);color:#fff;font-size:11px;font-weight:700;cursor:pointer;">멤버 관리</button>
+          <button onclick="window._adminDeleteGuild('${_enc(guildId)}')" style="padding:6px 10px;border:none;border-radius:12px;background:var(--hig-red,#fa342c);color:#fff;font-size:11px;font-weight:700;cursor:pointer;">삭제</button>
         </div>
       </div>
     `;
@@ -195,7 +195,7 @@ export function renderSocialSection(container, data) {
       ${[
         { label: '이웃 관계', value: friendships, sub: pendingReqs > 0 ? `대기 ${pendingReqs}건` : '' },
         { label: '평균 이웃 수', value: avgFriends },
-        { label: '고립 유저 (0명)', value: isolatedUsers.length, color: isolatedUsers.length > 0 ? '#ef4444' : '#22c55e' },
+        { label: '고립 유저 (0명)', value: isolatedUsers.length, color: isolatedUsers.length > 0 ? 'var(--hig-red,#fa342c)' : 'var(--hig-green,#079171)' },
         { label: '총 리액션', value: lks.length },
       ].map(m => `
         <div style="${CARD_STYLE};margin-bottom:0;">
@@ -212,7 +212,7 @@ export function renderSocialSection(container, data) {
       <div style="${SECTION_TITLE}">고립 유저 (이웃 0명)</div>
       <div style="display:flex;flex-wrap:wrap;gap:6px;">
         ${isolatedUsers.map(a => `
-          <span style="font-size:11px;padding:4px 10px;border-radius:8px;background:#FEF2F2;color:#ef4444;font-weight:500;">${a.nickname || a.lastName + a.firstName}</span>
+          <span style="font-size:11px;padding:4px 10px;border-radius:12px;background:rgba(250,52,44,0.08);color:var(--hig-red,#fa342c);font-weight:500;">${a.nickname || a.lastName + a.firstName}</span>
         `).join('')}
       </div>
     </div>` : ''}
@@ -267,7 +267,7 @@ export function renderSocialSection(container, data) {
       ${recentSocial.length === 0 ? '<div style="font-size:12px;color:var(--text-tertiary);text-align:center;padding:12px;">아직 없어요</div>' :
         recentSocial.slice(0, 20).map(s => `
           <div style="display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid var(--border);">
-            <span style="width:6px;height:6px;border-radius:50%;background:${s.type === 'reaction' ? '#fa342c' : '#8b5cf6'};flex-shrink:0;"></span>
+            <span style="width:6px;height:6px;border-radius:50%;background:${s.type === 'reaction' ? 'var(--primary)' : 'var(--hig-purple,#8969ea)'};flex-shrink:0;"></span>
             <span style="font-size:12px;color:var(--text);flex:1;">${s.text}</span>
             <span style="font-size:10px;color:var(--text-tertiary);flex-shrink:0;">${fmtDate(s.time)}</span>
           </div>
@@ -279,7 +279,7 @@ export function renderSocialSection(container, data) {
     <div style="${CARD_STYLE}">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
         <div style="${SECTION_TITLE};margin-bottom:0;">길드 관리</div>
-        <button onclick="window._adminOpenGuildEditor('')" style="padding:6px 14px;border:none;border-radius:8px;background:#fa342c;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">+ 새 길드</button>
+        <button onclick="window._adminOpenGuildEditor('')" style="padding:6px 14px;border:none;border-radius:12px;background:var(--primary);color:#fff;font-size:12px;font-weight:700;cursor:pointer;">+ 새 길드</button>
       </div>
       <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:10px;">길드 소개, 아이콘, 리더, 멤버를 여기서 관리합니다.</div>
       <div id="admin-guild-admin">
@@ -300,7 +300,7 @@ export function renderSocialSection(container, data) {
   _renderGuildAdminPanel().catch((e) => {
     console.error('[admin] guild panel:', e);
     const wrap = document.getElementById('admin-guild-admin');
-    if (wrap) wrap.innerHTML = '<div style="font-size:12px;color:#ef4444;text-align:center;padding:12px;">길드 데이터를 불러오지 못했어요</div>';
+    if (wrap) wrap.innerHTML = '<div style="font-size:12px;color:var(--hig-red,#fa342c);text-align:center;padding:12px;">길드 데이터를 불러오지 못했어요</div>';
   });
 }
 
@@ -320,25 +320,25 @@ window._adminOpenGuildEditor = async function(guildIdEncoded) {
         <div style="font-size:17px;font-weight:700;color:var(--text);margin-bottom:16px;">${guild ? '길드 편집' : '새 길드 만들기'}</div>
         <div style="margin-bottom:12px;">
           <label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:6px;">길드명</label>
-          <input id="guild-edit-name" type="text" value="${_escapeHtml(guild?.name || '')}" ${guild ? 'disabled' : ''} placeholder="예: 관리사무소" style="width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;color:var(--text);background:${guild ? 'var(--surface2,#F2F4F6)' : 'var(--surface)'};outline:none;box-sizing:border-box;">
+          <input id="guild-edit-name" type="text" value="${_escapeHtml(guild?.name || '')}" ${guild ? 'disabled' : ''} placeholder="예: 관리사무소" style="width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:12px;font-size:14px;color:var(--text);background:${guild ? 'var(--surface2,#F2F4F6)' : 'var(--surface)'};outline:none;box-sizing:border-box;">
         </div>
         <div style="margin-bottom:12px;">
           <label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:6px;">대표 사진</label>
           <div style="display:flex;align-items:center;gap:10px;">
-            <div style="width:54px;height:54px;border-radius:16px;background:var(--surface2,#F2F4F6);display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:24px;flex-shrink:0;">
+            <div style="width:54px;height:54px;border-radius:18px;background:var(--surface2,#F2F4F6);display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:24px;flex-shrink:0;">
               ${String(guild?.icon || '🏠').startsWith('data:') ? `<img src="${guild.icon}" style="width:100%;height:100%;object-fit:cover;">` : _escapeHtml(guild?.icon || '🏠')}
             </div>
-            <input id="guild-edit-image-file" type="file" accept="image/*" style="flex:1;padding:10px;border:1.5px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);box-sizing:border-box;">
+            <input id="guild-edit-image-file" type="file" accept="image/*" style="flex:1;padding:10px;border:1.5px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text);box-sizing:border-box;">
           </div>
           <div style="font-size:11px;color:var(--text-tertiary);margin-top:6px;">이미지를 선택하지 않으면 기존 대표 사진을 유지합니다.</div>
         </div>
         <div style="margin-bottom:16px;">
           <label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:6px;">소개</label>
-          <textarea id="guild-edit-desc" style="width:100%;min-height:100px;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;color:var(--text);background:var(--surface);outline:none;resize:vertical;font-family:inherit;box-sizing:border-box;line-height:1.6;" placeholder="길드 소개를 적어주세요">${_escapeHtml(guild?.description || '')}</textarea>
+          <textarea id="guild-edit-desc" style="width:100%;min-height:100px;padding:12px 14px;border:1.5px solid var(--border);border-radius:12px;font-size:13px;color:var(--text);background:var(--surface);outline:none;resize:vertical;font-family:inherit;box-sizing:border-box;line-height:1.6;" placeholder="길드 소개를 적어주세요">${_escapeHtml(guild?.description || '')}</textarea>
         </div>
         <div style="display:flex;gap:8px;">
           <button onclick="document.getElementById('dynamic-modal')?.remove()" style="flex:1;padding:14px;border:1px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text-secondary);font-size:14px;font-weight:600;cursor:pointer;">취소</button>
-          <button onclick="window._adminSaveGuildEditor('${_enc(guildId || '')}')" style="flex:2;padding:14px;border:none;border-radius:12px;background:#fa342c;color:#fff;font-size:14px;font-weight:700;cursor:pointer;">저장</button>
+          <button onclick="window._adminSaveGuildEditor('${_enc(guildId || '')}')" style="flex:2;padding:14px;border:none;border-radius:12px;background:var(--primary);color:#fff;font-size:14px;font-weight:700;cursor:pointer;">저장</button>
         </div>
       </div>
     </div>
@@ -352,7 +352,7 @@ window._adminSaveGuildEditor = async function(originalGuildIdEncoded) {
   const imageFile = document.getElementById('guild-edit-image-file')?.files?.[0] || null;
 
   if (!name) {
-    alert('길드명을 입력하세요.');
+    if (typeof window.showToast === 'function') window.showToast('길드명을 입력하세요.', 3000, 'warning');
     return;
   }
 
@@ -362,7 +362,7 @@ window._adminSaveGuildEditor = async function(originalGuildIdEncoded) {
     const currentUsers = await getAccountList();
     const leaderId = currentUsers.find((acc) => !acc.id.includes('(guest)'))?.id;
     if (!leaderId) {
-      alert('리더로 지정할 사용자가 없어요.');
+      if (typeof window.showToast === 'function') window.showToast('리더로 지정할 사용자가 없어요.', 3000, 'warning');
       return;
     }
     await createGuild(name, leaderId);
@@ -403,12 +403,12 @@ function _renderGuildMemberRows() {
     const isLeader = leaderId === acc.id;
     return `
       <label style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);cursor:pointer;">
-        <input type="checkbox" data-member-user-id="${_escapeHtml(acc.id)}" ${checked ? 'checked' : ''} style="width:18px;height:18px;accent-color:#10B981;flex-shrink:0;">
+        <input type="checkbox" data-member-user-id="${_escapeHtml(acc.id)}" ${checked ? 'checked' : ''} style="width:18px;height:18px;accent-color:var(--hig-green,#079171);flex-shrink:0;">
         <div style="flex:1;min-width:0;">
           <div style="font-size:13px;font-weight:600;color:var(--text);">${_escapeHtml(_displayName(acc))}</div>
           <div style="font-size:11px;color:var(--text-tertiary);">${_escapeHtml(acc.id)}${isLeader ? ' · 현재 리더' : ''}</div>
         </div>
-        <button type="button" data-leader-user-id="${_escapeHtml(acc.id)}" style="padding:6px 10px;border:none;border-radius:8px;background:${isLeader ? '#1D4ED8' : '#3182F6'};color:#fff;font-size:11px;font-weight:700;cursor:pointer;">${isLeader ? '리더' : '리더 지정'}</button>
+        <button type="button" data-leader-user-id="${_escapeHtml(acc.id)}" style="padding:6px 10px;border:none;border-radius:12px;background:${isLeader ? 'var(--hig-purple,#8969ea)' : 'var(--primary)'};color:#fff;font-size:11px;font-weight:700;cursor:pointer;">${isLeader ? '리더' : '리더 지정'}</button>
       </label>
     `;
   }).join('') || '<div style="font-size:12px;color:var(--text-tertiary);text-align:center;padding:12px 0;">검색 결과가 없어요</div>';
@@ -470,11 +470,11 @@ window._adminOpenGuildMembers = async function(guildIdEncoded) {
           체크된 사용자가 이 길드에 포함됩니다. 리더 지정 버튼을 누르면 해당 사용자가 리더가 되고 자동으로 멤버에도 포함됩니다.<br>
           현재 선택 <b id="guild-member-selected-count">${selectedUserIds.size}</b>명
         </div>
-        <input id="guild-member-search" type="text" placeholder="이름 또는 별명으로 검색" style="width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;color:var(--text);background:var(--surface);outline:none;box-sizing:border-box;margin-bottom:12px;">
+        <input id="guild-member-search" type="text" placeholder="이름 또는 별명으로 검색" style="width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:12px;font-size:13px;color:var(--text);background:var(--surface);outline:none;box-sizing:border-box;margin-bottom:12px;">
         <div id="guild-member-list"></div>
         <div style="display:flex;gap:8px;margin-top:16px;">
           <button type="button" id="guild-member-cancel" style="flex:1;padding:14px;border:1px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text-secondary);font-size:14px;font-weight:600;cursor:pointer;">취소</button>
-          <button type="button" id="guild-member-save" style="flex:2;padding:14px;border:none;border-radius:12px;background:#10B981;color:#fff;font-size:14px;font-weight:700;cursor:pointer;">저장</button>
+          <button type="button" id="guild-member-save" style="flex:2;padding:14px;border:none;border-radius:12px;background:var(--hig-green,#079171);color:#fff;font-size:14px;font-weight:700;cursor:pointer;">저장</button>
         </div>
       </div>
     </div>

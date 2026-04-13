@@ -1,221 +1,45 @@
-// ================================================================
-// render-admin.js — 토마토어드민 오케스트레이터 (세그먼티드 컨트롤 + 섹션 전환)
-// ================================================================
-
 import {
-  isAdmin, getAnalytics, dateKey, TODAY,
+  isAdmin, isAdminInstance, getAnalytics, dateKey, TODAY,
 } from './data.js';
 import {
   db, collection, getDocs, query, where, documentId,
 } from './data/data-core.js';
-import { renderOverviewSection } from './admin/admin-overview.js';
-import { renderUsersSection } from './admin/admin-users.js';
-import { renderEngagementSection } from './admin/admin-engagement.js';
+import { renderDashboardSection } from './admin/admin-overview.js';
+import { renderPeopleSection } from './admin/admin-users.js';
 import { renderSocialSection } from './admin/admin-social.js';
-import { renderActionsSection, setRerender } from './admin/admin-actions.js';
+import { renderOutreachSection } from './admin/admin-outreach.js';
+import { renderSettingsSection } from './admin/admin-actions.js';
 import {
   exportUsersReport, exportDailyActivity,
   exportSocialInteractions, exportLettersAndPatchnotes,
   exportAll, exportAIJson,
 } from './admin/admin-export.js';
+import { buildSegmentSummary } from './admin/admin-segmentation.js';
+import { nameResolver } from './admin/admin-utils.js';
 
-// ── 세션 캐시 ────────────────────────────────────────────────────
 let _adminData = null;
-let _currentSection = 'overview';
+let _currentSection = 'home';
+let _outreachPrefillUid = '';
+let _outreachPrefillMessage = '';
+let _outreachPrefillChannel = '';
 
 const SECTIONS = [
-  { id: 'overview',   label: '오버뷰' },
-  { id: 'users',      label: '유저' },
-  { id: 'engagement', label: '인게이지먼트' },
-  { id: 'social',     label: '소셜' },
-  { id: 'actions',    label: '관리도구' },
+  { id: 'home', label: '홈' },
+  { id: 'members', label: '인간&행동' },
+  { id: 'community', label: '커뮤니티' },
+  { id: 'outreach', label: '아웃리치' },
+  { id: 'settings', label: '설정' },
 ];
 
-// ── 메인 렌더 ────────────────────────────────────────────────────
-export async function renderAdmin() {
-  const el = document.getElementById('admin-container');
-  if (!el) return;
-  if (!isAdmin()) {
-    el.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-tertiary);">관리자 전용입니다.</div>';
-    return;
-  }
-
-  el.innerHTML = `<div style="padding:40px;text-align:center;color:var(--text-tertiary);">
-    <div style="font-size:24px;margin-bottom:8px;">🍅</div>불러오는 중...
-  </div>`;
-
-  try {
-    // 데이터 로드 (최초 1회 또는 리렌더)
-    _adminData = await _loadData();
-    setRerender(renderAdmin);
-
-    // 레이아웃
-    el.innerHTML = `
-    <div style="padding:16px 16px 100px;">
-      <!-- 헤더 -->
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
-        <div style="width:40px;height:40px;border-radius:12px;background:#fa342c;display:flex;align-items:center;justify-content:center;font-size:20px;color:#fff;font-weight:800;">🍅</div>
-        <div style="flex:1;">
-          <div style="font-size:17px;font-weight:700;color:var(--text);">토마토어드민</div>
-          <div style="font-size:12px;color:var(--text-tertiary);">데이터 분석 대시보드</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
-          <div style="position:relative;flex-shrink:0;">
-          <button id="admin-export-btn" onclick="window._adminToggleExportMenu()" style="width:36px;height:36px;border:none;border-radius:10px;background:var(--surface2,#F2F4F6);display:flex;align-items:center;justify-content:center;font-size:16px;cursor:pointer;" title="데이터 내보내기">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          </button>
-          <div id="admin-export-menu" style="display:none;position:absolute;right:0;top:42px;z-index:100;min-width:220px;background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:0 8px 24px rgba(0,0,0,0.12);padding:6px;"></div>
-          </div>
-        </div>
-      </div>
-
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin:-4px 0 16px;padding:12px 14px;border:1px solid var(--border);border-radius:14px;background:var(--surface);">
-        <div>
-          <div style="font-size:13px;font-weight:700;color:var(--text);">현재 김태우 Admin 모드</div>
-          <div style="font-size:11px;color:var(--text-tertiary);margin-top:2px;">일반 화면으로 돌아가려면 게스트 모드로 전환하세요.</div>
-        </div>
-        <button onclick="window.switchKimMode && window.switchKimMode('Guest')" style="height:38px;padding:0 14px;border:1px solid var(--primary);border-radius:10px;background:var(--primary-bg);color:var(--primary);font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;" title="게스트 모드로 전환">
-          게스트로 돌아가기
-        </button>
-      </div>
-
-      <!-- 세그먼티드 컨트롤 -->
-      <div id="admin-seg-ctrl" style="display:flex;gap:2px;background:var(--surface2,#F2F4F6);border-radius:14px;padding:4px 5px;margin-bottom:16px;overflow-x:auto;-webkit-overflow-scrolling:touch;">
-        ${SECTIONS.map(s => `
-          <button class="admin-seg-btn" data-section="${s.id}" onclick="window._adminSwitchSection('${s.id}')"
-            style="flex:1;min-width:0;padding:7px 8px;border:none;border-radius:12px;font-size:11px;font-weight:${s.id === _currentSection ? '600' : '500'};color:${s.id === _currentSection ? 'var(--text)' : 'var(--text-tertiary)'};background:${s.id === _currentSection ? 'var(--surface)' : 'transparent'};${s.id === _currentSection ? 'box-shadow:0 1px 2px 0 rgba(0,0,0,0.09);' : ''}cursor:pointer;transition:color 0.2s ease;white-space:nowrap;">
-            ${s.label}${s.id === 'actions' && _adminData.unreadLetters > 0 ? ` <span style="font-size:9px;background:#ef4444;color:#fff;border-radius:999px;padding:1px 5px;font-weight:700;">${_adminData.unreadLetters}</span>` : ''}
-          </button>
-        `).join('')}
-      </div>
-
-      <!-- 섹션 컨테이너 -->
-      <div id="admin-section-container"></div>
-
-      <button
-        id="admin-exit-guest-btn"
-        onclick="window.switchKimMode && window.switchKimMode('Guest')"
-        style="position:fixed;right:16px;bottom:88px;z-index:1200;height:48px;padding:0 16px;border:none;border-radius:999px;background:#fa342c;color:#fff;font-size:13px;font-weight:800;box-shadow:0 10px 24px rgba(250,52,44,0.28);cursor:pointer;"
-        title="게스트 모드로 전환"
-      >
-        게스트로 돌아가기
-      </button>
-    </div>`;
-
-    // 현재 섹션 렌더
-    _renderSection(_currentSection);
-
-  } catch (e) {
-    console.error('[admin] render error:', e);
-    el.innerHTML = `<div style="padding:40px;text-align:center;">
-      <div style="color:#ef4444;font-size:14px;font-weight:600;">로드 실패</div>
-      <div style="color:var(--text-tertiary);font-size:12px;margin-top:8px;">${e.message}</div>
-    </div>`;
-  }
+function _dk(d) {
+  return dateKey(d.getFullYear(), d.getMonth(), d.getDate());
 }
 
-// ── 섹션 전환 ────────────────────────────────────────────────────
-window._adminSwitchSection = function(sectionId) {
-  _currentSection = sectionId;
-
-  // 세그먼티드 컨트롤 시각 업데이트
-  document.querySelectorAll('.admin-seg-btn').forEach(btn => {
-    const active = btn.dataset.section === sectionId;
-    btn.style.fontWeight = active ? '600' : '500';
-    btn.style.color = active ? 'var(--text)' : 'var(--text-tertiary)';
-    btn.style.background = active ? 'var(--surface)' : 'transparent';
-    btn.style.boxShadow = active ? '0 1px 2px 0 rgba(0,0,0,0.09)' : 'none';
-  });
-
-  _renderSection(sectionId);
-};
-
-// ── 내보내기 메뉴 ────────────────────────────────────────────────
-window._adminToggleExportMenu = function() {
-  const menu = document.getElementById('admin-export-menu');
-  if (!menu) return;
-  const isOpen = menu.style.display !== 'none';
-  if (isOpen) { menu.style.display = 'none'; return; }
-
-  const MENU_STYLE = 'display:flex;align-items:center;gap:10px;padding:10px 14px;border:none;width:100%;background:transparent;border-radius:10px;font-size:12px;font-weight:500;color:var(--text);cursor:pointer;text-align:left;';
-  const HOVER = 'onmouseover="this.style.background=\'var(--surface2,#F2F4F6)\'" onmouseout="this.style.background=\'transparent\'"';
-  const SEP = '<div style="height:1px;background:var(--border);margin:2px 8px;"></div>';
-
-  menu.innerHTML = `
-    <button style="${MENU_STYLE}" ${HOVER} onclick="window._adminExport('ai_json')">
-      <span style="font-size:16px;">🤖</span> AI 분석용 종합 (JSON)
-    </button>
-    ${SEP}
-    <button style="${MENU_STYLE}" ${HOVER} onclick="window._adminExport('all_csv')">
-      <span style="font-size:16px;">📦</span> 전체 CSV 다운로드 (4개)
-    </button>
-    ${SEP}
-    <button style="${MENU_STYLE}" ${HOVER} onclick="window._adminExport('users')">
-      <span style="font-size:16px;">👥</span> 유저 리포트 CSV
-    </button>
-    <button style="${MENU_STYLE}" ${HOVER} onclick="window._adminExport('daily')">
-      <span style="font-size:16px;">📊</span> 일별 활동 CSV
-    </button>
-    <button style="${MENU_STYLE}" ${HOVER} onclick="window._adminExport('social')">
-      <span style="font-size:16px;">💬</span> 소셜 인터랙션 CSV
-    </button>
-    <button style="${MENU_STYLE}" ${HOVER} onclick="window._adminExport('letters')">
-      <span style="font-size:16px;">💌</span> 편지/패치노트 CSV
-    </button>
-  `;
-  menu.style.display = 'block';
-
-  // 바깥 클릭 시 닫기
-  const _close = (e) => {
-    if (!menu.contains(e.target) && e.target.id !== 'admin-export-btn') {
-      menu.style.display = 'none';
-      document.removeEventListener('click', _close);
-    }
-  };
-  setTimeout(() => document.addEventListener('click', _close), 0);
-};
-
-window._adminExport = function(type) {
-  const menu = document.getElementById('admin-export-menu');
-  if (menu) menu.style.display = 'none';
-  if (!_adminData) return;
-
-  switch (type) {
-    case 'users':    exportUsersReport(_adminData); break;
-    case 'daily':    exportDailyActivity(_adminData); break;
-    case 'social':   exportSocialInteractions(_adminData); break;
-    case 'letters':  exportLettersAndPatchnotes(_adminData); break;
-    case 'all_csv':  exportAll(_adminData); break;
-    case 'ai_json':  exportAIJson(_adminData); break;
-  }
-};
-
-function _renderSection(sectionId) {
-  const container = document.getElementById('admin-section-container');
-  if (!container || !_adminData) return;
-
-  switch (sectionId) {
-    case 'overview':
-      renderOverviewSection(container, _adminData);
-      break;
-    case 'users':
-      renderUsersSection(container, _adminData);
-      break;
-    case 'engagement':
-      renderEngagementSection(container, _adminData);
-      break;
-    case 'social':
-      renderSocialSection(container, _adminData);
-      break;
-    case 'actions':
-      renderActionsSection(container, _adminData, renderAdmin);
-      break;
-  }
+function _daysAgo(n) {
+  const d = new Date(TODAY);
+  d.setDate(d.getDate() - n);
+  return d;
 }
-
-// ── 유틸 ─────────────────────────────────────────────────────────
-function _dk(d) { return dateKey(d.getFullYear(), d.getMonth(), d.getDate()); }
-function _daysAgo(n) { const d = new Date(TODAY); d.setDate(d.getDate() - n); return d; }
 
 function _chunk(items, size) {
   const chunks = [];
@@ -226,20 +50,14 @@ function _chunk(items, size) {
 async function _getRecentWorkouts(userId, dateKeys) {
   const workouts = [];
   const batches = _chunk(dateKeys, 30);
-
   for (const batch of batches) {
     if (!batch.length) continue;
-    const snap = await getDocs(
-      query(
-        collection(db, 'users', userId, 'workouts'),
-        where(documentId(), 'in', batch),
-      ),
-    );
-    snap.forEach((docSnap) => {
-      workouts.push({ dk: docSnap.id, w: docSnap.data() });
-    });
+    const snap = await getDocs(query(
+      collection(db, 'users', userId, 'workouts'),
+      where(documentId(), 'in', batch),
+    ));
+    snap.forEach((docSnap) => workouts.push({ dk: docSnap.id, w: docSnap.data() }));
   }
-
   return workouts;
 }
 
@@ -259,9 +77,7 @@ function _hasDiet(w) {
   return !!(w.bFoods?.length || w.lFoods?.length || w.dFoods?.length || w.sFoods?.length);
 }
 
-// ── 데이터 로딩 ──────────────────────────────────────────────────
 async function _loadData() {
-  // 1단계: 글로벌 컬렉션 + analytics 병렬 로드
   const [accSnap, frSnap, gbSnap, lkSnap, ltSnap, pnSnap, analytics] = await Promise.all([
     getDocs(collection(db, '_accounts')),
     getDocs(collection(db, '_friend_requests')),
@@ -272,27 +88,25 @@ async function _loadData() {
     getAnalytics(30),
   ]);
 
-  const accs = []; accSnap.forEach(d => accs.push(d.data()));
-  const frs = [];  frSnap.forEach(d => frs.push(d.data()));
-  const gbs = [];  gbSnap.forEach(d => gbs.push(d.data()));
-  const lks = [];  lkSnap.forEach(d => lks.push(d.data()));
-  const letters = []; ltSnap.forEach(d => letters.push(d.data()));
-  const patchnotes = []; pnSnap.forEach(d => patchnotes.push(d.data()));
+  const accs = []; accSnap.forEach((d) => accs.push(d.data()));
+  const frs = []; frSnap.forEach((d) => frs.push(d.data()));
+  const gbs = []; gbSnap.forEach((d) => gbs.push(d.data()));
+  const lks = []; lkSnap.forEach((d) => lks.push(d.data()));
+  const letters = []; ltSnap.forEach((d) => letters.push(d.data()));
+  const patchnotes = []; pnSnap.forEach((d) => patchnotes.push(d.data()));
 
   letters.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   patchnotes.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
-  const realAccs = accs.filter(a => a.id && !a.id.includes('(guest)'));
-  const unreadLetters = letters.filter(l => !l.read).length;
+  const realAccs = accs.filter((a) => (
+    a.id &&
+    !a.id.includes('(guest)') &&
+    !isAdminInstance(a.id)
+  ));
 
-  // 2단계: 최근 30일 워크아웃 데이터 로드
-  // 사용자별로 필요한 날짜만 묶어서 읽어 초기 로딩 시간을 줄인다.
   const dateKeys30 = [];
-  for (let i = 0; i < 30; i++) {
-    const d = _daysAgo(i);
-    dateKeys30.push(_dk(d));
-  }
-  const workoutMap = Object.fromEntries(dateKeys30.map(dk => [dk, {}]));
+  for (let i = 0; i < 30; i++) dateKeys30.push(_dk(_daysAgo(i)));
+  const workoutMap = Object.fromEntries(dateKeys30.map((key) => [key, {}]));
 
   const workoutResults = await Promise.all(
     realAccs.map(async (acc) => ({
@@ -301,20 +115,185 @@ async function _loadData() {
     })),
   );
 
-  for (const { uid, workouts } of workoutResults) {
-    for (const { dk, w } of workouts) {
+  workoutResults.forEach(({ uid, workouts }) => {
+    workouts.forEach(({ dk, w }) => {
       workoutMap[dk][uid] = {
         exercise: _hasExercise(w),
         diet: _hasDiet(w),
         any: _hasActivity(w),
       };
-    }
-  }
+    });
+  });
+
+  const resolveName = nameResolver(accs);
+  const segmentSummary = buildSegmentSummary(realAccs, workoutMap, dateKeys30, analytics, {
+    likes: lks,
+    guestbook: gbs,
+  });
+  const userSegments = Object.fromEntries(segmentSummary.actionQueue.map((item) => [item.uid, item]));
 
   return {
-    accs, realAccs, frs, gbs, lks,
-    letters, patchnotes,
-    analytics, unreadLetters,
-    workoutMap, dateKeys30,
+    accs,
+    realAccs,
+    frs,
+    gbs,
+    lks,
+    letters,
+    patchnotes,
+    analytics,
+    unreadLetters: letters.filter((l) => !l.read).length,
+    workoutMap,
+    dateKeys30,
+    resolveName,
+    segmentSummary,
+    userSegments,
   };
+}
+
+function _renderCurrentSection() {
+  const container = document.getElementById('admin-section-container');
+  if (!container || !_adminData) return;
+
+  switch (_currentSection) {
+    case 'home':
+      renderDashboardSection(container, _adminData, {
+        openCompose: (uid, message = '') => window._adminOpenComposeForUser(uid, message),
+      });
+      break;
+    case 'members':
+      renderPeopleSection(container, _adminData, {
+        openCompose: (uid) => window._adminOpenComposeForUser(uid, ''),
+      });
+      break;
+    case 'community':
+      renderSocialSection(container, _adminData);
+      break;
+    case 'outreach':
+      renderOutreachSection(container, _adminData, {
+        prefillUid: _outreachPrefillUid,
+        prefillMessage: _outreachPrefillMessage,
+        prefillChannel: _outreachPrefillChannel,
+      });
+      _outreachPrefillUid = '';
+      _outreachPrefillMessage = '';
+      _outreachPrefillChannel = '';
+      break;
+    case 'settings':
+      renderSettingsSection(container, _adminData, renderAdmin);
+      break;
+    default:
+      renderDashboardSection(container, _adminData, {
+        openCompose: (uid, message = '') => window._adminOpenComposeForUser(uid, message),
+      });
+      break;
+  }
+}
+
+function _switchSection(sectionId) {
+  _currentSection = sectionId;
+  document.querySelectorAll('.admin-seg-btn').forEach((btn) => {
+    btn.classList.toggle('is-active', btn.dataset.section === sectionId);
+  });
+  _renderCurrentSection();
+}
+
+window._adminSwitchSection = _switchSection;
+
+window._adminOpenComposeForUser = (uid, suggestedMessage = '') => {
+  _outreachPrefillUid = uid || '';
+  _outreachPrefillMessage = suggestedMessage || '';
+  _outreachPrefillChannel = (suggestedMessage || '').includes('복귀') ? 'comeback' : 'push';
+  _switchSection('outreach');
+};
+
+window._adminToggleExportMenu = function() {
+  const menu = document.getElementById('admin-export-menu');
+  if (!menu || !_adminData) return;
+  const isOpen = menu.style.display !== 'none';
+  if (isOpen) {
+    menu.style.display = 'none';
+    return;
+  }
+
+  const buttonStyle = 'display:flex;align-items:center;justify-content:space-between;width:100%;background:transparent;border:none;color:var(--hig-text);padding:10px 12px;border-radius:8px;cursor:pointer;';
+  menu.innerHTML = `
+    <button style="${buttonStyle}" onclick="window._adminExport('ai_json')">AI JSON <span>↓</span></button>
+    <button style="${buttonStyle}" onclick="window._adminExport('all_csv')">All CSV <span>↓</span></button>
+    <button style="${buttonStyle}" onclick="window._adminExport('users')">Users CSV <span>↓</span></button>
+    <button style="${buttonStyle}" onclick="window._adminExport('daily')">Daily CSV <span>↓</span></button>
+    <button style="${buttonStyle}" onclick="window._adminExport('social')">Social CSV <span>↓</span></button>
+    <button style="${buttonStyle}" onclick="window._adminExport('letters')">Letters CSV <span>↓</span></button>
+  `;
+  menu.style.display = 'block';
+
+  const close = (event) => {
+    if (!menu.contains(event.target) && event.target.id !== 'admin-export-button') {
+      menu.style.display = 'none';
+      document.removeEventListener('click', close);
+    }
+  };
+  setTimeout(() => document.addEventListener('click', close), 0);
+};
+
+window._adminExport = function(type) {
+  if (!_adminData) return;
+  const menu = document.getElementById('admin-export-menu');
+  if (menu) menu.style.display = 'none';
+
+  switch (type) {
+    case 'users': exportUsersReport(_adminData); break;
+    case 'daily': exportDailyActivity(_adminData); break;
+    case 'social': exportSocialInteractions(_adminData); break;
+    case 'letters': exportLettersAndPatchnotes(_adminData); break;
+    case 'all_csv': exportAll(_adminData); break;
+    case 'ai_json': exportAIJson(_adminData); break;
+    default: break;
+  }
+};
+
+export async function renderAdmin() {
+  const root = document.getElementById('admin-container');
+  if (!root) return;
+  if (!isAdmin()) {
+    root.innerHTML = '<div style="padding:40px;text-align:center;color:#8E8E93;">관리자 전용 페이지입니다.</div>';
+    return;
+  }
+
+  root.innerHTML = '<div style="padding:32px;color:#8E8E93;">로딩 중...</div>';
+
+  try {
+    _adminData = await _loadData();
+    window.__adminDataCache = _adminData;
+
+    root.innerHTML = `
+      <div style="padding:16px 16px 110px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+          <div style="width:36px;height:36px;border-radius:10px;background:var(--primary);display:flex;align-items:center;justify-content:center;font-size:18px;">🍅</div>
+          <div style="flex:1;">
+            <div class="hig-headline">Admin Console</div>
+            <div class="hig-caption1" style="color:var(--hig-gray1);">TDS Mobile Segmentation + Outreach</div>
+          </div>
+          <div style="position:relative;">
+            <button id="admin-export-button" class="hig-btn-secondary" onclick="window._adminToggleExportMenu()">내보내기</button>
+            <div id="admin-export-menu" style="display:none;position:absolute;right:0;top:42px;z-index:10;min-width:220px;border:1px solid var(--hig-separator);border-radius:10px;background:var(--hig-surface-elevated);padding:6px;"></div>
+          </div>
+        </div>
+
+        <div class="hig-segmented-control" style="margin-bottom:14px;overflow:auto;">
+          ${SECTIONS.map((section) => `
+            <button class="admin-seg-btn ${section.id === _currentSection ? 'is-active' : ''}" data-section="${section.id}" onclick="window._adminSwitchSection('${section.id}')">
+              ${section.label}${section.id === 'outreach' && _adminData.unreadLetters > 0 ? ` (${_adminData.unreadLetters})` : ''}
+            </button>
+          `).join('')}
+        </div>
+
+        <div id="admin-section-container"></div>
+      </div>
+    `;
+
+    _renderCurrentSection();
+  } catch (error) {
+    console.error('[admin] render error:', error);
+    root.innerHTML = `<div style="padding:40px;color:var(--primary);">Admin 로드 실패: ${error.message}</div>`;
+  }
 }

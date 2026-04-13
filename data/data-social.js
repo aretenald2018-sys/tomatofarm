@@ -23,7 +23,7 @@ export {
 } from './data-social-guild.js';
 
 export {
-  sendNotification, getMyNotifications, markNotificationRead, sendAnnouncement,
+  sendNotification, getMyNotifications, getAdminSentNotifications, getAdminOutreachHistory, markNotificationRead, sendAnnouncement,
   getGuestbook, writeGuestbook, deleteGuestbookEntry,
   findCommentProfileOwner, getComments, writeComment, editComment, deleteComment,
   toggleLike, getCheerStatus, getLikes, getUnseenCheers,
