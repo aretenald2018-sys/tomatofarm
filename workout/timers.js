@@ -4,7 +4,7 @@
 
 import { S }                from './state.js';
 import { saveWorkoutDay }   from './save.js';
-import { showToast }        from '../home/utils.js';
+import { showToast, showCenterToast } from '../home/utils.js';
 
 // ── 운동 시간 측정 ───────────────────────────────────────────────
 export function wtStartWorkoutTimer() {
@@ -110,8 +110,27 @@ export function wtFinishWorkout() {
   }
   const bar = document.getElementById('wt-workout-timer-bar');
   if (bar) bar.classList.remove('wt-running');
-  showToast(`운동 완료! ${_fmtDuration(S.workoutDuration)}`, 3000, 'success');
+  showCenterToast(`운동 완료! ${_fmtDuration(S.workoutDuration)}`, 2200);
   saveWorkoutDay().catch(e => console.error('Save error:', e));
+}
+
+export function wtRecoverTimers() {
+  if (S.workoutStartTime && !S.workoutTimerInterval) {
+    S.workoutTimerInterval = setInterval(_renderWorkoutTimer, 1000);
+  }
+  _renderWorkoutTimer();
+  _renderTimerControls();
+
+  if (S.restTimer.running) {
+    if (!S.restTimer.startedAt) {
+      const elapsed = Math.max(0, (S.restTimer.total || 0) - (S.restTimer.remaining || 0));
+      S.restTimer.startedAt = Date.now() - elapsed * 1000;
+    }
+    if (!S.restTimer.interval) {
+      S.restTimer.interval = setInterval(_syncRestTimerFromNow, 1000);
+    }
+    _syncRestTimerFromNow();
+  }
 }
 
 // ── 세트 간 휴식 타이머 ─────────────────────────────────────────
@@ -134,6 +153,7 @@ export function wtRestTimerStart(seconds, context) {
   if (ctxEl) ctxEl.textContent = context || '';
   S.restTimer.remaining = S.restTimer.total;
   S.restTimer.running = true;
+  S.restTimer.startedAt = Date.now();
 
   bar.style.display = '';
   bar.classList.remove('expired', 'done', 'wt-idle');
@@ -142,21 +162,7 @@ export function wtRestTimerStart(seconds, context) {
   _updatePresetActive();
 
   if (S.restTimer.interval) clearInterval(S.restTimer.interval);
-
-  S.restTimer.interval = setInterval(() => {
-    S.restTimer.remaining--;
-    _restTimeEl().textContent = _formatTime(S.restTimer.remaining);
-
-    if (S.restTimer.remaining > 0) {
-      _restFillEl().style.width = `${(S.restTimer.remaining / S.restTimer.total) * 100}%`;
-    } else if (S.restTimer.remaining === 0) {
-      _restFillEl().style.width = '0%';
-      bar.classList.add('expired');
-      if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
-    } else {
-      if (S.restTimer.remaining < -600) wtRestTimerSkip();
-    }
-  }, 1000);
+  S.restTimer.interval = setInterval(_syncRestTimerFromNow, 1000);
 }
 
 export function wtRestTimerShowIdle() {
@@ -183,17 +189,43 @@ export function wtRestTimerSkip() {
   if (S.restTimer.interval) clearInterval(S.restTimer.interval);
   S.restTimer.interval = null;
   S.restTimer.running = false;
+  S.restTimer.startedAt = null;
   bar.style.display = 'none';
   bar.classList.remove('expired', 'done', 'wt-idle');
 }
 
 export function wtRestTimerAdjust(delta) {
   if (!S.restTimer.running) return;
-  S.restTimer.remaining = Math.max(0, S.restTimer.remaining + delta);
+  const elapsed = Math.floor((Date.now() - (S.restTimer.startedAt || Date.now())) / 1000);
+  const currentRemaining = (S.restTimer.total || 0) - elapsed;
+  S.restTimer.remaining = Math.max(0, currentRemaining + delta);
   S.restTimer.total = Math.max(S.restTimer.total, S.restTimer.remaining);
+  S.restTimer.startedAt = Date.now() - Math.max(0, S.restTimer.total - S.restTimer.remaining) * 1000;
   _restTimeEl().textContent = _formatTime(S.restTimer.remaining);
   _restFillEl().style.width = `${(S.restTimer.remaining / S.restTimer.total) * 100}%`;
   _restTimerEl()?.classList.remove('expired');
+}
+
+function _syncRestTimerFromNow() {
+  const bar = _restTimerEl();
+  if (!bar || !S.restTimer.running) return;
+  const startedAt = S.restTimer.startedAt || Date.now();
+  const elapsed = Math.floor((Date.now() - startedAt) / 1000);
+  S.restTimer.remaining = (S.restTimer.total || 0) - elapsed;
+
+  _restTimeEl().textContent = _formatTime(S.restTimer.remaining);
+  if (S.restTimer.remaining > 0) {
+    _restFillEl().style.width = `${(S.restTimer.remaining / S.restTimer.total) * 100}%`;
+    bar.classList.remove('expired');
+    return;
+  }
+  if (S.restTimer.remaining === 0) {
+    _restFillEl().style.width = '0%';
+    bar.classList.add('expired');
+    if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+    return;
+  }
+  if (S.restTimer.remaining < -600) wtRestTimerSkip();
 }
 
 function _updatePresetActive() {
