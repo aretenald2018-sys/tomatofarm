@@ -10,8 +10,8 @@ import {
   getCurrentUserRef, setCurrentUserRef,
   ADMIN_ID, ADMIN_GUEST_ID, getDataOwnerId,
   _col, _doc,
-  _cache, _exList, _goals, _quests, _cooking, _bodyCheckins, _nutritionDB,
-  _setCache, _setExList, _setGoals, _setQuests, _setCooking, _setBodyCheckins, _setNutritionDB,
+  _cache, _exList, _customMuscles, _goals, _quests, _cooking, _bodyCheckins, _nutritionDB,
+  _setCache, _setExList, _setCustomMuscles, _setGoals, _setQuests, _setCooking, _setBodyCheckins, _setNutritionDB,
   DEFAULT_TAB_ORDER, DEFAULT_VISIBLE_TABS, DEFAULT_DIET_PLAN,
   _dietPlan, _setDietPlan, _settings, _resetSettings,
   _tomatoCycles, _setTomatoCycles,
@@ -82,7 +82,7 @@ export {
   getGuildLeader, transferGuildLeadership, kickGuildMember,
   deleteGuild, updateGuild, adminAddGuildMember, adminRemoveGuildMember,
   inviteUserToGuild,
-  sendNotification, getMyNotifications, markNotificationRead, sendAnnouncement,
+  sendNotification, getMyNotifications, getAdminSentNotifications, getAdminOutreachHistory, markNotificationRead, sendAnnouncement,
   getGuestbook, writeGuestbook, deleteGuestbookEntry,
   findCommentProfileOwner, getComments, writeComment, editComment, deleteComment,
   toggleLike, getCheerStatus, getLikes, getUnseenCheers,
@@ -159,6 +159,16 @@ export async function loadAll() {
     const customIds = new Set(custom.map(e => e.id));
     const defaults  = CONFIG.DEFAULT_EXERCISES.filter(e => !customIds.has(e.id));
     _setExList(_sortExList([...defaults, ...custom]));
+    try {
+      const customMuscleSnap = await getDocs(_col('custom_muscles'));
+      const customMuscles = [];
+      customMuscleSnap.forEach(d => customMuscles.push({ id: d.id, ...d.data() }));
+      _setCustomMuscles(customMuscles);
+    } catch (e) {
+      // rules 미반영/권한 오류가 있어도 로그인/기존 기능은 동작하도록 fail-safe
+      console.warn('[data] custom_muscles load skipped:', e?.message || e);
+      _setCustomMuscles([]);
+    }
 
     { const g = []; goalSnap.forEach(d => g.push(d.data())); _setGoals(g); }
     { const q = []; questSnap.forEach(d => q.push(d.data())); _setQuests(q); }
@@ -225,6 +235,7 @@ export async function loadAll() {
     _setSyncStatus('err');
     console.error('[data] loadAll:', e);
     _setExList([...CONFIG.DEFAULT_EXERCISES]);
+    _setCustomMuscles([]);
     _settings.quest_order    = _migrateFromLS('quest_order',    ['quarterly','monthly','weekly','daily']);
     _settings.section_titles = _migrateFromLS('section_titles', {});
     _settings.weekly_memos   = _migrateFromLS('weekly_memos',   {});
@@ -323,6 +334,7 @@ function _createCRUD(collectionName, getArray, setArray) {
 const _goalsCRUD   = _createCRUD('goals',      () => _goals,   v => _setGoals(v));
 const _questsCRUD  = _createCRUD('quests',     () => _quests,  v => _setQuests(v));
 const _cookingCRUD = _createCRUD('cooking',    () => _cooking, v => _setCooking(v));
+const _customMusclesCRUD = _createCRUD('custom_muscles', () => _customMuscles, v => _setCustomMuscles(v));
 
 export const saveGoal    = (goal)  => _goalsCRUD.save(goal);
 export const deleteGoal  = (id)    => _goalsCRUD.delete(id);
@@ -334,6 +346,8 @@ export const getQuests   = ()      => _quests;
 
 export const saveCooking   = (record) => _cookingCRUD.save(record);
 export const deleteCooking = (id)     => _cookingCRUD.delete(id);
+export const saveCustomMuscle = (muscle) => _customMusclesCRUD.save(muscle);
+export const deleteCustomMuscle = (id)   => _customMusclesCRUD.delete(id);
 
 export const getCookingRecords  = () => _cooking;
 export const getCookingForDate  = (dateStr) => _cooking.filter(c => c.date === dateStr);
@@ -448,6 +462,14 @@ export const calcExerciseCalorieCredit = _calcExerciseCalorieCredit;
 // ═══════════════════════════════════════════════════════════════
 
 export const getExList    = ()      => _exList;
+export const getCustomMuscles = ()  => _customMuscles;
+export const getAllMuscles = () => {
+  const byId = new Map(MUSCLES.map(m => [m.id, m]));
+  _customMuscles.forEach(m => {
+    if (m?.id && m?.name) byId.set(m.id, m);
+  });
+  return [...byId.values()];
+};
 export const getCache     = ()      => _cache;
 export const getAllDateKeys = () => Object.keys(_cache).filter(k => /^\d{4}-\d{2}-\d{2}$/.test(k));
 export const getDay       = (y,m,d) => _cache[dateKey(y,m,d)] || {};
