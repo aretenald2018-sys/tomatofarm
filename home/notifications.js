@@ -167,18 +167,16 @@ window.openCommentNotif = async function(targetUserId, fromId, section, dateKey)
 };
 
 window.markAllNotifsRead = async function() {
-  const { deleteDoc, doc } = await import("https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js");
-  const { getFirestore } = await import("https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js");
-  const db = getFirestore();
   const notifs = await getMyNotifications();
+  const unread = notifs.filter((n) => !n.read);
 
-  if (!notifs.length) {
-    showToast('지울 알림이 없어요', 2000, 'info');
+  if (!unread.length) {
+    showToast('읽지 않은 알림이 없어요', 2000, 'info');
     return;
   }
 
   const list = document.getElementById('notif-center-list');
-  const nodes = notifs
+  const nodes = unread
     .map((n) => list?.querySelector(`[data-notif-id="${n.id}"]`))
     .filter(Boolean);
 
@@ -198,10 +196,10 @@ window.markAllNotifsRead = async function() {
     }, index * 55);
   })));
 
-  await Promise.all(notifs.map((n) => deleteDoc(doc(db, '_notifications', n.id)).catch(() => {})));
+  await Promise.all(unread.map((n) => markNotificationRead(n.id).catch(() => {})));
   refreshNotifCenter();
   if (_renderFriendFeedFn) _renderFriendFeedFn();
-  showToast('알림을 모두 지웠어요', 2500, 'info');
+  showToast('알림을 모두 읽었어요', 2500, 'info');
 };
 
 window.acceptFriendFromNotif = async function(id) {

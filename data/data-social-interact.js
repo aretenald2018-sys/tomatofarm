@@ -30,7 +30,55 @@ export async function getMyNotifications() {
 }
 
 export async function markNotificationRead(notifId) {
-  await setDoc(doc(db, '_notifications', notifId), { read: true }, { merge: true });
+  await setDoc(doc(db, '_notifications', notifId), { read: true, readAt: Date.now() }, { merge: true });
+}
+
+export async function getAdminSentNotifications() {
+  const snap = await getDocs(collection(db, '_notifications'));
+  const notifs = [];
+  snap.forEach(d => {
+    const data = d.data();
+    if (data.from === 'admin') notifs.push(data);
+  });
+  notifs.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  return notifs;
+}
+
+export async function getAdminOutreachHistory() {
+  const [notifSnap, heroSnap] = await Promise.all([
+    getDocs(collection(db, '_notifications')),
+    getDocs(collection(db, '_hero_messages')),
+  ]);
+
+  const history = [];
+
+  notifSnap.forEach((d) => {
+    const data = d.data();
+    if (data.from !== 'admin') return;
+    history.push({
+      ...data,
+      id: data.id || d.id,
+      source: 'notification',
+    });
+  });
+
+  heroSnap.forEach((d) => {
+    const data = d.data();
+    history.push({
+      ...data,
+      id: data.id || d.id,
+      source: 'hero',
+      type: 'hero',
+      to: data.targetUserId || data.to || '',
+      body: data.message || data.body || '',
+      message: data.message || '',
+      read: null,
+      readAt: null,
+    });
+  });
+
+  history.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  return history;
 }
 
 export async function sendAnnouncement(title, body) {

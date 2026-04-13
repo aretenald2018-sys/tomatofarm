@@ -15,6 +15,7 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="admin/admin-hig.css">
 </head>
 <body>
 
@@ -962,6 +963,14 @@ async function saveStreakSettingsAndClose() {
 // ── 계정 시스템 ──
 let _pendingAccount = null;
 
+function _needsPassword(account) {
+  if (!account) return false;
+  const flag = account.hasPassword;
+  if (flag === true || flag === 'true' || flag === 1 || flag === '1') return true;
+  if (flag === false || flag === 'false' || flag === 0 || flag === '0') return false;
+  return !!account.passwordHash;
+}
+
 async function initLoginScreen() {
   const { loadSavedUser, restoreUserFromBackup, getAccountList, setCurrentUser, loadAll } = await import('./data.js');
 
@@ -1143,32 +1152,38 @@ async function initLoginScreen() {
       statusEl.textContent = '';
       return;
     }
-    const { getAdminId, isAdminInstance } = await import('./data.js');
-    const rawId = `${ln}_${fn}`.toLowerCase().replace(/\s/g, '');
-    const id = (isAdminInstance(rawId) || rawId === getAdminId()) ? getAdminId() : rawId;
-    const accounts = await getAccountList();
-    const found = accounts.find(a => a.id === id);
+    try {
+      const { getAdminId, isAdminInstance, getAccountList } = await import('./data.js');
+      const rawId = `${ln}_${fn}`.toLowerCase().replace(/\s/g, '');
+      const id = (isAdminInstance(rawId) || rawId === getAdminId()) ? getAdminId() : rawId;
+      const accounts = await getAccountList();
+      const found = accounts.find(a => a.id === id);
 
-    // 김/태우 입력 시 비밀번호만 (Guest UX 기본)
-    const modeSection = document.getElementById('login-mode-section');
-    if (modeSection) modeSection.style.display = 'none';
-    if (ln === '김' && fn === '태우') {
-      pwSection.style.display = 'block';
-      statusEl.innerHTML = '<span style="color:var(--primary);">비밀번호를 입력해주세요.</span>';
-      return;
-    }
-
-    if (found) {
-      if (found.hasPassword) {
+      // 김/태우 입력 시 비밀번호만 (Guest UX 기본)
+      const modeSection = document.getElementById('login-mode-section');
+      if (modeSection) modeSection.style.display = 'none';
+      if (ln === '김' && fn === '태우') {
         pwSection.style.display = 'block';
         statusEl.innerHTML = '<span style="color:var(--primary);">비밀번호를 입력해주세요.</span>';
+        return;
+      }
+
+      if (found) {
+        if (_needsPassword(found)) {
+          pwSection.style.display = 'block';
+          statusEl.innerHTML = '<span style="color:var(--primary);">비밀번호를 입력해주세요.</span>';
+        } else {
+          pwSection.style.display = 'none';
+          statusEl.innerHTML = '<span style="color:var(--primary);">기존 계정이에요. 바로 로그인할 수 있어요.</span>';
+        }
       } else {
         pwSection.style.display = 'none';
-        statusEl.innerHTML = '<span style="color:var(--primary);">기존 계정이에요. 바로 로그인할 수 있어요.</span>';
+        statusEl.innerHTML = '<span style="color:var(--text-tertiary);">계정이 없어요. 가입하기를 눌러주세요.</span>';
       }
-    } else {
+    } catch (e) {
       pwSection.style.display = 'none';
-      statusEl.innerHTML = '<span style="color:var(--text-tertiary);">계정이 없어요. 가입하기를 눌러주세요.</span>';
+      statusEl.innerHTML = '<span style="color:#ef4444;">로그인 상태 확인 중 오류가 발생했어요. 다시 시도해주세요.</span>';
+      console.warn('[login] checkAccountExists error:', e);
     }
   }
   window._checkAccountExists = checkAccountExists;
@@ -1217,7 +1232,7 @@ async function selectAccount(accountId) {
   const account = accounts.find(a => a.id === accountId);
   if (!account) return;
 
-  if (account.hasPassword) {
+  if (_needsPassword(account)) {
     _pendingAccount = account;
     document.getElementById('login-pw-modal-name').textContent = `${account.lastName}${account.firstName}`;
     document.getElementById('login-pw-modal').style.display = 'flex';
@@ -1491,7 +1506,7 @@ async function createAccountAndLogin() {
     return;
   }
 
-  if (found.hasPassword) {
+  if (_needsPassword(found)) {
     const pw = document.getElementById('login-password')?.value || '';
     if (!pw) { document.getElementById('login-password')?.focus(); return; }
     if (!verifyPassword(found, pw)) {
