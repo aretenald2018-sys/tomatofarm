@@ -4,9 +4,9 @@
 // 변경: 13번 CSV 내보내기 추가
 // ================================================================
 
-import { MUSCLES, MONTHS }                           from './config.js';
+import { MONTHS }                                    from './config.js';
 import { TODAY, getMuscles, getCF, getDiet, dietDayOk,
-         daysInMonth, isFuture, getExList,
+         daysInMonth, isFuture, getExList, getAllMuscles,
          getVolumeHistory, getCache, calcVolume,
          getExercises, dateKey, getBodyCheckins }    from './data.js';
 
@@ -53,9 +53,10 @@ export function exportCSV(period) {
       const dietOk   = diet ? (day.bOk!==false&&day.lOk!==false&&day.dOk!==false?'O':'X') : '';
 
       if (day.exercises?.length) {
+        const allMuscles = getAllMuscles();
         day.exercises.forEach(entry => {
           const ex  = exList.find(e => e.id === entry.exerciseId);
-          const mc  = MUSCLES.find(m => m.id === entry.muscleId);
+          const mc  = allMuscles.find(m => m.id === entry.muscleId);
           const vol = calcVolume(entry.sets);
           rows.push([
             key,
@@ -86,13 +87,15 @@ export function exportCSV(period) {
 
 // ── 근육 14일 ────────────────────────────────────────────────────
 function _renderMuscle14d() {
-  const data={}; MUSCLES.forEach(m=>data[m.id]=0);
+  const allMuscles = getAllMuscles();
+  const data={};
+  allMuscles.forEach(m=>data[m.id]=0);
   for(let i=0;i<14;i++){
     const d=new Date(TODAY);d.setDate(d.getDate()-i);
     getMuscles(d.getFullYear(),d.getMonth(),d.getDate()).forEach(mid=>{if(mid in data)data[mid]++;});
   }
   const el=document.getElementById('muscle-14d');el.innerHTML='';
-  MUSCLES.forEach(mu=>{
+  allMuscles.forEach(mu=>{
     const cnt=data[mu.id],pct=Math.round((cnt/14)*100);
     const badge=cnt>=2?'good':cnt===1?'warn':'bad',bt=cnt>=2?`${cnt}회✓`:cnt===1?'1회':'0회';
     const row=document.createElement('div');row.className='muscle-stat-row';
@@ -107,7 +110,8 @@ function _renderMuscle14d() {
 
 // ── 기간별 근육 ──────────────────────────────────────────────────
 function _renderMusclePeriod() {
-  const data={}; MUSCLES.forEach(m=>data[m.id]=0);
+  const allMuscles = getAllMuscles();
+  const data={}; allMuscles.forEach(m=>data[m.id]=0);
   const limit=_period===0?3650:_period;
   for(let i=0;i<limit;i++){
     const d=new Date(TODAY);d.setDate(d.getDate()-i);
@@ -115,7 +119,7 @@ function _renderMusclePeriod() {
   }
   const el=document.getElementById('muscle-period');el.innerHTML='';
   const max=Math.max(...Object.values(data),1);
-  MUSCLES.forEach(mu=>{
+  allMuscles.forEach(mu=>{
     const cnt=data[mu.id],pct=Math.round((cnt/max)*100);
     const row=document.createElement('div');row.className='muscle-stat-row';
     row.innerHTML=`
@@ -129,6 +133,7 @@ function _renderMusclePeriod() {
 // ── 종목별 볼륨 추이 ──────────────────────────────────────────────
 function _renderVolumeSection() {
   const container=document.getElementById('volume-section');container.innerHTML='';
+  const allMuscles = getAllMuscles();
   const usedExIds=new Set();
   Object.values(getCache()).forEach(day=>(day.exercises||[]).forEach(e=>usedExIds.add(e.exerciseId)));
 
@@ -138,7 +143,7 @@ function _renderVolumeSection() {
   }
 
   const selector=document.createElement('div');selector.className='vol-selector';
-  MUSCLES.forEach(muscle=>{
+  allMuscles.forEach(muscle=>{
     getExList().filter(e=>e.muscleId===muscle.id&&usedExIds.has(e.id)).forEach(ex=>{
       const btn=document.createElement('button');
       btn.className='vol-ex-btn'+(_selectedExerciseId===ex.id?' active':'');
@@ -185,7 +190,7 @@ function _drawVolumeChart(canvas,history){
   if(typeof Chart==='undefined')return;
   const existing=Chart.getChart(canvas);if(existing)existing.destroy();
   const ex=getExList().find(e=>e.id===_selectedExerciseId);
-  const mc=MUSCLES.find(m=>m.id===ex?.muscleId);
+  const mc=getAllMuscles().find(m=>m.id===ex?.muscleId);
   const color=mc?.color||'#f97316';
   new Chart(canvas,{
     type:'line',

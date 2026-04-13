@@ -8,11 +8,13 @@ import { _buildSparkline }            from './render.js';
 import { wtStartWorkoutTimer,
          wtRestTimerStart,
          wtRestTimerSkip }             from './timers.js';
-import { MUSCLES }                     from '../config.js';
 import { showToast }                   from '../home/utils.js';
 import { getExList, getLastSession,
          dateKey, saveExercise,
-         deleteExercise }              from '../data.js';
+         deleteExercise, getAllMuscles,
+         saveCustomMuscle }            from '../data.js';
+
+const NEW_MUSCLE_OPTION = '__new_custom_muscle__';
 
 // ── 세트 조작 ────────────────────────────────────────────────────
 export function wtAddSet(entryIdx) {
@@ -79,10 +81,11 @@ export function _renderExerciseList() {
   const container = document.getElementById('wt-exercise-list');
   if (!container) return;
   container.innerHTML = '';
+  const allMuscles = getAllMuscles();
 
   S.exercises.forEach((entry, idx) => {
     const ex   = getExList().find(e => e.id === entry.exerciseId);
-    const mc   = MUSCLES.find(m => m.id === entry.muscleId);
+    const mc   = allMuscles.find(m => m.id === entry.muscleId);
     const last = getLastSession(entry.exerciseId);
     const isToday = S.date && last?.date === dateKey(S.date.y, S.date.m, S.date.d);
     const lastHint = (last && !isToday)
@@ -185,7 +188,8 @@ export function _renderPickerList() {
   const container = document.getElementById('ex-picker-list');
   if (!container) return;
   container.innerHTML = '';
-  MUSCLES.forEach(muscle => {
+  const allMuscles = getAllMuscles();
+  allMuscles.forEach(muscle => {
     const list = getExList()
       .filter(e => e.muscleId === muscle.id)
       .filter(e => !S.hiddenExercises.includes(e.id));
@@ -256,9 +260,23 @@ export function wtOpenExerciseEditor(exId, defaultMuscleId) {
   const muscleSelect = document.getElementById('ex-editor-muscle');
   const deleteBtn    = document.getElementById('tds-btn danger sm');
   const titleEl      = document.getElementById('ex-editor-title');
+  const allMuscles = getAllMuscles();
+  let addMuscleWrap = document.getElementById('ex-editor-new-muscle-wrap');
+  if (!addMuscleWrap) {
+    addMuscleWrap = document.createElement('div');
+    addMuscleWrap.id = 'ex-editor-new-muscle-wrap';
+    addMuscleWrap.style.display = 'none';
+    addMuscleWrap.style.marginTop = '8px';
+    addMuscleWrap.innerHTML = '<input class="ex-editor-input" id="ex-editor-new-muscle-name" placeholder="새 부위 이름 입력">';
+    muscleSelect.parentElement.appendChild(addMuscleWrap);
+  }
 
-  muscleSelect.innerHTML = MUSCLES.map(m =>
-    `<option value="${m.id}">${m.name}</option>`).join('');
+  muscleSelect.innerHTML = allMuscles.map(m =>
+    `<option value="${m.id}">${m.name}</option>`).join('') +
+    `<option value="${NEW_MUSCLE_OPTION}">＋ 새 부위 추가</option>`;
+  muscleSelect.onchange = () => {
+    addMuscleWrap.style.display = muscleSelect.value === NEW_MUSCLE_OPTION ? '' : 'none';
+  };
 
   if (exId) {
     const ex = getExList().find(e => e.id === exId);
@@ -270,10 +288,13 @@ export function wtOpenExerciseEditor(exId, defaultMuscleId) {
   } else {
     titleEl.textContent      = '종목 추가';
     nameInput.value          = '';
-    muscleSelect.value       = defaultMuscleId || MUSCLES[0].id;
+    muscleSelect.value       = defaultMuscleId || allMuscles[0]?.id || '';
     deleteBtn.style.display  = 'none';
     editor.dataset.editingId = '';
   }
+  const customNameInput = document.getElementById('ex-editor-new-muscle-name');
+  if (customNameInput) customNameInput.value = '';
+  addMuscleWrap.style.display = muscleSelect.value === NEW_MUSCLE_OPTION ? '' : 'none';
 
   document.getElementById('ex-picker-modal').classList.remove('open');
   editor.classList.add('open');
@@ -293,8 +314,15 @@ export function wtCloseExerciseEditor(e) {
 export async function wtSaveExerciseFromEditor() {
   const editor   = document.getElementById('ex-editor-modal');
   const name     = document.getElementById('ex-editor-name').value.trim();
-  const muscleId = document.getElementById('ex-editor-muscle').value;
+  const muscleSelect = document.getElementById('ex-editor-muscle');
+  let muscleId = muscleSelect.value;
   if (!name) { alert('종목 이름을 입력해주세요.'); return; }
+  if (muscleId === NEW_MUSCLE_OPTION) {
+    const newMuscleName = document.getElementById('ex-editor-new-muscle-name')?.value?.trim() || '';
+    if (!newMuscleName) { alert('새 부위 이름을 입력해주세요.'); return; }
+    muscleId = `muscle_${Date.now()}`;
+    await saveCustomMuscle({ id: muscleId, name: newMuscleName, color: '#8b5cf6' });
+  }
   const editingId = editor.dataset.editingId;
   await saveExercise({ id: editingId || `custom_${Date.now()}`, muscleId, name, order:50 });
   editor.classList.remove('open');

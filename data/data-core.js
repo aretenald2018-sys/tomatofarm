@@ -3,15 +3,39 @@
 // ================================================================
 
 import { initializeApp }    from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
+import { initializeAppCheck, ReCaptchaV3Provider } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app-check.js";
 import {
   getFirestore, doc, setDoc, deleteDoc, getDoc,
   collection, getDocs, query, where, documentId, enableIndexedDbPersistence,
 } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
+import { getFunctions } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-functions.js";
 import { CONFIG } from '../config.js';
 
 // ── Firebase 초기화 ─────────────────────────────────────────────
 const app = initializeApp(CONFIG.FIREBASE);
+const _appCheckSiteKey = String(CONFIG.APPCHECK_SITE_KEY || '').trim();
+const _isLocalhost = typeof location !== 'undefined' &&
+  (location.hostname === 'localhost' || location.hostname === '127.0.0.1');
+
+if (_isLocalhost) {
+  globalThis.FIREBASE_APPCHECK_DEBUG_TOKEN = globalThis.FIREBASE_APPCHECK_DEBUG_TOKEN || true;
+}
+
+if (_appCheckSiteKey && !_appCheckSiteKey.startsWith('REPLACE_WITH_')) {
+  try {
+    initializeAppCheck(app, {
+      provider: new ReCaptchaV3Provider(_appCheckSiteKey),
+      isTokenAutoRefreshEnabled: true,
+    });
+  } catch (err) {
+    console.warn('[data] App Check 초기화 실패:', err?.message || err);
+  }
+} else {
+  console.warn('[data] APPCHECK_SITE_KEY 미설정 — Gemini proxy 호출 전 config.js를 채워주세요');
+}
+
 export const db  = getFirestore(app);
+export const functions = getFunctions(app, 'asia-northeast3');
 
 enableIndexedDbPersistence(db).catch(err => {
   if (err.code === 'failed-precondition') {
@@ -113,6 +137,7 @@ export function _doc(name, id) {
 // ── 공유 데이터 캐시 ────────────────────────────────────────────
 export let _cache        = {};
 export let _exList       = [];
+export let _customMuscles = [];
 export let _goals        = [];
 export let _quests       = [];
 export let _cooking      = [];
@@ -122,6 +147,7 @@ export let _nutritionDB  = [];
 // setter (ES module let 바인딩은 외부에서 직접 대입 불가)
 export function _setCache(v)        { _cache = v; }
 export function _setExList(v)       { _exList = v; }
+export function _setCustomMuscles(v) { _customMuscles = v; }
 export function _setGoals(v)        { _goals = v; }
 export function _setQuests(v)       { _quests = v; }
 export function _setCooking(v)      { _cooking = v; }

@@ -3,15 +3,16 @@
 // ================================================================
 
 import { TODAY, getCurrentUser, getMyFriends, getAccountList,
-         getFriendWorkout, getFriendTomatoState, getLikes, toggleLike,
+         getFriendData, getFriendWorkout, getFriendTomatoState, getLikes, toggleLike,
          sendFriendRequest, sendTomatoGift, revertTomatoGift,
          getGuestbook, writeGuestbook, deleteGuestbookEntry,
          getComments, writeComment, editComment, deleteComment,
          introduceFriend, markNotificationRead,
          isAdmin, isAdminGuest, getAdminId, getAdminGuestId,
          isAdminInstance, isSameInstance, getDataOwnerId,
-         getTomatoState, dateKey, recordAction,
+         getTomatoState, dateKey, recordAction, getAllMuscles,
          getAllGuilds }  from '../data.js';
+import { CONFIG } from '../config.js';
 import { resolveNickname, showToast, haptic, formatTimeAgo } from './utils.js';
 
 // 순환 참조 방지: renderHome, renderFriendFeed, refreshNotifCenter 주입
@@ -63,7 +64,16 @@ window.openFriendProfile = async function(friendId, friendName, scrollToSection,
     : '오늘';
 
   const lookupId = isMyProfile ? myDataId : normalizedFriendId;
-  const todayW = await getFriendWorkout(lookupId, tk);
+  const allMuscles = getAllMuscles();
+  const muscleById = new Map(allMuscles.map(m => [m.id, m]));
+  const [todayW, friendExercises] = await Promise.all([
+    getFriendWorkout(lookupId, tk),
+    getFriendData(lookupId, 'exercises'),
+  ]);
+  const exerciseNameMap = new Map((CONFIG.DEFAULT_EXERCISES || []).map(ex => [ex.id, ex.name]));
+  (friendExercises || []).forEach(ex => {
+    if (ex?.id && ex?.name) exerciseNameMap.set(ex.id, ex.name);
+  });
 
   // 1. 오늘 식단 상세
   let todayDietHtml = '';
@@ -111,36 +121,109 @@ window.openFriendProfile = async function(friendId, friendName, scrollToSection,
   }
   if (!todayDietHtml) todayDietHtml = '';
 
-  // 2~3. 주간 운동 데이터
+  // 2~3. 주간 운동 데이터 + 14일 부위별 성장률 기준
+  const baseDate = (() => {
+    const [yy, mm, dd] = tk.split('-').map(Number);
+    return new Date(yy, (mm || 1) - 1, dd || 1);
+  })();
   const weekDates = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(TODAY); d.setDate(d.getDate() - i); return d;
+    const d = new Date(baseDate); d.setDate(d.getDate() - i); return d;
   });
-  const weekResults = await Promise.allSettled(
-    weekDates.map(d => getFriendWorkout(lookupId, dateKey(d.getFullYear(), d.getMonth(), d.getDate())))
-  );
+  const lookbackDates = Array.from({ length: 14 }, (_, i) => {
+    const d = new Date(baseDate); d.setDate(d.getDate() - (i + 1)); return d;
+  });
+  const [weekResults, lookbackResults] = await Promise.all([
+    Promise.allSettled(
+      weekDates.map(d => getFriendWorkout(lookupId, dateKey(d.getFullYear(), d.getMonth(), d.getDate())))
+    ),
+    Promise.allSettled(
+      lookbackDates.map(d => getFriendWorkout(lookupId, dateKey(d.getFullYear(), d.getMonth(), d.getDate())))
+    ),
+  ]);
   const weekWorkouts = weekResults.map(r => r.status === 'fulfilled' ? r.value : null);
+  const lookbackWorkouts = lookbackResults.map(r => r.status === 'fulfilled' ? r.value : null);
 
-  let volumeGrowth = '';
-  if (todayW?.exercises?.length) {
-    const todayVol = (todayW.exercises || []).reduce((s, e) => s + (e.sets || []).reduce((ss, set) => ss + (set.kg||0)*(set.reps||0), 0), 0);
-    let prevVol = 0;
-    for (let di = 1; di < weekWorkouts.length; di++) {
-      const pw = weekWorkouts[di];
-      if (pw?.exercises?.length) {
-        prevVol = pw.exercises.reduce((s, e) => s + (e.sets || []).reduce((ss, set) => ss + (set.kg||0)*(set.reps||0), 0), 0);
-        break;
+  const _entryVolume = (entry) => (entry?.sets || []).reduce((sum, set) => sum + (set?.kg || 0) * (set?.reps || 0), 0);
+  const _muscleVolumeMap = (workout) => {
+    const map = new Map();
+    (workout?.exercises || []).forEach(entry => {
+      if (!entry?.muscleId) return;
+      map.set(entry.muscleId, (map.get(entry.muscleId) || 0) + _entryVolume(entry));
+    });
+    return map;
+  };
+
+  const todayMuscleVolumes = _muscleVolumeMap(todayW);
+  const todayMuscleIds = [...new Set((todayW?.exercises || []).map(e => e?.muscleId).filter(Boolean))];
+  const muscleGrowthById = {};
+  if (todayMuscleIds.length) {
+    for (const muscleId of todayMuscleIds) {
+      const todayVol = todayMuscleVolumes.get(muscleId) || 0;
+      if (todayVol <= 0) continue;
+      let prevVol = 0;
+      for (const prevWorkout of lookbackWorkouts) {
+        const prevMap = _muscleVolumeMap(prevWorkout);
+        const candidate = prevMap.get(muscleId) || 0;
+        if (candidate > 0) {
+          prevVol = candidate;
+          break;
+        }
+      }
+      if (prevVol > 0) {
+        muscleGrowthById[muscleId] = Math.round(((todayVol - prevVol) / prevVol) * 100);
       }
     }
-    if (prevVol > 0 && todayVol > 0) {
-      const diff = Math.round(((todayVol - prevVol) / prevVol) * 100);
-      const sign = diff > 0 ? '+' : '';
-      const color = diff > 0 ? 'var(--primary)' : diff < 0 ? '#e53935' : 'var(--text-tertiary)';
-      const arrow = diff > 0 ? '↑' : diff < 0 ? '↓' : '→';
-      volumeGrowth = `<span style="font-size:12px;font-weight:700;color:${color};margin-left:6px;">${arrow} ${sign}${diff}%</span>`;
-    } else if (todayVol > 0) {
-      volumeGrowth = `<span style="font-size:11px;color:var(--text-tertiary);margin-left:6px;">첫 기록</span>`;
-    }
   }
+
+  const todayExerciseGroups = new Map();
+  (todayW?.exercises || []).forEach(entry => {
+    const muscleId = entry?.muscleId || '';
+    const exName = exerciseNameMap.get(entry?.exerciseId) || entry?.exerciseId || '종목';
+    if (!todayExerciseGroups.has(muscleId)) todayExerciseGroups.set(muscleId, []);
+    const arr = todayExerciseGroups.get(muscleId);
+    if (!arr.includes(exName)) arr.push(exName);
+  });
+
+  const groupedExerciseHtml = [...todayExerciseGroups.entries()]
+    .map(([muscleId, names]) => {
+      if (!names.length) return '';
+      const muscleName = muscleById.get(muscleId)?.name || muscleId || '기타';
+      return `<div style="font-size:12px;color:var(--text-secondary);line-height:1.4;"><span style="font-weight:600;color:var(--text);">${muscleName}:</span> ${names.join(', ')}</div>`;
+    })
+    .filter(Boolean)
+    .join('');
+  const nonGymBadges = [];
+  if (todayW?.cf) nonGymBadges.push('🏋 크로스핏');
+  if (todayW?.running) {
+    const runDistance = Number(todayW?.runDistance || 0);
+    nonGymBadges.push(`🏃 런닝${runDistance > 0 ? ` ${runDistance}km` : ''}`);
+  }
+  if (todayW?.swimming) {
+    const swimDistance = Number(todayW?.swimDistance || 0);
+    nonGymBadges.push(`🏊 수영${swimDistance > 0 ? ` ${swimDistance}m` : ''}`);
+  }
+  if (todayW?.stretching) nonGymBadges.push('🧘 스트레칭');
+  const nonGymBadgesHtml = nonGymBadges.length
+    ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;">${nonGymBadges.map(label => `<span style="font-size:11px;padding:3px 8px;background:var(--surface2);color:var(--text-secondary);border-radius:999px;font-weight:600;">${label}</span>`).join('')}</div>`
+    : '';
+  const fallbackMuscleNames = (todayW?.muscles || []).filter(name => !todayMuscleIds.some(mid => (muscleById.get(mid)?.name || mid) === name));
+  const muscleBadgeHtml = [
+    ...todayMuscleIds.map(muscleId => {
+      const muscle = muscleById.get(muscleId);
+      const growth = muscleGrowthById[muscleId];
+      const growthHtml = Number.isFinite(growth)
+        ? `<span style="margin-left:4px;color:${growth > 0 ? 'var(--primary)' : growth < 0 ? '#e53935' : 'var(--text-tertiary)'};">${growth > 0 ? '+' : ''}${growth}%</span>`
+        : '';
+      return `<span style="font-size:11px;padding:3px 8px;background:var(--primary-bg);color:${muscle?.color || 'var(--primary)'};border-radius:999px;font-weight:600;">${muscle?.name || muscleId}${growthHtml}</span>`;
+    }),
+    ...fallbackMuscleNames.map(name => `<span style="font-size:11px;padding:3px 8px;background:var(--primary-bg);color:var(--primary);border-radius:999px;font-weight:600;">${name}</span>`),
+  ].join('');
+  const hasWorkoutRecord = !!(todayW && (
+    (todayW.exercises || []).length ||
+    (todayW.muscles || []).length ||
+    todayW.cf || todayW.running || todayW.swimming || todayW.stretching ||
+    todayW.workoutPhoto
+  ));
 
   let workoutDays = 0, streak = 0, streakCounting = true;
   for (let i = 0; i < 7; i++) {
@@ -238,21 +321,23 @@ window.openFriendProfile = async function(friendId, friendName, scrollToSection,
 
       <div style="padding:10px 4px 6px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-          <span style="font-size:12px;font-weight:500;color:var(--text-tertiary);">${dateLabel}의 운동 ${volumeGrowth}</span>
+          <span style="font-size:12px;font-weight:500;color:var(--text-tertiary);">${dateLabel}의 운동</span>
           ${(() => {
             const wReactCount = getReactionCount('workout');
             const wEmojis = getReactionEmojis('workout');
             const wEmojiDisplay = wEmojis.length > 0 ? wEmojis.join('') : '';
             const wBadge = wReactCount > 0 ? `<span class="react-badge-detail" onclick="event.stopPropagation();showReactionDetail(this,'${friendId}','${tk}','workout')" style="cursor:pointer;display:inline-flex;align-items:center;gap:2px;padding:2px 6px;border-radius:999px;background:var(--surface2);margin-right:2px;"><span style="font-size:12px;">${wEmojiDisplay}</span><span style="font-size:10px;font-weight:600;color:var(--primary);">${wReactCount}</span></span>` : '';
-            if (!isMyProfile && todayW?.exercises?.length) return `${wBadge}<button class="friend-like-btn" onclick="showReactionPicker(this,'${friendId}','${tk}','workout')" style="font-size:16px;background:none;border:none;cursor:pointer;padding:2px;">🤍</button>`;
+            if (!isMyProfile && hasWorkoutRecord) return `${wBadge}<button class="friend-like-btn" onclick="showReactionPicker(this,'${friendId}','${tk}','workout')" style="font-size:16px;background:none;border:none;cursor:pointer;padding:2px;">🤍</button>`;
             if (wReactCount > 0) return `<span class="react-badge-detail" onclick="event.stopPropagation();showReactionDetail(this,'${friendId}','${tk}','workout')" style="cursor:pointer;display:inline-flex;align-items:center;gap:2px;padding:2px 6px;border-radius:999px;background:var(--surface2);"><span style="font-size:12px;">${wEmojiDisplay}</span><span style="font-size:10px;font-weight:600;color:var(--primary);">${wReactCount}</span></span>`;
             return '';
           })()}
         </div>
-        ${todayW?.exercises?.length ? `
+        ${hasWorkoutRecord ? `
           <div style="display:flex;flex-wrap:wrap;gap:4px;">
-            ${(todayW.muscles || []).map(m => `<span style="font-size:11px;padding:3px 8px;background:var(--primary-bg);color:var(--primary);border-radius:999px;font-weight:600;">${m}</span>`).join('')}
+            ${muscleBadgeHtml}
           </div>
+          ${groupedExerciseHtml ? `<div style="margin-top:6px;display:flex;flex-direction:column;gap:3px;">${groupedExerciseHtml}</div>` : ''}
+          ${nonGymBadgesHtml}
           ${todayW?.workoutPhoto ? `<img src="${todayW.workoutPhoto}" style="width:100%;max-height:240px;object-fit:contain;border-radius:8px;margin-top:8px;">` : ''}
         ` : '<div style="font-size:12px;color:var(--text-tertiary);">아직 기록이 없어요</div>'}
         <button class="comment-toggle-btn" onclick="toggleCommentSection('${normalizedFriendId}','${tk}','workout')" style="font-size:12px;background:none;border:1px solid var(--border);border-radius:999px;padding:4px 10px;cursor:pointer;color:var(--text-tertiary);margin-top:6px;">💬 댓글</button>

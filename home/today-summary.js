@@ -2,11 +2,10 @@
 // home/today-summary.js — 다이어트 목표, 오늘 식단/운동 요약
 // ================================================================
 
-import { MUSCLES }  from '../config.js';
 import { TODAY, getMuscles, getCF, getDiet, dietDayOk,
          getExercises, getExList,
          getDietPlan, calcDietMetrics, getBodyCheckins,
-         getDayTargetKcal }  from '../data.js';
+         getDayTargetKcal, getAllMuscles }  from '../data.js';
 
 // ── 다이어트 목표 카드 ────────────────────────────────────────────
 export function renderDietGoalCard() {
@@ -152,8 +151,9 @@ export function renderTodayWorkout() {
   }
 
   const exList = getExList();
-  const muscleColors = Object.fromEntries(MUSCLES.map(m => [m.id, m.color]));
-  const muscleNames  = Object.fromEntries(MUSCLES.map(m => [m.id, m.name]));
+  const allMuscles = getAllMuscles();
+  const muscleColors = Object.fromEntries(allMuscles.map(m => [m.id, m.color]));
+  const muscleNames  = Object.fromEntries(allMuscles.map(m => [m.id, m.name]));
 
   const muscleDots = muscles.map(mid =>
     `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${muscleColors[mid]||'#888'};margin-right:2px" title="${muscleNames[mid]||mid}"></span>`

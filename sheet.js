@@ -2,10 +2,10 @@
 // sheet.js
 // ================================================================
 
-import { MUSCLES, DAYS }                       from './config.js';
+import { DAYS }                                from './config.js';
 import { saveDay, saveExercise, deleteExercise,
          getDay, getExList, dateKey,
-         getLastSession, calcVolume }           from './data.js';
+         getLastSession, calcVolume, getAllMuscles } from './data.js';
 
 
 let _date        = null;
@@ -220,8 +220,9 @@ export function openExerciseEditor(exId, defaultMuscleId) {
   const muscleSelect = document.getElementById('ex-editor-muscle');
   const deleteBtn    = document.getElementById('ex-editor-delete');
   const titleEl      = document.getElementById('ex-editor-title');
+  const allMuscles = getAllMuscles();
 
-  muscleSelect.innerHTML = MUSCLES.map(m =>
+  muscleSelect.innerHTML = allMuscles.map(m =>
     `<option value="${m.id}">${m.name}</option>`).join('');
 
   if (exId) {
@@ -234,7 +235,7 @@ export function openExerciseEditor(exId, defaultMuscleId) {
   } else {
     titleEl.textContent      = '종목 추가';
     nameInput.value          = '';
-    muscleSelect.value       = defaultMuscleId || MUSCLES[0].id;
+    muscleSelect.value       = defaultMuscleId || allMuscles[0]?.id || '';
     deleteBtn.style.display  = 'none';
     editor.dataset.editingId = '';
   }
@@ -273,10 +274,11 @@ export async function deleteExerciseFromEditor() {
 function _renderExerciseList() {
   const container = document.getElementById('exercise-list');
   container.innerHTML = '';
+  const allMuscles = getAllMuscles();
 
   _exercises.forEach((entry, idx) => {
     const ex  = getExList().find(e => e.id === entry.exerciseId);
-    const mc  = MUSCLES.find(m => m.id === entry.muscleId);
+    const mc  = allMuscles.find(m => m.id === entry.muscleId);
 
     const last    = getLastSession(entry.exerciseId);
     const isToday = _date && last?.date === dateKey(_date.y, _date.m, _date.d);
@@ -364,8 +366,9 @@ function _renderSets(entryIdx) {
 function _renderPickerList() {
   const container = document.getElementById('ex-picker-list');
   container.innerHTML = '';
+  const allMuscles = getAllMuscles();
 
-  MUSCLES.forEach(muscle => {
+  allMuscles.forEach(muscle => {
     const list = getExList().filter(e => e.muscleId === muscle.id);
     const group = document.createElement('div');
     group.className = 'ex-picker-group';

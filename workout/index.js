@@ -29,7 +29,7 @@ export { wtAddSet, wtRemoveSet, wtUpdateSet,
 
 export { wtStartWorkoutTimer, wtPauseWorkoutTimer,
          wtResetWorkoutTimer, wtTogglePauseWorkoutTimer,
-         wtFinishWorkout,
+         wtFinishWorkout, wtRecoverTimers,
          wtRestTimerStart, wtRestTimerSkip, wtRestTimerAdjust,
          wtRestTimerShowIdle, wtRestTimerHideIdle }
   from './timers.js';
@@ -44,7 +44,7 @@ import { wtOpenExercisePicker, wtCloseExercisePicker,
          wtSaveExerciseFromEditor,
          wtDeleteExerciseFromEditor }              from './exercises.js';
 import { wtStartWorkoutTimer, wtTogglePauseWorkoutTimer,
-         wtResetWorkoutTimer, wtFinishWorkout,
+         wtResetWorkoutTimer, wtFinishWorkout, wtRecoverTimers,
          wtRestTimerStart, wtRestTimerSkip,
          wtRestTimerAdjust, wtRestTimerShowIdle,
          wtRestTimerHideIdle }                    from './timers.js';
@@ -67,6 +67,7 @@ window.wtStartWorkoutTimer = wtStartWorkoutTimer;
 window.wtTogglePauseWorkoutTimer = wtTogglePauseWorkoutTimer;
 window.wtResetWorkoutTimer = wtResetWorkoutTimer;
 window.wtFinishWorkout = wtFinishWorkout;
+window.wtRecoverTimers = wtRecoverTimers;
 window.wtRestTimerStart = wtRestTimerStart;
 window.wtRestTimerSkip = wtRestTimerSkip;
 window.wtRestTimerAdjust = wtRestTimerAdjust;

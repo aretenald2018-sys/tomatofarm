@@ -17,7 +17,7 @@ export {
   wtSaveExerciseFromEditor, wtDeleteExerciseFromEditor,
   wtStartWorkoutTimer, wtPauseWorkoutTimer,
   wtResetWorkoutTimer, wtTogglePauseWorkoutTimer,
-  wtFinishWorkout,
+  wtFinishWorkout, wtRecoverTimers,
   wtRestTimerStart, wtRestTimerSkip, wtRestTimerAdjust,
   wtRestTimerShowIdle, wtRestTimerHideIdle,
 } from './workout/index.js';

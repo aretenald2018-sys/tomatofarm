@@ -4,7 +4,7 @@
 
 import { S }                        from './state.js';
 import { _autoSaveDiet }            from './save.js';
-import { MUSCLES, DAYS }            from '../config.js';
+import { DAYS }                     from '../config.js';
 import { isFuture, TODAY,
          getDietPlan, calcDietMetrics,
          getBodyCheckins,

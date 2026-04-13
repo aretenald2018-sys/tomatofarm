@@ -37,5 +37,5 @@ export const S = {
   lunchSkipped: false,
   dinnerSkipped: false,
   diet:       emptyDiet(),
-  restTimer:  { interval: null, remaining: 0, total: 90, running: false },
+  restTimer:  { interval: null, remaining: 0, total: 90, running: false, startedAt: null },
 };
