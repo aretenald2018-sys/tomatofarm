@@ -10,6 +10,19 @@ import { _socialId, _isMySocialId, getFriendWorkout } from './data-social-friend
 import { getAccountList } from './data-account.js';
 import { getGlobalWeeklyRanking } from './data-social-friends.js';
 
+let _guildStatsCache = null;
+let _guildStatsCacheTime = 0;
+let _guildStatsCacheMyLocalDays = 0;
+let _pendingPromise = null;
+const GUILD_CACHE_TTL = 60_000;
+
+export function invalidateGuildStatsCache() {
+  _guildStatsCache = null;
+  _guildStatsCacheTime = 0;
+  _guildStatsCacheMyLocalDays = 0;
+  _pendingPromise = null;
+}
+
 export async function getAllGuilds() {
   try {
     const snap = await getDocs(collection(db, '_guilds'));
@@ -114,138 +127,173 @@ async function _resolveActiveDaysFromWorkouts(accountId, weekKeys) {
   return best;
 }
 
+function _filterGuildStats(result, filterGuild) {
+  const guilds = result?.guilds || [];
+  if (!filterGuild) return result;
+  const filterKey = _normalizeGuildKey(filterGuild);
+  if (!filterKey) return result;
+  return {
+    ...result,
+    guilds: guilds.filter((guild) => {
+      const id = _normalizeGuildKey(guild.guildId);
+      const name = _normalizeGuildKey(guild.guildName);
+      return id === filterKey || name === filterKey;
+    }),
+  };
+}
+
 export async function computeGuildStats({ myLocalDays = 0, filterGuild } = {}) {
-  try {
-    const [guildDocs, accounts, guildRanking, individualRanking] = await Promise.all([
-      getAllGuilds().catch(() => []),
-      getAccountList().catch(() => []),
-      getGlobalGuildWeeklyRanking().catch(() => null),
-      getGlobalWeeklyRanking().catch(() => null),
-    ]);
+  const now = Date.now();
+  if (
+    _guildStatsCache &&
+    now - _guildStatsCacheTime < GUILD_CACHE_TTL &&
+    _guildStatsCacheMyLocalDays === myLocalDays
+  ) {
+    return _filterGuildStats(_guildStatsCache, filterGuild);
+  }
+  if (_pendingPromise) {
+    const pending = await _pendingPromise;
+    return _filterGuildStats(pending, filterGuild);
+  }
 
-    const uniqueAccounts = accounts.filter((acc) => !/\(guest\)$/.test(acc.id || ''));
-    const rankMap = new Map();
-    for (const item of individualRanking?.rankings || []) {
-      rankMap.set(item.userId, item.activeDays || 0);
-    }
-    const weekKeys = _buildWeekKeys();
+  _pendingPromise = (async () => {
+    try {
+      const [guildDocs, accounts, guildRanking, individualRanking] = await Promise.all([
+        getAllGuilds().catch(() => []),
+        getAccountList().catch(() => []),
+        getGlobalGuildWeeklyRanking().catch(() => null),
+        getGlobalWeeklyRanking().catch(() => null),
+      ]);
 
-    const aliasMap = new Map();
-    const registerAlias = (value, canonicalKey) => {
-      const alias = _normalizeGuildKey(value);
-      if (!alias || !canonicalKey) return;
-      if (!aliasMap.has(alias)) aliasMap.set(alias, canonicalKey);
-    };
-    const resolveGuildKey = (value) => aliasMap.get(_normalizeGuildKey(value)) || _normalizeGuildKey(value);
-
-    const guildMetaMap = new Map();
-    for (const guild of guildDocs || []) {
-      const key = _normalizeGuildKey(guild?.id || guild?.name);
-      if (!key) continue;
-      guildMetaMap.set(key, guild);
-      registerAlias(guild?.id, key);
-      registerAlias(guild?.name, key);
-    }
-
-    const rankingMap = new Map();
-    for (const item of guildRanking?.rankings || []) {
-      const key = resolveGuildKey(item?.guildId || item?.guildName);
-      if (!key) continue;
-      rankingMap.set(key, item);
-      registerAlias(item?.guildId, key);
-      registerAlias(item?.guildName, key);
-    }
-
-    const liveMembersMap = new Map();
-    const addedGuildMembers = new Set();
-    for (const acc of accounts) {
-      const canonicalId = String(acc.id || '').replace(/\(guest\)$/, '').trim();
-      const rankDays = rankMap.get(canonicalId) ?? rankMap.get(acc.id);
-      const activeDays = _isMySocialId(acc.id) || _isMySocialId(canonicalId)
-        ? myLocalDays
-        : (typeof rankDays === 'number' && rankDays > 0
-          ? rankDays
-          : await _resolveActiveDaysFromWorkouts(acc.id, weekKeys));
-      const memberName = _getAccountDisplayName(acc);
-      for (const guildName of (acc.guilds || [])) {
-        const key = resolveGuildKey(guildName);
-        if (!key) continue;
-        const memberKey = `${canonicalId}::${key}`;
-        if (addedGuildMembers.has(memberKey)) continue;
-        addedGuildMembers.add(memberKey);
-        if (!liveMembersMap.has(key)) liveMembersMap.set(key, []);
-        liveMembersMap.get(key).push({
-          userId: acc.id,
-          name: memberName || acc.id,
-          activeDays,
-        });
+      const uniqueAccounts = accounts.filter((acc) => !/\(guest\)$/.test(acc.id || ''));
+      const rankMap = new Map();
+      for (const item of individualRanking?.rankings || []) {
+        rankMap.set(item.userId, item.activeDays || 0);
       }
-    }
+      const weekKeys = _buildWeekKeys();
 
-    const guildKeys = new Set([
-      ...guildMetaMap.keys(),
-      ...liveMembersMap.keys(),
-      ...rankingMap.keys(),
-    ]);
+      const aliasMap = new Map();
+      const registerAlias = (value, canonicalKey) => {
+        const alias = _normalizeGuildKey(value);
+        if (!alias || !canonicalKey) return;
+        if (!aliasMap.has(alias)) aliasMap.set(alias, canonicalKey);
+      };
+      const resolveGuildKey = (value) => aliasMap.get(_normalizeGuildKey(value)) || _normalizeGuildKey(value);
 
-    const guilds = [...guildKeys].map((guildKey) => {
-      const guild = guildMetaMap.get(guildKey) || {};
-      const ranked = rankingMap.get(guildKey) || {};
-      const liveMembers = liveMembersMap.get(guildKey) || [];
-      const rankedMembers = Array.isArray(ranked.members) ? ranked.members : [];
-      const members = liveMembers.length
-        ? liveMembers
-        : rankedMembers.map((member) => ({
-          userId: member.userId || member.id || '',
-          name: member.name || member.nickname || member.userId || member.id || '',
-          activeDays: member.activeDays || 0,
-        }));
+      const guildMetaMap = new Map();
+      for (const guild of guildDocs || []) {
+        const key = _normalizeGuildKey(guild?.id || guild?.name);
+        if (!key) continue;
+        guildMetaMap.set(key, guild);
+        registerAlias(guild?.id, key);
+        registerAlias(guild?.name, key);
+      }
 
-      if (!members.length) return null;
+      const rankingMap = new Map();
+      for (const item of guildRanking?.rankings || []) {
+        const key = resolveGuildKey(item?.guildId || item?.guildName);
+        if (!key) continue;
+        rankingMap.set(key, item);
+        registerAlias(item?.guildId, key);
+        registerAlias(item?.guildName, key);
+      }
 
-      const normalizedMembers = _sortMembers(members);
-      const memberCount = normalizedMembers.length;
-      const totalActiveDays = normalizedMembers.reduce((sum, member) => sum + (member.activeDays || 0), 0);
-      const avgActiveDays = memberCount ? +(totalActiveDays / memberCount).toFixed(1) : 0;
-      const weekStreak = normalizedMembers.reduce((min, member) => Math.min(min, member.activeDays || 0), 7);
+      const liveMembersMap = new Map();
+      const addedGuildMembers = new Set();
+      for (const acc of accounts) {
+        const canonicalId = String(acc.id || '').replace(/\(guest\)$/, '').trim();
+        const rankDays = rankMap.get(canonicalId) ?? rankMap.get(acc.id);
+        const activeDays = _isMySocialId(acc.id) || _isMySocialId(canonicalId)
+          ? myLocalDays
+          : (typeof rankDays === 'number' && rankDays > 0
+            ? rankDays
+            : await _resolveActiveDaysFromWorkouts(acc.id, weekKeys));
+        const memberName = _getAccountDisplayName(acc);
+        for (const guildName of (acc.guilds || [])) {
+          const key = resolveGuildKey(guildName);
+          if (!key) continue;
+          const memberKey = `${canonicalId}::${key}`;
+          if (addedGuildMembers.has(memberKey)) continue;
+          addedGuildMembers.add(memberKey);
+          if (!liveMembersMap.has(key)) liveMembersMap.set(key, []);
+          liveMembersMap.get(key).push({
+            userId: acc.id,
+            name: memberName || acc.id,
+            activeDays,
+          });
+        }
+      }
+
+      const guildKeys = new Set([
+        ...guildMetaMap.keys(),
+        ...liveMembersMap.keys(),
+        ...rankingMap.keys(),
+      ]);
+
+      const guilds = [...guildKeys].map((guildKey) => {
+        const guild = guildMetaMap.get(guildKey) || {};
+        const ranked = rankingMap.get(guildKey) || {};
+        const liveMembers = liveMembersMap.get(guildKey) || [];
+        const rankedMembers = Array.isArray(ranked.members) ? ranked.members : [];
+        const members = liveMembers.length
+          ? liveMembers
+          : rankedMembers.map((member) => ({
+            userId: member.userId || member.id || '',
+            name: member.name || member.nickname || member.userId || member.id || '',
+            activeDays: member.activeDays || 0,
+          }));
+
+        if (!members.length) return null;
+
+        const normalizedMembers = _sortMembers(members);
+        const memberCount = normalizedMembers.length;
+        const totalActiveDays = normalizedMembers.reduce((sum, member) => sum + (member.activeDays || 0), 0);
+        const avgActiveDays = memberCount ? +(totalActiveDays / memberCount).toFixed(1) : 0;
+        const weekStreak = normalizedMembers.reduce((min, member) => Math.min(min, member.activeDays || 0), 7);
+
+        return {
+          _key: guildKey,
+          guildId: guild.id || ranked.guildId || guild.name || ranked.guildName || guildKey,
+          guildName: guild.name || ranked.guildName || guild.id || ranked.guildId || guildKey,
+          guildIcon: guild.icon || ranked.icon || '🏠',
+          description: guild.description || ranked.description || '',
+          leaderId: guild.leader || guild.createdBy || ranked.leaderId || null,
+          memberCount,
+          totalActiveDays,
+          avgActiveDays,
+          weekStreak,
+          members: normalizedMembers,
+        };
+      }).filter(Boolean);
+
+      guilds.sort((a, b) => {
+        const diff = (b.avgActiveDays || 0) - (a.avgActiveDays || 0);
+        if (diff !== 0) return diff;
+        return String(a.guildName || '').localeCompare(String(b.guildName || ''));
+      });
+
+      guilds.forEach((guild, index) => {
+        guild.rank = index + 1;
+      });
 
       return {
-        _key: guildKey,
-        guildId: guild.id || ranked.guildId || guild.name || ranked.guildName || guildKey,
-        guildName: guild.name || ranked.guildName || guild.id || ranked.guildId || guildKey,
-        guildIcon: guild.icon || ranked.icon || '🏠',
-        description: guild.description || ranked.description || '',
-        leaderId: guild.leader || guild.createdBy || ranked.leaderId || null,
-        memberCount,
-        totalActiveDays,
-        avgActiveDays,
-        weekStreak,
-        members: normalizedMembers,
+        guilds: guilds.map(({ _key, ...guild }) => guild),
+        updatedAt: guildRanking?.updatedAt || individualRanking?.updatedAt || null,
       };
-    }).filter(Boolean);
+    } catch (e) {
+      console.warn('[guild] computeGuildStats:', e);
+      return { guilds: [], updatedAt: null };
+    }
+  })();
 
-    guilds.sort((a, b) => {
-      const diff = (b.avgActiveDays || 0) - (a.avgActiveDays || 0);
-      if (diff !== 0) return diff;
-      return String(a.guildName || '').localeCompare(String(b.guildName || ''));
-    });
-
-    guilds.forEach((guild, index) => {
-      guild.rank = index + 1;
-    });
-
-    const filterKey = filterGuild ? resolveGuildKey(filterGuild) : '';
-    const filtered = filterKey
-      ? guilds.filter((guild) => guild._key === filterKey)
-      : guilds;
-
-    return {
-      guilds: filtered.map(({ _key, ...guild }) => guild),
-      updatedAt: guildRanking?.updatedAt || individualRanking?.updatedAt || null,
-    };
-  } catch (e) {
-    console.warn('[guild] computeGuildStats:', e);
-    return { guilds: [], updatedAt: null };
+  try {
+    const result = await _pendingPromise;
+    _guildStatsCache = result;
+    _guildStatsCacheTime = Date.now();
+    _guildStatsCacheMyLocalDays = myLocalDays;
+    return _filterGuildStats(result, filterGuild);
+  } finally {
+    _pendingPromise = null;
   }
 }
 
@@ -255,6 +303,7 @@ export async function createGuild(name, createdBy) {
     createdAt: Date.now(), memberCount: 1,
   };
   await setDoc(doc(db, '_guilds', name), guild);
+  invalidateGuildStatsCache();
   return guild;
 }
 
@@ -265,6 +314,7 @@ export async function updateGuildMemberCount(guildId, delta) {
     const guild = snap.data();
     guild.memberCount = Math.max(0, (guild.memberCount || 0) + delta);
     await setDoc(doc(db, '_guilds', guildId), guild);
+    invalidateGuildStatsCache();
   } catch(e) { console.warn('[guild] updateMemberCount:', e); }
 }
 
@@ -275,6 +325,7 @@ export async function updateGuildIcon(guildId, icon) {
     const guild = snap.data();
     guild.icon = icon;
     await setDoc(doc(db, '_guilds', guildId), guild);
+    invalidateGuildStatsCache();
   } catch(e) { console.warn('[guild] updateIcon:', e); }
 }
 
@@ -285,6 +336,7 @@ export async function updateGuildLeader(guildId, newLeaderId) {
     const guild = snap.data();
     guild.leader = newLeaderId;
     await setDoc(doc(db, '_guilds', guildId), guild);
+    invalidateGuildStatsCache();
     return true;
   } catch (e) {
     console.warn('[guild] updateLeader:', e);
@@ -365,6 +417,7 @@ export async function approveGuildJoinRequest(requestId) {
         });
       }
     }
+    invalidateGuildStatsCache();
   } catch(e) { console.warn('[guild] approve:', e); }
 }
 
@@ -418,6 +471,7 @@ export async function transferGuildLeadership(guildId, newLeaderId) {
     if (!_isMySocialId(oldLeader)) return false;
     guild.leader = newLeaderId;
     await setDoc(doc(db, '_guilds', guildId), guild);
+    invalidateGuildStatsCache();
     const accounts = await getAccountList();
     const oldLeaderAcc = accounts.find(a => a.id === oldLeader);
     const oldName = oldLeaderAcc ? (oldLeaderAcc.nickname || oldLeaderAcc.lastName + oldLeaderAcc.firstName) : '이전 길드장';
@@ -448,6 +502,7 @@ export async function kickGuildMember(guildId, targetUserId) {
     }
     await saveAccount(target);
     await updateGuildMemberCount(guildId, -1);
+    invalidateGuildStatsCache();
     return true;
   } catch(e) { console.warn('[guild] kickMember:', e); return false; }
 }
@@ -458,6 +513,7 @@ export async function updateGuild(guildId, updates) {
     if (!snap.exists()) return false;
     const guild = snap.data();
     await setDoc(doc(db, '_guilds', guildId), { ...guild, ...updates });
+    invalidateGuildStatsCache();
     return true;
   } catch (e) {
     console.warn('[guild] update:', e);
@@ -497,6 +553,7 @@ export async function adminAddGuildMember(guildId, userId) {
     }
     if (!target.primaryGuild) target.primaryGuild = guildId;
     await saveAccount(target);
+    invalidateGuildStatsCache();
     return true;
   } catch (e) {
     console.warn('[guild] adminAddMember:', e);
@@ -518,6 +575,7 @@ export async function adminRemoveGuildMember(guildId, userId) {
     }
     await saveAccount(target);
     if (before !== target.guilds.length) await updateGuildMemberCount(guildId, -1);
+    invalidateGuildStatsCache();
     return true;
   } catch (e) {
     console.warn('[guild] adminRemoveMember:', e);
@@ -558,6 +616,7 @@ export async function deleteGuild(guildId) {
       .map((d) => deleteDoc(doc(db, '_notifications', d.id))));
 
     await deleteDoc(doc(db, '_guilds', guildId));
+    invalidateGuildStatsCache();
     return true;
   } catch (e) {
     console.warn('[guild] delete:', e);
