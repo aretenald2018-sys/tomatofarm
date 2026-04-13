@@ -87,11 +87,12 @@ function _dismissWelcomeBack() {
 
 export async function showWelcomeBackPopup(hoursSinceLogin) {
   const user = getCurrentUser();
-  const thresholdHours = Math.max(0, Number(user?.welcomeBackThresholdHours || 24));
-  if (!user || thresholdHours <= 0 || hoursSinceLogin < thresholdHours) return;
+  const rawThreshold = user?.welcomeBackThresholdHours;
+  const thresholdHours = Math.max(0, Number(rawThreshold ?? 24));
+  if (!user || hoursSinceLogin < thresholdHours) return false;
 
   const storageKey = `welcome_back_seen_${user.id}_${_localDateKey()}`;
-  if (sessionStorage.getItem(storageKey)) return;
+  if (sessionStorage.getItem(storageKey)) return false;
   sessionStorage.setItem(storageKey, '1');
 
   const [notifications, guildRanking] = await Promise.all([
@@ -154,4 +155,5 @@ export async function showWelcomeBackPopup(hoursSinceLogin) {
 
   setTimeout(() => _showWelcomeConfetti(level), 350);
   setTimeout(() => haptic(level === 'full' ? 'celebration' : level === 'moderate' ? 'success' : 'light'), 400);
+  return true;
 }

@@ -24,7 +24,7 @@ import { showWelcomeBackPopup } from './home/welcome-back.js';
 import {
   loadWorkoutDate, changeWorkoutDate, goToTodayWorkout, saveWorkoutDay,
   wtSetGymStatus, wtSetCFStatus, wtToggleStretching, wtToggleSwimming, wtToggleRunning,
-  openNutritionPhotoUpload,
+  openNutritionPhotoUpload, wtRecoverTimers,
 } from './render-workout.js';
 
 // ── 레이지 로딩 탭 캐시 ──
@@ -227,15 +227,22 @@ async function init() {
     if (isAdmin()) {
       await switchTab('admin');
     } else {
-      renderHome();
+      renderHome({ deferCheerCard: true });
+      let priorityPopupShown = false;
       if (previousLastLoginAt) {
         const hoursSinceLogin = (Date.now() - previousLastLoginAt) / 3600000;
-        showWelcomeBackPopup(hoursSinceLogin).catch(e => console.warn('[welcome-back]', e));
+        priorityPopupShown = await showWelcomeBackPopup(hoursSinceLogin).catch((e) => {
+          console.warn('[welcome-back]', e);
+          return false;
+        });
+      }
+      if (!priorityPopupShown) {
+        priorityPopupShown = showTutorialIfNeeded({ previousLastLoginAt });
+      }
+      if (!priorityPopupShown) {
+        renderHome();
       }
     }
-
-    // 첫 이용자 튜토리얼
-    if (!isAdmin()) showTutorialIfNeeded();
 
     // 홈 렌더링 후 즉시 로딩 화면 숨기기 (나머지는 백그라운드)
     const loadEl2 = document.getElementById('loading');
@@ -303,6 +310,7 @@ _initDietInputButtons();
 window.renderAll                = renderAll;
 window.renderHome               = renderHome;
 window.switchTab                = switchTab;
+window.showToast                = showToast;
 window.setPeriod                = async (...a) => (await _lazy('stats', './render-stats.js')).setPeriod(...a);
 window.getDietRec               = getDietRec;
 window.getWorkoutRec            = getWorkoutRec;
@@ -349,5 +357,8 @@ window.addEventListener('load', initializeApp);
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden && _currentTab === 'home') {
     renderHome();
+  }
+  if (!document.hidden && _currentTab === 'workout') {
+    wtRecoverTimers();
   }
 });

@@ -37,7 +37,8 @@ setFriendProfileDeps({
 setNotificationsDeps({ renderFriendFeed });
 
 // ── 메인 렌더 함수 ──────────────────────────────────────────────
-export function renderHome() {
+export function renderHome(options = {}) {
+  const { deferCheerCard = false } = options;
   try {
     _applyCardVisibility();
     // 토마토 정산은 모든 사용자에게 실행
@@ -58,7 +59,11 @@ export function renderHome() {
     renderFriendFeed();
     renderLeaderboard();
     renderGuildCard().catch(e => console.warn('[guild-card]', e));
-    _renderCheerCardIfNeeded().catch(e => console.warn('[cheer-card]', e));
+    if (deferCheerCard) {
+      clearCheerCard();
+    } else {
+      _renderCheerCardIfNeeded().catch(e => console.warn('[cheer-card]', e));
+    }
   } catch(e) {
     console.error('[renderHome] 렌더링 오류:', e);
   }
@@ -80,7 +85,15 @@ function _applyCardVisibility() {
 }
 
 async function _renderCheerCardIfNeeded() {
+  if (_hasPriorityOverlay()) {
+    clearCheerCard();
+    return;
+  }
   const cheers = await getUnseenCheers(getCheerLastSeen());
+  if (_hasPriorityOverlay()) {
+    clearCheerCard();
+    return;
+  }
   if (!cheers.length) {
     _lastCheerSignature = '';
     clearCheerCard();
@@ -93,6 +106,11 @@ async function _renderCheerCardIfNeeded() {
     _lastCheerSignature = signature;
   }
   renderCheerCard(cheers, () => { _lastCheerSignature = ''; });
+}
+
+function _hasPriorityOverlay() {
+  return !!document.getElementById('tutorial-overlay')
+    || !!document.querySelector('#dynamic-modal .wb-overlay');
 }
 
 // ── Export ────────────────────────────────────────────────────────

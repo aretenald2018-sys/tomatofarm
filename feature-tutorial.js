@@ -2,11 +2,28 @@
 // feature-tutorial.js — 첫 이용자 튜토리얼 (코치마크 스타일)
 // ================================================================
 
-import { isAdmin } from './data.js';
+import { getCurrentUser, isAdmin } from './data.js';
 
-export function showTutorialIfNeeded() {
-  if (localStorage.getItem('tutorial_completed')) return;
-  if (isAdmin()) { localStorage.setItem('tutorial_completed', '1'); return; }
+const NEW_USER_TUTORIAL_WINDOW_MS = 30 * 60 * 1000;
+
+export function showTutorialIfNeeded(options = {}) {
+  if (localStorage.getItem('tutorial_completed')) return false;
+  if (isAdmin()) return false;
+
+  const user = getCurrentUser();
+  const previousLastLoginAt = Number(options.previousLastLoginAt || 0);
+  const tutorialDoneAt = Number(user?.tutorialDoneAt || 0);
+  const createdAt = Number(user?.createdAt || 0);
+  const isFreshSignup = !!user
+    && !previousLastLoginAt
+    && !tutorialDoneAt
+    && createdAt > 0
+    && (Date.now() - createdAt) <= NEW_USER_TUTORIAL_WINDOW_MS;
+
+  if (!isFreshSignup) return false;
+  if (document.getElementById('tutorial-overlay')) return true;
+
+  document.getElementById('cheer-card-overlay')?.remove();
 
   const steps = [
     {
@@ -210,14 +227,8 @@ export function showTutorialIfNeeded() {
   }
 
   function startWhenReady() {
-    const patchOverlay = document.getElementById('patchnote-overlay');
-    if (patchOverlay) {
-      window.addEventListener('patchnote-done', () => {
-        setTimeout(renderStep, 800);
-      }, { once: true });
-    } else {
-      setTimeout(renderStep, 600);
-    }
+    setTimeout(renderStep, 600);
   }
   startWhenReady();
+  return true;
 }
