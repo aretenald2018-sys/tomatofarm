@@ -1,11 +1,16 @@
 const { onDocumentCreated } = require("firebase-functions/v2/firestore");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
-const { onRequest } = require("firebase-functions/v2/https");
+const { onRequest, onCall, HttpsError } = require("firebase-functions/v2/https");
+const { defineSecret } = require("firebase-functions/params");
 const { initializeApp } = require("firebase-admin/app");
-const { getFirestore } = require("firebase-admin/firestore");
+const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 const { getMessaging } = require("firebase-admin/messaging");
 
 initializeApp();
+
+const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
+const GEMINI_MODEL = "gemini-2.5-flash-lite";
+const OCR_MONTHLY_LIMIT = 990;
 
 /**
  * _notifications 컬렉션에 문서가 생성될 때 FCM 푸시 발송
@@ -313,3 +318,243 @@ exports.refreshWeeklyRanking = onRequest({ cors: true }, async (req, res) => {
   const result = await _computeRanking();
   res.json({ ok: true, ...result });
 });
+
+exports.geminiProxy = onCall(
+  {
+    secrets: [GEMINI_API_KEY],
+    enforceAppCheck: true,
+    region: "asia-northeast3",
+    timeoutSeconds: 60,
+    memory: "256MiB",
+  },
+  async (request) => {
+    const { parts, maxTokens = 2000, responseMimeType } = request.data || {};
+    if (!Array.isArray(parts) || parts.length === 0) {
+      throw new HttpsError("invalid-argument", "parts 배열이 필요합니다.");
+    }
+
+    const requestSize = Buffer.byteLength(JSON.stringify(parts), "utf8");
+    if (requestSize > 8 * 1024 * 1024) {
+      throw new HttpsError("invalid-argument", "요청 크기가 너무 큽니다.");
+    }
+
+    const parsedMaxTokens = Number(maxTokens);
+    const generationConfig = {
+      maxOutputTokens: Number.isFinite(parsedMaxTokens)
+        ? Math.max(1, Math.min(Math.trunc(parsedMaxTokens), 8192))
+        : 2000,
+      thinkingConfig: { thinkingBudget: 0 },
+    };
+    if (typeof responseMimeType === "string" && responseMimeType.trim()) {
+      generationConfig.responseMimeType = responseMimeType.trim();
+    }
+
+    const _fnStart = Date.now();
+
+    const _callOnce = async () => {
+      const t0 = Date.now();
+      const r = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY.value()}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ role: "user", parts }],
+            generationConfig,
+          }),
+        }
+      );
+      const d = await r.json().catch(() => null);
+      return { r, d, ms: Date.now() - t0 };
+    };
+
+    let res, data, firstMs = 0;
+    try {
+      const first = await _callOnce();
+      res = first.r;
+      data = first.d;
+      firstMs = first.ms;
+    } catch (err) {
+      console.error("[geminiProxy] fetch failed:", err);
+      throw new HttpsError("internal", "Gemini 호출에 실패했습니다.");
+    }
+
+    if (!data) {
+      throw new HttpsError("internal", "Gemini 응답을 해석할 수 없습니다.");
+    }
+
+    if (!res.ok || data?.error) {
+      console.error("[geminiProxy] Gemini API error:", {
+        status: res.status,
+        error: data?.error || null,
+      });
+      throw new HttpsError("internal", data?.error?.message || "Gemini 호출에 실패했습니다.");
+    }
+
+    const _extractText = (d) =>
+      (d?.candidates?.[0]?.content?.parts || [])
+        .map((part) => part?.text || "")
+        .join("")
+        .trim();
+
+    let text = _extractText(data);
+
+    const _looksLikeJSON = (s) => {
+      const t = s.replace(/^```(?:json)?\s*/i, "").trim();
+      return t.startsWith("{") || t.startsWith("[");
+    };
+
+    const wantJSON = generationConfig.responseMimeType === "application/json";
+    if (wantJSON && text && !_looksLikeJSON(text)) {
+      console.warn("[geminiProxy] non-JSON response, retrying once:", {
+        head: text.substring(0, 120),
+        finishReason: data?.candidates?.[0]?.finishReason || null,
+      });
+      const retryParts = [
+        ...parts,
+        { text: "\n\nReturn ONLY a valid JSON object. No prose, no markdown, no code fences." },
+      ];
+      try {
+        const retry = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY.value()}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contents: [{ role: "user", parts: retryParts }],
+              generationConfig,
+            }),
+          }
+        );
+        const retryData = await retry.json().catch(() => null);
+        if (retry.ok && retryData) {
+          const retryText = _extractText(retryData);
+          if (retryText && _looksLikeJSON(retryText)) {
+            text = retryText;
+            data = retryData;
+          }
+        }
+      } catch (err) {
+        console.warn("[geminiProxy] retry failed:", err?.message || err);
+      }
+    }
+
+    if (!text) {
+      console.error("[geminiProxy] empty response:", JSON.stringify(data));
+      throw new HttpsError("internal", "Gemini 응답이 비어 있습니다.");
+    }
+
+    const candidate = data?.candidates?.[0] || {};
+    console.log("[geminiProxy] response preview:", {
+      responseMimeType: generationConfig.responseMimeType || null,
+      maxOutputTokens: generationConfig.maxOutputTokens,
+      length: text.length,
+      head: text.substring(0, 200),
+      finishReason: candidate.finishReason || null,
+      usageMetadata: data?.usageMetadata || null,
+      timings: { firstFetchMs: firstMs, totalMs: Date.now() - _fnStart },
+    });
+
+    return { text };
+  }
+);
+
+// ── Cloud Vision OCR 프록시 ─────────────────────────────────────
+// 월 무료 1000장의 soft cap을 990으로 설정. 초과분은 클라가 Gemini 이미지 fallback.
+// Auth 체크 없음 — 이 앱은 Firebase Auth 미사용 (accounts 컬렉션 커스텀 계정). App Check만으로 익명 차단.
+let _visionClient = null;
+const _getVisionClient = () => {
+  if (_visionClient) return _visionClient;
+  const { ImageAnnotatorClient } = require("@google-cloud/vision");
+  _visionClient = new ImageAnnotatorClient();
+  return _visionClient;
+};
+
+const _ocrQuotaKey = () => {
+  const now = new Date();
+  const y = now.getUTCFullYear();
+  const m = String(now.getUTCMonth() + 1).padStart(2, "0");
+  return `${y}-${m}`;
+};
+
+exports.ocrProxy = onCall(
+  {
+    enforceAppCheck: true,
+    region: "asia-northeast3",
+    timeoutSeconds: 60,
+    memory: "512MiB",
+  },
+  async (request) => {
+    const { imageBase64 } = request.data || {};
+    if (typeof imageBase64 !== "string" || imageBase64.length < 100) {
+      throw new HttpsError("invalid-argument", "imageBase64가 필요합니다.");
+    }
+    if (imageBase64.length > 10 * 1024 * 1024) {
+      throw new HttpsError("invalid-argument", "이미지가 너무 큽니다.");
+    }
+
+    const db = getFirestore();
+    const monthKey = _ocrQuotaKey();
+    const quotaRef = db.collection("_ocrQuota").doc(monthKey);
+
+    // 트랜잭션으로 pre-increment: Vision 호출 전에 슬롯을 확보 (race-safe).
+    // 990 도달 시 즉시 resource-exhausted. 슬롯 확보 실패 시 여기서 차단.
+    let reservedCount;
+    try {
+      reservedCount = await db.runTransaction(async (tx) => {
+        const snap = await tx.get(quotaRef);
+        const used = snap.exists ? (snap.data().count || 0) : 0;
+        if (used >= OCR_MONTHLY_LIMIT) {
+          throw new HttpsError(
+            "resource-exhausted",
+            "monthly-ocr-quota-exhausted",
+            { month: monthKey, used, limit: OCR_MONTHLY_LIMIT }
+          );
+        }
+        tx.set(
+          quotaRef,
+          { count: FieldValue.increment(1), updatedAt: FieldValue.serverTimestamp() },
+          { merge: true }
+        );
+        return used + 1;
+      });
+    } catch (err) {
+      if (err instanceof HttpsError) throw err;
+      console.error("[ocrProxy] quota reserve failed:", err?.message || err);
+      throw new HttpsError("internal", "쿼터 확인 실패");
+    }
+
+    const t0 = Date.now();
+    let result;
+    try {
+      const client = _getVisionClient();
+      [result] = await client.documentTextDetection({
+        image: { content: imageBase64 },
+      });
+    } catch (err) {
+      // Vision 호출 실패 → 예약했던 슬롯 환불 (best-effort)
+      try {
+        await quotaRef.set({ count: FieldValue.increment(-1) }, { merge: true });
+      } catch (_) { /* 환불 실패해도 조용히 — 다음 달 리셋 */ }
+      console.error("[ocrProxy] Vision error:", err?.message || err);
+      throw new HttpsError("internal", "Vision 호출 실패: " + (err?.message || "unknown"));
+    }
+
+    const text = result?.fullTextAnnotation?.text || "";
+    const fetchMs = Date.now() - t0;
+
+    console.log("[ocrProxy] ok", {
+      month: monthKey,
+      reservedCount,
+      textLength: text.length,
+      fetchMs,
+    });
+
+    return {
+      text,
+      month: monthKey,
+      usedAfter: reservedCount,
+      limit: OCR_MONTHLY_LIMIT,
+    };
+  }
+);

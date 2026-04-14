@@ -280,14 +280,37 @@ export function switchNutritionTab(tab) {
 // 사진 업로드 & OCR
 // ═════════════════════════════════════════════════════════════
 
+async function _resizeImageToBase64(file, maxEdge = 1920, quality = 0.85) {
+  const dataUrl = await new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(fr.result);
+    fr.onerror = reject;
+    fr.readAsDataURL(file);
+  });
+  const img = await new Promise((resolve, reject) => {
+    const i = new Image();
+    i.onload = () => resolve(i);
+    i.onerror = reject;
+    i.src = dataUrl;
+  });
+  const scale = Math.min(1, maxEdge / Math.max(img.width, img.height));
+  const w = Math.round(img.width * scale);
+  const h = Math.round(img.height * scale);
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+  const jpegDataUrl = canvas.toDataURL('image/jpeg', quality);
+  return jpegDataUrl.replace(/^data:image\/jpeg;base64,/, '');
+}
+
 export async function handleNutritionPhotoSelect(event) {
   const file = event.target.files?.[0];
   if (!file) return;
 
   try {
-    // Base64로 변환
-    const { imageToBase64 } = await import('../data.js');
-    _niPhotoBase64 = await imageToBase64(file);
+    // 리사이즈 + Base64 변환 (긴 변 1280px, JPEG 0.75)
+    _niPhotoBase64 = await _resizeImageToBase64(file);
 
     // 미리보기 표시
     const preview = document.getElementById('ni-photo-preview');
@@ -325,9 +348,15 @@ export function clearNutritionPhoto() {
 }
 
 let _niMultipleItems = null; // 복수 제품 감지 시 아이템 배열
+let _ocrFallbackWarned = false; // Vision 쿼터 초과 → Gemini 전환 안내는 세션당 1회
+let _photoAnalyzeToken = 0; // 연속 업로드 시 stale 응답 차단용
 
 async function _analyzeNutritionPhoto() {
   if (!_niPhotoBase64) return;
+
+  // 이 분석 사이클의 고유 토큰. 응답 수신 후 최신 토큰과 비교해 stale이면 폐기.
+  const myToken = ++_photoAnalyzeToken;
+  const snapshotBase64 = _niPhotoBase64;
 
   const analyzing = document.getElementById('ni-photo-analyzing');
   const result = document.getElementById('ni-photo-result');
@@ -337,26 +366,61 @@ async function _analyzeNutritionPhoto() {
   _niMultipleItems = null;
 
   try {
-    const { parseNutritionFromImage } = await import('../ai.js');
-    const parsed = await parseNutritionFromImage(_niPhotoBase64, 'ko');
+    const { ocrImage, parseNutritionFromText, parseNutritionFromImage } = await import('../ai.js');
 
-    if (parsed.multiple && Array.isArray(parsed.items) && parsed.items.length > 1) {
-      // ── 복수 제품 감지 ──
+    let parsed = null;
+    let useDirectGemini = false;
+
+    // 1) Cloud Vision OCR 우선 시도
+    try {
+      const ocrText = await ocrImage(snapshotBase64);
+      if (ocrText && ocrText.trim().length >= 20) {
+        parsed = await parseNutritionFromText(ocrText);
+      } else {
+        useDirectGemini = true;
+      }
+    } catch (err) {
+      const code = err?.code || err?.details?.code || '';
+      const msg  = err?.message || '';
+      if (code === 'functions/resource-exhausted' || /monthly-ocr-quota/.test(msg)) {
+        if (!_ocrFallbackWarned && window.showToast) {
+          window.showToast('이번 달 OCR 무료 한도 소진 — AI 이미지 인식으로 전환', 3000, 'info');
+          _ocrFallbackWarned = true;
+        }
+      } else {
+        console.warn('[OCR] Vision 실패, Gemini로 fallback:', msg || err);
+      }
+      useDirectGemini = true;
+    }
+
+    // 토큰 검증 — 도중에 사용자가 사진을 바꾸거나 지웠으면 여기서 중단
+    if (myToken !== _photoAnalyzeToken) return;
+
+    // 2) Vision 경로가 실패/빈응답이면 Gemini 이미지 파서 fallback
+    if (useDirectGemini || !parsed) {
+      parsed = await parseNutritionFromImage(snapshotBase64, 'ko');
+    }
+
+    // 응답 도착 후 최종 토큰 검증
+    if (myToken !== _photoAnalyzeToken) return;
+
+    if (parsed?.multiple && Array.isArray(parsed.items) && parsed.items.length > 1) {
       _niMultipleItems = parsed.items;
-      _niParsedData = parsed.items[0]; // 첫 번째를 기본 선택
+      _niParsedData = parsed.items[0];
       _displayMultipleResults(parsed.items);
     } else {
-      // ── 단일 제품 ──
-      _niParsedData = parsed.multiple ? parsed.items[0] : parsed;
+      _niParsedData = parsed?.multiple ? parsed.items[0] : parsed;
       _displayNutritionResult(_niParsedData);
       _populateNutritionForm(_niParsedData);
       setTimeout(() => { switchNutritionTab('manual'); }, 300);
     }
   } catch (e) {
+    if (myToken !== _photoAnalyzeToken) return;
     console.error('OCR 분석 실패:', e);
-    alert('사진 분석 실패: ' + e.message);
+    if (window.showToast) window.showToast('사진 분석 실패: ' + e.message, 3000, 'error');
+    else alert('사진 분석 실패: ' + e.message);
   } finally {
-    analyzing.style.display = 'none';
+    if (myToken === _photoAnalyzeToken) analyzing.style.display = 'none';
   }
 }
 
@@ -379,19 +443,20 @@ export async function analyzeNutritionText() {
   _niMultipleItems = null;
 
   try {
-    const { parseNutritionFromText, detectLanguage } = await import('../ai.js');
+    const { parseNutritionFromText } = await import('../ai.js');
 
-    // 언어 감지
-    const langResult = await detectLanguage(rawText);
-
-    // 텍스트 파싱 (복수 항목 지원)
+    // 텍스트 파싱 (복수 항목 지원) — language는 응답에 포함됨
     const parsed = await parseNutritionFromText(rawText);
+    const langResult = parsed?.language
+      ? { language: parsed.language, confidence: parsed.confidence || 0.9 }
+      : (parsed?.items?.[0]?.language
+          ? { language: parsed.items[0].language, confidence: parsed.items[0].confidence || 0.9 }
+          : null);
 
     if (parsed.multiple && Array.isArray(parsed.items) && parsed.items.length > 1) {
       // ── 복수 항목 감지 ──
       parsed.items.forEach(it => {
         it.rawText = rawText;
-        if (langResult?.language) it.language = langResult.language;
       });
       _niMultipleItems = parsed.items;
       _niParsedData = parsed.items[0];
@@ -400,7 +465,6 @@ export async function analyzeNutritionText() {
       // ── 단일 항목 ──
       _niParsedData = parsed.multiple ? parsed.items[0] : parsed;
       _niParsedData.rawText = rawText;
-      if (langResult?.language) _niParsedData.language = langResult.language;
 
       // 결과 표시
       _displayNutritionTextResult(_niParsedData, langResult);
@@ -561,15 +625,79 @@ function _displayNutritionTextResult(data, langResult) {
   const langMap = { ko: '한국어', ja: '일본어', en: '영어', other: '기타' };
   document.getElementById('ni-text-language').textContent = langMap[data.language] || '한국어';
 
+  const N = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
+  const safeName = String(data.name || '').replace(/"/g, '&quot;');
+
   extracted.innerHTML = `
-    <div style="margin-bottom:8px"><strong>${data.name || '음식명 (미감지)'}</strong></div>
-    <div style="font-size:12px;display:grid;grid-template-columns:1fr 1fr;gap:4px">
-      <div>칼로리: <strong>${data.nutrition?.kcal || '?'} kcal</strong></div>
-      <div>단백질: <strong>${data.nutrition?.protein || '?'} g</strong></div>
-      <div>탄수화물: <strong>${data.nutrition?.carbs || '?'} g</strong></div>
-      <div>지방: <strong>${data.nutrition?.fat || '?'} g</strong></div>
+    <div style="font-size:12px;font-weight:600;color:var(--accent);margin-bottom:8px">
+      📋 파싱 결과 — 값 직접 수정 가능
     </div>
+    <div class="ni-single-edit" style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px">
+      <div style="margin-bottom:8px">
+        <input id="ni-single-name" type="text" value="${safeName}" placeholder="제품명" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--text);font-size:13px;font-weight:600">
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;font-size:10px;color:var(--muted2)">
+        <label>🔥 kcal<input id="ni-single-kcal" type="number" step="1" inputmode="decimal" value="${N(data.nutrition?.kcal)}" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--text);font-size:12px;text-align:right"></label>
+        <label>🥩 단<input id="ni-single-protein" type="number" step="0.1" inputmode="decimal" value="${N(data.nutrition?.protein)}" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--text);font-size:12px;text-align:right"></label>
+        <label>🍚 탄<input id="ni-single-carbs" type="number" step="0.1" inputmode="decimal" value="${N(data.nutrition?.carbs)}" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--text);font-size:12px;text-align:right"></label>
+        <label>🧈 지<input id="ni-single-fat" type="number" step="0.1" inputmode="decimal" value="${N(data.nutrition?.fat)}" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--text);font-size:12px;text-align:right"></label>
+      </div>
+    </div>
+    <button class="diet-db-btn" id="ni-single-save-btn" style="width:100%;padding:12px;font-size:13px;background:var(--gym-dim);border-color:var(--gym);color:var(--gym)">
+      💾 저장
+    </button>
   `;
+
+  // 저장 버튼
+  document.getElementById('ni-single-save-btn')?.addEventListener('click', async () => {
+    const name = document.getElementById('ni-single-name').value.trim();
+    if (!name) {
+      if (window.showToast) window.showToast('제품명을 입력해주세요', 2000, 'warning');
+      else alert('제품명을 입력해주세요.');
+      return;
+    }
+    const btn = document.getElementById('ni-single-save-btn');
+    if (btn) { btn.disabled = true; btn.textContent = '저장 중...'; }
+    try {
+      const { saveNutritionItem } = await import('../data.js');
+      const entry = {
+        id: null,
+        name,
+        unit: data.unit || '100g',
+        servingSize: data.servingSize || 100,
+        servingUnit: data.servingUnit || 'g',
+        nutrition: {
+          kcal: N(document.getElementById('ni-single-kcal').value),
+          protein: N(document.getElementById('ni-single-protein').value),
+          carbs: N(document.getElementById('ni-single-carbs').value),
+          fat: N(document.getElementById('ni-single-fat').value),
+          fiber: N(data.nutrition?.fiber),
+          sugar: N(data.nutrition?.sugar),
+          sodium: N(data.nutrition?.sodium),
+        },
+        notes: '텍스트 파싱 (단일)',
+        source: 'text',
+        language: data.language || 'ko',
+        confidence: data.confidence || 0.8,
+        photoUrl: null,
+        rawText: data.rawText || null,
+      };
+      await saveNutritionItem(entry);
+      if (window.showToast) window.showToast('저장 완료', 2500, 'success');
+      else alert('저장 완료!');
+      closeNutritionItemModal();
+      if (window.renderNutritionSearchResults) {
+        setTimeout(() => {
+          window.renderNutritionSearchResults();
+          if (window._renderNutritionDBList) window._renderNutritionDBList();
+        }, 100);
+      }
+    } catch (e) {
+      if (window.showToast) window.showToast('저장 실패: ' + e.message, 3000, 'error');
+      else alert('저장 실패: ' + e.message);
+      if (btn) { btn.disabled = false; btn.textContent = '💾 저장'; }
+    }
+  });
 }
 
 // ═════════════════════════════════════════════════════════════
@@ -587,66 +715,83 @@ function _displayMultipleTextResults(items, langResult) {
   const langMap = { ko: '한국어', ja: '일본어', en: '영어', other: '기타' };
   document.getElementById('ni-text-language').textContent = langMap[langResult?.language] || '한국어';
 
-  extracted.innerHTML = `
-    <div style="font-size:12px;font-weight:600;color:var(--accent);margin-bottom:8px">
-      📋 ${items.length}개 항목이 감지되었습니다
-    </div>
-    ${items.map((item, i) => `
-      <div class="ni-multi-text-item" data-idx="${i}" style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px;cursor:pointer;transition:all .15s${i === 0 ? ';border-color:var(--accent);background:rgba(99,102,241,.08)' : ''}">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-          <strong style="font-size:13px">${item.name || '항목 ' + (i + 1)}</strong>
-          <span style="font-size:10px;color:var(--muted)">${item.unit || ''} · ${Math.round((item.confidence || 0.8) * 100)}%</span>
-        </div>
-        <div style="font-size:11px;display:grid;grid-template-columns:1fr 1fr;gap:2px;color:var(--muted2)">
-          <div>🔥 ${item.nutrition?.kcal || 0} kcal</div>
-          <div>🥩 단 ${item.nutrition?.protein || 0}g</div>
-          <div>🍚 탄 ${item.nutrition?.carbs || 0}g</div>
-          <div>🧈 지 ${item.nutrition?.fat || 0}g</div>
-        </div>
-      </div>
-    `).join('')}
-    <div style="display:flex;gap:8px;margin-top:8px">
-      <button class="diet-db-btn" id="ni-text-multi-select-btn" style="flex:1;padding:10px;font-size:12px">
-        ✏️ 선택한 항목 편집
-      </button>
-      <button class="diet-db-btn" id="ni-text-multi-save-all-btn" style="flex:1;padding:10px;font-size:12px;background:var(--gym-dim);border-color:var(--gym);color:var(--gym)">
-        💾 ${items.length}개 모두 저장
-      </button>
-    </div>
-  `;
-
-  // 아이템 선택 이벤트
-  let selectedIdx = 0;
-  extracted.querySelectorAll('.ni-multi-text-item').forEach(el => {
-    el.addEventListener('click', () => {
-      selectedIdx = parseInt(el.dataset.idx);
-      extracted.querySelectorAll('.ni-multi-text-item').forEach(e => {
-        e.style.borderColor = 'var(--border)';
-        e.style.background = 'transparent';
-      });
-      el.style.borderColor = 'var(--accent)';
-      el.style.background = 'rgba(99,102,241,.08)';
-      _niParsedData = items[selectedIdx];
-    });
-  });
-
-  // 선택한 항목 편집 버튼
-  document.getElementById('ni-text-multi-select-btn')?.addEventListener('click', () => {
-    _niParsedData = items[selectedIdx];
-    _populateNutritionForm(_niParsedData);
-    switchNutritionTab('manual');
-  });
-
-  // 모두 저장 버튼 — 소스를 'text'로 설정해서 기존 _saveMultipleItems 재활용
-  document.getElementById('ni-text-multi-save-all-btn')?.addEventListener('click', () => {
-    const textItems = items.map(it => ({ ...it, _source: 'text' }));
-    _saveMultipleItems(textItems);
-  });
+  _renderInlineGrid(items, extracted, { saveBtnId: 'ni-text-multi-save-all-btn', source: 'text' });
 }
 
 // ═════════════════════════════════════════════════════════════
 // 복수 제품 처리 (OCR / 텍스트 공통)
 // ═════════════════════════════════════════════════════════════
+
+function _renderInlineGrid(items, extracted, { saveBtnId, source }) {
+  const N = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  };
+  const _input = (idx, field, value, step, placeholder) =>
+    `<input class="ni-grid-input" data-idx="${idx}" data-field="${field}" type="number" step="${step}" inputmode="decimal" value="${value}" placeholder="${placeholder}" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--text);font-size:12px;text-align:right">`;
+
+  extracted.innerHTML = `
+    <div style="font-size:12px;font-weight:600;color:var(--accent);margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
+      <span>📋 ${items.length}개 항목 — 값 직접 수정 가능</span>
+      <span style="font-size:10px;color:var(--muted);font-weight:400">체크 해제 시 저장 제외</span>
+    </div>
+    ${items.map((item, i) => `
+      <div class="ni-grid-row" data-idx="${i}" style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px">
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+          <input type="checkbox" class="ni-grid-skip" data-idx="${i}" checked style="width:18px;height:18px;flex-shrink:0;accent-color:var(--accent)">
+          <input class="ni-grid-input" data-idx="${i}" data-field="name" type="text" value="${(item.name || '항목 ' + (i + 1)).replace(/"/g, '&quot;')}" placeholder="이름" style="flex:1;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--text);font-size:13px;font-weight:600">
+          <span style="font-size:10px;color:var(--muted);white-space:nowrap">${Math.round((item.confidence || 0.8) * 100)}%</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;font-size:10px;color:var(--muted2)">
+          <label>🔥 kcal${_input(i, 'kcal', N(item.nutrition?.kcal), '1', '0')}</label>
+          <label>🥩 단${_input(i, 'protein', N(item.nutrition?.protein), '0.1', '0')}</label>
+          <label>🍚 탄${_input(i, 'carbs', N(item.nutrition?.carbs), '0.1', '0')}</label>
+          <label>🧈 지${_input(i, 'fat', N(item.nutrition?.fat), '0.1', '0')}</label>
+        </div>
+      </div>
+    `).join('')}
+    <button class="diet-db-btn" id="${saveBtnId}" style="width:100%;padding:12px;font-size:13px;margin-top:8px;background:var(--gym-dim);border-color:var(--gym);color:var(--gym)">
+      💾 체크된 항목 저장
+    </button>
+  `;
+
+  // 값 변경 시 items 원본 배열 업데이트
+  extracted.querySelectorAll('.ni-grid-input').forEach(inp => {
+    inp.addEventListener('input', () => {
+      const idx = parseInt(inp.dataset.idx);
+      const field = inp.dataset.field;
+      const item = items[idx];
+      if (!item) return;
+      if (field === 'name') {
+        item.name = inp.value;
+      } else {
+        item.nutrition = item.nutrition || {};
+        item.nutrition[field] = Number(inp.value) || 0;
+      }
+    });
+  });
+
+  // 체크박스: 저장 제외 토글
+  extracted.querySelectorAll('.ni-grid-skip').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const idx = parseInt(cb.dataset.idx);
+      if (items[idx]) items[idx]._skip = !cb.checked;
+    });
+  });
+
+  // 저장 버튼
+  document.getElementById(saveBtnId)?.addEventListener('click', () => {
+    const toSave = items
+      .filter(it => !it._skip)
+      .map(it => source ? { ...it, _source: source } : it);
+    if (toSave.length === 0) {
+      if (window.showToast) window.showToast('저장할 항목이 없습니다', 2000, 'warning');
+      else alert('저장할 항목이 없습니다');
+      return;
+    }
+    _saveMultipleItems(toSave, saveBtnId);
+  });
+}
 
 function _displayMultipleResults(items) {
   const result = document.getElementById('ni-photo-result');
@@ -656,71 +801,20 @@ function _displayMultipleResults(items) {
   document.getElementById('ni-photo-confidence').textContent =
     items.map(it => Math.round((it.confidence || 0.8) * 100) + '%').join(' / ');
 
-  extracted.innerHTML = `
-    <div style="font-size:12px;font-weight:600;color:var(--accent);margin-bottom:8px">
-      📋 ${items.length}개 제품이 감지되었습니다
-    </div>
-    ${items.map((item, i) => `
-      <div class="ni-multi-item" data-idx="${i}" style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px;cursor:pointer;transition:all .15s${i === 0 ? ';border-color:var(--accent);background:rgba(99,102,241,.08)' : ''}">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-          <strong style="font-size:13px">${item.name || '제품 ' + (i + 1)}</strong>
-          <span style="font-size:10px;color:var(--muted)">${Math.round((item.confidence || 0.8) * 100)}%</span>
-        </div>
-        <div style="font-size:11px;display:grid;grid-template-columns:1fr 1fr;gap:2px;color:var(--muted2)">
-          <div>🔥 ${item.nutrition?.kcal || 0} kcal</div>
-          <div>🥩 단 ${item.nutrition?.protein || 0}g</div>
-          <div>🍚 탄 ${item.nutrition?.carbs || 0}g</div>
-          <div>🧈 지 ${item.nutrition?.fat || 0}g</div>
-        </div>
-      </div>
-    `).join('')}
-    <div style="display:flex;gap:8px;margin-top:8px">
-      <button class="diet-db-btn" id="ni-multi-select-btn" style="flex:1;padding:10px;font-size:12px">
-        ✏️ 선택한 제품 편집
-      </button>
-      <button class="diet-db-btn" id="ni-multi-save-all-btn" style="flex:1;padding:10px;font-size:12px;background:var(--gym-dim);border-color:var(--gym);color:var(--gym)">
-        💾 ${items.length}개 모두 저장
-      </button>
-    </div>
-  `;
-
-  // 아이템 선택 이벤트
-  let selectedIdx = 0;
-  extracted.querySelectorAll('.ni-multi-item').forEach(el => {
-    el.addEventListener('click', () => {
-      selectedIdx = parseInt(el.dataset.idx);
-      extracted.querySelectorAll('.ni-multi-item').forEach(e => {
-        e.style.borderColor = 'var(--border)';
-        e.style.background = 'transparent';
-      });
-      el.style.borderColor = 'var(--accent)';
-      el.style.background = 'rgba(99,102,241,.08)';
-      _niParsedData = items[selectedIdx];
-    });
-  });
-
-  // 선택한 제품 편집 버튼
-  document.getElementById('ni-multi-select-btn')?.addEventListener('click', () => {
-    _niParsedData = items[selectedIdx];
-    _populateNutritionForm(_niParsedData);
-    switchNutritionTab('manual');
-  });
-
-  // 모두 저장 버튼
-  document.getElementById('ni-multi-save-all-btn')?.addEventListener('click', () => {
-    _saveMultipleItems(items);
-  });
+  _renderInlineGrid(items, extracted, { saveBtnId: 'ni-multi-save-all-btn', source: null });
 }
 
-async function _saveMultipleItems(items) {
-  const btn = document.getElementById('ni-multi-save-all-btn');
+async function _saveMultipleItems(items, saveBtnId) {
+  const toSave = items.filter(it => !it._skip);
+  // 호출한 버튼만 disable (숨겨진 쪽 버튼 오조작 방지)
+  const btn = saveBtnId ? document.getElementById(saveBtnId) : null;
   if (btn) { btn.disabled = true; btn.textContent = '저장 중...'; }
 
   try {
     const { saveNutritionItem } = await import('../data.js');
     let savedCount = 0;
 
-    for (const item of items) {
+    for (const item of toSave) {
       const entry = {
         id: null,
         name: item.name || '미확인 제품',
@@ -736,18 +830,19 @@ async function _saveMultipleItems(items) {
           sugar: item.nutrition?.sugar || 0,
           sodium: item.nutrition?.sodium || 0,
         },
-        notes: `복수 파싱 (${items.length}개 중 ${savedCount + 1}번째)`,
+        notes: `복수 파싱 (${toSave.length}개 중 ${savedCount + 1}번째)`,
         source: item._source || 'ocr',
         language: item.language || 'ko',
         confidence: item.confidence || 0.8,
-        photoUrl: null,
-        rawText: null,
+        photoUrl: item.photoUrl || null,
+        rawText: item.rawText || null, // provenance 보존
       };
       await saveNutritionItem(entry);
       savedCount++;
     }
 
-    alert(`${savedCount}개 제품이 모두 저장되었습니다!`);
+    if (window.showToast) window.showToast(`${savedCount}개 저장 완료`, 2500, 'success');
+    else alert(`${savedCount}개 제품이 모두 저장되었습니다!`);
     closeNutritionItemModal();
 
     if (window.renderNutritionSearchResults) {
@@ -757,9 +852,10 @@ async function _saveMultipleItems(items) {
       }, 100);
     }
   } catch (e) {
-    alert('저장 실패: ' + e.message);
+    if (window.showToast) window.showToast('저장 실패: ' + e.message, 3000, 'error');
+    else alert('저장 실패: ' + e.message);
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = `💾 ${items.length}개 모두 저장`; }
+    if (btn && document.contains(btn)) { btn.disabled = false; btn.textContent = '💾 체크된 항목 저장'; }
   }
 }
 

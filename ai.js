@@ -1,12 +1,22 @@
 // ================================================================
 // ai.js
-// 의존성: config.js, data.js
-// 역할: Gemini API 호출 (식단 추천, 운동 추천, 목표 실현가능성, 영양정보 파싱)
+// 의존성: data.js, data/data-core.js
+// 역할: Gemini Cloud Function 호출 (식단 추천, 운동 추천, 목표 실현가능성, 영양정보 파싱)
 // ================================================================
 
-import { CONFIG, MUSCLES }                    from './config.js';
 import { TODAY, getMemo, getExercises, getDiet, getExList,
          getMuscles, getCF, dietDayOk }        from './data.js';
+import { functions }                           from './data/data-core.js';
+import { httpsCallable }                       from "https://www.gstatic.com/firebasejs/11.6.0/firebase-functions.js";
+
+const _geminiProxy = httpsCallable(functions, 'geminiProxy');
+const _ocrProxy    = httpsCallable(functions, 'ocrProxy');
+
+// ── Cloud Vision OCR 호출 (월 990장 초과 시 resource-exhausted) ────
+export async function ocrImage(imageBase64) {
+  const { data } = await _ocrProxy({ imageBase64 });
+  return data?.text || '';
+}
 
 // ── JSON 안전 파싱 헬퍼 ──────────────────────────────────────────
 function _cleanJSON(text) {
@@ -27,44 +37,28 @@ function _cleanJSON(text) {
   return JSON.parse(s);
 }
 
-// ── 공통 Gemini 호출 (텍스트) ────────────────────────────────────
-export async function callGemini(prompt, maxTokens = 400) {
-  const key = CONFIG.GEMINI_KEY;
-  if (!key) throw new Error('Gemini API 키가 설정되지 않았습니다.');
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${CONFIG.GEMINI_MODEL}:generateContent?key=${key}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { maxOutputTokens: maxTokens },
-    }),
+async function _callGeminiProxy(parts, { maxTokens = 400, responseMimeType } = {}) {
+  const { data } = await _geminiProxy({
+    parts,
+    maxTokens,
+    responseMimeType,
   });
-  const data = await res.json();
-  if (data.error) throw new Error(data.error.message);
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  const text = data?.text;
   if (!text) throw new Error('Gemini 응답을 파싱할 수 없습니다.');
   return text;
 }
 
+// ── 공통 Gemini 호출 (텍스트) ────────────────────────────────────
+export async function callGemini(prompt, maxTokens = 400) {
+  return _callGeminiProxy([{ text: prompt }], { maxTokens });
+}
+
 // ── 공통 Gemini 호출 (JSON 강제) ─────────────────────────────────
 async function _callGeminiJSON(parts, maxTokens = 2000) {
-  const key = CONFIG.GEMINI_KEY;
-  if (!key) throw new Error('Gemini API 키가 설정되지 않았습니다.');
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${CONFIG.GEMINI_MODEL}:generateContent?key=${key}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts }],
-      generationConfig: {
-        maxOutputTokens: maxTokens,
-        responseMimeType: 'application/json',
-      },
-    }),
+  const text = await _callGeminiProxy(parts, {
+    maxTokens,
+    responseMimeType: 'application/json',
   });
-  const data = await res.json();
-  if (data.error) throw new Error(data.error.message);
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error('Gemini 응답을 파싱할 수 없습니다.');
   return _cleanJSON(text);
 }
 
@@ -159,11 +153,21 @@ export async function parseNutritionFromImage(imageBase64, language = 'ko') {
   return _callGeminiJSON([
     { text: prompt },
     { inlineData: { mimeType: 'image/jpeg', data: imageBase64 } }
-  ], 2000);
+  ], 4096);
 }
 
 // ── 영양성분 텍스트 파싱 ──────────────────────────────────────────
 export async function parseNutritionFromText(rawText) {
+  // 1) 정규식 파서 선시도 (AI 호출 전, 단일 항목 한정)
+  try {
+    const { parseNutritionRegex } = await import('./utils/nutrition-text-parser.js');
+    const r = parseNutritionRegex(rawText);
+    if (r.ok) return r.data;
+  } catch (err) {
+    console.warn('[parseNutritionFromText] 정규식 파서 로드 실패, AI로 진행:', err?.message || err);
+  }
+
+  // 2) 정규식 실패 → Gemini fallback
   const prompt = `다음 텍스트에서 영양정보를 추출하여 JSON으로 응답하세요.
 
 텍스트:
@@ -172,11 +176,12 @@ ${rawText}
 규칙:
 - 복수 항목이면 {"multiple":true,"items":[...]}
 - 단일이면 {"name":"음식명","unit":"100g","servingSize":100,"servingUnit":"g","nutrition":{"kcal":0,"protein":0,"carbs":0,"fat":0,"fiber":0,"sugar":0,"sodium":0},"brand":null,"language":"ko","confidence":0.95}
+- 표/테이블 형식의 텍스트라면 각 행을 반드시 개별 items 원소로 변환. 행을 건너뛰거나 합치지 말 것. items.length = 실제 행 수.
 - 범위값은 중간값 사용 (3~4→3.5)
 - mg→g (÷1000), 없는 값은 0
 - JSON만 출력`;
 
-  return _callGeminiJSON([{ text: prompt }], 2000);
+  return _callGeminiJSON([{ text: prompt }], 4096);
 }
 
 // ── 다국어 감지 ──────────────────────────────────────────────────

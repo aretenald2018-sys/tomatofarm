@@ -5,10 +5,10 @@
 // ================================================================
 
 export const CONFIG = {
-  // API 키는 localStorage에서 로드 (앱 설정에서 입력)
+  // 비공개 키는 localStorage에서 로드 (앱 설정에서 입력)
   get ANTHROPIC_KEY()    { return localStorage.getItem('cfg_anthropic')    || ''; },
-  GEMINI_KEY: 'AIzaSyDTmgvqyQVSeYWa3aLNPKuBLJaA-vHwJeg',
   get ALPHAVANTAGE_KEY() { return localStorage.getItem('cfg_alphavantage') || ''; },
+  APPCHECK_SITE_KEY: '6LfUKrYsAAAAAOhty9w6l1xUVaiGDmltI0obPVRM',
 
   // 식품의약품안전처 식품영양성분 DB (data.go.kr 일반인증키) — 자연식품+가공식품 모두 포함
   FOOD_DB_KEY: 'e54c5a3ae4ee20df7abd68a1b14528ad309c2fbe25a9ab1128bf7e410414d59b',

@@ -7,7 +7,8 @@ import { saveWorkoutDay }            from './save.js';
 import { _renderDateLabel, _renderGymStatusBtns, _renderCFStatusBtns,
          _renderStretchingToggle, _renderWineFreeToggle,
          _renderMealSkippedToggles, _renderDietResults,
-         _renderMealFoodItems, _renderMealPhotos }
+         _renderMealFoodItems, _renderMealPhotos,
+         renderCalorieTracker }
                                      from './render.js';
 import { _renderWorkoutTimer, _renderTimerControls,
          _fmtDuration, wtRestTimerSkip }
@@ -29,7 +30,7 @@ export function loadWorkoutDate(y, m, d) {
     _renderWorkoutTimer();
     _renderTimerControls();
     _renderDietResults();
-    _renderCalorieTracker();
+    renderCalorieTracker();
     _renderMealPhotos();
     return;
   }

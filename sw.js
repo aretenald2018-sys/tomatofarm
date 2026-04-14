@@ -3,7 +3,7 @@
 
 // 캐시 버전: 타임스탬프 기반 자동 생성 — 파일 수정 시 SW 자동 업데이트
 // (SW 파일 내용이 1바이트라도 바뀌면 브라우저가 새 SW로 인식)
-const CACHE_VERSION = 'tomatofarm-v20260411-guild-guest-fix';
+const CACHE_VERSION = 'tomatofarm-v20260414g-text-inline-edit';
 const RUNTIME_CACHE = 'dashboard3-runtime';
 const STATIC_ASSETS = [
   './',
@@ -48,6 +48,9 @@ const STATIC_ASSETS = [
   './render-cooking.js',
   './render-stats.js',
   './render-admin.js',
+  './admin/admin-hig.css',
+  './admin/admin-segmentation.js',
+  './admin/admin-outreach.js',
   // 분리 모듈
   './feature-nutrition.js',
   './feature-tutorial.js',
@@ -81,9 +84,7 @@ const STATIC_ASSETS = [
   // 어드민 모듈
   './admin/admin-overview.js',
   './admin/admin-users.js',
-  './admin/admin-engagement.js',
   './admin/admin-social.js',
-  './admin/admin-actions.js',
   './admin/admin-charts.js',
   './admin/admin-utils.js',
   './modals/weight-result-modal.js',
