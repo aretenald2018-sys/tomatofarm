@@ -95,6 +95,7 @@ export {
   getMySelfCheer, getMySelfCheerRaw, saveMySelfCheer, deleteMySelfCheer, getFriendSelfCheer,
   getFriendLatestTomatoCycle,
   recordLogin, recordTutorialDone, markPatchnoteRead, recordAction,
+  getPatchnote, createPatchnote, getLatestPatchnote,
   trackEvent, flushAnalytics, getAnalytics, getAllAnalytics,
 } from './data/data-social.js';
 

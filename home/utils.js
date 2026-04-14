@@ -26,6 +26,16 @@ export function quarterEnd(date) {
   return dateKey(date.getFullYear(), endMonth, endDay);
 }
 
+// ── HTML 이스케이프 ───────────────────────────────────────────────
+export function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // ── 시간 포맷 ────────────────────────────────────────────────────
 export function formatTimeAgo(ts) {
   if (!ts) return '';

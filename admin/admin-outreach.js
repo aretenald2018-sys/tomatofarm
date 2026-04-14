@@ -1,5 +1,6 @@
 import {
   getAccountList, sendNotification, getAdminOutreachHistory, saveHeroMessage, saveAccount, deleteUserAccount,
+  createPatchnote,
 } from '../data.js';
 import {
   exportUsersReport, exportDailyActivity,
@@ -165,6 +166,7 @@ async function _loadHistoryTable(data) {
       admin_comeback: '복귀',
       push: 'Push',
       hero: '히어로',
+      patchnote: '패치노트',
     };
 
     const readCount = notifs.filter((n) => n.read === true).length;
@@ -377,6 +379,20 @@ async function _sendCompose(data) {
           message: `${emoji || '🍅'} ${title || '복귀 메시지가 도착했어요.'}`,
         });
       }));
+    } else if (channel === 'patchnote') {
+      if (!title) {
+        _toast('패치노트는 제목이 필요해요.', 'warning');
+        return;
+      }
+      const pn = await createPatchnote({ title, body });
+      await Promise.all(targets.map((account) => sendNotification(account.id, {
+        type: 'patchnote',
+        patchnoteId: pn.id,
+        title,
+        body,
+        message: `${emoji || '📋'} ${title}`,
+        from: 'admin',
+      })));
     } else {
       const type = channel === 'announcement' ? 'announcement' : 'direct_message';
       await Promise.all(targets.map((account) => sendNotification(account.id, {
@@ -724,6 +740,7 @@ function _composeTab(data, options) {
               ['push', 'Push'],
               ['hero', '히어로'],
               ['announcement', '공지'],
+              ['patchnote', '패치노트'],
               ['comeback', '복귀'],
             ].map(([id, label]) => `
               <label class="hig-action-chip" style="opacity:${prefillChannel === id ? '1' : '.75'};">

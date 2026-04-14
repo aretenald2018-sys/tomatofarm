@@ -6,7 +6,7 @@ import { getCurrentUser, getMyNotifications, getAccountList,
          getPendingRequests, acceptFriendRequest, removeFriend,
          markNotificationRead, recordAction,
          approveGuildJoinRequest, findCommentProfileOwner }  from '../data.js';
-import { resolveNickname, formatTimeAgo, showToast, haptic } from './utils.js';
+import { resolveNickname, formatTimeAgo, showToast, haptic, escapeHtml } from './utils.js';
 
 let _notifCenterOpen = false;
 
@@ -115,10 +115,29 @@ export async function refreshNotifCenter() {
       </div>`;
       continue;
     }
+    if (n.type === 'patchnote') {
+      const rawBody = n.body || '';
+      const bodyPreview = rawBody.slice(0, 80) + (rawBody.length > 80 ? '…' : '');
+      const pnBody = rawBody ? `<div style="font-size:11px;color:var(--text-secondary);margin-top:3px;line-height:1.4;">${escapeHtml(bodyPreview)}</div>` : '';
+      const pnTitle = escapeHtml(n.title || n.message || '새 패치노트가 도착했어요');
+      html += `<div class="notif-item${unreadCls} notif-announce"
+           data-notif-id="${escapeHtml(n.id)}"
+           data-patchnote-id="${escapeHtml(n.patchnoteId || '')}"
+           data-patchnote-title="${escapeHtml(n.title || '')}"
+           data-patchnote-body="${escapeHtml(n.body || '')}"
+           data-patchnote-created="${Number(n.createdAt || 0)}"
+           onclick="openPatchnoteFromNotif(this)">
+        <div class="notif-icon announce">📋</div>
+        <div class="notif-body">
+          <div class="notif-message" style="font-weight:700;color:var(--primary);">${pnTitle}</div>
+          ${pnBody}
+          <div class="notif-time">${formatTimeAgo(n.createdAt)}</div>
+        </div>
+      </div>`;
+      continue;
+    }
     const clickAction = n.type === 'guestbook'
       ? `markNotifFromCenter('${n.id}',this);closeNotifCenter();openMyGuestbook()`
-      : n.type === 'patchnote'
-      ? `markNotifFromCenter('${n.id}',this);markPatchnoteReadFromNotif()`
       : (n.type === 'comment' || n.type === 'comment_reply')
       ? `markNotifFromCenter('${n.id}',this);closeNotifCenter();openCommentNotif('${n.targetUserId || ''}','${n.from || ''}','${n.section || ''}','${n.dateKey || ''}')`
       : `markNotifFromCenter('${n.id}',this)`;
@@ -217,17 +236,34 @@ window.rejectFriendFromNotif = async function(id) {
   if (_renderFriendFeedFn) _renderFriendFeedFn();
 };
 
-window.markPatchnoteReadFromNotif = async function() {
-  const { getDocs, collection, getFirestore } = await import("https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js");
-  const db = getFirestore();
-  const snap = await getDocs(collection(db, '_patchnotes'));
-  const pns = []; snap.forEach(d => pns.push(d.data()));
-  pns.sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
-  if (pns.length > 0) {
-    const { markPatchnoteRead } = await import('../data.js');
-    await markPatchnoteRead(pns[0].id);
+// 알림 → 패치노트 모달 오픈
+// patchnoteId 있으면 해당 노트를 Firestore에서 가져옴. 없으면 (레거시 알림)
+// 알림 payload의 title/body를 fallback으로 넘김 — "최신 노트로 때우기" 금지.
+window.openPatchnoteFromNotif = async function(el) {
+  if (!el) return;
+  const notifId = el.dataset.notifId || '';
+  const patchnoteId = el.dataset.patchnoteId || '';
+  const fTitle = el.dataset.patchnoteTitle || '';
+  const fBody = el.dataset.patchnoteBody || '';
+  const fCreated = Number(el.dataset.patchnoteCreated || 0) || Date.now();
+
+  // 알림은 사용자가 명시적으로 클릭한 시점에 읽음 처리 (모달 fetch 성공과 별개)
+  if (notifId) markNotificationRead(notifId).catch(() => {});
+  el.classList.remove('unread');
+  const badge = document.getElementById('notif-badge');
+  if (badge) {
+    const cnt = parseInt(badge.textContent, 10) - 1;
+    if (cnt <= 0) badge.style.display = 'none';
+    else badge.textContent = cnt;
+  }
+  closeNotifCenter();
+
+  const fallback = (fTitle || fBody) ? { title: fTitle, body: fBody, createdAt: fCreated } : null;
+  if (typeof window.openPatchnote === 'function') {
+    window.openPatchnote(patchnoteId, fallback);
   }
   recordAction('패치노트읽음');
+  if (_renderFriendFeedFn) _renderFriendFeedFn();
 };
 
 window.approveGuildFromNotif = async function(requestId, notifId) {

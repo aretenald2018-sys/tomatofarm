@@ -39,6 +39,7 @@ export {
 
 export {
   recordLogin, recordTutorialDone, markPatchnoteRead, recordAction,
+  getPatchnote, createPatchnote, getLatestPatchnote,
 } from './data-social-log.js';
 
 export {
