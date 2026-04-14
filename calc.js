@@ -563,6 +563,14 @@ export function detectKcalDrop({ name, yesterday, dayBefore }) {
   };
 }
 
+// 노이즈 억제: pct와 abs 양쪽 하한선을 모두 넘어야 PR 인정.
+// 선정은 '체감 의미'가 더 큰 abs 증가량 우선 → 메인 운동의 작은 % 개선이
+// 보조 운동의 큰 %(ex. 5kg→6kg)보다 우선 노출되도록.
+const VOLUME_PR_MIN_PCT  = 10;   // 기존 트리거 임계값 유지
+const VOLUME_PR_MIN_ABS  = 200;  // kg·rep 하한 (보조운동 노이즈 컷)
+const LIFT_PR_MIN_PCT    = 5;    // 1kg/20kg(=5%)처럼 과장되는 케이스 컷
+const LIFT_PR_MIN_ABS_KG = 2.5;  // 원판 최소 증량분 기준
+
 export function detectVolumePR({ name, today, yesterday, weekAgo }) {
   const tVol = _exerciseVolume(today);
   const yVol = _exerciseVolume(yesterday);
@@ -571,17 +579,21 @@ export function detectVolumePR({ name, today, yesterday, weekAgo }) {
   for (const id of Object.keys(tVol)) {
     const t = tVol[id];
     const prev = Math.max(yVol[id]?.volume || 0, wVol[id]?.volume || 0);
-    if (prev > 0 && t.volume > prev * 1.1) {
-      const delta = Math.round(t.volume - prev);
-      if (!best || delta > best.params.delta) {
-        best = {
-          type: 'volume_pr', priority: 75, category: 'exercise',
-          template: 'volume_pr',
-          params: { name, exercise: t.name, delta },
-        };
-      }
+    if (prev <= 0) continue;
+    const absDelta = t.volume - prev;
+    const pct = Math.round((absDelta / prev) * 100);
+    if (pct < VOLUME_PR_MIN_PCT) continue;
+    if (absDelta < VOLUME_PR_MIN_ABS) continue;
+    if (!best || absDelta > best._absDelta) {
+      best = {
+        type: 'volume_pr', priority: 75, category: 'exercise',
+        template: 'volume_pr',
+        params: { name, exerciseId: id, exercise: t.name, pct },
+        _absDelta: absDelta,
+      };
     }
   }
+  if (best) delete best._absDelta;
   return best;
 }
 
@@ -594,16 +606,21 @@ export function detectLiftPR({ name, today, yesterday, weekAgo }) {
     const t = tVol[id];
     if (t.topWeight <= 0) continue;
     const prev = Math.max(yVol[id]?.topWeight || 0, wVol[id]?.topWeight || 0);
-    if (prev > 0 && t.topWeight > prev) {
-      if (!best || t.topWeight > best.params.kg) {
-        best = {
-          type: 'weight_pr', priority: 85, category: 'exercise',
-          template: 'weight_pr',
-          params: { name, exercise: t.name, kg: t.topWeight },
-        };
-      }
+    if (prev <= 0) continue;
+    const absDelta = t.topWeight - prev;
+    const pct = Math.round((absDelta / prev) * 100);
+    if (pct < LIFT_PR_MIN_PCT) continue;
+    if (absDelta < LIFT_PR_MIN_ABS_KG) continue;
+    if (!best || absDelta > best._absDelta) {
+      best = {
+        type: 'weight_pr', priority: 85, category: 'exercise',
+        template: 'weight_pr',
+        params: { name, exerciseId: id, exercise: t.name, pct },
+        _absDelta: absDelta,
+      };
     }
   }
+  if (best) delete best._absDelta;
   return best;
 }
 
@@ -616,7 +633,7 @@ export function detectFrequencyUp({ name, today, weekAgo }) {
   return {
     type: 'frequency_up', priority: 50, category: 'exercise',
     template: 'frequency_up',
-    params: { name, exercise: pick.name },
+    params: { name, exerciseId: pick.id, exercise: pick.name },
   };
 }
 

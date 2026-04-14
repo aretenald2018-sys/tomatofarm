@@ -27,6 +27,7 @@ import {
   getCheersConfig, getCustomCheers,
   getMySelfCheer, getMySelfCheerRaw, saveMySelfCheer, deleteMySelfCheer,
   getFriendSelfCheer, getFriendLatestTomatoCycle,
+  getExList, getAllMuscles,
 } from '../data.js';
 import { CELEBRATION_DETECTORS } from '../calc.js';
 import { resolveNickname, showToast } from './utils.js';
@@ -118,11 +119,33 @@ function _escapeText(v) {
     .replace(/'/g, '&#39;');
 }
 
+// 운동명 해석: exerciseId → 사용자 친화 한글명
+// 1순위: getExList에서 id 매칭 (예: back_1 → 랫풀다운, custom_abc → 사용자 정의명)
+// 2순위: id 프리픽스로 근육 부위 한글화 — 기본 MUSCLES + 커스텀 근육군 (과거 종목이
+//        현재 목록에서 삭제/로드 지연된 경우에도 커스텀 근육군 힌트 유지)
+// 3순위: "운동"
+function _resolveExerciseName(exerciseId, fallbackName) {
+  const isRawId = !fallbackName || /^[a-z0-9]+_[a-z0-9_-]+$/i.test(String(fallbackName));
+  if (!isRawId && fallbackName) return fallbackName;
+  if (exerciseId) {
+    try {
+      const hit = getExList().find((e) => e.id === exerciseId);
+      if (hit?.name) return hit.name;
+    } catch (_) { /* ignore */ }
+    const prefix = String(exerciseId).split('_')[0];
+    try {
+      const muscle = getAllMuscles().find((m) => m.id === prefix);
+      if (muscle?.name) return `${muscle.name} 운동`;
+    } catch (_) { /* ignore */ }
+  }
+  return '운동';
+}
+
 // 문구 템플릿 (structured 입력 → escape + 합성, XSS 방지)
 function _renderTemplate(c) {
   const p = c.params || {};
   const name = `<strong>${_escapeText(p.name)}</strong>`;
-  const ex = _escapeText(p.exercise || '');
+  const ex = _escapeText(_resolveExerciseName(p.exerciseId, p.exercise));
   switch (c.template) {
     case 'weight_loss':
       return `${name}님이 최근 ${_escapeText(p.days)}일간 체중이 ${_escapeText(p.kg)}kg 줄었어요!`;
@@ -133,9 +156,9 @@ function _renderTemplate(c) {
     case 'kcal_reduction':
       return `${name}님이 어제는 그저께보다 조금 가볍게 드셨어요.`;
     case 'volume_pr':
-      return `${name}님이 ${ex} 볼륨 기록을 ${_escapeText(p.delta)}kg·rep 경신했어요!`;
+      return `${name}님이 ${ex} 볼륨을 직전 대비 ${_escapeText(p.pct)}% 끌어올렸어요!`;
     case 'weight_pr':
-      return `${name}님이 ${ex}에서 ${_escapeText(p.kg)}kg 최고 중량을 경신했어요!`;
+      return `${name}님이 ${ex} 최고 중량을 직전 대비 ${_escapeText(p.pct)}% 경신했어요!`;
     case 'frequency_up':
       return `${name}님이 ${ex}을(를) 오늘부터 루틴에 다시 추가했어요!`;
     case 'full_diet_day':
@@ -399,29 +422,56 @@ function _mapCustomCheers(customList, accounts) {
     });
 }
 
+// ── 동일 uid의 복수 메시지 그룹핑 (1행 로테이션) ─────────────────
+// 우선순위 정렬된 items 입력 → 최초 등장 순서를 유지하면서 같은 uid의 후속 항목을
+// 첫 항목의 messages[]에 합쳐서 한 행으로 렌더한다.
+function _groupByUidForDisplay(items) {
+  const out = [];
+  const seen = new Map(); // uid -> out index
+  for (const item of items) {
+    const key = item.uid || `__anon_${out.length}`;
+    if (!seen.has(key)) {
+      seen.set(key, out.length);
+      out.push({ ...item, messages: [item] });
+    } else {
+      out[seen.get(key)].messages.push(item);
+    }
+  }
+  return out;
+}
+
 // ── 렌더 ─────────────────────────────────────────────────────────
 
-function _renderItems(celebrations, limit) {
-  const shown = celebrations.slice(0, limit);
-  return shown.map((c) => {
-    const avatar = c.avatar
-      ? `<img src="${_escapeText(c.avatar)}" alt="">`
-      : _escapeText(_initials(c.name));
-    const text = _renderTemplate(c);
-    const selfBadge = c.isSelf ? '<span class="cheers-self-badge">나</span>' : '';
-    const selfClass = c.isSelf ? ' cheers-item-self' : '';
+function _renderRowText(row) {
+  const selfBadge = row.isSelf ? '<span class="cheers-self-badge">나</span>' : '';
+  const msgs = row.messages || [row];
+  if (msgs.length <= 1) {
+    return `${selfBadge}${_renderTemplate(msgs[0])}`;
+  }
+  const n = Math.min(msgs.length, 3); // CSS 애니메이션은 N=2,3 지원
+  const lines = msgs.slice(0, n).map((m) => `<span class="cheers-rot-line">${_renderTemplate(m)}</span>`).join('');
+  return `${selfBadge}<span class="cheers-text-rotator" data-n="${n}">${lines}</span>`;
+}
+
+function _renderItems(rows, limit) {
+  const shown = rows.slice(0, limit);
+  return shown.map((row) => {
+    const avatar = row.avatar
+      ? `<img src="${_escapeText(row.avatar)}" alt="">`
+      : _escapeText(_initials(row.name));
+    const selfClass = row.isSelf ? ' cheers-item-self' : '';
     return `
-      <div class="cheers-item${selfClass}" data-uid="${_escapeText(c.uid)}" onclick="window._cheersOpenFriend(this.dataset.uid)">
+      <div class="cheers-item${selfClass}" data-uid="${_escapeText(row.uid)}" onclick="window._cheersOpenFriend(this.dataset.uid)">
         <div class="cheers-avatar">${avatar}</div>
-        <div class="cheers-text">${selfBadge}${text}</div>
+        <div class="cheers-text">${_renderRowText(row)}</div>
         <div class="cheers-item-icon">›</div>
       </div>
     `;
   }).join('');
 }
 
-function _paint(el, celebrations, mySelfCheer) {
-  const hasAny = celebrations && celebrations.length;
+function _paint(el, rows, totalEvents, mySelfCheer) {
+  const hasAny = rows && rows.length;
   const todayEndRemainingText = (() => {
     if (!mySelfCheer?.text || !mySelfCheer.expiresAt) return '';
     const hrs = Math.max(0, Math.round((mySelfCheer.expiresAt - Date.now()) / 3600000));
@@ -440,20 +490,20 @@ function _paint(el, celebrations, mySelfCheer) {
   `;
 
   el.style.display = '';
-  const initialShown = _expanded ? celebrations.length : Math.min(MAX_INITIAL, celebrations.length);
-  const hasMore = celebrations.length > MAX_INITIAL;
+  const initialShown = _expanded ? rows.length : Math.min(MAX_INITIAL, rows.length);
+  const hasMore = rows.length > MAX_INITIAL;
   el.innerHTML = `
     <div class="cheers-card-header">
       <span class="cheers-card-emoji">🎉</span>
       <span class="cheers-card-title">함께 축하해요!</span>
-      ${hasAny ? `<span class="cheers-card-sub">${celebrations.length}건</span>` : ''}
+      ${hasAny ? `<span class="cheers-card-sub">${totalEvents}건</span>` : ''}
     </div>
-    ${hasAny ? `<div class="cheers-list">${_renderItems(celebrations, initialShown)}</div>` : `
+    ${hasAny ? `<div class="cheers-list">${_renderItems(rows, initialShown)}</div>` : `
       <div class="cheers-empty">아직 오늘 축하할 소식이 없어요. 내 축하받고 싶은 일을 먼저 알려볼까요?</div>
     `}
     ${hasMore ? `
       <button class="cheers-more-btn" onclick="window._cheersToggleExpand()">
-        ${_expanded ? '접기' : `더보기 (+${celebrations.length - MAX_INITIAL})`}
+        ${_expanded ? '접기' : `더보기 (+${rows.length - MAX_INITIAL})`}
       </button>
     ` : ''}
     ${editorRow}
@@ -510,7 +560,9 @@ export async function renderCheersCard() {
       const merged = capped
         .sort((a, b) => (b.priority || 0) - (a.priority || 0))
         .slice(0, MAX_TOTAL);
-      _paint(el, merged, mySelfCheer);
+      // 동일 uid 복수 메시지는 한 행으로 묶어 로테이션 렌더
+      const rows = _groupByUidForDisplay(merged);
+      _paint(el, rows, merged.length, mySelfCheer);
     } catch (err) {
       console.warn('[cheers-card] render error', err);
       el.style.display = 'none';
@@ -633,5 +685,7 @@ export const __test__ = {
   _selectCandidateUids,
   _resolveEnabledSet,
   _signatureFor,
+  _groupByUidForDisplay,
+  _resolveExerciseName,
   constants: { MAX_PER_UID, MAX_TOTAL, ACTIVE_WINDOW_MS, FRESH_CANDIDATE_TOP_K, CACHE_PREFIX, AUTO_TTL_MS },
 };
