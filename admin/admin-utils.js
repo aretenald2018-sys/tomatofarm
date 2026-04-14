@@ -53,6 +53,20 @@ export function deltaText(current, previous, suffix = '') {
   return `<span class="hig-caption1" style="color:${color};">${arrow}${Math.abs(diff)}${suffix}</span>`;
 }
 
+export function fmtReadDelay(createdAt, readAt) {
+  if (!createdAt || !readAt) return '';
+  const diff = Math.max(0, readAt - createdAt);
+  if (diff < 60 * 1000) return `${Math.round(diff / 1000)}초 뒤 읽음`;
+  if (diff < 60 * 60 * 1000) return `${Math.round(diff / 60000)}분 뒤 읽음`;
+  if (diff < 24 * 60 * 60 * 1000) {
+    const h = Math.floor(diff / 3600000);
+    const m = Math.round((diff - h * 3600000) / 60000);
+    return m ? `${h}시간 ${m}분 뒤 읽음` : `${h}시간 뒤 읽음`;
+  }
+  const days = Math.floor(diff / 86400000);
+  return `${days}일 뒤 읽음`;
+}
+
 export function escapeHtml(value) {
   return String(value || '')
     .replace(/&/g, '&amp;')

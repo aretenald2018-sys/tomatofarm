@@ -72,6 +72,7 @@ async function _registerFCMToken() {
       document.body.appendChild(toastEl);
       setTimeout(() => { toastEl.classList.remove('show'); setTimeout(() => toastEl.remove(), 300); }, 3000);
       if (typeof refreshNotifCenter === 'function') refreshNotifCenter();
+      // 포그라운드 "수신"은 "사용자가 읽었다"와 다르다. admin 지표 왜곡 방지를 위해 자동 마킹하지 않음.
     });
   } catch(e) {
     console.warn('[FCM] 토큰 등록 실패:', e);
@@ -243,3 +244,24 @@ window._showIOSInstallGuide = function() {
 Object.assign(window, {
   installPWA,
 });
+
+// Service Worker → 클라이언트 메시지 수신
+// firebase-messaging-sw.js의 notificationclick 핸들러에서 postMessage({ type:'notif_clicked', notifId })
+if (typeof navigator !== 'undefined' && navigator.serviceWorker) {
+  navigator.serviceWorker.addEventListener('message', (event) => {
+    const msg = event?.data;
+    if (!msg || typeof msg !== 'object') return;
+    if (msg.type !== 'notif_clicked') return;
+    const id = msg.notifId;
+    // 실제 notification id만 허용. fallback tag 등은 차단.
+    if (typeof id !== 'string' || !id || id === 'tomatofarm-notif') return;
+    // 형식 검증: sendNotification은 `${toUserId}_${Date.now()}` 형태로 id를 만든다
+    if (!/^[^\s]+_\d{10,}$/.test(id)) return;
+    import('./data.js').then(({ markNotificationRead }) => {
+      try { markNotificationRead(id); } catch (_) { /* ignore */ }
+    }).catch(() => {});
+    if (typeof refreshNotifCenter === 'function') {
+      try { refreshNotifCenter(); } catch (_) { /* ignore */ }
+    }
+  });
+}

@@ -7,6 +7,7 @@ export {
   sendFriendRequest, acceptFriendRequest, removeFriend,
   getMyFriends, getPendingRequests,
   getFriendData, getFriendWorkout, getFriendTomatoState,
+  getFriendLatestTomatoCycle,
   getDisplayName, getGlobalWeeklyRanking,
   introduceFriend,
 } from './data-social-friends.js';
@@ -23,12 +24,17 @@ export {
 } from './data-social-guild.js';
 
 export {
-  sendNotification, getMyNotifications, getAdminSentNotifications, getAdminOutreachHistory, markNotificationRead, sendAnnouncement,
+  sendNotification, getMyNotifications, getAdminSentNotifications, getAdminOutreachHistory,
+  markNotificationRead, markNotificationsRead, markHeroMessageRead, sendAnnouncement,
   getGuestbook, writeGuestbook, deleteGuestbookEntry,
   findCommentProfileOwner, getComments, writeComment, editComment, deleteComment,
   toggleLike, getCheerStatus, getLikes, getUnseenCheers,
   getHeroMessage, saveHeroMessage,
   saveFcmToken, removeFcmToken,
+  getCheersConfig, getCheersConfigRemote, saveCheersConfig,
+  getCustomCheers, saveCustomCheer, deleteCustomCheer,
+  invalidateCheersCache,
+  getMySelfCheer, getMySelfCheerRaw, saveMySelfCheer, deleteMySelfCheer, getFriendSelfCheer,
 } from './data-social-interact.js';
 
 export {

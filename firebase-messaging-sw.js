@@ -28,21 +28,30 @@ messaging.onBackgroundMessage((payload) => {
   });
 });
 
-// 알림 클릭 시 앱 열기
+// 알림 클릭 시 앱 열기 + 클라이언트에 읽음 처리 요청 전달
+// 주의: event.notification.tag는 기본값("tomatofarm-notif")일 수 있으므로
+// 읽음 id로 사용하지 않는다. 오직 data.notifId만 신뢰한다.
 self.addEventListener("notificationclick", (event) => {
+  const rawNotifId = event.notification?.data?.notifId;
+  const notifId = (typeof rawNotifId === 'string' && rawNotifId && rawNotifId !== 'tomatofarm-notif')
+    ? rawNotifId : null;
   event.notification.close();
-  event.waitUntil(
-    clients.matchAll({ type: "window", includeUncontrolled: true }).then((windowClients) => {
-      // 이미 열려있는 창이 있으면 포커스
-      for (const client of windowClients) {
-        if (client.url.includes("/tomatofarm/") && "focus" in client) {
-          return client.focus();
-        }
+  event.waitUntil((async () => {
+    const windowClients = await clients.matchAll({ type: "window", includeUncontrolled: true });
+    let focused = null;
+    for (const client of windowClients) {
+      if (client.url.includes("/tomatofarm/") && "focus" in client) {
+        focused = await client.focus();
+        break;
       }
-      // 없으면 새 창 열기
-      if (clients.openWindow) {
-        return clients.openWindow("/tomatofarm/");
-      }
-    })
-  );
+    }
+    if (!focused && clients.openWindow) {
+      focused = await clients.openWindow("/tomatofarm/");
+    }
+    if (focused && notifId) {
+      try {
+        focused.postMessage({ type: "notif_clicked", notifId });
+      } catch (_) { /* ignore */ }
+    }
+  })());
 });

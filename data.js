@@ -82,12 +82,18 @@ export {
   getGuildLeader, transferGuildLeadership, kickGuildMember,
   deleteGuild, updateGuild, adminAddGuildMember, adminRemoveGuildMember,
   inviteUserToGuild,
-  sendNotification, getMyNotifications, getAdminSentNotifications, getAdminOutreachHistory, markNotificationRead, sendAnnouncement,
+  sendNotification, getMyNotifications, getAdminSentNotifications, getAdminOutreachHistory,
+  markNotificationRead, markNotificationsRead, markHeroMessageRead, sendAnnouncement,
   getGuestbook, writeGuestbook, deleteGuestbookEntry,
   findCommentProfileOwner, getComments, writeComment, editComment, deleteComment,
   toggleLike, getCheerStatus, getLikes, getUnseenCheers,
   getHeroMessage, saveHeroMessage,
   saveFcmToken, removeFcmToken,
+  getCheersConfig, getCheersConfigRemote, saveCheersConfig,
+  getCustomCheers, saveCustomCheer, deleteCustomCheer,
+  invalidateCheersCache,
+  getMySelfCheer, getMySelfCheerRaw, saveMySelfCheer, deleteMySelfCheer, getFriendSelfCheer,
+  getFriendLatestTomatoCycle,
   recordLogin, recordTutorialDone, markPatchnoteRead, recordAction,
   trackEvent, flushAnalytics, getAnalytics, getAllAnalytics,
 } from './data/data-social.js';
@@ -473,6 +479,60 @@ export const getAllMuscles = () => {
 export const getCache     = ()      => _cache;
 export const getAllDateKeys = () => Object.keys(_cache).filter(k => /^\d{4}-\d{2}-\d{2}$/.test(k));
 export const getDay       = (y,m,d) => _cache[dateKey(y,m,d)] || {};
+
+// 가장 최근 body_checkin의 날짜/체중. 없으면 null.
+// 실제 체중 시계열은 body_checkins 컬렉션이 진실(기존 체크인 모달이 쓰는 경로).
+export function getLatestCheckinDate() {
+  const list = getBodyCheckins();
+  if (!list.length) return null;
+  const latest = list[list.length - 1];
+  return latest?.date || null;
+}
+
+export function getLatestCheckinWeight() {
+  const list = getBodyCheckins();
+  for (let i = list.length - 1; i >= 0; i--) {
+    const w = list[i]?.weight;
+    if (typeof w === 'number' && isFinite(w)) return w;
+  }
+  const plan = _settings?.diet_plan;
+  if (plan && typeof plan.weight === 'number' && isFinite(plan.weight)) return plan.weight;
+  return null;
+}
+
+// 기준 날짜로부터 N일 전의 체중(그 이전 가장 최근 체크인). 없으면 null.
+export function getCheckinWeightOnOrBefore(refKey, daysBefore) {
+  const list = getBodyCheckins();
+  if (!list.length) return null;
+  const refDate = new Date(refKey);
+  const target = new Date(refDate);
+  target.setDate(target.getDate() - daysBefore);
+  const targetKey = dateKey(target.getFullYear(), target.getMonth(), target.getDate());
+  for (let i = list.length - 1; i >= 0; i--) {
+    const c = list[i];
+    if (!c || !c.date) continue;
+    if (c.date > targetKey) continue;
+    if (typeof c.weight === 'number' && isFinite(c.weight)) {
+      return { dk: c.date, weight: c.weight };
+    }
+  }
+  return null;
+}
+
+// "체중이 일주일 넘게 미입력" 판정 (홈 카드 stale 표시용)
+export function daysSinceLastCheckin() {
+  const latestDate = getLatestCheckinDate();
+  if (!latestDate) return Infinity;
+  try {
+    const latest = new Date(latestDate + 'T00:00:00');
+    const today = new Date(TODAY);
+    today.setHours(0, 0, 0, 0);
+    const diffMs = today - latest;
+    return Math.max(0, Math.round(diffMs / 86400000));
+  } catch (_) {
+    return Infinity;
+  }
+}
 export const getExercises = (y,m,d) => getDay(y,m,d).exercises || [];
 export function isActiveWorkoutDayData(workoutData) {
   if (!workoutData) return false;

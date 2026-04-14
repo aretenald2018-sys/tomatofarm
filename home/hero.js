@@ -7,7 +7,7 @@ import { TODAY, calcStreaks, countLocalWeeklyActiveDays, getCF,
          getStreakFreezes, getTomatoState, useStreakFreeze,
          getGlobalWeeklyRanking, getMyFriends, getAccountList, getCurrentUser,
          getFriendWorkout, dateKey, isAdmin, _isMySocialId, isActiveWorkoutDayData,
-         computeGuildStats, getHeroMessage }  from '../data.js';
+         computeGuildStats, getHeroMessage, markHeroMessageRead }  from '../data.js';
 import { setText, showToast, haptic, resolveNickname } from './utils.js';
 
 function _currentDateKey() {
@@ -34,11 +34,22 @@ export async function renderHero() {
   const customMsg = await getHeroMessage(currentUser?.id, todayDateKey);
   if (!customMsg?.message) return;
 
+  // 읽음 처리는 유저가 실제로 hero 메시지를 "탭(interact)"할 때만 수행.
+  // (renderHome이 백그라운드에서 호출되거나 탭이 숨겨진 상태에서도 돌 수 있어
+  //  렌더 자체를 "읽음"으로 보면 admin 지표의 신뢰도가 떨어진다.)
+
+  const _maybeMarkRead = () => {
+    if (customMsg.id && !customMsg.read && !isAdmin()) {
+      markHeroMessageRead(customMsg.id).catch((e) => console.warn('[hero] mark read:', e));
+    }
+  };
+
   const labelEl = el.querySelector('.tf-hero-label');
   if (labelEl) {
     labelEl.textContent = customMsg.emoji ? `${customMsg.emoji} ${customMsg.message}` : customMsg.message;
     labelEl.classList.add('hero-message-custom');
     labelEl.onclick = () => {
+      _maybeMarkRead();
       labelEl.animate(
         [{ transform: 'scale(1)' }, { transform: 'scale(1.03)' }, { transform: 'scale(1)' }],
         { duration: 320, easing: 'ease-out' }
@@ -52,6 +63,7 @@ export async function renderHero() {
     msgEl.textContent = customMsg.emoji ? `${customMsg.emoji} ${customMsg.message}` : customMsg.message;
     msgEl.classList.add('hero-message-custom');
     msgEl.onclick = () => {
+      _maybeMarkRead();
       msgEl.animate(
         [{ transform: 'scale(1)' }, { transform: 'scale(1.03)' }, { transform: 'scale(1)' }],
         { duration: 320, easing: 'ease-out' }

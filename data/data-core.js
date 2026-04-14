@@ -6,7 +6,7 @@ import { initializeApp }    from "https://www.gstatic.com/firebasejs/11.6.0/fire
 import { initializeAppCheck, ReCaptchaV3Provider } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app-check.js";
 import {
   getFirestore, doc, setDoc, deleteDoc, getDoc,
-  collection, getDocs, query, where, documentId, enableIndexedDbPersistence,
+  collection, getDocs, query, where, documentId, orderBy, limit, enableIndexedDbPersistence,
 } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 import { getFunctions } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-functions.js";
 import { CONFIG } from '../config.js';
@@ -48,7 +48,7 @@ enableIndexedDbPersistence(db).catch(err => {
 });
 
 // Firestore 함수 re-export (하위 모듈용)
-export { doc, setDoc, deleteDoc, getDoc, collection, getDocs, query, where, documentId };
+export { doc, setDoc, deleteDoc, getDoc, collection, getDocs, query, where, documentId, orderBy, limit };
 
 // ── IndexedDB 백업 (모바일 localStorage 클리어 방지) ─────────────
 const _IDB_NAME = 'dashboard3_session';

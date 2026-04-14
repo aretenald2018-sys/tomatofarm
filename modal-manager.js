@@ -23,6 +23,7 @@ const MODALS = [
   { id: 'streak-milestone-modal', path: './modals/streak-milestone-modal.js', export: 'MODAL_HTML' },
   { id: 'guild-modal',            path: './modals/guild-modal.js',            export: 'MODAL_HTML' },
   { id: 'guild-info-modal',       path: './modals/guild-info-modal.js',       export: 'MODAL_HTML' },
+  { id: 'self-cheer-modal',       path: './modals/self-cheer-modal.js',       export: 'MODAL_HTML' },
 ];
 
 // 모달들이 로드되었는지 추적

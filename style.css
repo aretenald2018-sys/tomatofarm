@@ -5236,3 +5236,153 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
   .coach-tooltip-desc { font-size: 12px; }
   .coach-btn { padding: 11px 16px; font-size: 13px; }
 }
+
+/* ══════════════════════════════════════════════════════════
+   기존 체중 카드 #tf-weight-card stale 강조 (home/tomato.js)
+   일주일 넘게 체중 미입력 시 ripple shine + 버튼 문구 강조
+══════════════════════════════════════════════════════════ */
+.tf-weight-card-stale {
+  border: 1px solid var(--primary-light, #fed4d2) !important;
+  animation: tds-shine 2.4s ease-in-out infinite;
+}
+.tf-weight-card-stale .tf-sum-hint-stale {
+  color: var(--primary) !important;
+  font-weight: 700 !important;
+  background: var(--primary-bg);
+  padding: 5px 10px;
+  border-radius: 999px;
+  animation: tds-shine-btn 2.4s ease-in-out infinite;
+  display: inline-block;
+}
+.tf-wt-stale-sub {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--primary);
+  background: var(--primary-bg);
+  border-radius: 8px;
+  vertical-align: middle;
+}
+@keyframes tds-shine {
+  0%   { box-shadow: 0 0 0 0 rgba(250,52,44,0.35); }
+  70%  { box-shadow: 0 0 0 10px rgba(250,52,44,0); }
+  100% { box-shadow: 0 0 0 0 rgba(250,52,44,0); }
+}
+@keyframes tds-shine-btn {
+  0%   { box-shadow: 0 0 0 0 rgba(250,52,44,0.45); }
+  70%  { box-shadow: 0 0 0 6px rgba(250,52,44,0); }
+  100% { box-shadow: 0 0 0 0 rgba(250,52,44,0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tf-weight-card-stale, .tf-weight-card-stale .tf-sum-hint-stale { animation: none; }
+}
+
+/* ══════════════════════════════════════════════════════════
+   함께 축하해요 카드 (home/cheers-card.js)
+══════════════════════════════════════════════════════════ */
+.cheers-card { padding: 16px; }
+.cheers-card-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.cheers-card-title { font-size: 15px; font-weight: 700; line-height: 22.5px; color: var(--text); }
+.cheers-card-emoji { font-size: 18px; }
+.cheers-card-sub { font-size: 12px; color: var(--muted); margin-left: auto; }
+.cheers-list { display: flex; flex-direction: column; }
+.cheers-item {
+  display: flex; align-items: center; gap: 12px;
+  min-height: 44px; padding: 10px 0;
+  border-top: 1px solid var(--seed-stroke-weak, rgba(0,0,0,0.06));
+  cursor: pointer;
+  transition: background 0.1s ease-in-out;
+}
+.cheers-item:first-child { border-top: none; }
+.cheers-item:active { background: var(--primary-bg); }
+.cheers-avatar {
+  flex: 0 0 auto; width: 32px; height: 32px; border-radius: 50%;
+  background: var(--primary-bg); color: var(--primary);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 13px;
+  overflow: hidden;
+}
+.cheers-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.cheers-text { flex: 1; font-size: 13px; line-height: 1.45; color: var(--text); }
+.cheers-text strong { font-weight: 600; color: var(--text); }
+.cheers-item-icon { flex: 0 0 auto; font-size: 14px; opacity: 0.6; }
+.cheers-item-self { background: linear-gradient(to right, var(--primary-bg), transparent 80%); }
+.cheers-item-self .cheers-avatar { background: var(--primary); color: #fff; }
+.cheers-self-badge {
+  display: inline-block; margin-right: 6px;
+  padding: 1px 7px; border-radius: 8px;
+  background: var(--primary); color: #fff;
+  font-size: 10px; font-weight: 700; vertical-align: middle;
+}
+.cheers-empty { font-size: 13px; color: var(--muted); padding: 8px 0 4px; line-height: 1.45; }
+.cheers-more-btn {
+  margin-top: 8px; width: 100%; min-height: 36px; padding: 8px 12px;
+  background: transparent; color: var(--primary); border: none; cursor: pointer;
+  font-size: 13px; font-weight: 600; border-radius: 8px;
+  transition: background 0.1s ease-in-out;
+}
+.cheers-more-btn:active { background: var(--primary-bg); }
+
+/* 본인 축하 에디터 영역 */
+.cheers-self-row {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--seed-stroke-weak, rgba(0,0,0,0.06));
+  display: flex; flex-direction: column; gap: 8px;
+}
+.cheers-self-preview {
+  font-size: 12px; color: var(--muted);
+  line-height: 1.4;
+  padding: 8px 10px; background: var(--primary-bg);
+  border-radius: 8px;
+}
+.cheers-self-preview strong { color: var(--primary); font-weight: 600; }
+.cheers-self-btn {
+  min-height: 40px; padding: 8px 14px;
+  border: 1px dashed var(--primary-light, #fed4d2);
+  background: transparent; color: var(--primary);
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  border-radius: 10px;
+  transition: background 0.1s ease-in-out;
+}
+.cheers-self-btn:active { background: var(--primary-bg); }
+.cheers-empty {
+  font-size: 13px; color: var(--muted);
+  padding: 12px 4px 4px;
+  line-height: 1.5;
+}
+
+/* self-cheer 모달 */
+.self-cheer-body { padding: 16px 20px 20px; display: flex; flex-direction: column; gap: 12px; }
+.self-cheer-hint {
+  font-size: 12px; line-height: 1.6; color: var(--muted);
+  padding: 10px 12px; background: var(--primary-bg);
+  border-radius: 10px;
+}
+.self-cheer-note { color: var(--primary); font-weight: 600; }
+.self-cheer-textarea {
+  min-height: 72px; padding: 12px 14px;
+  border: 1px solid var(--seed-stroke-weak, #d5d5d5);
+  border-radius: 12px; background: var(--seed-bg-fill, #fafafa);
+  font-size: 15px; line-height: 1.5; color: var(--text);
+  resize: vertical;
+  transition: border-color 0.1s ease-in-out, box-shadow 0.1s ease-in-out;
+}
+.self-cheer-textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-bg); }
+.self-cheer-preview {
+  font-size: 12px; color: var(--muted);
+  padding: 8px 12px; border-radius: 8px; background: var(--seed-bg-fill, #fafafa);
+  line-height: 1.5; min-height: 24px;
+}
+.self-cheer-preview strong { color: var(--primary); font-weight: 600; }
+.self-cheer-current {
+  font-size: 12px; color: var(--muted); line-height: 1.5;
+  padding: 0 4px;
+}
+.self-cheer-current strong { color: var(--text); font-weight: 600; }
+.self-cheer-actions {
+  display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px;
+}
+.self-cheer-clear { color: var(--muted) !important; }

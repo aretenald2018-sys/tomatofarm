@@ -8,7 +8,8 @@ import { TODAY, getDiet, getDietPlan, calcDietMetrics, getBodyCheckins,
          getTomatoState, saveTomatoState, saveTomatoCycle,
          getTomatoCycles, dateKey,
          getStreakFreezes, useStreakFreeze,
-         getMyFriends, getAccountList, trackEvent }  from '../data.js';
+         getMyFriends, getAccountList, trackEvent,
+         daysSinceLastCheckin }  from '../data.js';
 import { calcTomatoCycle, evaluateCycleResult, getQuarterKey,
          isDietDaySuccess, isExerciseDaySuccess,
          getDayTargetKcal as calcDayTarget }  from '../calc.js';
@@ -879,14 +880,21 @@ export function renderTomatoCard() {
     const wProgress = wRange > 0 ? Math.min(Math.round(Math.max(wStart - curWeight, 0) / wRange * 100), 100) : 0;
     const wProgressVisual = (wStart - curWeight) > 0 ? Math.max(wProgress, 8) : 0;
 
+    const daysSince = daysSinceLastCheckin();
+    const isStale = daysSince >= 7;
+    const hintText = isStale ? '바뀐 몸무게 입력하기 ›' : '몸무게 입력 ›';
+    const staleSub = isStale && daysSince !== Infinity
+      ? `<span class="tf-wt-stale-sub">${daysSince}일째 미입력</span>`
+      : '';
+
     const weightCard = document.createElement('div');
     weightCard.id = 'tf-weight-card';
-    weightCard.className = 'home-card tf-summary-card';
+    weightCard.className = 'home-card tf-summary-card' + (isStale ? ' tf-weight-card-stale' : '');
     weightCard.onclick = () => openCheckinModal();
     weightCard.innerHTML = `
       <div class="tf-sum-row">
         <div class="tf-sum-left">
-          <span class="tf-sum-title">체중</span>
+          <span class="tf-sum-title">체중${staleSub}</span>
           <div class="tf-sum-nums">
             <span class="tf-sum-big">${curWeight.toFixed(1)}</span>
             <span class="tf-sum-unit-lg">kg</span>
@@ -894,7 +902,7 @@ export function renderTomatoCard() {
           </div>
         </div>
         <div class="tf-sum-right-text">
-          <span class="tf-sum-hint">몸무게 입력 ›</span>
+          <span class="tf-sum-hint${isStale ? ' tf-sum-hint-stale' : ''}">${hintText}</span>
         </div>
       </div>
       <div class="tf-wt-journey">

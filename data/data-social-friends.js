@@ -4,6 +4,7 @@
 
 import {
   db, doc, setDoc, deleteDoc, getDoc, collection, getDocs,
+  query, orderBy, limit,
   getCurrentUserRef, ADMIN_ID,
 } from './data-core.js';
 import { isAdminGuest } from './data-auth.js';
@@ -109,6 +110,36 @@ export async function getFriendWorkout(friendId, dateKey) {
     const snap = await getDoc(doc(db, 'users', friendId, 'workouts', dateKey));
     return snap.exists() ? snap.data() : null;
   } catch { return null; }
+}
+
+// 친구의 가장 최근 정산된 토마토 사이클 문서 1건 반환 (orderBy desc + limit 1).
+// tomatoesAwarded(0~2), dietAllSuccess, exerciseAllSuccess 플래그를 소비 측에서 활용.
+export async function getFriendLatestTomatoCycle(friendId) {
+  if (!friendId) return null;
+  try {
+    const q = query(
+      collection(db, 'users', friendId, 'tomato_cycles'),
+      orderBy('cycleEnd', 'desc'),
+      limit(1),
+    );
+    const snap = await getDocs(q);
+    let latest = null;
+    snap.forEach((d) => { latest = d.data(); });
+    return latest;
+  } catch (e) {
+    // orderBy가 인덱스 필요 시 실패 시 legacy fallback (데이터 적을 때만 사용)
+    console.warn('[tomato-cycle] getFriend (fallback to full scan):', e?.message || e);
+    try {
+      const snap = await getDocs(collection(db, 'users', friendId, 'tomato_cycles'));
+      let latest = null;
+      snap.forEach((d) => {
+        const data = d.data();
+        if (!data?.cycleEnd) return;
+        if (!latest || data.cycleEnd > latest.cycleEnd) latest = data;
+      });
+      return latest;
+    } catch (_) { return null; }
+  }
 }
 
 export async function getFriendTomatoState(friendId) {

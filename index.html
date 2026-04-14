@@ -331,6 +331,9 @@
       <div id="diet-goal-content"></div>
     </div>
 
+    <!-- 함께 축하해요! (기존 체중카드는 home/tomato.js에서 동적 렌더) -->
+    <div class="home-card cheers-card" id="card-celebrations" style="display:none;"></div>
+
     <div id="home-cheer-slot"></div>
 
     <!-- 주간 랭킹 -->
@@ -1199,7 +1202,7 @@ async function initLoginScreen() {
 
   // 김태우 계정(Admin/Guest) 비밀번호 통일 + 더미 계정 정리
   try {
-    const { hashPassword } = await import('./data.js');
+    const { hashPassword, saveAccount } = await import('./data.js');
     const { getAdminId: gAId } = await import('./data.js');
 
     // 더미 계정 삭제 — 비활성화 (계정이 삭제되는 버그 원인이었음)
@@ -1514,12 +1517,19 @@ async function createAccountAndLogin() {
       return;
     }
     setCurrentUser(found);
-    localStorage.setItem('admin_authenticated', 'true');
     const { backupAdminAuth: bkAuth, recordLogin: rl1 } = await import('./data.js');
-    bkAuth();
+    if (found.id === _gAI() || _isAI(found.id)) {
+      localStorage.setItem('admin_authenticated', 'true');
+      bkAuth();
+    } else {
+      localStorage.removeItem('admin_authenticated');
+      localStorage.removeItem('kim_authenticated');
+    }
     rl1();
   } else {
     setCurrentUser(found);
+    localStorage.removeItem('admin_authenticated');
+    localStorage.removeItem('kim_authenticated');
     const { recordLogin: rl2 } = await import('./data.js');
     rl2();
   }

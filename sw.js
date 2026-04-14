@@ -3,7 +3,7 @@
 
 // 캐시 버전: 타임스탬프 기반 자동 생성 — 파일 수정 시 SW 자동 업데이트
 // (SW 파일 내용이 1바이트라도 바뀌면 브라우저가 새 SW로 인식)
-const CACHE_VERSION = 'tomatofarm-v20260414g-text-inline-edit';
+const CACHE_VERSION = 'tomatofarm-v20260414n-cheers-per-uid-cache';
 const RUNTIME_CACHE = 'dashboard3-runtime';
 const STATIC_ASSETS = [
   './',
@@ -35,6 +35,7 @@ const STATIC_ASSETS = [
   './home/friend-feed.js',
   './home/friend-profile.js',
   './home/cheer-card.js',
+  './home/cheers-card.js',
   './render-workout.js',
   './workout/index.js',
   './workout/state.js',
@@ -87,8 +88,14 @@ const STATIC_ASSETS = [
   './admin/admin-social.js',
   './admin/admin-charts.js',
   './admin/admin-utils.js',
+  './admin/admin-cache.js',
+  './admin/admin-actions.js',
+  './admin/admin-export.js',
+  './admin/admin-engagement.js',
+  './admin/admin-cheers.js',
   './modals/weight-result-modal.js',
   './modals/guild-info-modal.js',
+  './modals/self-cheer-modal.js',
 ];
 
 self.addEventListener('install', (event) => {

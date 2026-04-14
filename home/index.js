@@ -18,6 +18,7 @@ import { setFriendProfileDeps }                              from './friend-prof
 import { refreshNotifCenter, setNotificationsDeps }          from './notifications.js';
 import { clearCheerCard, renderCheerCard }                   from './cheer-card.js';
 import { renderGuildCard }                                   from './guild-card.js';
+import { renderCheersCard }                                  from './cheers-card.js';
 
 let _lastCheerSignature = '';
 
@@ -56,6 +57,7 @@ export function renderHome(options = {}) {
     if (shouldShow('homeCards', 'quests'))     { renderQuests(); initQuestDragDrop(); }
     const dietGoalEl = document.getElementById('card-diet-goal');
     if (dietGoalEl) dietGoalEl.style.display = 'none';
+    renderCheersCard().catch(e => console.warn('[cheers-card]', e));
     renderFriendFeed();
     renderLeaderboard();
     renderGuildCard().catch(e => console.warn('[guild-card]', e));

@@ -39,6 +39,12 @@ export function renderSettingsSection(container, data, rerender) {
       </div>
 
       <div class="hig-card">
+        <div class="hig-headline">함께 축하해요 관리</div>
+        <div class="hig-caption1" style="color:var(--hig-gray1);margin-top:4px;">감지 모듈 on/off 및 수동 축하 작성</div>
+        <div id="admin-cheers-container" style="margin-top:12px;"></div>
+      </div>
+
+      <div class="hig-card">
         <div class="hig-headline">Admin 모드 전환</div>
         <div class="hig-subhead" style="color:var(--hig-gray1);margin-top:6px;">게스트 모드로 전환하려면 아래 버튼을 사용하세요.</div>
         <button class="hig-btn-secondary" style="margin-top:10px;" onclick="window.switchKimMode && window.switchKimMode('Guest')">게스트 모드로 전환</button>
@@ -58,6 +64,12 @@ export function renderSettingsSection(container, data, rerender) {
       </div>
     </div>
   `;
+
+  // cheers 관리 UI는 lazy import로 로드
+  import('./admin-cheers.js').then((mod) => {
+    const el = document.getElementById('admin-cheers-container');
+    if (el) mod.renderCheersAdminCard(el, data);
+  }).catch((err) => console.warn('[admin-actions] cheers module load:', err));
 }
 
 window._adminConfirmDeleteUser = (uid, name) => _askDelete(uid, name);

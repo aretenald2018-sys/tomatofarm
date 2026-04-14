@@ -7,7 +7,7 @@ import {
   exportAll, exportAIJson,
 } from './admin-export.js';
 import {
-  escapeHtml, stageColor, stageLabel, trajectoryArrow, trajectoryLabel, fmtDate,
+  escapeHtml, stageColor, stageLabel, trajectoryArrow, trajectoryLabel, fmtDate, fmtReadDelay,
 } from './admin-utils.js';
 
 let _outreachTab = 'compose';
@@ -169,12 +169,54 @@ async function _loadHistoryTable(data) {
 
     const readCount = notifs.filter((n) => n.read === true).length;
     const unreadCount = notifs.filter((n) => n.read === false).length;
+    const untrackedCount = notifs.filter((n) => n.read !== true && n.read !== false).length;
+
+    // 배치별 집계 (createdAt 초 단위로 그룹핑)
+    const batches = new Map();
+    notifs.forEach((n) => {
+      if (!n.createdAt) return;
+      const bucket = Math.floor(n.createdAt / 60000); // 같은 분에 보낸 것들을 한 배치로
+      const key = `${bucket}_${n.type || ''}`;
+      if (!batches.has(key)) {
+        batches.set(key, { createdAt: n.createdAt, type: n.type, total: 0, read: 0, sumDelay: 0, readCount: 0 });
+      }
+      const b = batches.get(key);
+      b.total += 1;
+      if (n.read === true) {
+        b.read += 1;
+        if (n.readAt) { b.sumDelay += (n.readAt - n.createdAt); b.readCount += 1; }
+      }
+    });
+    const batchRows = Array.from(batches.values())
+      .filter((b) => b.total >= 2)
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, 6);
+
+    const batchCard = batchRows.length ? `
+      <div class="hig-card-grouped" style="margin-bottom:12px;">
+        <div class="hig-list-row"><div class="hig-headline">배치별 요약</div></div>
+        ${batchRows.map((b) => {
+          const avgMin = b.readCount ? Math.round(b.sumDelay / b.readCount / 60000) : null;
+          const rate = Math.round(100 * b.read / b.total);
+          return `<div class="hig-list-row" style="justify-content:space-between;">
+            <div>
+              <div class="hig-subhead">${fmtDate(b.createdAt)} · ${escapeHtml(typeLabel[b.type] || b.type || '-')}</div>
+              <div class="hig-caption2" style="color:var(--hig-gray1);">${b.read}/${b.total} 읽음 (${rate}%)${avgMin != null ? ` · 평균 ${avgMin}분 뒤` : ''}</div>
+            </div>
+            <div style="width:120px;height:6px;background:var(--hig-surface-elevated);border-radius:3px;overflow:hidden;">
+              <div style="height:100%;width:${rate}%;background:var(--hig-green, #34c759);"></div>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    ` : '';
 
     container.innerHTML = `
+      ${batchCard}
       <div class="hig-card-grouped">
         <div class="hig-list-row" style="justify-content:space-between;">
           <div class="hig-headline">발송 기록 (${notifs.length}건)</div>
-          <div class="hig-caption1" style="color:var(--hig-gray1);">읽음 ${readCount} · 미읽음 ${unreadCount}</div>
+          <div class="hig-caption1" style="color:var(--hig-gray1);">읽음 ${readCount} · 미읽음 ${unreadCount}${untrackedCount ? ` · 기록없음 ${untrackedCount}` : ''}</div>
         </div>
         <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
           <table style="width:100%;border-collapse:collapse;font-size:12px;line-height:1.4;">
@@ -183,9 +225,9 @@ async function _loadHistoryTable(data) {
                 <th style="text-align:left;padding:8px 10px;white-space:nowrap;font-weight:600;">계정</th>
                 <th style="text-align:left;padding:8px 10px;white-space:nowrap;font-weight:600;">종류</th>
                 <th style="text-align:left;padding:8px 10px;font-weight:600;">메시지</th>
-                <th style="text-align:center;padding:8px 10px;white-space:nowrap;font-weight:600;">읽음</th>
+                <th style="text-align:center;padding:8px 10px;white-space:nowrap;font-weight:600;">상태</th>
                 <th style="text-align:left;padding:8px 10px;white-space:nowrap;font-weight:600;">발송일</th>
-                <th style="text-align:left;padding:8px 10px;white-space:nowrap;font-weight:600;">읽은 시간</th>
+                <th style="text-align:left;padding:8px 10px;white-space:nowrap;font-weight:600;">읽기까지</th>
               </tr>
             </thead>
             <tbody>
@@ -194,19 +236,38 @@ async function _loadHistoryTable(data) {
     const label = typeLabel[notif.type] || notif.type || '-';
     const preview = escapeHtml((notif.body || notif.message || '').trim().slice(0, 40) || '-');
     const isRead = notif.read === true;
-    const hasReadState = notif.read === true || notif.read === false;
-    const readIcon = isRead ? '✓' : hasReadState ? '—' : '·';
-    const readColor = isRead ? 'var(--hig-green, #34c759)' : 'var(--hig-gray2, #999)';
-    const readTime = notif.readAt ? fmtDate(notif.readAt) : (isRead ? '(시간 미기록)' : '');
-    const rowBg = notif.read === false ? 'background:color-mix(in srgb, var(--hig-red, #ff3b30) 5%, transparent);' : '';
+    const isUnread = notif.read === false;
+    const hasReadState = isRead || isUnread;
+
+    let badgeHtml;
+    if (isRead) {
+      badgeHtml = `<span style="display:inline-block;padding:2px 8px;border-radius:8px;background:var(--primary-bg, rgba(250,52,44,0.12));color:var(--primary, #fa342c);font-size:10px;font-weight:700;">읽음</span>`;
+    } else if (isUnread) {
+      badgeHtml = `<span style="display:inline-block;padding:2px 8px;border-radius:8px;background:var(--hig-surface-elevated);color:var(--hig-gray1);font-size:10px;font-weight:700;">미읽음</span>`;
+    } else {
+      badgeHtml = `<span style="display:inline-block;padding:2px 8px;border-radius:8px;background:var(--hig-surface-elevated);color:var(--hig-gray2, #999);font-size:10px;font-weight:600;">기록없음</span>`;
+    }
+
+    let readDelayHtml = '';
+    if (isRead && notif.readAt) {
+      readDelayHtml = `<span title="${escapeHtml(fmtDate(notif.readAt))}">${escapeHtml(fmtReadDelay(notif.createdAt, notif.readAt))}</span>`;
+    } else if (isRead) {
+      readDelayHtml = '<span style="color:var(--hig-gray2);">시간 미기록</span>';
+    } else if (isUnread) {
+      readDelayHtml = '<span style="color:var(--hig-gray2);">—</span>';
+    } else {
+      readDelayHtml = '<span style="color:var(--hig-gray2);">—</span>';
+    }
+
+    const rowBg = isUnread ? 'background:color-mix(in srgb, var(--hig-red, #ff3b30) 5%, transparent);' : '';
     return `
                 <tr style="border-bottom:1px solid var(--hig-separator);${rowBg}">
                   <td style="padding:8px 10px;font-weight:500;">${escapeHtml(accountName)}</td>
                   <td style="padding:8px 10px;"><span style="display:inline-block;padding:2px 6px;border-radius:6px;background:var(--hig-surface-elevated);font-size:11px;font-weight:600;">${escapeHtml(label)}</span></td>
                   <td style="padding:8px 10px;color:var(--hig-gray1);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${preview}</td>
-                  <td style="padding:8px 10px;text-align:center;color:${readColor};font-weight:700;">${readIcon}</td>
+                  <td style="padding:8px 10px;text-align:center;">${badgeHtml}</td>
                   <td style="padding:8px 10px;white-space:nowrap;color:var(--hig-gray1);">${fmtDate(notif.createdAt)}</td>
-                  <td style="padding:8px 10px;white-space:nowrap;color:var(--hig-gray1);font-size:11px;">${readTime}</td>
+                  <td style="padding:8px 10px;white-space:nowrap;color:var(--hig-gray1);font-size:11px;">${readDelayHtml}</td>
                 </tr>
               `;
   }).join('') || `
