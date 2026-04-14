@@ -114,9 +114,25 @@ export function _simpleHash(str) {
   return 'h_' + Math.abs(hash).toString(36);
 }
 
+function _accountNeedsPassword(account) {
+  if (!account) return false;
+  const flag = account.hasPassword;
+  if (flag === true || flag === 'true' || flag === 1 || flag === '1') return true;
+  if (flag === false || flag === 'false' || flag === 0 || flag === '0') return false;
+  return !!account.passwordHash;
+}
+
 export function verifyPassword(account, input) {
-  if (!account.hasPassword || !account.passwordHash) return true;
-  return _simpleHash(input) === account.passwordHash;
+  if (!_accountNeedsPassword(account) || !account.passwordHash) return true;
+
+  const rawInput = String(input ?? '');
+  const inputHash = _simpleHash(rawInput);
+  const storedHash = account.passwordHash;
+
+  if (String(storedHash) === inputHash) return true;
+  if (String(storedHash) === rawInput) return true;
+
+  return false;
 }
 
 export function hashPassword(pw) { return _simpleHash(pw); }

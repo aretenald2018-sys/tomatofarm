@@ -142,7 +142,10 @@ async function switchTab(tab) {
 
   // 코어 탭 (즉시 로드)
   if (tab === 'home')     renderHome();
-  if (tab === 'workout')  loadWorkoutDate(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
+  if (tab === 'workout') {
+    loadWorkoutDate(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
+    wtRecoverTimers();
+  }
   if (tab === 'diet')     loadWorkoutDate(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
 
   // 레이지 로드 탭
@@ -169,6 +172,7 @@ document.addEventListener('cooking:saved', renderAll);
 function openWorkoutTab(y, m, d) {
   switchTab('workout');
   loadWorkoutDate(y, m, d);
+  wtRecoverTimers();
 }
 
 // ── 탭 드래그/스와이프/가시성은 navigation.js로 분리됨 ──────────
