@@ -9,6 +9,11 @@ const { getMessaging } = require("firebase-admin/messaging");
 initializeApp();
 
 const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
+// Groq API 키 — Gemini quota 초과/transient 에러 시 fallback provider.
+// 설정: firebase functions:secrets:set GROQ_API_KEY
+// 미설정 시 fallback 비활성 (기존 Gemini-only 동작 유지).
+const GROQ_API_KEY = defineSecret("GROQ_API_KEY");
+const GROQ_MODEL = "llama-3.3-70b-versatile";
 const GEMINI_MODEL = "gemini-2.5-flash-lite";
 const OCR_MONTHLY_LIMIT = 990;
 
@@ -319,9 +324,71 @@ exports.refreshWeeklyRanking = onRequest({ cors: true }, async (req, res) => {
   res.json({ ok: true, ...result });
 });
 
+// ── Groq fallback helper (OpenAI-호환 chat completions) ──────────────
+// Gemini가 quota/5xx로 실패했을 때만 호출. 이미지(inlineData) 포함 요청은 지원 안 함
+// (텍스트만 flatten해서 전달 — 현재 루틴 생성/nudge 용도에 충분).
+async function _callGroqFallback(parts, maxOutputTokens, wantJSON) {
+  const key = GROQ_API_KEY.value();
+  if (!key) {
+    const err = new Error("GROQ_API_KEY secret 미설정");
+    err.code = "GROQ_NO_KEY";
+    throw err;
+  }
+  const hasImage = Array.isArray(parts) && parts.some((p) => p?.inlineData);
+  if (hasImage) {
+    const err = new Error("Groq는 이미지 입력 미지원 (텍스트 전용)");
+    err.code = "GROQ_UNSUPPORTED";
+    throw err;
+  }
+  const flatText = (parts || [])
+    .map((p) => p?.text || "")
+    .filter(Boolean)
+    .join("\n\n");
+  const body = {
+    model: GROQ_MODEL,
+    messages: [{ role: "user", content: flatText }],
+    max_tokens: Math.min(maxOutputTokens || 2000, 8000),
+    temperature: 0.6,
+  };
+  if (wantJSON) body.response_format = { type: "json_object" };
+  const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${key}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  const data = await r.json().catch(() => null);
+  if (!r.ok) {
+    const msg = data?.error?.message || `Groq HTTP ${r.status}`;
+    const err = new Error(msg);
+    err.code = r.status === 429 ? "GROQ_QUOTA" : "GROQ_HTTP";
+    err.status = r.status;
+    throw err;
+  }
+  const text = data?.choices?.[0]?.message?.content?.trim();
+  if (!text) {
+    const err = new Error("Groq 응답 empty");
+    err.code = "GROQ_EMPTY";
+    throw err;
+  }
+  return text;
+}
+
+// Gemini 응답이 quota/rate-limit 계열인지 판정 (fallback trigger).
+function _isGeminiQuotaOrTransient(res, data) {
+  if (res && (res.status === 429 || res.status === 503 || res.status === 500)) return true;
+  const msg = (data?.error?.message || "").toLowerCase();
+  if (/quota|rate.?limit|exceeded|resource_exhausted|try again later/.test(msg)) return true;
+  const status = (data?.error?.status || "").toUpperCase();
+  if (status === "RESOURCE_EXHAUSTED" || status === "UNAVAILABLE" || status === "DEADLINE_EXCEEDED") return true;
+  return false;
+}
+
 exports.geminiProxy = onCall(
   {
-    secrets: [GEMINI_API_KEY],
+    secrets: [GEMINI_API_KEY, GROQ_API_KEY],
     enforceAppCheck: true,
     region: "asia-northeast3",
     timeoutSeconds: 60,
@@ -348,8 +415,28 @@ exports.geminiProxy = onCall(
     if (typeof responseMimeType === "string" && responseMimeType.trim()) {
       generationConfig.responseMimeType = responseMimeType.trim();
     }
+    // wantJSON은 error branch(Groq fallback)에서도 쓰이므로 이 시점에 정의.
+    const wantJSON = generationConfig.responseMimeType === "application/json";
 
     const _fnStart = Date.now();
+
+    // Gemini → Groq 공통 fallback 래퍼 — 사유 메시지와 함께 호출.
+    const _fallbackToGroq = async (reason) => {
+      try {
+        console.warn(`[geminiProxy] Gemini 실패 (${reason}) → Groq fallback 시도`);
+        const groqText = await _callGroqFallback(parts, generationConfig.maxOutputTokens, wantJSON);
+        _bumpApiUsage("gemini_proxy_groq_fallback");
+        console.log("[geminiProxy] Groq fallback 성공", { length: groqText.length });
+        return { text: groqText, provider: "groq" };
+      } catch (groqErr) {
+        console.error("[geminiProxy] Groq fallback 실패:", groqErr?.code, groqErr?.message);
+        // 둘 다 실패 → 명시적 quota 에러로 클라이언트에 전달
+        throw new HttpsError(
+          "resource-exhausted",
+          `AI 제공자 모두 실패: gemini(${reason}) + groq(${groqErr?.code || groqErr?.message})`
+        );
+      }
+    };
 
     const _callOnce = async () => {
       const t0 = Date.now();
@@ -376,11 +463,13 @@ exports.geminiProxy = onCall(
       firstMs = first.ms;
     } catch (err) {
       console.error("[geminiProxy] fetch failed:", err);
-      throw new HttpsError("internal", "Gemini 호출에 실패했습니다.");
+      // 네트워크 레벨 실패도 transient로 간주 → Groq 시도
+      return await _fallbackToGroq(`network: ${err?.message || err}`);
     }
 
     if (!data) {
-      throw new HttpsError("internal", "Gemini 응답을 해석할 수 없습니다.");
+      // 응답 파싱 불가 → transient로 간주
+      return await _fallbackToGroq(`empty-response status=${res?.status}`);
     }
 
     if (!res.ok || data?.error) {
@@ -388,6 +477,12 @@ exports.geminiProxy = onCall(
         status: res.status,
         error: data?.error || null,
       });
+      // quota/rate-limit/5xx만 fallback (400 Bad Request 등 클라 에러는 그대로 전파)
+      if (_isGeminiQuotaOrTransient(res, data)) {
+        return await _fallbackToGroq(
+          `${res.status}:${data?.error?.status || ""}:${(data?.error?.message || "").slice(0, 80)}`
+        );
+      }
       throw new HttpsError("internal", data?.error?.message || "Gemini 호출에 실패했습니다.");
     }
 
@@ -404,7 +499,7 @@ exports.geminiProxy = onCall(
       return t.startsWith("{") || t.startsWith("[");
     };
 
-    const wantJSON = generationConfig.responseMimeType === "application/json";
+    // wantJSON은 상단에서 이미 선언됨 (Groq fallback에서도 사용).
     if (wantJSON && text && !_looksLikeJSON(text)) {
       console.warn("[geminiProxy] non-JSON response, retrying once:", {
         head: text.substring(0, 120),
@@ -455,7 +550,8 @@ exports.geminiProxy = onCall(
       timings: { firstFetchMs: firstMs, totalMs: Date.now() - _fnStart },
     });
 
-    return { text };
+    _bumpApiUsage("gemini_proxy");
+    return { text, provider: "gemini" };
   }
 );
 
@@ -475,6 +571,30 @@ const _ocrQuotaKey = () => {
   const y = now.getUTCFullYear();
   const m = String(now.getUTCMonth() + 1).padStart(2, "0");
   return `${y}-${m}`;
+};
+
+// 일별 API 사용량 집계 (어드민 대시보드용) — 블로킹하지 않는 fire-and-forget
+// KST 기준 일자 키 (UTC+9). 어드민이 "오늘 사용량"을 직관적으로 읽을 수 있게 함.
+const _apiUsageKey = () => {
+  const now = new Date(Date.now() + 9 * 60 * 60 * 1000); // KST
+  const y = now.getUTCFullYear();
+  const m = String(now.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(now.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+};
+const _bumpApiUsage = (field) => {
+  try {
+    const db = getFirestore();
+    db.collection("_apiUsage")
+      .doc(_apiUsageKey())
+      .set(
+        { [field]: FieldValue.increment(1), updatedAt: FieldValue.serverTimestamp() },
+        { merge: true }
+      )
+      .catch((err) => console.warn("[apiUsage] bump failed:", field, err?.message || err));
+  } catch (err) {
+    console.warn("[apiUsage] bump exception:", field, err?.message || err);
+  }
 };
 
 exports.ocrProxy = onCall(
@@ -550,6 +670,7 @@ exports.ocrProxy = onCall(
       fetchMs,
     });
 
+    _bumpApiUsage("ocr_proxy");
     return {
       text,
       month: monthKey,

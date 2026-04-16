@@ -15,6 +15,7 @@ import './feature-fatsecret.js';
 import './feature-checkin.js';
 import './feature-misc.js';
 import './workout-ui.js';
+import './workout/expert.js';  // 전문가 모드 (window.* 노출 + 렌더)
 import { showTutorialIfNeeded } from './feature-tutorial.js';
 import { initFCM, showPWAInstallBanner, updateInstallBtn } from './pwa-fcm.js';
 import { initTabDrag, initSwipeNavigation, applyTabOrder, applyVisibleTabs } from './navigation.js';
@@ -145,6 +146,7 @@ async function switchTab(tab) {
   if (tab === 'workout') {
     loadWorkoutDate(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
     wtRecoverTimers();
+    if (typeof window.renderExpertTopArea === 'function') window.renderExpertTopArea();
   }
   if (tab === 'diet')     loadWorkoutDate(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
 
@@ -163,6 +165,9 @@ async function renderAll() {
   renderHome();
   if (_currentTab === 'stats')    await _lazyRenderStats();
   if (_currentTab === 'cooking')  await _lazyRenderCooking();
+  if (_currentTab === 'workout' && typeof window.renderExpertTopArea === 'function') {
+    window.renderExpertTopArea();
+  }
 }
 
 document.addEventListener('sheet:saved',   renderAll);

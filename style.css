@@ -3244,14 +3244,22 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
 }
 .wt-link-btn:active { background: var(--surface2); }
 
-/* 선택 뱃지 (토스 pill) */
+/* 선택 뱃지 (토스 pill) — workout-date-nav 아래에 위치, 기본 숨김 */
 .wt-selected-badge {
   display: flex; align-items: center; justify-content: center; gap: 10px;
   padding: 8px 0; max-height: 0; opacity: 0; overflow: hidden;
-  transition: all 0.25s ease;
+  transition: all 0.3s ease;
 }
-.wt-flow.wt-chosen .wt-selected-badge {
+/* 상태 선택되면(is-chosen) 펼침 — JS에서 직접 토글 (구형 WebView 호환).
+   최신 브라우저는 :has() fallback으로도 동작. */
+.wt-selected-badge.is-chosen,
+#tab-workout:has(.wt-flow.wt-chosen) #wt-selected-badge {
   max-height: 60px; opacity: 1; padding: 10px 0;
+}
+/* 프로 모드 ON일 때는 뱃지 자체를 숨김 (쉬었어요/건강이슈/운동 선택 UI 삭제됨) */
+.wt-selected-badge.is-expert,
+#tab-workout:has(.wt-flow.wt-expert-on) #wt-selected-badge {
+  display: none !important;
 }
 .wt-status-badge {
   font-size: var(--seed-t3); font-weight: 700; padding: 6px 16px;
@@ -5446,3 +5454,924 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
   display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px;
 }
 .self-cheer-clear { color: var(--muted) !important; }
+
+/* ════════════════════════════════════════════════════════════════════
+   운동 탭 전문가 카드 (Mockup A — One Card Stepper)
+   ════════════════════════════════════════════════════════════════════ */
+
+/* Gemini 스파클 아이콘 (전역 symbol 참조) */
+.ic-gemini {
+  display: inline-block;
+  flex-shrink: 0;
+  vertical-align: -0.15em;
+  width: 16px; height: 16px;
+}
+
+/* 전문가 모드 ON일 때 기존 wt-ask 숨김 (카드 내부 세그먼트로 대체) */
+.wt-flow.wt-expert-on .wt-ask,
+.wt-flow.wt-expert-on .wt-type-section {
+  display: none !important;
+}
+
+/* ── 전문가 카드 컨테이너 ──────────────────────────────────────── */
+.wt-exc {
+  background: var(--seed-bg-layer);
+  border: 1px solid var(--seed-stroke-neutral);
+  border-radius: var(--seed-r4);
+  overflow: hidden;
+  margin: 12px 0 20px;
+  box-shadow: var(--seed-s1);
+}
+.wt-exc-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 18px 12px;
+  gap: 12px;
+}
+.wt-exc-title {
+  font-size: 17px; font-weight: 700; color: var(--text);
+  display: flex; align-items: center; gap: 8px;
+  letter-spacing: -0.3px;
+  min-width: 0;
+}
+.wt-exc-meta {
+  font-size: 11px; color: var(--text-tertiary); font-weight: 600;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+}
+
+/* ── 상태 선택 세그먼트 (운동/쉬었어요/건강이슈) ──────────────── */
+.wt-st-seg {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 4px;
+  padding: 0 14px 12px;
+}
+.wt-st-seg-btn {
+  appearance: none;
+  border: 1px solid var(--seed-stroke-weak);
+  background: var(--surface);
+  color: var(--text-secondary);
+  padding: 10px 6px;
+  border-radius: var(--seed-r3);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.1s ease-in-out;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 40px;
+  letter-spacing: -0.1px;
+}
+.wt-st-seg-btn:active { transform: scale(0.97); }
+.wt-st-seg-btn.is-on {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+  font-weight: 700;
+}
+
+/* ── Step (수직 스텝퍼) ──────────────────────────────────────── */
+.wt-step {
+  display: flex;
+  gap: 12px;
+  padding: 14px 18px;
+  border-top: 1px solid var(--seed-stroke-neutral);
+  position: relative;
+}
+.wt-step-rail {
+  display: flex; flex-direction: column; align-items: center;
+  padding-top: 2px;
+  flex-shrink: 0;
+}
+.wt-step-dot {
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: var(--surface2);
+  border: 1.5px solid var(--seed-stroke-weak);
+  color: var(--text-tertiary);
+  display: grid; place-items: center;
+  font-size: 11px; font-weight: 700;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.wt-step.is-done .wt-step-dot {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+.wt-step.is-active .wt-step-dot {
+  background: var(--primary-bg);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+.wt-step-line {
+  width: 1.5px; flex: 1;
+  background: var(--seed-stroke-weak);
+  margin-top: 4px;
+  min-height: 8px;
+}
+.wt-step:last-child .wt-step-line { display: none; }
+.wt-step-body { flex: 1; min-width: 0; }
+.wt-step-label {
+  font-size: 11px; font-weight: 700; color: var(--text-tertiary);
+  margin-bottom: 8px; letter-spacing: 0.5px; text-transform: uppercase;
+  display: flex; align-items: center; gap: 6px;
+}
+.wt-step.is-active .wt-step-label { color: var(--primary); }
+.wt-step.is-done .wt-step-label { color: var(--text-secondary); }
+.wt-step-label-dim {
+  color: var(--text-tertiary); font-weight: 500;
+  text-transform: none; letter-spacing: 0;
+  margin-left: 4px;
+}
+
+/* ── Step 1 · 위치(Place) ListRow ──────────────────────────── */
+.wt-place {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--surface);
+  border: 1px solid var(--seed-stroke-weak);
+  border-radius: var(--seed-r3);
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: all 0.1s ease-in-out;
+  min-height: 44px;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+  appearance: none;
+  color: inherit;
+}
+.wt-place:active { transform: scale(0.99); background: var(--surface2); }
+.wt-place-icon {
+  width: 34px; height: 34px;
+  background: var(--seed-bg-fill);
+  border-radius: 10px;
+  display: grid; place-items: center;
+  font-size: 17px;
+  flex-shrink: 0;
+}
+.wt-place-main { flex: 1; min-width: 0; }
+.wt-place-name {
+  font-size: 14px; font-weight: 700; color: var(--text);
+  line-height: 1.3;
+}
+.wt-place-sub {
+  font-size: 11px; color: var(--text-secondary);
+  line-height: 1.35; margin-top: 2px;
+}
+.wt-place-sub--warn { color: var(--primary); font-weight: 600; }
+.wt-place-caret {
+  color: var(--text-tertiary);
+  font-size: 14px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+/* ── Step 2 · AI 카드 (TDS 표준 — Tonal BG) ───────────────── */
+.wt-ai-card {
+  background: var(--primary-bg);
+  border: 1px solid var(--primary-light, var(--primary-bg));
+  border-radius: var(--seed-r3);
+  padding: 14px;
+  margin-bottom: 10px;
+}
+.wt-ai-insight {
+  display: flex; gap: 10px; align-items: flex-start;
+  margin-bottom: 12px;
+}
+.wt-ai-insight .ic-spark {
+  width: 18px; height: 18px;
+  color: var(--primary);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.wt-ai-txt {
+  font-size: 14px; line-height: 1.5; color: var(--text);
+  font-weight: 500;
+  letter-spacing: -0.2px;
+}
+.wt-ai-txt b { color: var(--primary); font-weight: 700; }
+/* Issue 2: AI 추천 dim 카드 — 빈 상태(기록 쌓이면) 카피에 어울리는 차분한 톤 */
+.wt-ai-txt-dim {
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.55;
+  letter-spacing: -0.2px;
+  opacity: 0.92;
+}
+
+/* AI CTA — TDS Primary 솔리드 */
+.wt-ai-cta {
+  appearance: none;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  width: 100%;
+  height: 48px;
+  border: none;
+  border-radius: var(--seed-r3);
+  background: var(--primary);
+  color: #fff;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.1s ease-in-out, background 0.1s ease-in-out;
+  letter-spacing: -0.2px;
+}
+.wt-ai-cta:active {
+  transform: scale(0.98);
+  background: var(--primary-dark, var(--primary));
+}
+.wt-ai-cta:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.wt-ai-cta .ic-spark {
+  width: 16px; height: 16px;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+/* ── Step 2 보조 버튼 (지난 루틴 / 직접 선택) ──────────────── */
+.wt-step-alt { display: flex; gap: 8px; }
+.wt-btn-alt {
+  flex: 1;
+  appearance: none;
+  border: 1px solid var(--seed-stroke-weak);
+  background: var(--surface);
+  color: var(--text);
+  padding: 10px 8px;
+  border-radius: var(--seed-r3);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.1s ease-in-out;
+  min-height: 40px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  letter-spacing: -0.1px;
+}
+.wt-btn-alt:active { transform: scale(0.98); background: var(--surface2); }
+.wt-btn-alt[disabled] { opacity: 0.45; cursor: not-allowed; }
+
+/* ═══ 헬스장 선택 캐러셀 (좌우 fade + 중앙 자동 선택) ═══════════════ */
+.wt-gym-carousel {
+  position: relative;
+  margin-top: 4px;
+  /* 좌우 fade-out 프리뷰 — 중앙에서 양쪽으로 투명도 마스크 */
+  mask-image: linear-gradient(to right, transparent 0, #000 14%, #000 86%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 14%, #000 86%, transparent 100%);
+}
+.wt-gym-scroll {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  /* 양끝 슬라이드도 중앙까지 올 수 있도록 좌우 padding = (컨테이너 - 슬라이드) / 2
+     슬라이드 너비 128px, 절반 64px */
+  padding: 6px calc(50% - 64px);
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
+  /* 명시적으로 가로 pan 허용 — 상위 요소의 touch-action 충돌 방지 */
+  touch-action: pan-x;
+  overscroll-behavior-x: contain;
+}
+.wt-gym-scroll::-webkit-scrollbar { display: none; height: 0; }
+.wt-gym-slide {
+  flex-shrink: 0;
+  width: 128px;
+  min-height: 96px;
+  scroll-snap-align: center;
+  scroll-snap-stop: always;
+  padding: 14px 10px;
+  border-radius: var(--seed-r3);
+  border: 1px solid var(--seed-stroke-neutral);
+  background: var(--seed-bg-layer);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  opacity: 0.4;
+  transform: scale(0.92);
+  transition: opacity 0.1s ease-in-out, transform 0.1s ease-in-out,
+              border-color 0.1s ease-in-out, box-shadow 0.1s ease-in-out;
+  cursor: pointer;
+  font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+.wt-gym-slide.is-active {
+  opacity: 1;
+  transform: scale(1);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary-bg);
+}
+.wt-gym-slide-icon { font-size: 24px; line-height: 1; }
+.wt-gym-slide-name {
+  font-size: 14px; font-weight: 700; color: var(--text);
+  letter-spacing: -0.2px; text-align: center;
+  line-height: 1.25; max-width: 108px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.wt-gym-slide-sub {
+  font-size: 11px; color: var(--text-secondary);
+  letter-spacing: -0.1px;
+}
+.wt-gym-slide--add {
+  border-style: dashed;
+  background: transparent;
+}
+.wt-gym-slide--add .wt-gym-slide-icon { color: var(--primary); font-weight: 700; }
+.wt-gym-slide--add .wt-gym-slide-name { color: var(--text-secondary); font-weight: 600; }
+.wt-gym-slide--empty { opacity: 1; transform: scale(1); }
+.wt-gym-slide--empty.is-active { border-color: var(--primary); }
+
+/* ── 운동 종료 버튼 (인증사진 아래, Scene 13 주간 인사이트로 이동) ── */
+.wt-end-workout-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  height: 52px;
+  margin-top: 16px;
+  border: none;
+  border-radius: 14px;
+  background: var(--primary);
+  color: #fff;
+  font-family: inherit;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(250,52,44,0.28);
+  transition: all 0.1s ease-in-out;
+  -webkit-tap-highlight-color: transparent;
+}
+.wt-end-workout-btn:active {
+  transform: scale(0.98);
+  background: var(--primary-dark, #ca1d13);
+  box-shadow: 0 2px 8px rgba(250,52,44,0.2);
+}
+
+/* ── Step 2 인라인 picker (부위 / 세션시간 / RPE) ───────── */
+.wt-picker-block { margin-bottom: 14px; }
+.wt-picker-block:last-child { margin-bottom: 0; }
+.wt-picker-label {
+  font-size: 12px; font-weight: 600;
+  color: var(--text-secondary, #4c4c54);
+  letter-spacing: -0.1px;
+  margin-bottom: 8px;
+  display: flex; align-items: center; gap: 6px;
+}
+.wt-picker-hint {
+  font-size: 11px; font-weight: 500;
+  color: var(--text-tertiary, #9aa0a8);
+}
+/* chip / segmented가 button 요소로 렌더될 때 기본 reset 보강 */
+.wt-picker-block .chip,
+.wt-picker-block .seg-item {
+  appearance: none;
+  font-family: inherit;
+  cursor: pointer;
+  border: 0;
+}
+.wt-picker-block .segmented { margin: 0; }
+.wt-picker-block .chips { margin: 0; }
+
+/* ── 직접 선택 넛지 (AI 루틴 생성 하단 우측, 중요도 낮춤) ───────── */
+.wt-manual-nudge {
+  appearance: none;
+  display: block;
+  margin: 6px 2px 0 auto;
+  padding: 4px 2px;
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary, #9aa0a8);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: -0.1px;
+  cursor: pointer;
+  text-align: right;
+  transition: color 0.1s ease-in-out;
+}
+.wt-manual-nudge:active { color: var(--primary); }
+.wt-manual-nudge[disabled] { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Step 3 placeholder (루틴 선택 전) ───────────────────── */
+.wt-step-hint {
+  font-size: 12px; color: var(--text-tertiary); line-height: 1.5;
+  padding: 6px 0 4px;
+}
+
+/* 쉬었음/건강이슈 상태 안내 (카드 내부에서 표시) */
+.wt-st-info {
+  padding: 14px 18px;
+  border-top: 1px solid var(--seed-stroke-neutral);
+  font-size: 13px; color: var(--text-secondary); line-height: 1.55;
+}
+.wt-st-info b { color: var(--text); font-weight: 600; }
+
+/* ════════════════════════════════════════════════════════════════════
+   통합 타이머 바 (운동 + 쉬는시간 동시 표출)
+   ════════════════════════════════════════════════════════════════════ */
+
+.wt-tbar {
+  display: none;
+  flex-direction: column;
+  background: var(--seed-bg-layer);
+  border-top: 1px solid var(--seed-stroke-neutral);
+  border-radius: 14px 14px 0 0;
+  padding: 0;
+  padding-bottom: env(safe-area-inset-bottom, 0);
+  box-shadow: 0 -2px 12px rgba(0,0,0,0.08);
+  position: fixed;
+  bottom: 60px;
+  left: 0; right: 0;
+  z-index: 199;
+}
+.wt-tbar.wt-open { display: flex; }
+
+.wt-tbar-row {
+  display: flex; align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  min-height: 46px;
+}
+
+.wt-tbar-seg {
+  display: flex; align-items: center; gap: 8px;
+  min-width: 0;
+}
+.wt-tbar-seg--workout { flex: 0 0 auto; }
+.wt-tbar-seg--rest { flex: 1 1 auto; min-width: 0; }
+
+.wt-tbar-divider {
+  width: 1px;
+  height: 26px;
+  background: var(--seed-stroke-weak);
+  margin: 0 2px;
+  flex-shrink: 0;
+}
+
+.wt-tbar-ico {
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+.wt-tbar-seg--workout .wt-tbar-ico { color: var(--text-secondary); }
+.wt-tbar.wt-running .wt-tbar-seg--workout .wt-tbar-ico { color: var(--primary); }
+.wt-tbar-seg--rest .wt-tbar-ico { color: #217cf9; }
+.wt-tbar.rest-expired .wt-tbar-seg--rest .wt-tbar-ico { color: var(--primary); }
+
+.wt-tbar-body {
+  display: flex; flex-direction: column; gap: 0;
+  min-width: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+  text-align: left;
+  font-family: inherit;
+  color: inherit;
+  line-height: 1;
+  min-height: 0;
+  cursor: default;
+  appearance: none;
+}
+.wt-tbar-body--btn {
+  cursor: pointer;
+  padding: 2px 4px;
+  margin: -2px -4px;
+  border-radius: 6px;
+  transition: background 0.1s ease-in-out;
+}
+.wt-tbar-body--btn:active { background: var(--surface2); }
+
+.wt-tbar-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  letter-spacing: 0.2px;
+  line-height: 1.2;
+  margin-bottom: 2px;
+  display: flex; align-items: center; gap: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wt-tbar-ctx {
+  color: var(--text-secondary);
+  font-weight: 500;
+  font-size: 10px;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wt-tbar-ctx:not(:empty)::before {
+  content: "·";
+  margin: 0 3px 0 2px;
+  color: var(--text-tertiary);
+  opacity: 0.7;
+}
+
+.wt-tbar-num {
+  font-size: 16px;
+  line-height: 1.1;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.3px;
+}
+.wt-tbar.wt-running .wt-tbar-seg--workout .wt-tbar-num { color: var(--primary); }
+.wt-tbar-num--rest { color: #217cf9; }
+.wt-tbar.rest-expired .wt-tbar-num--rest { color: var(--primary); }
+
+.wt-tbar-result {
+  font-size: 12px; color: var(--text-secondary); font-weight: 600;
+  margin-left: 6px;
+}
+
+.wt-tbar-ctrls {
+  display: flex; align-items: center; gap: 4px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.wt-tbar-btn {
+  appearance: none;
+  height: 30px;
+  min-width: 30px;
+  padding: 0 7px;
+  border: 1px solid var(--seed-stroke-weak);
+  background: var(--surface);
+  color: var(--text-secondary);
+  border-radius: 9px;
+  cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-family: inherit; font-size: 11px; font-weight: 600;
+  transition: all 0.1s ease-in-out;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  line-height: 1;
+}
+.wt-tbar-btn:active { transform: scale(0.95); background: var(--surface2); }
+.wt-tbar-btn--rest {
+  color: #217cf9;
+  border-color: rgba(33,124,249,0.25);
+  background: rgba(33,124,249,0.06);
+}
+.wt-tbar-btn--skip { padding: 0 9px; }
+
+.wt-tbar-cta {
+  appearance: none;
+  height: 30px;
+  padding: 0 12px;
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  border-radius: 9px;
+  cursor: pointer;
+  font-family: inherit; font-size: 12px; font-weight: 700;
+  transition: all 0.1s ease-in-out;
+  white-space: nowrap;
+  letter-spacing: -0.1px;
+  line-height: 1;
+}
+.wt-tbar-cta:active { transform: scale(0.96); }
+
+.wt-tbar-progress {
+  height: 3px;
+  background: var(--seed-stroke-weak);
+  width: 100%;
+  overflow: hidden;
+}
+.wt-tbar-fill {
+  height: 100%;
+  width: 0%;
+  background: #217cf9;
+  transition: width 1s linear, background 0.2s ease;
+}
+.wt-tbar.rest-expired .wt-tbar-fill {
+  background: var(--primary);
+  animation: wt-tbar-pulse 0.8s ease-in-out infinite;
+}
+@keyframes wt-tbar-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   Rest Preset Bottom Sheet
+   ════════════════════════════════════════════════════════════════════ */
+
+.wt-rest-sheet-back {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 999;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  display: flex;
+  align-items: flex-end;
+}
+.wt-rest-sheet-back.show { opacity: 1; }
+
+.wt-rest-sheet {
+  width: 100%;
+  background: var(--seed-bg-layer);
+  border-radius: 20px 20px 0 0;
+  padding: 22px 20px calc(22px + env(safe-area-inset-bottom, 0));
+  transform: translateY(100%);
+  transition: transform 0.2s ease;
+  box-shadow: 0 -8px 24px rgba(0,0,0,0.12);
+}
+.wt-rest-sheet-back.show .wt-rest-sheet { transform: translateY(0); }
+
+.wt-rest-sheet-title {
+  font-size: 15px; font-weight: 700; color: var(--text);
+  margin-bottom: 16px; text-align: center;
+  letter-spacing: -0.2px;
+}
+.wt-rest-sheet-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.wt-rest-sheet-opt {
+  appearance: none;
+  padding: 14px 0;
+  border: 1.5px solid var(--seed-stroke-weak);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: var(--seed-r3);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.1s ease-in-out;
+  font-variant-numeric: tabular-nums;
+}
+.wt-rest-sheet-opt:active { transform: scale(0.97); }
+.wt-rest-sheet-opt.is-on {
+  background: var(--primary-bg);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+.wt-rest-sheet-close {
+  width: 100%;
+  margin-top: 14px;
+  height: 48px;
+  background: var(--surface2);
+  color: var(--text-secondary);
+  border: none;
+  border-radius: var(--seed-r3);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   전문가 모드 배지 + 모드 전환 CTA
+   ════════════════════════════════════════════════════════════════════ */
+/* 모드 전환 SegmentedControl — TDS Mobile 스펙 (container r14, item r10, p7-12) */
+.wt-mode-seg {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--seed-bg-fill, #f3f3f5);
+  border-radius: 14px;
+  margin: 8px 0 12px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.wt-mode-seg-btn {
+  flex: 1;
+  appearance: none;
+  background: transparent;
+  border: none;
+  border-radius: 10px;
+  padding: 7px 12px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-secondary, #4c4c54);
+  cursor: pointer;
+  transition: all 0.1s ease-in-out;
+  letter-spacing: -0.1px;
+  min-height: 36px;
+  -webkit-tap-highlight-color: transparent;
+}
+.wt-mode-seg-btn.is-on {
+  background: var(--primary);
+  color: #fff;
+  font-weight: 600;
+  box-shadow: 0 1px 4px rgba(250,52,44,0.25);
+}
+.wt-mode-seg-btn:not(.is-on):active { transform: scale(0.98); color: var(--primary); }
+
+/* P1-6: 새 헬스장 추가 폼 — wt-gym-sheet 내부 인라인 폼 */
+.wt-gym-addform .tf { margin-top: 0; }
+.wt-gym-addform .tf-input {
+  width: 100%;
+  height: 48px;
+  padding: 0 16px;
+  border: 1px solid var(--seed-stroke-weak);
+  border-radius: var(--seed-r2);
+  background: var(--seed-bg-fill);
+  font-size: 16px;
+  font-family: inherit;
+  color: var(--text);
+  transition: border-color 0.1s ease-in-out, box-shadow 0.1s ease-in-out;
+}
+.wt-gym-addform .tf-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary-bg);
+}
+.wt-gym-addform .tf-hint {
+  font-size: 11px;
+  color: var(--text-disabled);
+  margin-top: 6px;
+  line-height: 1.4;
+}
+.wt-gym-addform .wt-gym-sheet-add {
+  margin-top: 16px;
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  font-weight: 700;
+}
+.wt-gym-addform .wt-gym-sheet-add:active {
+  background: var(--primary-dark);
+  color: #fff;
+}
+.wt-gym-addform .wt-gym-sheet-add:disabled {
+  opacity: 0.4;
+  background: var(--text-disabled);
+  cursor: not-allowed;
+}
+
+/* ────────────────────────────────────────────────
+   TDS 표준 스파클 아이콘 (Gemini 대체, 단색)
+   ──────────────────────────────────────────────── */
+.ic-spark {
+  display: inline-block;
+  flex-shrink: 0;
+  vertical-align: -0.15em;
+  color: currentColor;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   Gym List Bottom Sheet (헬스장 전환/추가)
+   ════════════════════════════════════════════════════════════════════ */
+.wt-gym-sheet-back {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 999;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  display: flex;
+  align-items: flex-end;
+}
+.wt-gym-sheet-back.show { opacity: 1; }
+
+.wt-gym-sheet {
+  width: 100%;
+  background: var(--seed-bg-layer);
+  border-radius: 20px 20px 0 0;
+  padding: 22px 20px calc(22px + env(safe-area-inset-bottom, 0));
+  transform: translateY(100%);
+  transition: transform 0.2s ease;
+  box-shadow: 0 -8px 24px rgba(0,0,0,0.12);
+  max-height: 75vh;
+  overflow-y: auto;
+}
+.wt-gym-sheet-back.show .wt-gym-sheet { transform: translateY(0); }
+
+.wt-gym-sheet-title {
+  font-size: 17px; font-weight: 700; color: var(--text);
+  margin-bottom: 4px; letter-spacing: -0.3px;
+}
+.wt-gym-sheet-sub {
+  font-size: 12px; color: var(--text-secondary);
+  margin-bottom: 16px; line-height: 1.5;
+}
+.wt-gym-sheet-list {
+  display: flex; flex-direction: column; gap: 8px;
+  margin-bottom: 10px;
+}
+.wt-gym-row {
+  appearance: none;
+  display: flex; align-items: center; gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1.5px solid var(--seed-stroke-weak);
+  border-radius: var(--seed-r3);
+  font-family: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.1s ease-in-out;
+  min-height: 52px;
+}
+.wt-gym-row:active { transform: scale(0.99); background: var(--surface2); }
+.wt-gym-row.is-on {
+  border-color: var(--primary);
+  background: var(--primary-bg);
+}
+.wt-gym-row-icon {
+  width: 36px; height: 36px;
+  background: var(--seed-bg-fill);
+  border-radius: 10px;
+  display: grid; place-items: center;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+.wt-gym-row.is-on .wt-gym-row-icon { background: #fff; }
+.wt-gym-row-main { flex: 1; min-width: 0; }
+.wt-gym-row-name {
+  font-size: 15px; font-weight: 700; color: var(--text);
+  letter-spacing: -0.2px;
+  line-height: 1.3;
+}
+.wt-gym-row.is-on .wt-gym-row-name { color: var(--primary-dark, var(--primary)); }
+.wt-gym-row-meta {
+  font-size: 12px; color: var(--text-secondary);
+  margin-top: 2px; line-height: 1.35;
+}
+.wt-gym-row-check {
+  width: 20px; height: 20px; border-radius: 50%;
+  border: 1.5px solid var(--seed-stroke-weak);
+  display: grid; place-items: center;
+  color: transparent; font-size: 12px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.wt-gym-row.is-on .wt-gym-row-check {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.wt-gym-sheet-add {
+  appearance: none;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  width: 100%;
+  height: 48px;
+  background: transparent;
+  border: 1.5px dashed var(--seed-stroke-weak);
+  color: var(--text-secondary);
+  border-radius: var(--seed-r3);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.1s ease-in-out;
+  margin-top: 4px;
+  letter-spacing: -0.1px;
+}
+.wt-gym-sheet-add:active {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--primary-bg);
+}
+.wt-gym-sheet-close {
+  width: 100%;
+  margin-top: 14px;
+  height: 48px;
+  background: var(--surface2);
+  color: var(--text-secondary);
+  border: none;
+  border-radius: var(--seed-r3);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   전문가 모드에서 헬스 종목 섹션 조건부 숨김
+   ════════════════════════════════════════════════════════════════════ */
+.wt-flow.wt-expert-on #wt-gym-section {
+  display: none !important;
+}
+.wt-flow.wt-expert-on.wt-step3-ready #wt-gym-section {
+  display: block !important;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   TDS 폰트/패딩 정밀 조정 (전문가 카드)
+   ════════════════════════════════════════════════════════════════════ */
+.wt-place-name { font-size: 15px; }
+.wt-exc-title { font-size: 17px; }
+.wt-step-label { font-size: 11px; }
+.wt-st-info { font-size: 14px; }
+.wt-step-hint { font-size: 13px; line-height: 1.55; padding: 6px 0; }

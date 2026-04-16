@@ -8,6 +8,7 @@ export const CONFIG = {
   // 비공개 키는 localStorage에서 로드 (앱 설정에서 입력)
   get ANTHROPIC_KEY()    { return localStorage.getItem('cfg_anthropic')    || ''; },
   get ALPHAVANTAGE_KEY() { return localStorage.getItem('cfg_alphavantage') || ''; },
+  // Groq는 Firebase Functions(geminiProxy) 서버측 secret으로 관리 — 클라 설정 불필요.
   APPCHECK_SITE_KEY: '6LfUKrYsAAAAAOhty9w6l1xUVaiGDmltI0obPVRM',
 
   // 식품의약품안전처 식품영양성분 DB (data.go.kr 일반인증키) — 자연식품+가공식품 모두 포함
@@ -37,27 +38,27 @@ export const CONFIG = {
   GEMINI_MODEL:      'gemini-flash-latest',
 
   DEFAULT_EXERCISES: [
-    { muscleId:'chest',    id:'chest_1',    name:'바벨 벤치프레스' },
-    { muscleId:'chest',    id:'chest_2',    name:'덤벨 벤치프레스' },
-    { muscleId:'chest',    id:'chest_3',    name:'인클라인 스미스 벤치프레스' },
-    { muscleId:'chest',    id:'chest_4',    name:'인클라인 덤벨 벤치프레스' },
-    { muscleId:'chest',    id:'chest_5',    name:'플라이' },
-    { muscleId:'chest',    id:'chest_6',    name:'디클라인 머신' },
-    { muscleId:'back',     id:'back_1',     name:'랫풀다운' },
-    { muscleId:'back',     id:'back_2',     name:'암풀다운' },
-    { muscleId:'back',     id:'back_3',     name:'하이로우' },
-    { muscleId:'back',     id:'back_4',     name:'티바로우' },
-    { muscleId:'lower',    id:'lower_1',    name:'스쿼트' },
-    { muscleId:'lower',    id:'lower_2',    name:'누워서 스쿼트' },
-    { muscleId:'lower',    id:'lower_3',    name:'스쿼트 머신' },
-    { muscleId:'lower',    id:'lower_4',    name:'레그익스텐션' },
-    { muscleId:'lower',    id:'lower_5',    name:'핵스쿼트' },
-    { muscleId:'shoulder', id:'shoulder_1', name:'사레레' },
-    { muscleId:'shoulder', id:'shoulder_2', name:'전면' },
-    { muscleId:'shoulder', id:'shoulder_3', name:'후면' },
-    { muscleId:'shoulder', id:'shoulder_4', name:'케이블' },
-    { muscleId:'bicep',    id:'bicep_1',    name:'케이블' },
-    { muscleId:'tricep',   id:'tricep_1',   name:'케이블' },
+    { muscleId:'chest',    id:'chest_1',    name:'바벨 벤치프레스',              movementId:'barbell_bench' },
+    { muscleId:'chest',    id:'chest_2',    name:'덤벨 벤치프레스',              movementId:'dumbbell_bench' },
+    { muscleId:'chest',    id:'chest_3',    name:'인클라인 스미스 벤치프레스',   movementId:'incline_smith_bench' },
+    { muscleId:'chest',    id:'chest_4',    name:'인클라인 덤벨 벤치프레스',     movementId:'incline_dumbbell_bench' },
+    { muscleId:'chest',    id:'chest_5',    name:'플라이',                       movementId:'chest_fly' },
+    { muscleId:'chest',    id:'chest_6',    name:'디클라인 머신',                movementId:'decline_machine_press' },
+    { muscleId:'back',     id:'back_1',     name:'랫풀다운',                     movementId:'lat_pulldown' },
+    { muscleId:'back',     id:'back_2',     name:'암풀다운',                     movementId:'arm_pulldown' },
+    { muscleId:'back',     id:'back_3',     name:'하이로우',                     movementId:'high_row' },
+    { muscleId:'back',     id:'back_4',     name:'티바로우',                     movementId:'t_bar_row' },
+    { muscleId:'lower',    id:'lower_1',    name:'스쿼트',                       movementId:'back_squat' },
+    { muscleId:'lower',    id:'lower_2',    name:'누워서 스쿼트',                movementId:'leg_press' },
+    { muscleId:'lower',    id:'lower_3',    name:'스쿼트 머신',                  movementId:'squat_machine' },
+    { muscleId:'lower',    id:'lower_4',    name:'레그익스텐션',                 movementId:'leg_extension' },
+    { muscleId:'lower',    id:'lower_5',    name:'핵스쿼트',                     movementId:'hack_squat' },
+    { muscleId:'shoulder', id:'shoulder_1', name:'사레레',                       movementId:'lateral_raise' },
+    { muscleId:'shoulder', id:'shoulder_2', name:'전면',                         movementId:'front_raise' },
+    { muscleId:'shoulder', id:'shoulder_3', name:'후면',                         movementId:'rear_delt_fly' },
+    { muscleId:'shoulder', id:'shoulder_4', name:'케이블',                       movementId:'cable_lateral_raise' },
+    { muscleId:'bicep',    id:'bicep_1',    name:'케이블',                       movementId:'cable_curl' },
+    { muscleId:'tricep',   id:'tricep_1',   name:'케이블',                       movementId:'cable_tricep_pushdown' },
   ],
 };
 
@@ -139,6 +140,14 @@ export const MOVEMENTS = [
   { id:'hanging_leg_raise',      nameKo:'행잉 레그 레이즈',             primary:'abs',      subPattern:'core',           pattern:'core',            sizeClass:'small', stepKg:0 },
   { id:'ab_wheel',               nameKo:'앱 휠',                        primary:'abs',      subPattern:'core',           pattern:'core',            sizeClass:'small', stepKg:0 },
   { id:'cable_crunch',           nameKo:'케이블 크런치',                primary:'abs',      subPattern:'core',           pattern:'core',            sizeClass:'small', stepKg:2.5 },
+];
+
+// MOVEMENTS 에 필요한 pattern 전체 (커버리지 시각화용)
+export const MOVEMENT_PATTERNS = [
+  'horizontal_push', 'vertical_push',
+  'horizontal_pull', 'vertical_pull',
+  'squat', 'hinge', 'lunge',
+  'isolation', 'core',
 ];
 
 // ── 앱 전역 상수 (변경 불필요) ────────────────────────────────────

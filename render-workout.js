@@ -20,4 +20,5 @@ export {
   wtFinishWorkout, wtRecoverTimers,
   wtRestTimerStart, wtRestTimerSkip, wtRestTimerAdjust,
   wtRestTimerShowIdle, wtRestTimerHideIdle,
+  wtOpenRestPresetSheet,
 } from './workout/index.js';

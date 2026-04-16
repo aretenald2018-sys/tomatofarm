@@ -183,3 +183,48 @@ export async function getAllAnalytics() {
   }
   return results;
 }
+
+// ── API 사용량 집계 (어드민 전용) ────────────────────────────────
+// _apiUsage/{YYYY-MM-DD}: { gemini_proxy, ocr_proxy, updatedAt } — 서버 측 증분
+// _ocrQuota/{YYYY-MM}: { count } — OCR 월 하드 리밋(990)용, 기존 유지
+/**
+ * 최근 N일 API 사용량 + 이번 달 OCR 누적치 반환
+ * @param {number} days 조회할 최근 일수 (default 30)
+ * @returns {{daily: Array<{dk,gemini_proxy,ocr_proxy}>, ocrMonthly: {monthKey:string,count:number,limit:number}}}
+ */
+export async function getApiUsage(days = 30) {
+  const today = new Date(TODAY);
+  const daily = [];
+
+  const dailyPromises = [];
+  for (let i = 0; i < days; i++) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const dk = dateKey(d.getFullYear(), d.getMonth(), d.getDate());
+    dailyPromises.push(
+      getDoc(doc(db, '_apiUsage', dk))
+        .then(snap => ({
+          dk,
+          gemini_proxy: snap.exists() ? (snap.data().gemini_proxy || 0) : 0,
+          ocr_proxy:    snap.exists() ? (snap.data().ocr_proxy    || 0) : 0,
+        }))
+        .catch(() => ({ dk, gemini_proxy: 0, ocr_proxy: 0 }))
+    );
+  }
+  const dailyDocs = await Promise.all(dailyPromises);
+  for (const d of dailyDocs) daily.push(d);
+  daily.sort((a, b) => (a.dk > b.dk ? -1 : 1)); // 최신순
+
+  // 이번 달 OCR 누적 (functions/index.js _ocrQuotaKey는 UTC 기준)
+  const nowUtc = new Date();
+  const monthKey = `${nowUtc.getUTCFullYear()}-${String(nowUtc.getUTCMonth() + 1).padStart(2, '0')}`;
+  let ocrMonthly = { monthKey, count: 0, limit: 990 };
+  try {
+    const snap = await getDoc(doc(db, '_ocrQuota', monthKey));
+    if (snap.exists()) ocrMonthly.count = snap.data().count || 0;
+  } catch (e) {
+    console.warn('[apiUsage] ocrQuota read fail:', e?.message || e);
+  }
+
+  return { daily, ocrMonthly };
+}

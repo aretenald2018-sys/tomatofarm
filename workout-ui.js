@@ -27,8 +27,11 @@ const _WT_TYPE_SECTIONS = {
 window.wtSelectStatus = function(status) {
   const flow = document.getElementById('wt-flow');
   const badge = document.getElementById('wt-badge-text');
+  const badgeRow = document.getElementById('wt-selected-badge');
 
   flow.classList.add('wt-chosen');
+  // 직접 클래스 토글 (구형 WebView :has() 미지원 대비)
+  if (badgeRow) badgeRow.classList.add('is-chosen');
 
   if (status === 'skip') {
     wtSetGymStatus('skip'); wtSetCFStatus('skip');
@@ -96,6 +99,7 @@ window.wtResetStatus = function() {
   _wtSelectedTypes.clear();
   const flow = document.getElementById('wt-flow');
   flow.classList.remove('wt-chosen', 'wt-show-type');
+  document.getElementById('wt-selected-badge')?.classList.remove('is-chosen');
   Object.values(_WT_TYPE_SECTIONS).forEach(id =>
     document.getElementById(id)?.classList.remove('wt-open'));
   ['wt-memo-section','wt-save-section'].forEach(id =>
@@ -110,6 +114,7 @@ window._wtResetFlowUI = function() {
   _wtSelectedTypes.clear();
   const flow = document.getElementById('wt-flow');
   if (flow) flow.classList.remove('wt-chosen', 'wt-show-type');
+  document.getElementById('wt-selected-badge')?.classList.remove('is-chosen');
   Object.values(_WT_TYPE_SECTIONS).forEach(id =>
     document.getElementById(id)?.classList.remove('wt-open'));
   ['wt-memo-section','wt-save-section'].forEach(id =>

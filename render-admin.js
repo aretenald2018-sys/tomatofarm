@@ -1,5 +1,5 @@
 import {
-  isAdmin, isAdminInstance, getAnalytics, dateKey, TODAY,
+  isAdmin, isAdminInstance, getAnalytics, getApiUsage, dateKey, TODAY,
 } from './data.js';
 import {
   db, collection, getDocs, query, where, documentId,
@@ -98,15 +98,16 @@ function _hasDiet(w) {
 }
 
 async function _fetchBase() {
-  const [accSnap, analytics] = await Promise.all([
+  const [accSnap, analytics, apiUsage] = await Promise.all([
     getDocs(collection(db, '_accounts')),
     getAnalytics(30),
+    getApiUsage(30).catch(() => ({ daily: [], ocrMonthly: { monthKey: '', count: 0, limit: 990 } })),
   ]);
   const accs = []; accSnap.forEach((d) => accs.push(d.data()));
   const realAccs = accs.filter((a) => (
     a.id && !a.id.includes('(guest)') && !isAdminInstance(a.id)
   ));
-  return { accs, realAccs, analytics };
+  return { accs, realAccs, analytics, apiUsage };
 }
 
 async function _fetchSocial() {

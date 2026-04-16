@@ -38,4 +38,7 @@ export const S = {
   dinnerSkipped: false,
   diet:       emptyDiet(),
   restTimer:  { interval: null, remaining: 0, total: 90, running: false, startedAt: null },
+  // 전문가 모드
+  currentGymId: null,                  // 오늘 세션의 헬스장
+  routineMeta:  null,                  // {source, candidateKey, rationale}
 };

@@ -62,6 +62,9 @@ function _buildSavePayload(cleanEx, isDietSuccess) {
     dPhoto: window._mealPhotos?.dinner || null,
     sPhoto: window._mealPhotos?.snack || null,
     workoutPhoto: window._mealPhotos?.workout || null,
+    // 전문가 모드
+    gymId: S.currentGymId || null,
+    routineMeta: S.routineMeta || null,
   };
 }
 

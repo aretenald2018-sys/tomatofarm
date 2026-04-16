@@ -7,6 +7,60 @@ import {
   renderHealthScoreBar, renderLifecycleFunnel,
 } from './admin-charts.js';
 
+// Gemini 2.5 Flash-Lite 무료 등급 RPD (requests per day).
+// 유료 등급 전환 시 이 값을 어드민 설정으로 뽑을 것.
+const GEMINI_DAILY_LIMIT = 1000;
+const OCR_MONTHLY_LIMIT = 990;
+
+function _apiUsageProgressColor(pct) {
+  if (pct >= 90) return '#fa342c'; // 위험
+  if (pct >= 70) return '#f59e0b'; // 경고
+  return '#10b981';                 // 안전
+}
+
+function _renderApiUsageCard(apiUsage) {
+  const daily = apiUsage?.daily || [];
+  const todayRow = daily[0] || { gemini_proxy: 0, ocr_proxy: 0 };
+  const geminiToday = todayRow.gemini_proxy || 0;
+  const gemini7d = daily.slice(0, 7).reduce((a, r) => a + (r.gemini_proxy || 0), 0);
+  const gemini30d = daily.reduce((a, r) => a + (r.gemini_proxy || 0), 0);
+  const geminiPct = Math.min(100, Math.round((geminiToday / GEMINI_DAILY_LIMIT) * 100));
+
+  const ocrMonthly = apiUsage?.ocrMonthly || { count: 0, limit: OCR_MONTHLY_LIMIT };
+  const ocrUsed = ocrMonthly.count || 0;
+  const ocrLimit = ocrMonthly.limit || OCR_MONTHLY_LIMIT;
+  const ocrPct = Math.min(100, Math.round((ocrUsed / ocrLimit) * 100));
+
+  const row = (label, caption, used, limit, pct, sub) => `
+    <div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">
+        <span class="hig-subhead">${escapeHtml(label)}</span>
+        <span class="hig-caption1" style="color:var(--hig-gray1);">
+          <b style="color:var(--hig-label);">${used.toLocaleString()}</b> / ${limit.toLocaleString()}
+          <span style="margin-left:6px;color:${_apiUsageProgressColor(pct)};font-weight:600;">${pct}%</span>
+        </span>
+      </div>
+      <div style="height:8px;background:var(--hig-gray5);border-radius:4px;overflow:hidden;">
+        <div style="height:100%;width:${pct}%;background:${_apiUsageProgressColor(pct)};transition:width 0.3s ease;"></div>
+      </div>
+      <div class="hig-caption2" style="color:var(--hig-gray1);margin-top:4px;">${escapeHtml(sub)}</div>
+    </div>
+  `;
+
+  return `
+    <div class="hig-card">
+      <div class="hig-headline" style="margin-bottom:6px;">API 사용량</div>
+      <div class="hig-caption2" style="color:var(--hig-gray1);margin-bottom:14px;">Cloud Functions 프록시 호출 통계. 외부 API 한도 모니터링.</div>
+      <div style="display:flex;flex-direction:column;gap:16px;">
+        ${row('Gemini 프록시 (오늘)', '', geminiToday, GEMINI_DAILY_LIMIT, geminiPct,
+          `최근 7일 합계 ${gemini7d.toLocaleString()} · 최근 30일 ${gemini30d.toLocaleString()} · 무료 등급 일 ${GEMINI_DAILY_LIMIT.toLocaleString()}건 기준`)}
+        ${row('OCR 프록시 (이번 달)', '', ocrUsed, ocrLimit, ocrPct,
+          `Vision API 월 ${ocrLimit}장 하드 리밋. 초과 시 Gemini 이미지 fallback.`)}
+      </div>
+    </div>
+  `;
+}
+
 function _formatKoreanDate(date) {
   return `${date.getMonth() + 1}월 ${date.getDate()}일`;
 }
@@ -319,6 +373,8 @@ export function renderDashboardSection(container, data, options = {}) {
         <div class="hig-headline" style="margin-bottom:10px;">기능 채택률 (7일)</div>
         <div id="admin-home-feature" style="height:${Math.max(140, features.labels.length * 30)}px;"></div>
       </div>
+
+      ${_renderApiUsageCard(data.apiUsage)}
 
       <div class="hig-card">
         <div class="hig-headline" style="margin-bottom:10px;">개인화 인사이트</div>

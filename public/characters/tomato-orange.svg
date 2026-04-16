@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Orange tomato character</title>
+  <desc id="desc">Cute small orange tomato with glossy highlights, blush cheeks, and a smiling face.</desc>
+  <defs>
+    <radialGradient id="body" cx="38%" cy="28%" r="72%">
+      <stop offset="0%" stop-color="#ffb181"/>
+      <stop offset="58%" stop-color="#ff8855"/>
+      <stop offset="100%" stop-color="#e25e35"/>
+    </radialGradient>
+    <radialGradient id="shine" cx="30%" cy="25%" r="80%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.88"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="leaf" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7fd97a"/>
+      <stop offset="100%" stop-color="#2d8b49"/>
+    </linearGradient>
+  </defs>
+
+  <ellipse cx="256" cy="448" rx="126" ry="18" fill="#000000" opacity="0.12"/>
+
+  <path
+    d="M256 160
+       C189 160 132 212 132 290
+       C132 365 190 412 256 412
+       C322 412 380 365 380 290
+       C380 212 323 160 256 160 Z"
+    fill="url(#body)"
+    stroke="#cf562f"
+    stroke-width="12"
+    stroke-linejoin="round"
+  />
+
+  <path
+    d="M256 112
+       C248 125 244 142 247 160
+       C226 139 206 131 182 132
+       C186 156 200 171 222 177
+       C201 183 183 198 170 221
+       C197 225 220 223 238 209
+       C236 231 241 249 255 264
+       C269 249 275 231 273 209
+       C290 222 314 224 342 221
+       C329 198 311 183 290 177
+       C311 170 326 155 330 132
+       C305 131 284 139 264 160
+       C266 142 263 125 256 112 Z"
+    fill="url(#leaf)"
+    stroke="#2f884a"
+    stroke-width="9"
+    stroke-linejoin="round"
+  />
+
+  <ellipse cx="206" cy="224" rx="30" ry="18" transform="rotate(-40 206 224)" fill="url(#shine)" opacity="0.88"/>
+  <ellipse cx="168" cy="274" rx="12" ry="11" fill="#ffffff" opacity="0.42"/>
+
+  <ellipse cx="206" cy="300" rx="28" ry="33" fill="#af4f31"/>
+  <ellipse cx="306" cy="300" rx="28" ry="33" fill="#af4f31"/>
+  <circle cx="198" cy="289" r="12" fill="#ffffff"/>
+  <circle cx="298" cy="289" r="12" fill="#ffffff"/>
+  <circle cx="216" cy="298" r="6" fill="#ffffff"/>
+  <circle cx="316" cy="298" r="6" fill="#ffffff"/>
+  <path d="M191 312 C196 320 207 321 214 314" fill="none" stroke="#ffb3a5" stroke-width="6" stroke-linecap="round"/>
+  <path d="M291 312 C296 320 307 321 314 314" fill="none" stroke="#ffb3a5" stroke-width="6" stroke-linecap="round"/>
+
+  <ellipse cx="178" cy="344" rx="24" ry="14" fill="#ffb19e" opacity="0.88"/>
+  <ellipse cx="334" cy="344" rx="24" ry="14" fill="#ffb19e" opacity="0.88"/>
+
+  <path
+    d="M236 332
+       C241 344 250 347 256 338
+       C262 347 271 344 276 332"
+    fill="none"
+    stroke="#7a433e"
+    stroke-width="8"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>

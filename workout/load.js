@@ -18,7 +18,7 @@ import { _renderRunningForm, _renderCfForm,
                                      from './activity-forms.js';
 import { _initButtonEventListeners } from './status.js';
 import { _renderExerciseList }       from './exercises.js';
-import { getDay, isFuture, TODAY }   from '../data.js';
+import { getDay, isFuture, TODAY, isExpertModeEnabled, getExpertPreset } from '../data.js';
 
 // ── 날짜 로드 ────────────────────────────────────────────────────
 export function loadWorkoutDate(y, m, d) {
@@ -91,6 +91,9 @@ export function loadWorkoutDate(y, m, d) {
   S.breakfastSkipped = !!day.breakfast_skipped;
   S.lunchSkipped = !!day.lunch_skipped;
   S.dinnerSkipped = !!day.dinner_skipped;
+  // 전문가 모드 메타데이터 복원 (day에 저장된 값 > preset 기본값)
+  S.routineMeta  = day.routineMeta || null;
+  S.currentGymId = day.gymId || (isExpertModeEnabled() ? (getExpertPreset().currentGymId || null) : null);
   S.diet = {
     breakfast: day.breakfast||'', lunch: day.lunch||'', dinner: day.dinner||'', snack: day.snack||'',
     bOk:    day.bOk    ?? null, lOk:    day.lOk    ?? null, dOk:    day.dOk    ?? null, sOk: day.sOk ?? null,
@@ -168,6 +171,8 @@ function _restoreFlowState(day) {
   if (!hasWorkout && !isSkip && !isHealth) return;
 
   flow.classList.add('wt-chosen');
+  // 구형 WebView에서 :has() 미지원 대비 — 뱃지에 직접 클래스 부여
+  document.getElementById('wt-selected-badge')?.classList.add('is-chosen');
 
   if (isSkip && !hasWorkout) {
     if (badge) { badge.className = 'wt-status-badge wt-skip'; badge.textContent = '오늘은 쉬었어요'; }

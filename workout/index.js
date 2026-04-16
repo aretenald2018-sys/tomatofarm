@@ -31,7 +31,8 @@ export { wtStartWorkoutTimer, wtPauseWorkoutTimer,
          wtResetWorkoutTimer, wtTogglePauseWorkoutTimer,
          wtFinishWorkout, wtRecoverTimers,
          wtRestTimerStart, wtRestTimerSkip, wtRestTimerAdjust,
-         wtRestTimerShowIdle, wtRestTimerHideIdle }
+         wtRestTimerShowIdle, wtRestTimerHideIdle,
+         wtOpenRestPresetSheet }
   from './timers.js';
 
 // ── 내부 import (window 등록 + 초기화용) ─────────────────────────
@@ -47,7 +48,7 @@ import { wtStartWorkoutTimer, wtTogglePauseWorkoutTimer,
          wtResetWorkoutTimer, wtFinishWorkout, wtRecoverTimers,
          wtRestTimerStart, wtRestTimerSkip,
          wtRestTimerAdjust, wtRestTimerShowIdle,
-         wtRestTimerHideIdle }                    from './timers.js';
+         wtRestTimerHideIdle, wtOpenRestPresetSheet } from './timers.js';
 import { _initRestTimerPresets }                   from './timers.js';
 import { _initRunningEvents }                      from './activity-forms.js';
 import { _initTypeFormEvents }                     from './activity-forms.js';
@@ -68,11 +69,21 @@ window.wtTogglePauseWorkoutTimer = wtTogglePauseWorkoutTimer;
 window.wtResetWorkoutTimer = wtResetWorkoutTimer;
 window.wtFinishWorkout = wtFinishWorkout;
 window.wtRecoverTimers = wtRecoverTimers;
+
+// 운동종료 → 실제 타이머 정지/저장 + 주간 인사이트(Scene 13) 모달 연결.
+// wtFinishWorkout만 부르면 UI 의도와 맞지 않고, insightsOpen만 부르면 타이머가 계속 감.
+window.wtEndAndShowInsights = () => {
+  try { wtFinishWorkout(); } catch (e) { console.warn('[wtEndAndShowInsights.finish]:', e); }
+  try {
+    if (typeof window.insightsOpen === 'function') window.insightsOpen();
+  } catch (e) { console.warn('[wtEndAndShowInsights.insights]:', e); }
+};
 window.wtRestTimerStart = wtRestTimerStart;
 window.wtRestTimerSkip = wtRestTimerSkip;
 window.wtRestTimerAdjust = wtRestTimerAdjust;
 window.wtRestTimerShowIdle = wtRestTimerShowIdle;
 window.wtRestTimerHideIdle = wtRestTimerHideIdle;
+window.wtOpenRestPresetSheet = wtOpenRestPresetSheet;
 window.wtAddFoodItem = wtAddFoodItem;
 window.wtRemoveFoodItem = wtRemoveFoodItem;
 

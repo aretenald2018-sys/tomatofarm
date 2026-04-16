@@ -28,6 +28,14 @@ function _syncExpertTopArea() {
   }
 }
 
+function _isExpertUiEnabled() {
+  try {
+    return !!isExpertModeEnabled();
+  } catch {
+    return false;
+  }
+}
+
 function _ensureExpertManualSession() {
   if (!isExpertModeEnabled()) return;
   S.currentGymId = resolveCurrentGymId();
@@ -211,9 +219,34 @@ function _buildExpertSceneBlock({ entryIdx, exerciseId, last, targetRpe = 8 }) {
     </div>`;
 
   const rec = _computeExpertRec({ exerciseId, last, targetRpe });
-  // 지난 기록 없음 → RPE 세그만 노출
+  // 지난 기록/오늘 완료 세트 모두 없음 → 안내용 placeholder + 설명 노출
   if (!rec) {
-    return `<div class="ex-expert-section" data-entry-idx="${entryIdx}" data-target-rpe="${targetRpe}">${rpeRow}</div>`;
+    const emptyChipsHtml = `
+      <div class="weight-suggest">
+        <div class="ws-chip">
+          <div class="ws-chip-kind">보수</div>
+          <div class="ws-chip-value">-</div>
+        </div>
+        <div class="ws-chip recommend">
+          <div class="ws-chip-kind">추천</div>
+          <div class="ws-chip-value">-</div>
+        </div>
+        <div class="ws-chip">
+          <div class="ws-chip-kind">공격</div>
+          <div class="ws-chip-value">-</div>
+        </div>
+      </div>`;
+    const emptyFoot = `
+      <div class="ws-foot">
+        아직 기준 기록이 없어 추천 무게를 계산할 수 없어요.<br/>
+        kg·횟수·RPE 기록이 쌓이면 선택한 RPE ${targetRpe} 기준으로 보수/추천/공격 무게를 자동 제안해드릴게요.
+      </div>`;
+    return `
+      <div class="ex-expert-section" data-entry-idx="${entryIdx}" data-target-rpe="${targetRpe}">
+        ${rpeRow}
+        ${emptyChipsHtml}
+        ${emptyFoot}
+      </div>`;
   }
 
   // ── ws-chip HTML ──
@@ -297,6 +330,7 @@ export function _renderExerciseList() {
   if (!container.dataset.sceneInteractive) {
     container.dataset.sceneInteractive = '1';
     container.addEventListener('click', (e) => {
+      if (!_isExpertUiEnabled()) return;
       // RPE 세그 클릭 → expert section 재렌더 (추천 무게 재계산)
       const rpe = e.target.closest('.rpe-seg');
       if (rpe) {
@@ -321,7 +355,7 @@ export function _renderExerciseList() {
   }
   container.innerHTML = '';
   const allMuscles = getAllMuscles();
-  const isExpert = (() => { try { return isExpertModeEnabled(); } catch { return false; } })();
+  const isExpert = _isExpertUiEnabled();
 
   // Finding 2: 오늘 세션 제외 → 자기참조 방지. 최근 기록(today 제외).
   const todayKey = _todayDateKey();

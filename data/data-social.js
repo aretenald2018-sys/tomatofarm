@@ -43,5 +43,5 @@ export {
 } from './data-social-log.js';
 
 export {
-  trackEvent, flushAnalytics, getAnalytics, getAllAnalytics,
+  trackEvent, flushAnalytics, getAnalytics, getAllAnalytics, getApiUsage,
 } from './data-analytics.js';

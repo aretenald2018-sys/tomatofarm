@@ -133,10 +133,32 @@ export function wtRecoverTimers() {
   }
 }
 
-// ── 세트 간 휴식 타이머 ─────────────────────────────────────────
-function _restTimerEl()  { return document.getElementById('wt-rest-section'); }
-function _restTimeEl()   { return document.getElementById('wt-rest-time'); }
-function _restFillEl()   { return document.getElementById('wt-rest-fill'); }
+// ── 세트 간 휴식 타이머 (통합 바 버전) ─────────────────────────
+// DOM 구조: wt-workout-timer-bar (부모, has-rest / rest-expired 클래스)
+//   └ wt-rest-section (세그먼트, display toggle)
+//   └ wt-tbar-progress (진행바 컨테이너, display toggle)
+//   └ wt-rest-minus-btn / wt-rest-plus-btn / wt-rest-skip-btn (컨트롤 버튼)
+function _restSegEl()     { return document.getElementById('wt-rest-section'); }
+function _restBarEl()     { return document.getElementById('wt-workout-timer-bar'); }
+function _restProgEl()    { return document.getElementById('wt-tbar-progress'); }
+function _restTimeEl()    { return document.getElementById('wt-rest-time'); }
+function _restFillEl()    { return document.getElementById('wt-rest-fill'); }
+
+const _REST_CTRL_IDS   = ['wt-rest-minus-btn', 'wt-rest-plus-btn', 'wt-rest-skip-btn'];
+const _WORK_CTRL_IDS   = ['wt-timer-pause-btn', 'wt-timer-play-btn', 'wt-timer-reset-btn', 'wt-finish-workout-btn'];
+
+function _setDisplay(id, show) {
+  const el = document.getElementById(id);
+  if (el) el.style.display = show ? '' : 'none';
+}
+function _showRestControls() {
+  _REST_CTRL_IDS.forEach(id => _setDisplay(id, true));
+  _WORK_CTRL_IDS.forEach(id => _setDisplay(id, false));
+}
+function _hideRestControls() {
+  _REST_CTRL_IDS.forEach(id => _setDisplay(id, false));
+  _renderTimerControls();
+}
 
 function _formatTime(sec) {
   const m = Math.floor(Math.abs(sec) / 60);
@@ -146,8 +168,9 @@ function _formatTime(sec) {
 }
 
 export function wtRestTimerStart(seconds, context) {
-  const bar = _restTimerEl();
-  if (!bar) return;
+  const seg = _restSegEl();
+  const bar = _restBarEl();
+  if (!seg || !bar) return;
   if (seconds) S.restTimer.total = seconds;
   const ctxEl = document.getElementById('wt-rest-context');
   if (ctxEl) ctxEl.textContent = context || '';
@@ -155,43 +178,38 @@ export function wtRestTimerStart(seconds, context) {
   S.restTimer.running = true;
   S.restTimer.startedAt = Date.now();
 
-  bar.style.display = '';
-  bar.classList.remove('expired', 'done', 'wt-idle');
-  _restTimeEl().textContent = _formatTime(S.restTimer.remaining);
-  _restFillEl().style.width = '100%';
-  _updatePresetActive();
+  seg.style.display = '';
+  const prog = _restProgEl();
+  if (prog) prog.style.display = '';
+  bar.classList.add('has-rest');
+  bar.classList.remove('rest-expired');
+  _showRestControls();
+
+  const t = _restTimeEl(); if (t) t.textContent = _formatTime(S.restTimer.remaining);
+  const f = _restFillEl(); if (f) f.style.width = '100%';
 
   if (S.restTimer.interval) clearInterval(S.restTimer.interval);
   S.restTimer.interval = setInterval(_syncRestTimerFromNow, 1000);
 }
 
-export function wtRestTimerShowIdle() {
-  const bar = _restTimerEl();
-  if (!bar || S.restTimer.running) return;
-  bar.style.display = '';
-  bar.classList.remove('expired', 'done');
-  bar.classList.add('wt-idle');
-  _restTimeEl().textContent = _formatTime(S.restTimer.total);
-  _restFillEl().style.width = '100%';
-  _updatePresetActive();
-}
-
-export function wtRestTimerHideIdle() {
-  const bar = _restTimerEl();
-  if (!bar || S.restTimer.running) return;
-  bar.style.display = 'none';
-  bar.classList.remove('wt-idle');
-}
+// idle 상태는 새 통합 바에서 사용하지 않음 (세트 체크 시점에만 쉬는시간 등장)
+export function wtRestTimerShowIdle() { /* no-op (통합 바에서 idle UX 제거) */ }
+export function wtRestTimerHideIdle() { /* no-op */ }
 
 export function wtRestTimerSkip() {
-  const bar = _restTimerEl();
-  if (!bar) return;
+  const seg = _restSegEl();
+  const bar = _restBarEl();
+  if (!seg || !bar) return;
   if (S.restTimer.interval) clearInterval(S.restTimer.interval);
   S.restTimer.interval = null;
   S.restTimer.running = false;
   S.restTimer.startedAt = null;
-  bar.style.display = 'none';
-  bar.classList.remove('expired', 'done', 'wt-idle');
+
+  seg.style.display = 'none';
+  const prog = _restProgEl();
+  if (prog) prog.style.display = 'none';
+  bar.classList.remove('has-rest', 'rest-expired');
+  _hideRestControls();
 }
 
 export function wtRestTimerAdjust(delta) {
@@ -201,49 +219,82 @@ export function wtRestTimerAdjust(delta) {
   S.restTimer.remaining = Math.max(0, currentRemaining + delta);
   S.restTimer.total = Math.max(S.restTimer.total, S.restTimer.remaining);
   S.restTimer.startedAt = Date.now() - Math.max(0, S.restTimer.total - S.restTimer.remaining) * 1000;
-  _restTimeEl().textContent = _formatTime(S.restTimer.remaining);
-  _restFillEl().style.width = `${(S.restTimer.remaining / S.restTimer.total) * 100}%`;
-  _restTimerEl()?.classList.remove('expired');
+  const t = _restTimeEl(); if (t) t.textContent = _formatTime(S.restTimer.remaining);
+  const f = _restFillEl(); if (f) f.style.width = `${(S.restTimer.remaining / S.restTimer.total) * 100}%`;
+  _restBarEl()?.classList.remove('rest-expired');
 }
 
 function _syncRestTimerFromNow() {
-  const bar = _restTimerEl();
+  const bar = _restBarEl();
   if (!bar || !S.restTimer.running) return;
   const startedAt = S.restTimer.startedAt || Date.now();
   const elapsed = Math.floor((Date.now() - startedAt) / 1000);
   S.restTimer.remaining = (S.restTimer.total || 0) - elapsed;
 
-  _restTimeEl().textContent = _formatTime(S.restTimer.remaining);
+  const t = _restTimeEl(); if (t) t.textContent = _formatTime(S.restTimer.remaining);
   if (S.restTimer.remaining > 0) {
-    _restFillEl().style.width = `${(S.restTimer.remaining / S.restTimer.total) * 100}%`;
-    bar.classList.remove('expired');
+    const f = _restFillEl(); if (f) f.style.width = `${(S.restTimer.remaining / S.restTimer.total) * 100}%`;
+    bar.classList.remove('rest-expired');
     return;
   }
   if (S.restTimer.remaining === 0) {
-    _restFillEl().style.width = '0%';
-    bar.classList.add('expired');
+    const f = _restFillEl(); if (f) f.style.width = '100%';
+    bar.classList.add('rest-expired');
     if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
     return;
   }
   if (S.restTimer.remaining < -600) wtRestTimerSkip();
 }
 
-function _updatePresetActive() {
-  document.querySelectorAll('.rest-preset-btn').forEach(btn => {
-    btn.classList.toggle('active', +btn.dataset.sec === S.restTimer.total);
-  });
-}
+export function _initRestTimerPresets() { /* no-op — Preset은 Bottom Sheet로 이동 */ }
 
-export function _initRestTimerPresets() {
-  document.querySelectorAll('.rest-preset-btn').forEach(btn => {
+// ── Rest Preset Bottom Sheet ──────────────────────────────────────
+export function wtOpenRestPresetSheet() {
+  document.querySelectorAll('.wt-rest-sheet-back').forEach(el => el.remove());
+
+  const currentTotal = S.restTimer.total || 90;
+  const options = [
+    { sec: 30,  label: '0:30' },
+    { sec: 60,  label: '1:00' },
+    { sec: 90,  label: '1:30' },
+    { sec: 120, label: '2:00' },
+    { sec: 180, label: '3:00' },
+    { sec: 300, label: '5:00' },
+  ];
+
+  const back = document.createElement('div');
+  back.className = 'wt-rest-sheet-back';
+  back.innerHTML = `
+    <div class="wt-rest-sheet">
+      <div class="wt-rest-sheet-title">휴식시간 설정</div>
+      <div class="wt-rest-sheet-grid">
+        ${options.map(o =>
+          `<button type="button" class="wt-rest-sheet-opt${o.sec === currentTotal ? ' is-on' : ''}" data-sec="${o.sec}">${o.label}</button>`
+        ).join('')}
+      </div>
+      <button type="button" class="wt-rest-sheet-close">취소</button>
+    </div>
+  `;
+  document.body.appendChild(back);
+
+  const close = () => { back.classList.remove('show'); setTimeout(() => back.remove(), 200); };
+
+  back.addEventListener('click', (e) => {
+    if (e.target === back) close();
+  });
+  back.querySelector('.wt-rest-sheet-close')?.addEventListener('click', close);
+  back.querySelectorAll('.wt-rest-sheet-opt').forEach(btn => {
     btn.addEventListener('click', () => {
-      const seconds = +btn.dataset.sec;
+      const sec = +btn.dataset.sec;
       if (S.restTimer.running) {
-        wtRestTimerStart(seconds);
-        return;
+        wtRestTimerStart(sec);
+      } else {
+        S.restTimer.total = sec;
+        const t = _restTimeEl(); if (t) t.textContent = _formatTime(sec);
       }
-      S.restTimer.total = seconds;
-      wtRestTimerShowIdle();
+      close();
     });
   });
+
+  requestAnimationFrame(() => back.classList.add('show'));
 }

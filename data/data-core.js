@@ -19,7 +19,7 @@ const _isLocalhost = typeof location !== 'undefined' &&
   (location.hostname === 'localhost' || location.hostname === '127.0.0.1');
 
 if (_isLocalhost) {
-  globalThis.FIREBASE_APPCHECK_DEBUG_TOKEN = globalThis.FIREBASE_APPCHECK_DEBUG_TOKEN || true;
+  globalThis.FIREBASE_APPCHECK_DEBUG_TOKEN = globalThis.FIREBASE_APPCHECK_DEBUG_TOKEN || '60f988a4-96db-4f9d-8249-e3a0e6642e5d';
 }
 
 if (_appCheckSiteKey && !_appCheckSiteKey.startsWith('REPLACE_WITH_')) {
@@ -144,6 +144,8 @@ export let _quests       = [];
 export let _cooking      = [];
 export let _bodyCheckins = [];
 export let _nutritionDB  = [];
+export let _gyms             = [];  // 전문가 모드: users/{uid}/gyms/*
+export let _routineTemplates = [];  // 전문가 모드: users/{uid}/routine_templates/*
 
 // setter (ES module let 바인딩은 외부에서 직접 대입 불가)
 export function _setCache(v)        { _cache = v; }
@@ -154,6 +156,8 @@ export function _setQuests(v)       { _quests = v; }
 export function _setCooking(v)      { _cooking = v; }
 export function _setBodyCheckins(v) { _bodyCheckins = v; }
 export function _setNutritionDB(v)  { _nutritionDB = v; }
+export function _setGyms(v)             { _gyms = v; }
+export function _setRoutineTemplates(v) { _routineTemplates = v; }
 
 // ── 설정 캐시 ───────────────────────────────────────────────────
 export const DEFAULT_TAB_ORDER = ['home','workout','cooking','monthly','stats'];
@@ -179,6 +183,21 @@ export const DEFAULT_DIET_PLAN = {
 export let _dietPlan = { ...DEFAULT_DIET_PLAN };
 export function _setDietPlan(v) { _dietPlan = v; }
 
+// 전문가 모드 프리셋 기본값 — 최초 로그인 유저에게 영향 없음(enabled:false)
+export const DEFAULT_EXPERT_PRESET = {
+  enabled: false,
+  snoozedUntil: null,                      // dateKey 형식, 이 날짜 전까지는 배너 숨김
+  goal: null,                              // 'hypertrophy'|'cut'|'power'|'beginner'|'rehab'
+  daysPerWeek: null,                       // 2~6
+  sessionMinutes: null,                    // 45|60|90
+  preferMuscles: [],                       // string[] (muscleId)
+  avoidMuscles:  [],                       // string[]
+  forbiddenMovements: [],                  // movementId[]
+  preferredRpe: null,                      // '6-7'|'7-8'|'8-9'
+  currentGymId: null,                      // 마지막으로 선택된 gymId
+  updatedAt: null,
+};
+
 export let _settings = {
   quest_order:      ['quarterly','monthly','weekly','daily'],
   section_titles:   {},
@@ -193,6 +212,7 @@ export let _settings = {
   tomato_state: { quarterlyTomatoes: {}, totalTomatoes: 0, giftedReceived: 0, giftedSent: 0 },
   milestone_shown: {},
   streak_freezes: [],
+  expert_preset:   { ...DEFAULT_EXPERT_PRESET },
 };
 export function _resetSettings(v) { Object.assign(_settings, v); }
 
