@@ -333,8 +333,9 @@ export async function renderNutritionSearchResults() {
       html = `<div style="font-size:12px;color:var(--muted);text-align:center;padding:16px">DB가 비어 있어요. 아래에서 음식을 추가해보세요</div>`;
     }
   } else {
-    const recentFiltered = getRecentNutritionItems(10).filter(n => n.name?.toLowerCase().includes(q.toLowerCase()));
     const dbResults = searchNutritionDB(q);
+    const dbMatchedIds = new Set(dbResults.map(item => item.id));
+    const recentFiltered = getRecentNutritionItems(10).filter(item => dbMatchedIds.has(item.id));
     const csvResults = searchCSVFood(q);
     _nutritionSearchCache = { db: dbResults, csv: csvResults, recent: recentFiltered };
 

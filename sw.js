@@ -3,7 +3,7 @@
 
 // 캐시 버전: 타임스탬프 기반 자동 생성 — 파일 수정 시 SW 자동 업데이트
 // (SW 파일 내용이 1바이트라도 바뀌면 브라우저가 새 SW로 인식)
-const CACHE_VERSION = 'tomatofarm-v20260414r-cheers-review-fixes';
+const CACHE_VERSION = 'tomatofarm-v20260417t-nutrition-alias-search';
 const RUNTIME_CACHE = 'dashboard3-runtime';
 const STATIC_ASSETS = [
   './',
@@ -97,16 +97,42 @@ const STATIC_ASSETS = [
   './modals/guild-info-modal.js',
   './modals/self-cheer-modal.js',
   './modals/patchnote-modal.js',
+  // 전문가 모드 (Scene 02~13)
+  './expert-mode.css',
+  './workout/expert.js',
+  './data/data-workout-equipment.js',
+  './modals/expert-onboarding-modal.js',
+  './modals/gym-equipment-modal.js',
+  './modals/routine-suggest-modal.js',
+  './modals/routine-candidates-modal.js',
+  './modals/insights-modal.js',
 ];
 
 self.addEventListener('install', (event) => {
   console.log('[SW] Install event fired');
   event.waitUntil(
-    caches.open(CACHE_VERSION).then((cache) => {
+    caches.open(CACHE_VERSION).then(async (cache) => {
       console.log('[SW] Caching static assets');
-      return cache.addAll(STATIC_ASSETS).catch((err) => {
-        console.log('[SW] Some assets failed to cache');
+      // 개별 add + allSettled로 실패 파일명을 반드시 로깅한다.
+      // (기존 addAll은 하나라도 실패하면 전체 롤백 + err.message에 파일명이 안 찍혀서 배포 디버깅 불가)
+      const results = await Promise.allSettled(
+        STATIC_ASSETS.map(url => cache.add(url))
+      );
+      const failures = [];
+      results.forEach((r, i) => {
+        if (r.status === 'rejected') {
+          failures.push({
+            url: STATIC_ASSETS[i],
+            error: (r.reason && r.reason.message) ? r.reason.message : String(r.reason)
+          });
+        }
       });
+      if (failures.length) {
+        console.error(`[SW] Precache failed for ${failures.length}/${STATIC_ASSETS.length} files:`);
+        failures.forEach(f => console.error(`  - ${f.url}: ${f.error}`));
+      } else {
+        console.log(`[SW] Precached ${STATIC_ASSETS.length} assets successfully`);
+      }
     }).then(() => self.skipWaiting())
   );
 });

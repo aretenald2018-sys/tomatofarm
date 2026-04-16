@@ -25,6 +25,7 @@ export const MODAL_HTML = `
     <div class="ni-tab-content active" id="ni-tab-content-manual">
       <div class="ex-editor-form">
         <div><div class="ex-editor-label">음식 이름 * <span id="ni-name-confidence" style="font-size:11px;color:var(--muted)"></span></div><input class="ex-editor-input" id="ni-name" placeholder="예: 닭가슴살 구이"></div>
+        <div><div class="ex-editor-label">검색 별칭</div><input class="ex-editor-input" id="ni-aliases" placeholder="예: 무바, 노 슈가 콘 (쉼표로 구분)"></div>
         <div class="diet-plan-row">
           <div><div class="ex-editor-label">기준 단위</div><input class="ex-editor-input" id="ni-unit" placeholder="예: 100g, 1개, 1공기"></div>
           <div><div class="ex-editor-label">칼로리 (kcal) <span id="ni-kcal-confidence" style="font-size:11px;color:var(--muted)"></span></div><input class="ex-editor-input" id="ni-kcal" type="number" placeholder="165"></div>
@@ -494,6 +495,10 @@ export async function saveNutritionItemFromModal() {
   const item = {
     id: _niEditingId,
     name: name,
+    aliases: document.getElementById('ni-aliases').value
+      .split(/[,\n/]/)
+      .map(v => v.trim())
+      .filter(Boolean),
     unit: document.getElementById('ni-unit').value.trim() || '100g',
     servingSize: parseFloat(document.getElementById('ni-unit').value.match(/[\d.]+/)?.[0] || 100),
     servingUnit: 'g',
@@ -562,6 +567,7 @@ function _populateNutritionForm(data) {
   const confidencePct = Math.round(_niConfidence * 100);
 
   document.getElementById('ni-name').value = data.name || '';
+  document.getElementById('ni-aliases').value = Array.isArray(data.aliases) ? data.aliases.join(', ') : '';
   document.getElementById('ni-unit').value = data.unit || '100g';
   document.getElementById('ni-kcal').value = data.nutrition?.kcal || '';
   document.getElementById('ni-carbs').value = data.nutrition?.carbs || '';
@@ -589,6 +595,7 @@ function _populateNutritionForm(data) {
 
 function _clearNutritionForm() {
   document.getElementById('ni-name').value = '';
+  document.getElementById('ni-aliases').value = '';
   document.getElementById('ni-unit').value = '100g';
   document.getElementById('ni-kcal').value = '';
   document.getElementById('ni-carbs').value = '';

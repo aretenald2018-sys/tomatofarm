@@ -12,7 +12,7 @@ import {
   _col, _doc,
   _cache, _exList, _customMuscles, _goals, _quests, _cooking, _bodyCheckins, _nutritionDB,
   _setCache, _setExList, _setCustomMuscles, _setGoals, _setQuests, _setCooking, _setBodyCheckins, _setNutritionDB,
-  DEFAULT_TAB_ORDER, DEFAULT_VISIBLE_TABS, DEFAULT_DIET_PLAN,
+  DEFAULT_TAB_ORDER, DEFAULT_VISIBLE_TABS, DEFAULT_DIET_PLAN, DEFAULT_EXPERT_PRESET,
   _dietPlan, _setDietPlan, _settings, _resetSettings,
   _tomatoCycles, _setTomatoCycles,
   _setSyncStatus, _fbOp, _saveSetting, _migrateFromLS, _generateId,
@@ -37,8 +37,16 @@ import {
   getLastActivitySession  as _getLastActivitySession,
   getDayTargetKcal        as _getDayTargetKcal,
   calcExerciseCalorieCredit as _calcExerciseCalorieCredit,
-  detectPRs               as _detectPRs,
+  getVolumeHistoryByMovement as _getVolumeHistoryByMovement,
+  getVolumeHistoryMulti      as _getVolumeHistoryMulti,
+  calcBalanceByPattern       as _calcBalanceByPattern,
+  detectPRs                   as _detectPRs,
 } from './calc.js';
+
+// 전문가 모드 — Gym / RoutineTemplate CRUD
+import {
+  loadGyms, loadRoutineTemplates,
+} from './data/data-workout-equipment.js';
 
 // ═══════════════════════════════════════════════════════════════
 // re-exports (기존 import 호환)
@@ -97,10 +105,17 @@ export {
   getFriendLatestTomatoCycle,
   recordLogin, recordTutorialDone, markPatchnoteRead, recordAction,
   getPatchnote, createPatchnote, getLatestPatchnote,
-  trackEvent, flushAnalytics, getAnalytics, getAllAnalytics,
+  trackEvent, flushAnalytics, getAnalytics, getAllAnalytics, getApiUsage,
 } from './data/data-social.js';
 
 export { computeGuildStats } from './data/data-social-guild.js';
+
+// workout-equipment (전문가 모드)
+export {
+  loadGyms, getGyms, getGym, saveGym, deleteGym,
+  loadRoutineTemplates, getRoutineTemplates, getRecentRoutineTemplate,
+  saveRoutineTemplate, deleteRoutineTemplate,
+} from './data/data-workout-equipment.js';
 
 // ═══════════════════════════════════════════════════════════════
 // loadAll — 앱 시작 시 전체 데이터 로드
@@ -228,7 +243,15 @@ export async function loadAll() {
     _settings.farm_state       = fbMap.farm_state       ?? null;
     _settings.milestone_shown  = fbMap.milestone_shown  ?? {};
     _settings.streak_freezes   = fbMap.streak_freezes   ?? [];
+    _settings.expert_preset    = fbMap.expert_preset
+      ? { ...DEFAULT_EXPERT_PRESET, ...fbMap.expert_preset }
+      : { ...DEFAULT_EXPERT_PRESET };
     if (_settings.diet_plan) _setDietPlan({ ...DEFAULT_DIET_PLAN, ..._settings.diet_plan });
+
+    // 전문가 모드: Gym / RoutineTemplate 로드 (실패해도 전체 앱 동작 유지)
+    await Promise.all([loadGyms(), loadRoutineTemplates()]).catch(e =>
+      console.warn('[data] expert equipment load skipped:', e?.message || e)
+    );
 
     for (const key of ['quest_order','section_titles','weekly_memos']) {
       if (!fbMap[key] && JSON.stringify(_settings[key]) !== JSON.stringify(
@@ -257,12 +280,13 @@ export async function loadAll() {
 export async function saveDay(key, data) {
   const isEmpty = !data || (
     !data.exercises?.length && !data.cf && !data.memo &&
-    !data.breakfast && !data.lunch && !data.dinner &&
+    !data.breakfast && !data.lunch && !data.dinner && !data.snack &&
     !data.gym_skip && !data.gym_health &&
     !data.cf_skip  && !data.cf_health &&
-    !data.stretching && !data.wine_free &&
+    !data.stretching && !data.swimming && !data.running && !data.wine_free &&
     !data.breakfast_skipped && !data.lunch_skipped && !data.dinner_skipped &&
     !data.bKcal && !data.lKcal && !data.dKcal && !data.sKcal &&
+    !data.runDistance && !data.swimDistance &&
     !data.bFoods?.length && !data.lFoods?.length && !data.dFoods?.length && !data.sFoods?.length &&
     !data.bPhoto && !data.lPhoto && !data.dPhoto && !data.sPhoto && !data.workoutPhoto
   );
@@ -388,8 +412,132 @@ export const getBodyCheckins = () => [..._bodyCheckins].sort((a,b) => (a.date||'
 // Nutrition DB
 // ═══════════════════════════════════════════════════════════════
 
+const _NUTRITION_SEARCH_SYNONYMS = Object.freeze({
+  added: ['에디드'],
+  bar: ['바'],
+  chocolate: ['초콜릿'],
+  corn: ['콘'],
+  greek: ['그릭'],
+  just: ['저스트'],
+  light: ['라이트'],
+  moova: ['무바'],
+  no: ['노'],
+  plain: ['플레인'],
+  protein: ['프로틴'],
+  shake: ['쉐이크', '셰이크'],
+  sugar: ['슈가'],
+  sweet: ['스위트'],
+  yogurt: ['요거트', '요구르트'],
+  zero: ['제로'],
+});
+
+function _normalizeNutritionSearchText(value) {
+  return String(value || '')
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[^0-9a-z가-힣]+/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function _splitNutritionAliases(value) {
+  if (Array.isArray(value)) {
+    return [...new Set(value.map(v => String(v || '').trim()).filter(Boolean))];
+  }
+  return [...new Set(
+    String(value || '')
+      .split(/[,\n/]/)
+      .map(v => v.trim())
+      .filter(Boolean)
+  )];
+}
+
+function _buildNutritionSearchVariants(value) {
+  const normalized = _normalizeNutritionSearchText(value);
+  if (!normalized) return [];
+
+  const variants = new Set([normalized, normalized.replace(/\s+/g, '')]);
+  const tokens = normalized.split(' ').filter(Boolean);
+  if (!tokens.length) return [...variants];
+
+  let combos = [''];
+  for (const token of tokens) {
+    const options = [token, ...(_NUTRITION_SEARCH_SYNONYMS[token] || [])]
+      .map(_normalizeNutritionSearchText)
+      .filter(Boolean)
+      .slice(0, 3);
+    const next = [];
+    for (const prefix of combos.slice(0, 12)) {
+      for (const option of options) {
+        next.push(prefix ? `${prefix} ${option}` : option);
+      }
+    }
+    combos = next.slice(0, 24);
+  }
+
+  combos.forEach((variant) => {
+    const v = _normalizeNutritionSearchText(variant);
+    if (!v) return;
+    variants.add(v);
+    variants.add(v.replace(/\s+/g, ''));
+  });
+
+  return [...variants];
+}
+
+function _getNutritionSearchCandidates(item) {
+  const rawValues = [
+    item?.name,
+    item?.manufacturer,
+    ..._splitNutritionAliases(item?.aliases),
+  ];
+  const candidates = new Set();
+  rawValues.forEach((value) => {
+    _buildNutritionSearchVariants(value).forEach((variant) => candidates.add(variant));
+  });
+  return [...candidates];
+}
+
+function _getNutritionSearchScore(item, query) {
+  const queryVariants = _buildNutritionSearchVariants(query);
+  if (!queryVariants.length) return 0;
+
+  const queryTokens = _normalizeNutritionSearchText(query).split(' ').filter(Boolean);
+  const candidates = _getNutritionSearchCandidates(item);
+  let best = 0;
+
+  for (const candidate of candidates) {
+    const candidateNoSpace = candidate.replace(/\s+/g, '');
+    for (const queryVariant of queryVariants) {
+      const queryNoSpace = queryVariant.replace(/\s+/g, '');
+
+      if (candidate === queryVariant || candidateNoSpace === queryNoSpace) {
+        best = Math.max(best, 120);
+        continue;
+      }
+      if (candidate.startsWith(queryVariant) || candidateNoSpace.startsWith(queryNoSpace)) {
+        best = Math.max(best, 105);
+      }
+      if (candidate.includes(queryVariant) || candidateNoSpace.includes(queryNoSpace)) {
+        best = Math.max(best, 92);
+      }
+      const matchedWords = queryTokens.filter(token =>
+        candidate.includes(token) || candidateNoSpace.includes(token)
+      ).length;
+      if (matchedWords === queryTokens.length && queryTokens.length > 0) {
+        best = Math.max(best, 80 + matchedWords * 3);
+      } else if (matchedWords > 0) {
+        best = Math.max(best, 45 + matchedWords * 6);
+      }
+    }
+  }
+
+  return best;
+}
+
 export async function saveNutritionItem(item) {
   if (!item.id) item.id = _generateId();
+  item.aliases = _splitNutritionAliases(item.aliases);
   item.createdAt = item.createdAt || new Date().toISOString();
   item.updatedAt = new Date().toISOString();
   return _fbOp('saveNutritionItem', async () => {
@@ -408,7 +556,15 @@ export async function deleteNutritionItem(id) {
 }
 
 export const getNutritionDB       = () => [..._nutritionDB].sort((a,b) => (a.name||'').localeCompare(b.name||''));
-export const searchNutritionDB    = (q) => _nutritionDB.filter(n => n.name?.toLowerCase().includes((q||'').toLowerCase()));
+export const searchNutritionDB    = (q) => {
+  const query = String(q || '').trim();
+  if (!query) return getNutritionDB();
+  return [..._nutritionDB]
+    .map(item => ({ item, score: _getNutritionSearchScore(item, query) }))
+    .filter(({ score }) => score > 0)
+    .sort((a, b) => b.score - a.score || (a.item.name || '').localeCompare(b.item.name || ''))
+    .map(({ item }) => item);
+};
 
 export const getRecentNutritionItems = (limit = 10) => {
   return [..._nutritionDB]
@@ -470,6 +626,8 @@ export const calcExerciseCalorieCredit = _calcExerciseCalorieCredit;
 // ═══════════════════════════════════════════════════════════════
 
 export const getExList    = ()      => _exList;
+export const getGlobalExList = ()   => _exList.filter(e => !e.gymId);
+export const getGymExList = (gymId) => _exList.filter(e => e.gymId === gymId);
 export const getCustomMuscles = ()  => _customMuscles;
 export const getAllMuscles = () => {
   const byId = new Map(MUSCLES.map(m => [m.id, m]));
@@ -638,7 +796,20 @@ export const calcVolumeAll = _calcVolumeAll;
 export const getVolumeHistory = (exerciseId) => _getVolumeHistory(_cache, exerciseId);
 export const getLastSession = (exerciseId, excludeDateKey = null) => _getLastSession(_cache, exerciseId, excludeDateKey);
 export const getLastActivitySession = (type, excludeDateKey = null) => _getLastActivitySession(_cache, type, excludeDateKey);
+// 전문가 모드 분석 함수 (순수함수는 calc.js, 여기서는 _cache/_exList 자동 주입)
+export const getVolumeHistoryByMovement = (movementId) => _getVolumeHistoryByMovement(_cache, _exList, movementId);
+export const getVolumeHistoryMulti = (exerciseIds) => _getVolumeHistoryMulti(_cache, exerciseIds);
 export const detectPRs = (exerciseId) => _detectPRs(_cache, exerciseId);
+// MOVEMENTS 인자는 호출부에서 주입 (config.js 순환참조 회피)
+export const calcBalanceByPattern = (movements, weekRange) => _calcBalanceByPattern(_cache, _exList, movements, weekRange);
+
+// ── Expert Preset 접근자 ───────────────────────────────────────
+export const getExpertPreset = () => ({ ...DEFAULT_EXPERT_PRESET, ..._settings.expert_preset });
+export async function saveExpertPreset(patch) {
+  const merged = { ...getExpertPreset(), ...patch, updatedAt: Date.now() };
+  return _saveSetting('expert_preset', merged);
+}
+export const isExpertModeEnabled = () => !!_settings.expert_preset?.enabled;
 
 export function calcStreaks() {
   return _calcStreaks(_cache, TODAY, getDietPlan(), dateKey);
