@@ -367,9 +367,9 @@ export function getVolumeHistory(cache, exerciseId) {
  * @param {object} cache - 전체 캐시 데이터
  * @param {string} exerciseId - 운동 ID
  */
-export function getLastSession(cache, exerciseId) {
+export function getLastSession(cache, exerciseId, excludeDateKey = null) {
   const entries = Object.entries(cache)
-    .filter(([, day]) => (day.exercises || []).some(e => e.exerciseId === exerciseId))
+    .filter(([key, day]) => key !== excludeDateKey && (day.exercises || []).some(e => e.exerciseId === exerciseId))
     .sort(([a], [b]) => b.localeCompare(a));
   if (!entries.length) return null;
   const [date, day] = entries[0];
@@ -699,3 +699,116 @@ export function runAllCelebrations(ctx) {
   return out;
 }
 
+// ════════════════════════════════════════════════════════════════
+// 전문가 모드 — RPE / 1RM / 추천 무게 (순수함수, 사이드이펙트 0)
+// ────────────────────────────────────────────────────────────────
+// 가이드:
+//  - 저장 단위는 항상 kg.
+//  - estimate1RM: Epley 공식(단순·보수적, 세트가 RPE10 가정).
+//  - rpeRepsToPct: RTS(Reactive Training Systems) 권장 룩업표 기반.
+//    기록의 RPE를 알면 prevKg / rpeRepsToPct(prevRpe, prevReps)로 더 정확한 e1RM 역산 가능.
+//  - targetWeightKg: e1RM × RPE%1RM 룩업표.
+//  - weightRange: sizeClass별 ±스텝을 적용해 보수/추천/공격 3구간 제시.
+// ════════════════════════════════════════════════════════════════
+
+/** Epley 1RM 추정. kg·reps 중 하나라도 0이면 0 반환. */
+export function estimate1RM(kg, reps) {
+  const k = Number(kg) || 0;
+  const r = Number(reps) || 0;
+  if (k <= 0 || r <= 0) return 0;
+  if (r === 1) return k;
+  return k * (1 + r / 30);
+}
+
+/**
+ * RPE·reps → %1RM 룩업. RTS 권장표 기반 (6~10 RPE × 1~12 reps).
+ * 테이블 밖(예: RPE 5, reps 15)은 가장 가까운 값으로 클램프.
+ */
+const _RPE_PCT_TABLE = {
+  // reps:  1     2     3     4     5     6     7     8     9     10    11    12
+  10:    [1.00, 0.96, 0.92, 0.89, 0.86, 0.84, 0.81, 0.79, 0.76, 0.74, 0.71, 0.68],
+  9.5:   [0.98, 0.94, 0.91, 0.88, 0.85, 0.82, 0.80, 0.77, 0.75, 0.72, 0.70, 0.67],
+  9:     [0.96, 0.92, 0.89, 0.86, 0.84, 0.81, 0.79, 0.76, 0.74, 0.71, 0.68, 0.66],
+  8.5:   [0.94, 0.91, 0.88, 0.85, 0.82, 0.80, 0.77, 0.75, 0.72, 0.70, 0.67, 0.65],
+  8:     [0.92, 0.89, 0.86, 0.84, 0.81, 0.79, 0.76, 0.74, 0.71, 0.68, 0.66, 0.63],
+  7.5:   [0.91, 0.88, 0.85, 0.82, 0.80, 0.77, 0.75, 0.72, 0.70, 0.67, 0.65, 0.62],
+  7:     [0.89, 0.86, 0.84, 0.81, 0.79, 0.76, 0.74, 0.71, 0.68, 0.66, 0.63, 0.61],
+  6.5:   [0.88, 0.85, 0.82, 0.80, 0.77, 0.75, 0.72, 0.70, 0.67, 0.65, 0.62, 0.60],
+  6:     [0.86, 0.84, 0.81, 0.79, 0.76, 0.74, 0.71, 0.68, 0.66, 0.63, 0.61, 0.58],
+};
+export function rpeRepsToPct(rpe, reps) {
+  const r = Math.max(6, Math.min(10, Number(rpe) || 8));
+  const rep = Math.max(1, Math.min(12, Math.round(Number(reps) || 10)));
+  const rpeKey = Math.round(r * 2) / 2;
+  const row = _RPE_PCT_TABLE[rpeKey] || _RPE_PCT_TABLE[8];
+  return row[rep - 1];
+}
+
+/** 목표 무게(kg) = e1RM × RPE/rep 테이블. 반올림 전 raw값. */
+export function targetWeightKg(e1RM, rpe, reps) {
+  const one = Number(e1RM) || 0;
+  if (one <= 0) return 0;
+  return one * rpeRepsToPct(rpe, reps);
+}
+
+/** 증량 단위로 반올림(가장 가까운 step 배수). step<=0이면 그대로. */
+export function roundToIncrement(kg, step) {
+  const s = Number(step);
+  const k = Number(kg) || 0;
+  if (!(s > 0)) return k;
+  return Math.round(k / s) * s;
+}
+
+/**
+ * 보수/추천/공격 3구간 무게. 추천은 roundToIncrement(target).
+ * 소근육(small): ±1 step, 대근육(large): ±2 step. step 기본값 2.5.
+ */
+export function weightRange(target, sizeClass, step) {
+  const s = Number(step) > 0 ? Number(step) : 2.5;
+  const spread = sizeClass === 'large' ? 2 : 1;
+  const recommended = roundToIncrement(target, s);
+  const conservative = Math.max(0, roundToIncrement(recommended - spread * s, s));
+  const aggressive   = roundToIncrement(recommended + spread * s, s);
+  return { conservative, recommended, aggressive };
+}
+
+/**
+ * 특정 exerciseId의 PR(개인 신기록) 추적.
+ *   prKg / prReps / prDate : 역사상 최고 무게 세트
+ *   lastKg / lastDate      : 마지막 세션의 최고 작업 무게
+ *   progressKg             : 마지막 세션 최고 무게 - 그 이전 세션 최고 무게
+ * 기록 부족 시 0/null로 채워 반환.
+ */
+export function detectPRs(cache, exerciseId) {
+  const empty = { prKg:0, prReps:0, prDate:null, lastKg:0, lastDate:null, progressKg:0 };
+  if (!cache || !exerciseId) return empty;
+  const sessions = [];
+  for (const [key, day] of Object.entries(cache)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) continue;
+    const entry = (day.exercises || []).find(e => e.exerciseId === exerciseId);
+    if (!entry) continue;
+    const workSets = (entry.sets || []).filter(s => {
+      if (s.setType === 'warmup') return false;
+      if (s.done === false) return false;
+      return (s.kg || 0) > 0 && (s.reps || 0) > 0;
+    });
+    if (!workSets.length) continue;
+    const maxKg = Math.max(...workSets.map(s => s.kg || 0));
+    const prSet = workSets.find(s => (s.kg || 0) === maxKg) || workSets[0];
+    sessions.push({ date: key, maxKg, reps: prSet.reps || 0 });
+  }
+  if (!sessions.length) return empty;
+  sessions.sort((a, b) => a.date.localeCompare(b.date));
+
+  let prKg = 0, prReps = 0, prDate = null;
+  for (const s of sessions) {
+    if (s.maxKg > prKg) { prKg = s.maxKg; prReps = s.reps; prDate = s.date; }
+  }
+  const last = sessions[sessions.length - 1];
+  const prev = sessions.length >= 2 ? sessions[sessions.length - 2] : null;
+  return {
+    prKg, prReps, prDate,
+    lastKg: last.maxKg, lastDate: last.date,
+    progressKg: prev ? +(last.maxKg - prev.maxKg).toFixed(2) : 0,
+  };
+}

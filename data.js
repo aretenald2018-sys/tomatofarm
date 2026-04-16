@@ -37,6 +37,7 @@ import {
   getLastActivitySession  as _getLastActivitySession,
   getDayTargetKcal        as _getDayTargetKcal,
   calcExerciseCalorieCredit as _calcExerciseCalorieCredit,
+  detectPRs               as _detectPRs,
 } from './calc.js';
 
 // ═══════════════════════════════════════════════════════════════
@@ -635,8 +636,9 @@ export const dietDayOk = (y,m,d) => _dietDayOk(getDay(y,m,d), getDietPlan(), y, 
 export const calcVolume = _calcVolume;
 export const calcVolumeAll = _calcVolumeAll;
 export const getVolumeHistory = (exerciseId) => _getVolumeHistory(_cache, exerciseId);
-export const getLastSession = (exerciseId) => _getLastSession(_cache, exerciseId);
+export const getLastSession = (exerciseId, excludeDateKey = null) => _getLastSession(_cache, exerciseId, excludeDateKey);
 export const getLastActivitySession = (type, excludeDateKey = null) => _getLastActivitySession(_cache, type, excludeDateKey);
+export const detectPRs = (exerciseId) => _detectPRs(_cache, exerciseId);
 
 export function calcStreaks() {
   return _calcStreaks(_cache, TODAY, getDietPlan(), dateKey);

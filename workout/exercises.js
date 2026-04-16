@@ -14,7 +14,7 @@ import { getExList, getGymExList, getLastSession, detectPRs,
          deleteExercise, getAllMuscles,
          saveCustomMuscle,
          isExpertModeEnabled }          from '../data.js';
-import { estimate1RM, targetWeightKg, weightRange } from '../calc.js';
+import { estimate1RM, rpeRepsToPct, targetWeightKg, weightRange } from '../calc.js';
 import { MOVEMENTS }                   from '../config.js';
 // resolveCurrentGymId는 expert.js의 단일 진실원 (preset + S.currentGymId 동기화).
 // expert.js는 exercises.js를 static import 하지 않으므로 순환 참조 없음.
@@ -115,33 +115,70 @@ export function wtRemoveExerciseEntry(entryIdx) {
 
 // ── Scene 12 UI 헬퍼 (프로 모드 전용) ─────────────────────────
 // po-pill, 🏆 PR 도전, RPE 세그먼트, 보수/추천/공격 3칩, ws-foot 설명
-// entryIdx : S.exercises 인덱스 (RPE 재계산 시 data-entry-idx로 식별)
-// exerciseId: 종목 ID
-// last      : getLastSession(exerciseId) 결과 ({date, sets} | null)
-// targetRpe : 현재 선택된 목표 RPE (기본 8)
-function _buildExpertSceneBlock({ entryIdx, exerciseId, last, targetRpe = 8 }) {
-  const fmt = (v) => {
-    const n = Number(v);
-    return Number.isInteger(n) ? String(n) : n.toFixed(1);
+//
+// 모든 추천 계산은 _computeExpertRec()를 단일 진실원으로 사용.
+// last는 호출부에서 today를 제외하고 넘겨줘야 함 (자기참조 방지 — Finding 2).
+// e1RM은 RTS 룩업의 역산을 우선 사용(prevRpe 반영 — Finding 3),
+// rpe 미상이면 Epley로 폴백.
+
+function _todayDateKey() {
+  return (S.date) ? dateKey(S.date.y, S.date.m, S.date.d) : null;
+}
+
+function _fmtNum(v) {
+  const n = Number(v);
+  return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
+
+// 추천 계산 단일 진실원. last는 today 제외된 이전 세션이어야 함.
+function _computeExpertRec({ exerciseId, last, targetRpe = 8 }) {
+  if (!last?.sets?.length) return null;
+  const mainSets = last.sets.filter(s => s.setType !== 'warmup');
+  const refSet   = mainSets.length ? mainSets[mainSets.length - 1] : last.sets[last.sets.length - 1];
+  const prevKg     = refSet.kg   || 0;
+  const prevReps   = refSet.reps || 0;
+  const prevRpeRaw = refSet.rpe;
+  if (prevKg <= 0) return null;
+
+  const exEntry  = getExList().find(e => e.id === exerciseId);
+  const mov      = exEntry?.movementId ? MOVEMENTS.find(m => m.id === exEntry.movementId) : null;
+  const sizeClass = mov?.sizeClass || 'small';
+  const stepKg    = (mov?.stepKg > 0) ? mov.stepKg : 2.5;
+
+  const todayReps = prevReps || 10;
+  // Finding 3: prevRpe 알려져 있으면 RTS 룩업 역산으로 e1RM 추정,
+  //            모르면 Epley 폴백 (RPE10 가정).
+  const e1rm = (prevRpeRaw && prevReps > 0)
+    ? prevKg / rpeRepsToPct(prevRpeRaw, prevReps)
+    : estimate1RM(prevKg, todayReps);
+  const target = targetWeightKg(e1rm, targetRpe, todayReps);
+  const range  = weightRange(target, sizeClass, stepKg);
+  const prInfo = detectPRs(exerciseId);
+  const isPRChallenge = prInfo.prKg > 0 && range.recommended > prInfo.prKg;
+
+  return {
+    prevKg, prevReps, prevRpe: prevRpeRaw || 8, prevRpeKnown: !!prevRpeRaw,
+    sizeClass, stepKg, todayReps,
+    e1rm, target,
+    conservative: range.conservative,
+    recommended:  range.recommended,
+    aggressive:   range.aggressive,
+    prInfo, isPRChallenge,
   };
+}
 
-  // ── 종목 메타 (sizeClass / stepKg) ──
-  const exEntry = getExList().find(e => e.id === exerciseId);
-  const movementId = exEntry?.movementId;
-  const movement = movementId ? MOVEMENTS.find(m => m.id === movementId) : null;
-  const sizeClass = movement?.sizeClass || 'small';
-  const stepKg    = (movement?.stepKg > 0) ? movement.stepKg : 2.5;
+// po-pill HTML — _computeExpertRec 결과 기반. 비어있으면 ''.
+function _buildPoPillHtml({ exerciseId, last, targetRpe = 8 }) {
+  const r = _computeExpertRec({ exerciseId, last, targetRpe });
+  if (!r) return '';
+  if (r.isPRChallenge) return '<span class="po-pill pr">🏆 PR 도전</span>';
+  const diff = +(r.recommended - r.prevKg).toFixed(2);
+  if (diff > 0) return `<span class="po-pill">+${_fmtNum(diff)}kg ↑</span>`;
+  return '';
+}
 
-  // ── 지난 기록에서 본세트 추출 ──
-  // 본세트 우선, 없으면 마지막 세트 폴백
-  let prevKg = 0, prevReps = 0, prevRpe = 8;
-  if (last?.sets?.length) {
-    const mainSets = last.sets.filter(s => s.setType !== 'warmup');
-    const refSet   = mainSets.length ? mainSets[mainSets.length - 1] : last.sets[last.sets.length - 1];
-    prevKg   = refSet.kg   || 0;
-    prevReps = refSet.reps || 0;
-    prevRpe  = refSet.rpe  || 8;
-  }
+function _buildExpertSceneBlock({ entryIdx, exerciseId, last, targetRpe = 8 }) {
+  const fmt = _fmtNum;
 
   // ── RPE 세그 HTML (active는 targetRpe 기준) ──
   const rpeSegs = [6, 7, 8, 9, 10].map(r =>
@@ -153,61 +190,47 @@ function _buildExpertSceneBlock({ entryIdx, exerciseId, last, targetRpe = 8 }) {
       <div class="rpe-segmented">${rpeSegs}</div>
     </div>`;
 
-  // 지난 기록 없거나 prevKg <= 0 → RPE 세그만 노출
-  if (!prevKg || prevKg <= 0) {
+  const rec = _computeExpertRec({ exerciseId, last, targetRpe });
+  // 지난 기록 없음 → RPE 세그만 노출
+  if (!rec) {
     return `<div class="ex-expert-section" data-entry-idx="${entryIdx}" data-target-rpe="${targetRpe}">${rpeRow}</div>`;
   }
-
-  // ── 추천 무게 계산 ──
-  const todayReps = prevReps || 10;
-  const e1rm      = estimate1RM(prevKg, todayReps);
-  const target    = targetWeightKg(e1rm, targetRpe, todayReps);
-  const { conservative, recommended, aggressive } = weightRange(target, sizeClass, stepKg);
-
-  // ── PR 판정 ──
-  const prInfo = detectPRs(exerciseId);
-  const isPRChallenge = prInfo.prKg > 0 && recommended > prInfo.prKg;
 
   // ── ws-chip HTML ──
   const chipsHtml = `
     <div class="weight-suggest">
       <div class="ws-chip">
         <div class="ws-chip-kind">보수</div>
-        <div class="ws-chip-value">${fmt(conservative)}</div>
+        <div class="ws-chip-value">${fmt(rec.conservative)}</div>
       </div>
       <div class="ws-chip recommend">
         <div class="ws-chip-kind">추천</div>
-        <div class="ws-chip-value">${fmt(recommended)}</div>
+        <div class="ws-chip-value">${fmt(rec.recommended)}</div>
       </div>
       <div class="ws-chip">
         <div class="ws-chip-kind">공격</div>
-        <div class="ws-chip-value">${fmt(aggressive)}</div>
+        <div class="ws-chip-value">${fmt(rec.aggressive)}</div>
       </div>
     </div>`;
 
   // ── ws-foot 문구 ──
-  const diff = +(recommended - prevKg).toFixed(2);
-  let foot1, foot2;
-  if (isPRChallenge) {
-    foot1 = `지금까지 최고 ${fmt(prInfo.prKg)}kg · 오늘 추천 ${fmt(recommended)}kg을 채우면 <b style="color:var(--primary, #fa342c);">개인 신기록</b>!`;
-    foot2 = `e1RM ${e1rm.toFixed(1)} · ${todayReps}×RPE${targetRpe} 환산 · ±${fmt(stepKg)}kg (${sizeClass === 'small' ? '소근육' : '대근육'} 스텝)`;
+  const diff = +(rec.recommended - rec.prevKg).toFixed(2);
+  const sizeLabel = rec.sizeClass === 'small' ? '소근육' : '대근육';
+  const foot2 = `e1RM ${rec.e1rm.toFixed(1)} · ${rec.todayReps}×RPE${targetRpe} 환산 · ±${fmt(rec.stepKg)}kg (${sizeLabel} 스텝)`;
+  let foot1;
+  if (rec.isPRChallenge) {
+    foot1 = `지금까지 최고 ${fmt(rec.prInfo.prKg)}kg · 오늘 추천 ${fmt(rec.recommended)}kg을 채우면 <b style="color:var(--primary, #fa342c);">개인 신기록</b>!`;
   } else if (diff > 0) {
-    foot1 = `지난주 ${fmt(prevKg)}kg×${prevReps}@RPE${prevRpe} → 오늘 <b style="color:var(--success, #1b854a);">+${fmt(diff)}kg 점진 과부하</b>`;
-    foot2 = `e1RM ${e1rm.toFixed(1)} · ${todayReps}×RPE${targetRpe} 환산 · ±${fmt(stepKg)}kg (${sizeClass === 'small' ? '소근육' : '대근육'} 스텝)`;
+    foot1 = `지난 기록 ${fmt(rec.prevKg)}kg×${rec.prevReps}@RPE${rec.prevRpe} → 오늘 <b style="color:var(--success, #1b854a);">+${fmt(diff)}kg 점진 과부하</b>`;
   } else {
-    foot1 = `지난주 ${fmt(prevKg)}kg×${prevReps}@RPE${prevRpe} → 오늘 동일 무게 유지`;
-    foot2 = `e1RM ${e1rm.toFixed(1)} · ${todayReps}×RPE${targetRpe} 환산 · ±${fmt(stepKg)}kg (${sizeClass === 'small' ? '소근육' : '대근육'} 스텝)`;
+    foot1 = `지난 기록 ${fmt(rec.prevKg)}kg×${rec.prevReps}@RPE${rec.prevRpe} → 오늘 동일 무게 유지`;
   }
-  const footHtml = `<div class="ws-foot">${foot1}<br/>${foot2}</div>`;
-
-  // ── PR 도전 배너 (칩 위에 표시) ──
-  const prBanner = isPRChallenge
+  const prBanner = rec.isPRChallenge
     ? `<div class="ws-foot" style="margin-bottom:6px;">${foot1}</div>`
     : '';
-  // PR 도전 시에는 foot1을 배너로 올리고 foot2만 아래 ws-foot에
-  const footFinal = isPRChallenge
+  const footFinal = rec.isPRChallenge
     ? `<div class="ws-foot">${foot2}</div>`
-    : footHtml;
+    : `<div class="ws-foot">${foot1}<br/>${foot2}</div>`;
 
   return `
     <div class="ex-expert-section" data-entry-idx="${entryIdx}" data-target-rpe="${targetRpe}">
@@ -218,13 +241,28 @@ function _buildExpertSceneBlock({ entryIdx, exerciseId, last, targetRpe = 8 }) {
     </div>`;
 }
 
-// ── RPE 세그 클릭 시 expert section 재렌더 헬퍼 ──
+// RPE 세그 클릭 시 expert section + po-pill 동시 재렌더 (Findings 2, 4)
 function _rerenderExpertSection(exBlock, entryIdx, exerciseId, newRpe) {
-  const last = getLastSession(exerciseId);
-  const newHtml = _buildExpertSceneBlock({ entryIdx, exerciseId, last, targetRpe: newRpe });
+  // Finding 2: 오늘 세션 제외 → 자기참조 방지
+  const last = getLastSession(exerciseId, _todayDateKey());
+
+  // expert section 교체
+  const newSectionHtml = _buildExpertSceneBlock({ entryIdx, exerciseId, last, targetRpe: newRpe });
   const section = exBlock.querySelector('.ex-expert-section');
-  if (section) {
-    section.outerHTML = newHtml;
+  if (section) section.outerHTML = newSectionHtml;
+
+  // Finding 4: po-pill도 새 RPE 기준으로 갱신
+  const newPillHtml = _buildPoPillHtml({ exerciseId, last, targetRpe: newRpe });
+  const oldPill = exBlock.querySelector('.po-pill');
+  if (oldPill) {
+    if (newPillHtml) {
+      oldPill.outerHTML = newPillHtml;
+    } else {
+      oldPill.remove();
+    }
+  } else if (newPillHtml) {
+    const nameSpan = exBlock.querySelector('.ex-block-name');
+    if (nameSpan) nameSpan.insertAdjacentHTML('afterend', newPillHtml);
   }
 }
 
@@ -263,12 +301,14 @@ export function _renderExerciseList() {
   const allMuscles = getAllMuscles();
   const isExpert = (() => { try { return isExpertModeEnabled(); } catch { return false; } })();
 
+  // Finding 2: 오늘 세션 제외 → 자기참조 방지. 최근 기록(today 제외).
+  const todayKey = _todayDateKey();
+
   S.exercises.forEach((entry, idx) => {
     const ex   = getExList().find(e => e.id === entry.exerciseId);
     const mc   = allMuscles.find(m => m.id === entry.muscleId);
-    const last = getLastSession(entry.exerciseId);
-    const isToday = S.date && last?.date === dateKey(S.date.y, S.date.m, S.date.d);
-    const lastHint = (last && !isToday)
+    const last = getLastSession(entry.exerciseId, todayKey);
+    const lastHint = last
       ? `<div class="ex-last-hint">
            📌 직전(${last.date.slice(5).replace('-','/')})
            ${last.sets.map(s=>`${s.kg}×${s.reps}`).join(' / ')}
@@ -282,33 +322,7 @@ export function _renderExerciseList() {
     let poPillHtml = '';
     if (isExpert) {
       expertHtml = _buildExpertSceneBlock({ entryIdx: idx, exerciseId: entry.exerciseId, last, targetRpe: 8 });
-
-      // po-pill: 지난 기록 있을 때만 recommended - prevKg 차이 계산
-      if (last?.sets?.length) {
-        const mainSets = last.sets.filter(s => s.setType !== 'warmup');
-        const refSet   = mainSets.length ? mainSets[mainSets.length - 1] : last.sets[last.sets.length - 1];
-        const prevKg   = refSet.kg || 0;
-        const prevReps = refSet.reps || 10;
-        if (prevKg > 0) {
-          const exEntry   = getExList().find(e => e.id === entry.exerciseId);
-          const movId     = exEntry?.movementId;
-          const mov       = movId ? MOVEMENTS.find(m => m.id === movId) : null;
-          const sc        = mov?.sizeClass || 'small';
-          const step      = (mov?.stepKg > 0) ? mov.stepKg : 2.5;
-          const e1rm      = estimate1RM(prevKg, prevReps);
-          const t         = targetWeightKg(e1rm, 8, prevReps);
-          const { recommended } = weightRange(t, sc, step);
-          const prInfo    = detectPRs(entry.exerciseId);
-          const isPR      = prInfo.prKg > 0 && recommended > prInfo.prKg;
-          const diff      = +(recommended - prevKg).toFixed(2);
-          const fmtN      = (v) => { const n = Number(v); return Number.isInteger(n) ? String(n) : n.toFixed(1); };
-          if (isPR) {
-            poPillHtml = '<span class="po-pill pr">🏆 PR 도전</span>';
-          } else if (diff > 0) {
-            poPillHtml = `<span class="po-pill">+${fmtN(diff)}kg ↑</span>`;
-          }
-        }
-      }
+      poPillHtml = _buildPoPillHtml({ exerciseId: entry.exerciseId, last, targetRpe: 8 });
     }
 
     const block = document.createElement('div');
