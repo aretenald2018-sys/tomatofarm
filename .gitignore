@@ -9,3 +9,14 @@ network-analysis-report.json
 .dev-prompt-tmp.txt
 
 .vercel
+
+# Capacitor 빌드 산출물 / Android 네이티브 프로젝트
+www/
+android/
+
+# 디자인 mockup (배포 불필요)
+mockups/
+mockup-*.html
+
+# Windows env var가 bash에서 expand 안 돼 생긴 잔재
+%SystemDrive%/

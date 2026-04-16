@@ -181,7 +181,9 @@
       "Bash(taskkill //F //PID 44932)",
       "Bash(taskkill //F //PID 48720)",
       "Bash(taskkill //F //PID 45552)",
-      "Bash(taskkill //F //PID 49044)"
+      "Bash(taskkill //F //PID 49044)",
+      "Bash(git fetch *)",
+      "Bash(ls -la *.md COMMUNICATION* communication*)"
     ],
     "defaultMode": "bypassPermissions",
     "skipDangerousModePermissionPrompt": true
