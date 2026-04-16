@@ -130,6 +130,25 @@ function _fmtNum(v) {
   return Number.isInteger(n) ? String(n) : n.toFixed(1);
 }
 
+// 추천 산출용 reference 세션 결정.
+//   1순위: 이전 세션(today 제외) — 자기참조 방지(Finding 2)
+//   2순위: 오늘 현재 entry의 완료 본세트 — prior 없을 때 fallback
+//          (chips가 안 떠서 답답한 UX 방지)
+//   둘 다 없으면 null → RPE 세그만 노출.
+function _resolveLastForRec(entryIdx, exerciseId) {
+  const todayKey = _todayDateKey();
+  const prior = getLastSession(exerciseId, todayKey);
+  if (prior?.sets?.length) return prior;
+  const entry = S.exercises[entryIdx];
+  if (!entry) return null;
+  const todayMain = (entry.sets || []).filter(s =>
+    s && s.setType !== 'warmup' &&
+    (s.done === true || ((s.kg || 0) > 0 && (s.reps || 0) > 0))
+  );
+  if (!todayMain.length) return null;
+  return { date: todayKey, sets: todayMain, _fromCurrentEntry: true };
+}
+
 // 추천 계산 단일 진실원. last는 today 제외된 이전 세션이어야 함.
 function _computeExpertRec({ exerciseId, last, targetRpe = 8 }) {
   if (!last?.sets?.length) return null;
@@ -164,6 +183,7 @@ function _computeExpertRec({ exerciseId, last, targetRpe = 8 }) {
     recommended:  range.recommended,
     aggressive:   range.aggressive,
     prInfo, isPRChallenge,
+    fromCurrentEntry: !!last._fromCurrentEntry,
   };
 }
 
@@ -216,14 +236,16 @@ function _buildExpertSceneBlock({ entryIdx, exerciseId, last, targetRpe = 8 }) {
   // ── ws-foot 문구 ──
   const diff = +(rec.recommended - rec.prevKg).toFixed(2);
   const sizeLabel = rec.sizeClass === 'small' ? '소근육' : '대근육';
+  const refLabel  = rec.fromCurrentEntry ? '방금' : '지난 기록';
+  const nextLabel = rec.fromCurrentEntry ? '다음 세트' : '오늘';
   const foot2 = `e1RM ${rec.e1rm.toFixed(1)} · ${rec.todayReps}×RPE${targetRpe} 환산 · ±${fmt(rec.stepKg)}kg (${sizeLabel} 스텝)`;
   let foot1;
   if (rec.isPRChallenge) {
     foot1 = `지금까지 최고 ${fmt(rec.prInfo.prKg)}kg · 오늘 추천 ${fmt(rec.recommended)}kg을 채우면 <b style="color:var(--primary, #fa342c);">개인 신기록</b>!`;
   } else if (diff > 0) {
-    foot1 = `지난 기록 ${fmt(rec.prevKg)}kg×${rec.prevReps}@RPE${rec.prevRpe} → 오늘 <b style="color:var(--success, #1b854a);">+${fmt(diff)}kg 점진 과부하</b>`;
+    foot1 = `${refLabel} ${fmt(rec.prevKg)}kg×${rec.prevReps}@RPE${rec.prevRpe} → ${nextLabel} <b style="color:var(--success, #1b854a);">+${fmt(diff)}kg 점진 과부하</b>`;
   } else {
-    foot1 = `지난 기록 ${fmt(rec.prevKg)}kg×${rec.prevReps}@RPE${rec.prevRpe} → 오늘 동일 무게 유지`;
+    foot1 = `${refLabel} ${fmt(rec.prevKg)}kg×${rec.prevReps}@RPE${rec.prevRpe} → ${nextLabel} 동일 무게 유지`;
   }
   const prBanner = rec.isPRChallenge
     ? `<div class="ws-foot" style="margin-bottom:6px;">${foot1}</div>`
@@ -243,8 +265,8 @@ function _buildExpertSceneBlock({ entryIdx, exerciseId, last, targetRpe = 8 }) {
 
 // RPE 세그 클릭 시 expert section + po-pill 동시 재렌더 (Findings 2, 4)
 function _rerenderExpertSection(exBlock, entryIdx, exerciseId, newRpe) {
-  // Finding 2: 오늘 세션 제외 → 자기참조 방지
-  const last = getLastSession(exerciseId, _todayDateKey());
+  // Finding 2 + 폴백: 이전 세션 또는 오늘 entry의 완료 본세트 사용.
+  const last = _resolveLastForRec(entryIdx, exerciseId);
 
   // expert section 교체
   const newSectionHtml = _buildExpertSceneBlock({ entryIdx, exerciseId, last, targetRpe: newRpe });
@@ -318,11 +340,13 @@ export function _renderExerciseList() {
     const sparkline = _buildSparkline(entry.exerciseId, mc?.color);
 
     // Scene 12 — 프로 모드 전용 UI (e1RM 기반 실제 추천 무게 로직)
+    // chips/footer는 prior 우선, 없으면 오늘 entry의 완료 본세트로 폴백.
     let expertHtml = '';
     let poPillHtml = '';
     if (isExpert) {
-      expertHtml = _buildExpertSceneBlock({ entryIdx: idx, exerciseId: entry.exerciseId, last, targetRpe: 8 });
-      poPillHtml = _buildPoPillHtml({ exerciseId: entry.exerciseId, last, targetRpe: 8 });
+      const lastForRec = _resolveLastForRec(idx, entry.exerciseId);
+      expertHtml = _buildExpertSceneBlock({ entryIdx: idx, exerciseId: entry.exerciseId, last: lastForRec, targetRpe: 8 });
+      poPillHtml = _buildPoPillHtml({ exerciseId: entry.exerciseId, last: lastForRec, targetRpe: 8 });
     }
 
     const block = document.createElement('div');
