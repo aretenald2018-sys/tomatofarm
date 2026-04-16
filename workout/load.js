@@ -37,6 +37,12 @@ export function loadWorkoutDate(y, m, d) {
 
   if (window._wtResetFlowUI) window._wtResetFlowUI();
 
+  // 날짜가 실제로 바뀔 때 진행 중인 AI 추정 배너/상태를 모두 정리.
+  // 이전 날짜에서 pending 상태인 결과가 새 날짜의 식단 카드에 붙는 race 방지.
+  if (window.aiEstimateClearAll) {
+    try { window.aiEstimateClearAll(); } catch (e) { console.warn('[aiEstimateClearAll]', e); }
+  }
+
   S.date      = { y, m, d };
   const day  = getDay(y, m, d);
   S.exercises = JSON.parse(JSON.stringify(day.exercises || []));
@@ -104,6 +110,10 @@ export function loadWorkoutDate(y, m, d) {
     dProtein:day.dProtein||0, dCarbs:day.dCarbs||0, dFat:day.dFat||0,
     sProtein:day.sProtein||0, sCarbs:day.sCarbs||0, sFat:day.sFat||0,
     bFoods:day.bFoods||[], lFoods:day.lFoods||[], dFoods:day.dFoods||[], sFoods:day.sFoods||[],
+    bEstimateMeta: day.bEstimateMeta || null,
+    lEstimateMeta: day.lEstimateMeta || null,
+    dEstimateMeta: day.dEstimateMeta || null,
+    sEstimateMeta: day.sEstimateMeta || null,
   };
 
   window._mealPhotos = {};

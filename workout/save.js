@@ -62,6 +62,12 @@ function _buildSavePayload(cleanEx, isDietSuccess) {
     dPhoto: window._mealPhotos?.dinner || null,
     sPhoto: window._mealPhotos?.snack || null,
     workoutPhoto: window._mealPhotos?.workout || null,
+    // AI 추정 메타 (plateType/confidence/priorApplied/portionApplied/createdAt)
+    // 누락 시 전체 덮어쓰기로 메타 사라짐 → 반드시 포함.
+    bEstimateMeta: S.diet.bEstimateMeta || null,
+    lEstimateMeta: S.diet.lEstimateMeta || null,
+    dEstimateMeta: S.diet.dEstimateMeta || null,
+    sEstimateMeta: S.diet.sEstimateMeta || null,
     // 전문가 모드
     gymId: S.currentGymId || null,
     routineMeta: S.routineMeta || null,

@@ -14,6 +14,9 @@ const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
 // 미설정 시 fallback 비활성 (기존 Gemini-only 동작 유지).
 const GROQ_API_KEY = defineSecret("GROQ_API_KEY");
 const GROQ_MODEL = "llama-3.3-70b-versatile";
+// Groq vision-capable model (Llama 4 Scout) — 이미지 입력 포함 요청 시 사용.
+// 텍스트 전용 요청은 기존 GROQ_MODEL 유지.
+const GROQ_VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct";
 const GEMINI_MODEL = "gemini-2.5-flash-lite";
 const OCR_MONTHLY_LIMIT = 990;
 
@@ -325,8 +328,10 @@ exports.refreshWeeklyRanking = onRequest({ cors: true }, async (req, res) => {
 });
 
 // ── Groq fallback helper (OpenAI-호환 chat completions) ──────────────
-// Gemini가 quota/5xx로 실패했을 때만 호출. 이미지(inlineData) 포함 요청은 지원 안 함
-// (텍스트만 flatten해서 전달 — 현재 루틴 생성/nudge 용도에 충분).
+// Gemini가 quota/5xx로 실패했을 때 호출.
+// 텍스트 요청 → llama-3.3-70b-versatile, 이미지 포함 요청 → llama-4-scout (vision).
+// Gemini parts 형식({text} / {inlineData:{mimeType,data}})을
+// OpenAI content 배열({type:"text"|"image_url"})로 변환한다.
 async function _callGroqFallback(parts, maxOutputTokens, wantJSON) {
   const key = GROQ_API_KEY.value();
   if (!key) {
@@ -335,18 +340,41 @@ async function _callGroqFallback(parts, maxOutputTokens, wantJSON) {
     throw err;
   }
   const hasImage = Array.isArray(parts) && parts.some((p) => p?.inlineData);
+  const model = hasImage ? GROQ_VISION_MODEL : GROQ_MODEL;
+
+  // messages[0].content 구성
+  // - 텍스트 전용: 기존대로 flatten 문자열
+  // - 이미지 포함: OpenAI vision 스펙에 맞춰 content 배열로 변환
+  let content;
   if (hasImage) {
-    const err = new Error("Groq는 이미지 입력 미지원 (텍스트 전용)");
-    err.code = "GROQ_UNSUPPORTED";
-    throw err;
+    content = [];
+    for (const p of parts || []) {
+      if (p?.text) {
+        content.push({ type: "text", text: p.text });
+      } else if (p?.inlineData?.data) {
+        const mime = p.inlineData.mimeType || "image/jpeg";
+        const dataUrl = `data:${mime};base64,${p.inlineData.data}`;
+        content.push({
+          type: "image_url",
+          image_url: { url: dataUrl },
+        });
+      }
+    }
+    if (content.length === 0) {
+      const err = new Error("Groq vision: 유효한 parts 없음");
+      err.code = "GROQ_EMPTY_PARTS";
+      throw err;
+    }
+  } else {
+    content = (parts || [])
+      .map((p) => p?.text || "")
+      .filter(Boolean)
+      .join("\n\n");
   }
-  const flatText = (parts || [])
-    .map((p) => p?.text || "")
-    .filter(Boolean)
-    .join("\n\n");
+
   const body = {
-    model: GROQ_MODEL,
-    messages: [{ role: "user", content: flatText }],
+    model,
+    messages: [{ role: "user", content }],
     max_tokens: Math.min(maxOutputTokens || 2000, 8000),
     temperature: 0.6,
   };
@@ -365,14 +393,17 @@ async function _callGroqFallback(parts, maxOutputTokens, wantJSON) {
     const err = new Error(msg);
     err.code = r.status === 429 ? "GROQ_QUOTA" : "GROQ_HTTP";
     err.status = r.status;
+    err.model = model;
     throw err;
   }
   const text = data?.choices?.[0]?.message?.content?.trim();
   if (!text) {
     const err = new Error("Groq 응답 empty");
     err.code = "GROQ_EMPTY";
+    err.model = model;
     throw err;
   }
+  console.log(`[Groq] success model=${model} hasImage=${hasImage} len=${text.length}`);
   return text;
 }
 

@@ -771,7 +771,8 @@
           <div class="diet-toss-header" onclick="toggleDietMealRow(this)">
             <span class="diet-toss-icon">☀️</span>
             <div class="diet-toss-title"><span class="diet-toss-label">아침</span><span class="diet-toss-kcal" id="diet-toss-kcal-breakfast"></span></div>
-            <button class="meal-cam-btn" onclick="event.stopPropagation();document.getElementById('photo-input-breakfast').click()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
+            <button class="meal-ai-btn" title="AI로 영양성분 추정" onclick="event.stopPropagation();document.getElementById('ai-photo-input-breakfast').click()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.09 4.26L18.8 7 15.4 10.29l.8 4.63L12 12.77l-4.2 2.15.8-4.63L5.2 7l4.71-.74L12 2z"/><path d="M19 13l.75 2.5L22 16l-2.25.5L19 19l-.75-2.5L16 16l2.25-.5z"/></svg><span class="meal-ai-btn-label">AI</span></button>
+            <button class="meal-cam-btn" title="음식 사진 첨부" onclick="event.stopPropagation();document.getElementById('photo-input-breakfast').click()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
             <span class="diet-toss-chevron">›</span>
           </div>
           <div class="diet-toss-body">
@@ -783,6 +784,7 @@
               <div class="meal-food-list" id="wt-foods-breakfast"></div>
             </div>
             <input type="file" id="photo-input-breakfast" accept="image/*" style="display:none" onchange="uploadMealPhoto('breakfast',this)">
+            <input type="file" id="ai-photo-input-breakfast" accept="image/*" style="display:none" onchange="uploadMealPhotoAI('breakfast',this)">
             <input class="diet-meal-input" id="wt-meal-breakfast" placeholder="메모 (선택)">
             <div class="diet-result" id="wt-result-breakfast"></div>
           </div>
@@ -792,7 +794,8 @@
           <div class="diet-toss-header" onclick="toggleDietMealRow(this)">
             <span class="diet-toss-icon">🌤️</span>
             <div class="diet-toss-title"><span class="diet-toss-label">점심</span><span class="diet-toss-kcal" id="diet-toss-kcal-lunch"></span></div>
-            <button class="meal-cam-btn" onclick="event.stopPropagation();document.getElementById('photo-input-lunch').click()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
+            <button class="meal-ai-btn" title="AI로 영양성분 추정" onclick="event.stopPropagation();document.getElementById('ai-photo-input-lunch').click()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.09 4.26L18.8 7 15.4 10.29l.8 4.63L12 12.77l-4.2 2.15.8-4.63L5.2 7l4.71-.74L12 2z"/><path d="M19 13l.75 2.5L22 16l-2.25.5L19 19l-.75-2.5L16 16l2.25-.5z"/></svg><span class="meal-ai-btn-label">AI</span></button>
+            <button class="meal-cam-btn" title="음식 사진 첨부" onclick="event.stopPropagation();document.getElementById('photo-input-lunch').click()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
             <span class="diet-toss-chevron">›</span>
           </div>
           <div class="diet-toss-body">
@@ -804,6 +807,7 @@
               <div class="meal-food-list" id="wt-foods-lunch"></div>
             </div>
             <input type="file" id="photo-input-lunch" accept="image/*" style="display:none" onchange="uploadMealPhoto('lunch',this)">
+            <input type="file" id="ai-photo-input-lunch" accept="image/*" style="display:none" onchange="uploadMealPhotoAI('lunch',this)">
             <input class="diet-meal-input" id="wt-meal-lunch" placeholder="메모 (선택)">
             <div class="diet-result" id="wt-result-lunch"></div>
           </div>
@@ -813,7 +817,8 @@
           <div class="diet-toss-header" onclick="toggleDietMealRow(this)">
             <span class="diet-toss-icon">🌙</span>
             <div class="diet-toss-title"><span class="diet-toss-label">저녁</span><span class="diet-toss-kcal" id="diet-toss-kcal-dinner"></span></div>
-            <button class="meal-cam-btn" onclick="event.stopPropagation();document.getElementById('photo-input-dinner').click()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
+            <button class="meal-ai-btn" title="AI로 영양성분 추정" onclick="event.stopPropagation();document.getElementById('ai-photo-input-dinner').click()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.09 4.26L18.8 7 15.4 10.29l.8 4.63L12 12.77l-4.2 2.15.8-4.63L5.2 7l4.71-.74L12 2z"/><path d="M19 13l.75 2.5L22 16l-2.25.5L19 19l-.75-2.5L16 16l2.25-.5z"/></svg><span class="meal-ai-btn-label">AI</span></button>
+            <button class="meal-cam-btn" title="음식 사진 첨부" onclick="event.stopPropagation();document.getElementById('photo-input-dinner').click()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
             <span class="diet-toss-chevron">›</span>
           </div>
           <div class="diet-toss-body">
@@ -825,6 +830,7 @@
               <div class="meal-food-list" id="wt-foods-dinner"></div>
             </div>
             <input type="file" id="photo-input-dinner" accept="image/*" style="display:none" onchange="uploadMealPhoto('dinner',this)">
+            <input type="file" id="ai-photo-input-dinner" accept="image/*" style="display:none" onchange="uploadMealPhotoAI('dinner',this)">
             <input class="diet-meal-input" id="wt-meal-dinner" placeholder="메모 (선택)">
             <div class="diet-result" id="wt-result-dinner"></div>
           </div>
@@ -834,7 +840,8 @@
           <div class="diet-toss-header" onclick="toggleDietMealRow(this)">
             <span class="diet-toss-icon">🍪</span>
             <div class="diet-toss-title"><span class="diet-toss-label">간식</span><span class="diet-toss-kcal" id="diet-toss-kcal-snack"></span></div>
-            <button class="meal-cam-btn" onclick="event.stopPropagation();document.getElementById('photo-input-snack').click()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
+            <button class="meal-ai-btn" title="AI로 영양성분 추정" onclick="event.stopPropagation();document.getElementById('ai-photo-input-snack').click()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.09 4.26L18.8 7 15.4 10.29l.8 4.63L12 12.77l-4.2 2.15.8-4.63L5.2 7l4.71-.74L12 2z"/><path d="M19 13l.75 2.5L22 16l-2.25.5L19 19l-.75-2.5L16 16l2.25-.5z"/></svg><span class="meal-ai-btn-label">AI</span></button>
+            <button class="meal-cam-btn" title="음식 사진 첨부" onclick="event.stopPropagation();document.getElementById('photo-input-snack').click()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
             <span class="diet-toss-chevron">›</span>
           </div>
           <div class="diet-toss-body">
@@ -845,6 +852,7 @@
               <div class="meal-food-list" id="wt-foods-snack"></div>
             </div>
             <input type="file" id="photo-input-snack" accept="image/*" style="display:none" onchange="uploadMealPhoto('snack',this)">
+            <input type="file" id="ai-photo-input-snack" accept="image/*" style="display:none" onchange="uploadMealPhotoAI('snack',this)">
             <input class="diet-meal-input" id="wt-meal-snack" placeholder="메모 (선택)">
             <div class="diet-result" id="wt-result-snack"></div>
           </div>

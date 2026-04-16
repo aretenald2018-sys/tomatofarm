@@ -2758,6 +2758,121 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
 }
 .meal-cam-btn:active { background: var(--primary-bg); color: var(--primary); }
 
+/* ── AI 추정 버튼 (단순 카메라 버튼과 시각적으로 확실히 구분) ── */
+.meal-ai-btn {
+  min-width: 48px; height: 36px; padding: 0 10px;
+  border-radius: 999px; border: none;
+  background: linear-gradient(135deg, #fa342c 0%, #7c3aed 100%);
+  color: #fff; cursor: pointer; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  font-weight: 700; font-size: 11px; letter-spacing: 0.3px;
+  box-shadow: 0 2px 6px rgba(124,58,237,0.25), 0 1px 2px rgba(250,52,44,0.15);
+  transition: transform 0.1s ease-in-out, box-shadow 0.1s ease-in-out;
+  -webkit-tap-highlight-color: transparent;
+  margin-right: 4px;
+}
+.meal-ai-btn:hover { box-shadow: 0 3px 10px rgba(124,58,237,0.35); }
+.meal-ai-btn:active { transform: scale(0.96); }
+.meal-ai-btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
+.meal-ai-btn .meal-ai-btn-label { line-height: 1; }
+.meal-ai-btn svg { flex-shrink: 0; }
+
+/* ── AI 추정 배너 (끼니 내부 상단) ── */
+.ai-estimate-banner {
+  margin: 8px 0 10px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  background: linear-gradient(135deg, rgba(124,58,237,0.08), rgba(250,52,44,0.06));
+  color: var(--text, #1f1f1f);
+  font-size: 13px; line-height: 1.45;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  transition: background 0.2s ease-in-out, border-color 0.2s ease-in-out;
+}
+.ai-estimate-banner[data-state="pending"] {
+  border-color: rgba(124,58,237,0.28);
+}
+.ai-estimate-banner[data-state="preview"] {
+  border-color: rgba(124,58,237,0.4);
+  background: linear-gradient(135deg, rgba(124,58,237,0.12), rgba(250,52,44,0.08));
+}
+.ai-estimate-banner[data-state="error"] {
+  border-color: rgba(239,68,68,0.5);
+  background: linear-gradient(135deg, rgba(239,68,68,0.1), rgba(239,68,68,0.05));
+}
+.ai-estimate-banner-head {
+  display: flex; align-items: center; gap: 8px;
+  font-weight: 700; font-size: 13px;
+  margin-bottom: 6px;
+}
+.ai-estimate-banner-head .ai-bot { font-size: 16px; }
+.ai-estimate-banner-head .ai-kcal {
+  margin-left: auto; font-size: 14px; color: var(--primary, #fa342c);
+}
+.ai-estimate-banner-head .ai-close {
+  background: none; border: none; color: var(--muted, #999);
+  font-size: 15px; line-height: 1; cursor: pointer;
+  padding: 2px 6px; border-radius: 6px;
+}
+.ai-estimate-banner-head .ai-close:hover { background: rgba(0,0,0,0.06); }
+.ai-estimate-items {
+  display: flex; flex-wrap: wrap; gap: 5px 8px;
+  font-size: 12px; color: var(--text-secondary, #555);
+  margin: 4px 0 8px;
+}
+.ai-estimate-items .ai-item {
+  padding: 2px 8px; border-radius: 999px;
+  background: rgba(124,58,237,0.08);
+  border: 1px dashed rgba(124,58,237,0.4);
+}
+.ai-estimate-quickfix {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  margin-bottom: 8px;
+}
+.ai-estimate-quickfix button {
+  padding: 6px 10px; border-radius: 10px;
+  border: 1px solid var(--seed-stroke-weak, rgba(0,0,0,0.1));
+  background: var(--surface, #fff);
+  font-size: 12px; font-weight: 500; color: var(--text, #222);
+  cursor: pointer; transition: background 0.1s ease-in-out;
+}
+.ai-estimate-quickfix button.active,
+.ai-estimate-quickfix button:hover { background: var(--primary-bg, #fdf0f0); border-color: var(--primary, #fa342c); color: var(--primary, #fa342c); }
+.ai-estimate-actions { display: flex; gap: 8px; margin-top: 4px; }
+.ai-estimate-actions .btn-confirm {
+  flex: 1; padding: 10px 14px; border-radius: 12px; border: none;
+  background: linear-gradient(135deg, #fa342c 0%, #7c3aed 100%);
+  color: #fff; font-weight: 700; font-size: 14px;
+  cursor: pointer; transition: transform 0.1s ease-in-out;
+}
+.ai-estimate-actions .btn-confirm:active { transform: scale(0.98); }
+.ai-estimate-actions .btn-edit {
+  padding: 10px 14px; border-radius: 12px;
+  border: 1px solid var(--seed-stroke-neutral, rgba(0,0,0,0.12));
+  background: var(--surface, #fff);
+  font-weight: 500; font-size: 13px; color: var(--text, #222);
+  cursor: pointer;
+}
+.ai-estimate-spinner {
+  display: inline-block; width: 14px; height: 14px;
+  border: 2px solid rgba(124,58,237,0.25);
+  border-top-color: #7c3aed;
+  border-radius: 50%;
+  animation: ai-spin 0.9s linear infinite;
+}
+@keyframes ai-spin { to { transform: rotate(360deg); } }
+
+/* ── AI 출처 음식 칩 시각 구분 (confirmed 상태) ── */
+.meal-food-chip[data-source="ai"] {
+  border: 1px dashed rgba(124,58,237,0.55);
+  background: linear-gradient(135deg, rgba(124,58,237,0.05), rgba(250,52,44,0.03));
+}
+.meal-food-chip[data-source="ai"] .meal-food-chip-name::before {
+  content: "🤖 ";
+  font-size: 10px;
+  opacity: 0.85;
+}
+
 /* ── Tomato Crate (상자) ── */
 .tomato-crate {
   position: relative; width: 110px; height: 70px; margin: 0 auto;

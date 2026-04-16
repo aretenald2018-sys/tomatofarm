@@ -163,6 +163,43 @@ window.removeMealPhoto = async function(meal) {
   const { saveWorkoutDay } = await import('./render-workout.js');
   saveWorkoutDay().catch(e => console.error('Auto-save after photo remove:', e));
 };
+
+// ── AI 추정 전용 업로드 ─────────────────────────────────────────
+// 일반 사진 업로드와 분리. AI 버튼을 통해서만 트리거.
+// 흐름: 파일 → base64 → 사진 표시 + 백그라운드 AI 분석 배너
+window.uploadMealPhotoAI = async function(meal, input) {
+  const file = input.files?.[0];
+  if (!file) return;
+  try {
+    const { imageToBase64 } = await import('./data.js');
+    const cnt = Object.values(window._mealPhotos || {}).filter(Boolean).length;
+    const maxDim = cnt <= 1 ? 800 : cnt <= 2 ? 720 : 640;
+    const quality = cnt <= 1 ? 0.75 : cnt <= 2 ? 0.7 : 0.65;
+    const b64 = await imageToBase64(file, maxDim, quality);
+    const dataUrl = 'data:image/jpeg;base64,' + b64;
+
+    // 1) 사진은 바로 끼니에 표시 (일반 사진 업로드와 동일한 시각 UX)
+    window._mealPhotos = window._mealPhotos || {};
+    window._mealPhotos[meal] = dataUrl;
+    const { _renderMealPhotos } = await import('./render-workout.js');
+    _renderMealPhotos();
+
+    // 2) AI 추정 배너 시작 (pending → preview/error)
+    const { startAIEstimate } = await import('./modals/ai-estimate-banner.js');
+    startAIEstimate(meal, dataUrl);
+
+    // 3) 사진 자체는 서버에 저장 (AI 확정 전에도 사진은 보존)
+    const { saveWorkoutDay } = await import('./render-workout.js');
+    saveWorkoutDay().catch(e => console.error('Auto-save after AI photo upload:', e));
+  } catch (e) {
+    console.error('[uploadMealPhotoAI] error:', e);
+    try {
+      const { showToast } = await import('./home/utils.js');
+      showToast('사진 업로드 실패: ' + (e?.message || e), 2500, 'error');
+    } catch {}
+  }
+  input.value = '';
+};
 window.openMealPhotoLightbox = function(src) {
   const lb = document.createElement('div');
   lb.className = 'meal-photo-lightbox';
