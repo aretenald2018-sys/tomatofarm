@@ -9,12 +9,47 @@ import { wtStartWorkoutTimer,
          wtRestTimerStart,
          wtRestTimerSkip }             from './timers.js';
 import { showToast }                   from '../home/utils.js';
-import { getExList, getLastSession,
+import { getExList, getGymExList, getLastSession, detectPRs,
          dateKey, saveExercise,
          deleteExercise, getAllMuscles,
-         saveCustomMuscle }            from '../data.js';
+         saveCustomMuscle,
+         isExpertModeEnabled }          from '../data.js';
+import { estimate1RM, targetWeightKg, weightRange } from '../calc.js';
+import { MOVEMENTS }                   from '../config.js';
+// resolveCurrentGymId는 expert.js의 단일 진실원 (preset + S.currentGymId 동기화).
+// expert.js는 exercises.js를 static import 하지 않으므로 순환 참조 없음.
+import { resolveCurrentGymId }           from './expert.js';
 
 const NEW_MUSCLE_OPTION = '__new_custom_muscle__';
+
+function _syncExpertTopArea() {
+  if (typeof window.renderExpertTopArea === 'function') {
+    window.renderExpertTopArea();
+  }
+}
+
+function _ensureExpertManualSession() {
+  if (!isExpertModeEnabled()) return;
+  S.currentGymId = resolveCurrentGymId();
+  if (!S.routineMeta) {
+    S.routineMeta = {
+      source: 'manual',
+      candidateKey: null,
+      rationale: '',
+    };
+  }
+}
+
+function _normalizeExpertSessionAfterExerciseChange() {
+  if (!isExpertModeEnabled()) return;
+  if (S.exercises.length === 0) {
+    S.routineMeta = null;
+    return;
+  }
+  if (!S.routineMeta) {
+    _ensureExpertManualSession();
+  }
+}
 
 // ── 세트 조작 ────────────────────────────────────────────────────
 export function wtAddSet(entryIdx) {
@@ -72,16 +107,161 @@ export function wtMoveSet(entryIdx, si, direction) {
 
 export function wtRemoveExerciseEntry(entryIdx) {
   S.exercises.splice(entryIdx, 1);
+  _normalizeExpertSessionAfterExerciseChange();
   _renderExerciseList();
+  _syncExpertTopArea();
   saveWorkoutDay().catch(e => console.error('Save error:', e));
+}
+
+// ── Scene 12 UI 헬퍼 (프로 모드 전용) ─────────────────────────
+// po-pill, 🏆 PR 도전, RPE 세그먼트, 보수/추천/공격 3칩, ws-foot 설명
+// entryIdx : S.exercises 인덱스 (RPE 재계산 시 data-entry-idx로 식별)
+// exerciseId: 종목 ID
+// last      : getLastSession(exerciseId) 결과 ({date, sets} | null)
+// targetRpe : 현재 선택된 목표 RPE (기본 8)
+function _buildExpertSceneBlock({ entryIdx, exerciseId, last, targetRpe = 8 }) {
+  const fmt = (v) => {
+    const n = Number(v);
+    return Number.isInteger(n) ? String(n) : n.toFixed(1);
+  };
+
+  // ── 종목 메타 (sizeClass / stepKg) ──
+  const exEntry = getExList().find(e => e.id === exerciseId);
+  const movementId = exEntry?.movementId;
+  const movement = movementId ? MOVEMENTS.find(m => m.id === movementId) : null;
+  const sizeClass = movement?.sizeClass || 'small';
+  const stepKg    = (movement?.stepKg > 0) ? movement.stepKg : 2.5;
+
+  // ── 지난 기록에서 본세트 추출 ──
+  // 본세트 우선, 없으면 마지막 세트 폴백
+  let prevKg = 0, prevReps = 0, prevRpe = 8;
+  if (last?.sets?.length) {
+    const mainSets = last.sets.filter(s => s.setType !== 'warmup');
+    const refSet   = mainSets.length ? mainSets[mainSets.length - 1] : last.sets[last.sets.length - 1];
+    prevKg   = refSet.kg   || 0;
+    prevReps = refSet.reps || 0;
+    prevRpe  = refSet.rpe  || 8;
+  }
+
+  // ── RPE 세그 HTML (active는 targetRpe 기준) ──
+  const rpeSegs = [6, 7, 8, 9, 10].map(r =>
+    `<div class="rpe-seg${r === targetRpe ? ' active' : ''}">${r}</div>`
+  ).join('');
+  const rpeRow = `
+    <div class="rpe-row">
+      <span class="rpe-label">목표 RPE</span>
+      <div class="rpe-segmented">${rpeSegs}</div>
+    </div>`;
+
+  // 지난 기록 없거나 prevKg <= 0 → RPE 세그만 노출
+  if (!prevKg || prevKg <= 0) {
+    return `<div class="ex-expert-section" data-entry-idx="${entryIdx}" data-target-rpe="${targetRpe}">${rpeRow}</div>`;
+  }
+
+  // ── 추천 무게 계산 ──
+  const todayReps = prevReps || 10;
+  const e1rm      = estimate1RM(prevKg, todayReps);
+  const target    = targetWeightKg(e1rm, targetRpe, todayReps);
+  const { conservative, recommended, aggressive } = weightRange(target, sizeClass, stepKg);
+
+  // ── PR 판정 ──
+  const prInfo = detectPRs(exerciseId);
+  const isPRChallenge = prInfo.prKg > 0 && recommended > prInfo.prKg;
+
+  // ── ws-chip HTML ──
+  const chipsHtml = `
+    <div class="weight-suggest">
+      <div class="ws-chip">
+        <div class="ws-chip-kind">보수</div>
+        <div class="ws-chip-value">${fmt(conservative)}</div>
+      </div>
+      <div class="ws-chip recommend">
+        <div class="ws-chip-kind">추천</div>
+        <div class="ws-chip-value">${fmt(recommended)}</div>
+      </div>
+      <div class="ws-chip">
+        <div class="ws-chip-kind">공격</div>
+        <div class="ws-chip-value">${fmt(aggressive)}</div>
+      </div>
+    </div>`;
+
+  // ── ws-foot 문구 ──
+  const diff = +(recommended - prevKg).toFixed(2);
+  let foot1, foot2;
+  if (isPRChallenge) {
+    foot1 = `지금까지 최고 ${fmt(prInfo.prKg)}kg · 오늘 추천 ${fmt(recommended)}kg을 채우면 <b style="color:var(--primary, #fa342c);">개인 신기록</b>!`;
+    foot2 = `e1RM ${e1rm.toFixed(1)} · ${todayReps}×RPE${targetRpe} 환산 · ±${fmt(stepKg)}kg (${sizeClass === 'small' ? '소근육' : '대근육'} 스텝)`;
+  } else if (diff > 0) {
+    foot1 = `지난주 ${fmt(prevKg)}kg×${prevReps}@RPE${prevRpe} → 오늘 <b style="color:var(--success, #1b854a);">+${fmt(diff)}kg 점진 과부하</b>`;
+    foot2 = `e1RM ${e1rm.toFixed(1)} · ${todayReps}×RPE${targetRpe} 환산 · ±${fmt(stepKg)}kg (${sizeClass === 'small' ? '소근육' : '대근육'} 스텝)`;
+  } else {
+    foot1 = `지난주 ${fmt(prevKg)}kg×${prevReps}@RPE${prevRpe} → 오늘 동일 무게 유지`;
+    foot2 = `e1RM ${e1rm.toFixed(1)} · ${todayReps}×RPE${targetRpe} 환산 · ±${fmt(stepKg)}kg (${sizeClass === 'small' ? '소근육' : '대근육'} 스텝)`;
+  }
+  const footHtml = `<div class="ws-foot">${foot1}<br/>${foot2}</div>`;
+
+  // ── PR 도전 배너 (칩 위에 표시) ──
+  const prBanner = isPRChallenge
+    ? `<div class="ws-foot" style="margin-bottom:6px;">${foot1}</div>`
+    : '';
+  // PR 도전 시에는 foot1을 배너로 올리고 foot2만 아래 ws-foot에
+  const footFinal = isPRChallenge
+    ? `<div class="ws-foot">${foot2}</div>`
+    : footHtml;
+
+  return `
+    <div class="ex-expert-section" data-entry-idx="${entryIdx}" data-target-rpe="${targetRpe}">
+      ${rpeRow}
+      ${prBanner}
+      ${chipsHtml}
+      ${footFinal}
+    </div>`;
+}
+
+// ── RPE 세그 클릭 시 expert section 재렌더 헬퍼 ──
+function _rerenderExpertSection(exBlock, entryIdx, exerciseId, newRpe) {
+  const last = getLastSession(exerciseId);
+  const newHtml = _buildExpertSceneBlock({ entryIdx, exerciseId, last, targetRpe: newRpe });
+  const section = exBlock.querySelector('.ex-expert-section');
+  if (section) {
+    section.outerHTML = newHtml;
+  }
 }
 
 // ── 운동 목록 렌더 ──────────────────────────────────────────────
 export function _renderExerciseList() {
   const container = document.getElementById('wt-exercise-list');
   if (!container) return;
+  // Scene 12 chips/RPE 인터랙션 — 한 번만 등록 (재렌더 시 listeners 재생성 방지).
+  // 저장 로직 없음(범위 A): RPE 클릭 시 expert section 재렌더, ws-chip 클릭 시 recommend 클래스 이동만.
+  if (!container.dataset.sceneInteractive) {
+    container.dataset.sceneInteractive = '1';
+    container.addEventListener('click', (e) => {
+      // RPE 세그 클릭 → expert section 재렌더 (추천 무게 재계산)
+      const rpe = e.target.closest('.rpe-seg');
+      if (rpe) {
+        const newRpe = parseInt(rpe.textContent, 10);
+        if (!newRpe) return;
+        const exBlock = rpe.closest('.ex-block');
+        const section = rpe.closest('.ex-expert-section');
+        if (!exBlock || !section) return;
+        const entryIdx = parseInt(section.dataset.entryIdx, 10);
+        const entry    = S.exercises[entryIdx];
+        if (!entry) return;
+        _rerenderExpertSection(exBlock, entryIdx, entry.exerciseId, newRpe);
+        return;
+      }
+      // ws-chip 클릭 → recommend 클래스 시각 토글만 (저장 없음)
+      const ws = e.target.closest('.ws-chip');
+      if (ws) {
+        const grp = ws.closest('.weight-suggest');
+        grp?.querySelectorAll('.ws-chip').forEach(el => el.classList.toggle('recommend', el === ws));
+      }
+    });
+  }
   container.innerHTML = '';
   const allMuscles = getAllMuscles();
+  const isExpert = (() => { try { return isExpertModeEnabled(); } catch { return false; } })();
 
   S.exercises.forEach((entry, idx) => {
     const ex   = getExList().find(e => e.id === entry.exerciseId);
@@ -97,18 +277,54 @@ export function _renderExerciseList() {
       : '';
     const sparkline = _buildSparkline(entry.exerciseId, mc?.color);
 
+    // Scene 12 — 프로 모드 전용 UI (e1RM 기반 실제 추천 무게 로직)
+    let expertHtml = '';
+    let poPillHtml = '';
+    if (isExpert) {
+      expertHtml = _buildExpertSceneBlock({ entryIdx: idx, exerciseId: entry.exerciseId, last, targetRpe: 8 });
+
+      // po-pill: 지난 기록 있을 때만 recommended - prevKg 차이 계산
+      if (last?.sets?.length) {
+        const mainSets = last.sets.filter(s => s.setType !== 'warmup');
+        const refSet   = mainSets.length ? mainSets[mainSets.length - 1] : last.sets[last.sets.length - 1];
+        const prevKg   = refSet.kg || 0;
+        const prevReps = refSet.reps || 10;
+        if (prevKg > 0) {
+          const exEntry   = getExList().find(e => e.id === entry.exerciseId);
+          const movId     = exEntry?.movementId;
+          const mov       = movId ? MOVEMENTS.find(m => m.id === movId) : null;
+          const sc        = mov?.sizeClass || 'small';
+          const step      = (mov?.stepKg > 0) ? mov.stepKg : 2.5;
+          const e1rm      = estimate1RM(prevKg, prevReps);
+          const t         = targetWeightKg(e1rm, 8, prevReps);
+          const { recommended } = weightRange(t, sc, step);
+          const prInfo    = detectPRs(entry.exerciseId);
+          const isPR      = prInfo.prKg > 0 && recommended > prInfo.prKg;
+          const diff      = +(recommended - prevKg).toFixed(2);
+          const fmtN      = (v) => { const n = Number(v); return Number.isInteger(n) ? String(n) : n.toFixed(1); };
+          if (isPR) {
+            poPillHtml = '<span class="po-pill pr">🏆 PR 도전</span>';
+          } else if (diff > 0) {
+            poPillHtml = `<span class="po-pill">+${fmtN(diff)}kg ↑</span>`;
+          }
+        }
+      }
+    }
+
     const block = document.createElement('div');
-    block.className = 'ex-block';
+    block.className = 'ex-block' + (isExpert ? ' ex-block--expert' : '');
     block.innerHTML = `
       <div class="ex-block-header">
         <span class="ex-block-muscle" style="color:${mc?.color||'#888'}">${mc?.name||''}</span>
         <span class="ex-block-name">${ex?.name||entry.exerciseId}</span>
+        ${poPillHtml}
         ${sparkline}
         <button class="ex-remove-btn" data-idx="${idx}">✕</button>
       </div>
       ${lastHint}
       <div class="ex-sets" id="wt-sets-${idx}"></div>
-      <button class="ex-add-set-btn" data-idx="${idx}">+ 세트 추가</button>`;
+      <button class="ex-add-set-btn" data-idx="${idx}">+ 세트 추가</button>
+      ${expertHtml}`;
 
     block.querySelector('.ex-remove-btn').addEventListener('click', () => wtRemoveExerciseEntry(idx));
     block.querySelector('.ex-add-set-btn').addEventListener('click', () => wtAddSet(idx));
@@ -184,13 +400,28 @@ function _renderSets(entryIdx) {
 }
 
 // ── 종목 선택/에디터 모달 ───────────────────────────────────────
+// 전문가 모드에서는 resolveCurrentGymId()로 단일 진실원 조회 후 해당 헬스장 기구만.
+// S.currentGymId가 stale이어도 resolveCurrentGymId가 자동 복구 + 동기화.
+// 일반 모드는 전체 기구 풀 사용.
+function _getPickerExercisePool() {
+  try {
+    if (!isExpertModeEnabled()) return getExList();
+    const gymId = resolveCurrentGymId();
+    return gymId ? getGymExList(gymId) : getExList();
+  } catch { return getExList(); }
+}
+
 export function _renderPickerList() {
   const container = document.getElementById('ex-picker-list');
   if (!container) return;
   container.innerHTML = '';
   const allMuscles = getAllMuscles();
+  const pool = _getPickerExercisePool();
+  // P1-5: 맞춤 루틴 모드에서는 선택 전용 — 편집/삭제/신규 종목 추가는 숨김.
+  // 오늘 할 운동을 고르는 순간에 카탈로그 편집 UI가 섞이면 멘탈모델이 깨짐.
+  const isExpert = (() => { try { return isExpertModeEnabled(); } catch { return false; } })();
   allMuscles.forEach(muscle => {
-    const list = getExList()
+    const list = pool
       .filter(e => e.muscleId === muscle.id)
       .filter(e => !S.hiddenExercises.includes(e.id));
 
@@ -203,27 +434,33 @@ export function _renderPickerList() {
       const alreadyAdded = S.exercises.some(e => e.exerciseId === ex.id);
       const btn = document.createElement('button');
       btn.className = 'ex-picker-item' + (alreadyAdded ? ' already' : '');
-      btn.innerHTML = `<span>${ex.name}${alreadyAdded?' ✓':''}</span>
-        <div class="ex-picker-actions">
-          <span class="ex-picker-edit" data-exid="${ex.id}">✏️</span>
-          <span class="ex-picker-delete" data-exid="${ex.id}">✕</span>
-        </div>`;
+      if (isExpert) {
+        btn.innerHTML = `<span>${ex.name}${alreadyAdded?' ✓':''}</span>`;
+      } else {
+        btn.innerHTML = `<span>${ex.name}${alreadyAdded?' ✓':''}</span>
+          <div class="ex-picker-actions">
+            <span class="ex-picker-edit" data-exid="${ex.id}">✏️</span>
+            <span class="ex-picker-delete" data-exid="${ex.id}">✕</span>
+          </div>`;
 
-      btn.querySelector('.ex-picker-edit').addEventListener('click', e => {
-        e.stopPropagation();
-        wtOpenExerciseEditor(ex.id, null);
-      });
+        btn.querySelector('.ex-picker-edit').addEventListener('click', e => {
+          e.stopPropagation();
+          wtOpenExerciseEditor(ex.id, null);
+        });
 
-      btn.querySelector('.ex-picker-delete').addEventListener('click', e => {
-        e.stopPropagation();
-        S.hiddenExercises.push(ex.id);
-        _renderPickerList();
-      });
+        btn.querySelector('.ex-picker-delete').addEventListener('click', e => {
+          e.stopPropagation();
+          S.hiddenExercises.push(ex.id);
+          _renderPickerList();
+        });
+      }
 
       if (!alreadyAdded) {
         btn.addEventListener('click', () => {
+          _ensureExpertManualSession();
           S.exercises.push({ muscleId:ex.muscleId, exerciseId:ex.id, sets:[{kg:0,reps:0,setType:'main',done:false}] });
           _renderExerciseList();
+          _syncExpertTopArea();
           wtCloseExercisePicker();
           const timerBar = document.getElementById('wt-workout-timer-bar');
           if (timerBar && !timerBar.classList.contains('wt-open')) timerBar.classList.add('wt-open');
@@ -233,11 +470,14 @@ export function _renderPickerList() {
       }
       group.appendChild(btn);
     });
-    const addBtn = document.createElement('button');
-    addBtn.className = 'ex-picker-add';
-    addBtn.textContent = `+ ${muscle.name} 종목 추가(선택)`;
-    addBtn.addEventListener('click', () => wtOpenExerciseEditor(null, muscle.id));
-    group.appendChild(addBtn);
+    // P1-5: 맞춤 루틴 모드에서는 "신규 종목 추가" 버튼 숨김 (카탈로그 편집 분리)
+    if (!isExpert) {
+      const addBtn = document.createElement('button');
+      addBtn.className = 'ex-picker-add';
+      addBtn.textContent = `+ ${muscle.name} 종목 추가(선택)`;
+      addBtn.addEventListener('click', () => wtOpenExerciseEditor(null, muscle.id));
+      group.appendChild(addBtn);
+    }
     container.appendChild(group);
   });
 }
