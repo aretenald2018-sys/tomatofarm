@@ -31,6 +31,7 @@ const MODALS = [
   { id: 'routine-suggest-modal',  path: './modals/routine-suggest-modal.js',  export: 'MODAL_HTML' },
   { id: 'routine-candidates-modal',path: './modals/routine-candidates-modal.js',export: 'MODAL_HTML' },
   { id: 'insights-modal',         path: './modals/insights-modal.js',         export: 'MODAL_HTML' },
+  { id: 'calendar-day-modal',     path: './modals/calendar-day-modal.js',     export: 'MODAL_HTML' },
 ];
 
 // 모달들이 로드되었는지 추적

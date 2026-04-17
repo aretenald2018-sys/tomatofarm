@@ -125,11 +125,17 @@ export {
 // 남아 있을 수 있음. 이 탭들이 남아 있으면 applyTabOrder/initSwipeNavigation이
 // 존재하지 않는 #tab-* 패널을 찾으려 하여 잠깐의 플래시/빈 렌더가 발생함.
 // 알려진 live 탭만 필터링해 그 플래시를 차단한다.
-const _LIVE_TABS = new Set(['home','diet','workout','cooking','stats','admin']);
+const _LIVE_TABS = new Set(['home','diet','workout','cooking','stats','calendar','admin']);
+// 하단 탭바 노출 순서는 항상 [home, diet, workout, calendar]로 강제 (요구사항)
+const _REQUIRED_PREFIX = ['home','diet','workout','calendar'];
 function _sanitizeTabList(list) {
   if (!Array.isArray(list)) return [...DEFAULT_TAB_ORDER];
   const cleaned = list.filter(t => _LIVE_TABS.has(t));
-  return cleaned.length ? cleaned : [...DEFAULT_TAB_ORDER];
+  if (!cleaned.length) return [...DEFAULT_TAB_ORDER];
+  // 앞 4개가 required 순서가 아니면 DEFAULT로 강제 복원
+  const head = cleaned.slice(0, _REQUIRED_PREFIX.length).join(',');
+  if (head !== _REQUIRED_PREFIX.join(',')) return [...DEFAULT_TAB_ORDER];
+  return cleaned;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -864,8 +870,8 @@ export const saveSectionTitle = async (key, title) => {
 export const getMiniMemoItems  = () => _settings.mini_memo_items || [];
 export const saveMiniMemoItems = (items) => _saveSetting('mini_memo_items', items);
 
-export const getTabOrder  = () => _settings.tab_order || DEFAULT_TAB_ORDER;
-export const saveTabOrder = (order) => _saveSetting('tab_order', order);
+export const getTabOrder  = () => _sanitizeTabList(_settings.tab_order);
+export const saveTabOrder = (order) => _saveSetting('tab_order', _sanitizeTabList(order));
 
 export const DEFAULT_VIS_TABS = DEFAULT_VISIBLE_TABS;
 export const getVisibleTabs  = () => _settings.visible_tabs || DEFAULT_VISIBLE_TABS;

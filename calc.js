@@ -894,3 +894,220 @@ export function runAllCelebrations(ctx) {
   return out;
 }
 
+// ═════════════════════════════════════════════════════════════
+// 캘린더 탭: 운동 소모칼로리 (MET 기반, Ainsworth 2011 Compendium)
+// kcal = MET × weight(kg) × time(h)
+// ═════════════════════════════════════════════════════════════
+
+// 부위별 MET. 근력 세트 단위 (세트당 ~2분 가정: 수행 30-45초 + 휴식 75-90초)
+const MUSCLE_MET = {
+  chest: 6.0, back: 6.5, lower: 7.0, glute: 6.5,
+  shoulder: 5.0, abs: 4.0, bicep: 3.5, tricep: 3.5,
+};
+const SET_DURATION_H = 2 / 60; // 2분 → 시간
+
+// 런닝 속도별 MET (Ainsworth 2011 Compendium)
+// 6 mph(9.7 km/h) = 9.8 MET, 7 mph(11.3 km/h) = 11 MET → 10 km/h는 9.8쪽이 정확
+function _runMET(speedKmh) {
+  if (!isFinite(speedKmh) || speedKmh <= 0) return 8.0; // 기본
+  if (speedKmh < 6)     return 6.0;
+  if (speedKmh < 8)     return 8.0;
+  if (speedKmh <= 10.5) return 9.8;
+  return 11.0;
+}
+
+/**
+ * 하루 운동 소모칼로리 계산 (MET 기반)
+ * @param {object} day - workouts/{dateKey} 도큐먼트
+ * @param {number} weightKg - 체중(kg). 없으면 70 기본
+ * @returns {{total:number, gym:number, running:number, swimming:number, cf:number}}
+ */
+export function calcBurnedKcal(day, weightKg) {
+  const w = Number(weightKg) > 0 ? Number(weightKg) : 70;
+  const d = day || {};
+
+  // 근력: 완료 세트(done) × 부위별 MET
+  let gym = 0;
+  if (!d.gym_skip && Array.isArray(d.exercises)) {
+    for (const ex of d.exercises) {
+      const mid = ex?.muscleId;
+      const met = MUSCLE_MET[mid];
+      if (!met) continue;
+      const doneSets = Array.isArray(ex?.sets)
+        ? ex.sets.filter(s => s?.done).length
+        : 0;
+      gym += met * w * SET_DURATION_H * doneSets;
+    }
+  }
+
+  // 런닝: 시간 + 속도 기반
+  let running = 0;
+  if (d.running && !d.running_skip) {
+    const min = (Number(d.runDurationMin) || 0) + (Number(d.runDurationSec) || 0) / 60;
+    const km  = Number(d.runDistance) || 0;
+    if (min > 0) {
+      const speed = km > 0 ? (km / (min / 60)) : 0;
+      running = _runMET(speed) * w * (min / 60);
+    } else {
+      running = 8.0 * w * 0.5; // 시간 미기록: 기본 30분
+    }
+  }
+
+  // 수영: 기본 30분 (workoutDuration 있으면 우선)
+  let swimming = 0;
+  if (d.swimming && !d.swimming_skip) {
+    const durH = Number(d.workoutDuration) > 0 ? Number(d.workoutDuration) / 3600 : 0.5;
+    swimming = 6.0 * w * durH;
+  }
+
+  // CF: 기본 30분 (workoutDuration 있으면 우선)
+  let cf = 0;
+  if (d.cf && !d.cf_skip) {
+    const durH = Number(d.workoutDuration) > 0 ? Number(d.workoutDuration) / 3600 : 0.5;
+    cf = 8.0 * w * durH;
+  }
+
+  const total = Math.round(gym + running + swimming + cf);
+  return {
+    total,
+    gym:      Math.round(gym),
+    running:  Math.round(running),
+    swimming: Math.round(swimming),
+    cf:       Math.round(cf),
+  };
+}
+
+// ═════════════════════════════════════════════════════════════
+// 캘린더 탭: 일일 점수 (100점 만점, baseline 90)
+// ═════════════════════════════════════════════════════════════
+
+/**
+ * 칼로리 이탈률 기반 감점 (최대 12)
+ *   ±10% 이내 0 / 10~20% 3 / 20~40% 7 / 그 이상 12
+ */
+function _kcalPenalty(actual, target) {
+  if (!target || target <= 0) return 0;
+  const dev = Math.abs(actual - target) / target;
+  if (dev <= 0.10) return 0;
+  if (dev <= 0.20) return 3;
+  if (dev <= 0.40) return 7;
+  return 12;
+}
+
+/**
+ * 탄단지 감점 (최대 5)
+ *   단백질 <60%: 4, <80%: 2 / 탄수·지방 +80% 초과: 2 (합 5로 clamp)
+ */
+function _macroPenalty(day, macroTarget) {
+  if (!macroTarget) return 0;
+  const protG = (day.bProtein||0) + (day.lProtein||0) + (day.dProtein||0) + (day.sProtein||0);
+  const carbG = (day.bCarbs||0)   + (day.lCarbs||0)   + (day.dCarbs||0)   + (day.sCarbs||0);
+  const fatG  = (day.bFat||0)     + (day.lFat||0)     + (day.dFat||0)     + (day.sFat||0);
+
+  let p = 0;
+  const proteinRatio = macroTarget.proteinG > 0 ? protG / macroTarget.proteinG : 1;
+  if (proteinRatio < 0.60)      p += 4;
+  else if (proteinRatio < 0.80) p += 2;
+
+  const overLimit = (actual, target) => target > 0 && actual > target * 1.80;
+  if (overLimit(carbG, macroTarget.carbG) || overLimit(fatG, macroTarget.fatG)) p += 2;
+
+  return Math.min(5, p);
+}
+
+/**
+ * 운동 감점 (최대 8)
+ */
+function _workoutPenalty(burnedKcal, day) {
+  const skipped = !!(day.gym_skip || day.cf_skip || day.running_skip || day.swimming_skip);
+  const anyLogged = burnedKcal > 0;
+  if (!anyLogged && skipped) return 2;  // 의도적 휴식
+  if (!anyLogged)            return 8;  // 기록 전무
+  if (burnedKcal >= 300) return 0;
+  if (burnedKcal >= 150) return 2;
+  if (burnedKcal >= 50)  return 5;
+  return 6;
+}
+
+/**
+ * 기록 완결성 감점 (최대 2) — 식사 1건 누락당 1점, 최대 2
+ */
+function _completenessPenalty(day) {
+  let miss = 0;
+  const mealLogged = (k, skipKey) => {
+    if (day[skipKey]) return true; // 굶었음
+    const kcal = Number(day[k]) || 0;
+    return kcal > 0;
+  };
+  if (!mealLogged('bKcal', 'breakfast_skipped')) miss++;
+  if (!mealLogged('lKcal', 'lunch_skipped'))     miss++;
+  if (!mealLogged('dKcal', 'dinner_skipped'))    miss++;
+  return Math.min(2, miss);
+}
+
+/**
+ * 체중 방향성 감점 (최대 3)
+ *   - 목표 방향 일치 or 유지(±0.3kg) = 0
+ *   - 반대 방향 = 3
+ *   - 7일 내 체중 없음 = 1
+ */
+function _weightPenalty(dirSign, weightDeltaKg) {
+  if (weightDeltaKg == null) return 1;
+  if (dirSign === 0) {
+    return Math.abs(weightDeltaKg) <= 0.5 ? 0 : 2; // 유지 목표
+  }
+  if (Math.abs(weightDeltaKg) <= 0.3) return 0; // 사실상 유지
+  const sameDir = Math.sign(weightDeltaKg) === Math.sign(dirSign);
+  return sameDir ? 0 : 3;
+}
+
+/**
+ * 일일 점수 (100점 만점)
+ * @param {object} ctx
+ *   - day: workouts 도큐먼트
+ *   - targetKcal: 해당 일자 목표 칼로리
+ *   - macroTarget: { proteinG, carbG, fatG }
+ *   - burnedKcal: calcBurnedKcal().total
+ *   - weightKg: 해당 일자 체중(stepwise)
+ *   - weightDeltaKg: 7일전 대비 체중 변화(+ 증량, - 감량)
+ *   - weightDirSign: 목표 방향 (-1 감량, 0 유지, +1 증량)
+ * @returns {{score:number, band:'great'|'good'|'soso'|'bad'|'none', breakdown:object, hasData:boolean}}
+ */
+export function calcDayScore(ctx) {
+  const { day = {}, targetKcal, macroTarget, burnedKcal = 0,
+          weightDeltaKg, weightDirSign = -1 } = ctx || {};
+
+  const actualKcal = (day.bKcal||0) + (day.lKcal||0) + (day.dKcal||0) + (day.sKcal||0);
+  const hasAnyLog = actualKcal > 0
+    || (Array.isArray(day.exercises) && day.exercises.length > 0)
+    || day.cf || day.running || day.swimming;
+
+  if (!hasAnyLog) {
+    return { score: null, band: 'none', hasData: false, breakdown: null };
+  }
+
+  const pKcal    = _kcalPenalty(actualKcal, targetKcal);
+  const pMacro   = _macroPenalty(day, macroTarget);
+  const pWorkout = _workoutPenalty(burnedKcal, day);
+  const pWeight  = _weightPenalty(weightDirSign, weightDeltaKg);
+  const pDone    = _completenessPenalty(day);
+
+  // 최저 70점 하한 (총 감점 max = 12+5+8+3+2 = 30)
+  const score = Math.max(70, Math.min(100, 100 - pKcal - pMacro - pWorkout - pWeight - pDone));
+  const band =
+    score >= 95 ? 'great' :
+    score >= 90 ? 'good'  :
+    score >= 80 ? 'soso'  : 'bad';
+
+  return {
+    score, band, hasData: true,
+    breakdown: {
+      kcal:     { penalty: pKcal,    max: 12 },
+      macro:    { penalty: pMacro,   max: 5  },
+      workout:  { penalty: pWorkout, max: 8  },
+      weight:   { penalty: pWeight,  max: 3  },
+      complete: { penalty: pDone,    max: 2  },
+    },
+  };
+}
+

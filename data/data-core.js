@@ -160,8 +160,8 @@ export function _setGyms(v)             { _gyms = v; }
 export function _setRoutineTemplates(v) { _routineTemplates = v; }
 
 // ── 설정 캐시 ───────────────────────────────────────────────────
-export const DEFAULT_TAB_ORDER = ['home','workout','cooking','stats'];
-export const DEFAULT_VISIBLE_TABS = ['home','diet','workout','stats'];
+export const DEFAULT_TAB_ORDER = ['home','diet','workout','calendar','cooking','stats'];
+export const DEFAULT_VISIBLE_TABS = ['home','diet','workout','calendar'];
 
 export const DEFAULT_DIET_PLAN = {
   height: null, weight: null, bodyFatPct: null, age: null,

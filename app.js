@@ -68,6 +68,7 @@ function _hideTabSkeleton(tabId) {
 async function _lazyRenderStats()   { _showTabSkeleton('tab-stats');   try { const m = await _lazy('stats',   './render-stats.js');              m.renderStats();   return m; } finally { _hideTabSkeleton('tab-stats'); } }
 async function _lazyRenderAdmin()   { _showTabSkeleton('tab-admin');   try { const m = await _lazy('admin',   './render-admin.js?v=20260410e');  m.renderAdmin();   return m; } finally { _hideTabSkeleton('tab-admin'); } }
 async function _lazyRenderCooking() { _showTabSkeleton('tab-cooking'); try { const m = await _lazy('cooking', './render-cooking.js');            m.renderCooking(); return m; } finally { _hideTabSkeleton('tab-cooking'); } }
+async function _lazyRenderCalendar(){ _showTabSkeleton('tab-calendar');try { const m = await _lazy('calendar',  './render-calendar.js');           m.renderCalendar();return m; } finally { _hideTabSkeleton('tab-calendar'); } }
 import { loadAndInjectModals } from './modal-manager.js';
 
 // ── 분리된 모달 핸들러 import ──────────────────────────────────
@@ -186,6 +187,7 @@ async function switchTab(tab) {
   if (tab === 'stats')    await _lazyRenderStats();
   if (tab === 'admin')    await _lazyRenderAdmin();
   if (tab === 'cooking')  await _lazyRenderCooking();
+  if (tab === 'calendar') await _lazyRenderCalendar();
 }
 
 async function renderAll() {
@@ -197,6 +199,7 @@ async function renderAll() {
   renderHome();
   if (_currentTab === 'stats')    await _lazyRenderStats();
   if (_currentTab === 'cooking')  await _lazyRenderCooking();
+  if (_currentTab === 'calendar') await _lazyRenderCalendar();
   if (_currentTab === 'workout' && typeof window.renderExpertTopArea === 'function') {
     window.renderExpertTopArea();
   }

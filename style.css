@@ -7005,3 +7005,209 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
 .wt-step-label { font-size: 11px; }
 .wt-st-info { font-size: 14px; }
 .wt-step-hint { font-size: 13px; line-height: 1.55; padding: 6px 0; }
+
+/* ════════════════════════════════════════════════════════════════════
+   캘린더 탭 (TDS Mobile 스펙, 점수 기반 UI)
+   ════════════════════════════════════════════════════════════════════ */
+#tab-calendar { padding: 16px 12px 80px; }
+
+/* 헤더 */
+.cal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; margin-bottom: 12px;
+}
+.cal-nav-btn {
+  width: 36px; height: 36px; border: none; border-radius: 12px;
+  background: var(--seed-bg-fill, #f2f3f5); color: var(--text);
+  font-size: 17px; font-weight: 600; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: 0.1s ease-in-out;
+}
+.cal-nav-btn:hover { background: var(--primary-bg, #fdf0f0); color: var(--primary); }
+.cal-title {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 17px; font-weight: 700; color: var(--text);
+}
+.cal-today-btn {
+  padding: 6px 10px; border: none; border-radius: 10px;
+  background: var(--primary-bg, #fdf0f0); color: var(--primary);
+  font-size: 12px; font-weight: 600; cursor: pointer;
+  transition: 0.1s ease-in-out;
+}
+.cal-today-btn:hover { background: var(--primary); color: #fff; }
+
+/* 월 요약 */
+.cal-month-summary {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; padding: 14px 16px;
+  background: var(--seed-bg-layer, #fff);
+  border: 1px solid var(--seed-stroke-neutral, #e5e7eb);
+  border-radius: 14px; margin-bottom: 12px;
+}
+.cal-month-empty {
+  justify-content: center;
+  color: var(--muted); font-size: 13px;
+}
+.cal-month-avg {
+  display: flex; flex-direction: column; gap: 2px;
+  flex-shrink: 0;
+}
+.cal-month-avg-label {
+  font-size: 11px; color: var(--muted); font-weight: 500;
+}
+.cal-month-avg-score {
+  font-size: 30px; font-weight: 700; color: var(--text);
+  line-height: 1.1;
+}
+.cal-month-avg-score span {
+  font-size: 13px; line-height: 19.5px; font-weight: 500;
+  color: var(--muted); margin-left: 2px;
+}
+.cal-month-side {
+  display: flex; flex-direction: column; gap: 4px;
+  font-size: 11px; text-align: right;
+}
+.cal-month-side > div { display: flex; justify-content: space-between; gap: 10px; }
+.cal-month-side span { color: var(--muted); }
+.cal-month-side strong { color: var(--text); font-weight: 600; }
+
+/* 요일 헤더 */
+.cal-weekdays {
+  display: grid; grid-template-columns: repeat(7, 1fr);
+  gap: 4px; margin-bottom: 4px;
+}
+.cal-wd {
+  text-align: center; font-size: 11px; font-weight: 600;
+  color: var(--muted); padding: 4px 0;
+}
+.cal-wd-sun { color: #ef4444; }
+.cal-wd-sat { color: #3b82f6; }
+
+/* 그리드 셀 */
+.cal-grid {
+  display: grid; grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+.cal-cell {
+  min-height: 92px;
+  background: var(--seed-bg-layer, #fff);
+  border: 1px solid var(--seed-stroke-neutral, #e5e7eb);
+  border-radius: 10px; padding: 5px 6px 6px;
+  display: flex; flex-direction: column; gap: 4px;
+  cursor: pointer; transition: 0.1s ease-in-out;
+  overflow: hidden;
+  position: relative;
+}
+
+/* 90점 이상 도장: 셀 가운데에 기울인 토마토 로고 */
+.cal-stamp {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 64px; height: 64px;
+  opacity: 0.18;
+  transform: translate(-50%, -50%) rotate(-16deg);
+  pointer-events: none;
+  z-index: 0;
+}
+.cal-cell-band-great .cal-stamp { opacity: 0.28; }
+.cal-cell > .cal-cell-head,
+.cal-cell > .cal-cell-metrics { position: relative; z-index: 1; }
+.cal-cell:not(.cal-cell-disabled):hover {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary-bg, #fdf0f0);
+}
+.cal-cell-empty { background: transparent; border: none; cursor: default; }
+.cal-cell-disabled { opacity: 0.35; cursor: default; background: transparent; }
+.cal-cell-today {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
+}
+
+/* 점수 밴드 색상 — 토마토 팔레트 농도 그라데이션 (낮을수록 약함, 높을수록 강함) */
+.cal-cell-band-great  { border-left: 3px solid #ca1d13; }  /* Dark */
+.cal-cell-band-good   { border-left: 3px solid #fa342c; }  /* Primary */
+.cal-cell-band-soso   { border-left: 3px solid #fc6a66; }  /* Sub */
+.cal-cell-band-bad    { border-left: 3px solid #fed4d2; }  /* Light */
+
+/* 셀 상단: 날짜 + 점수 */
+.cal-cell-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 4px;
+}
+.cal-cell-date {
+  font-size: 11px; font-weight: 600; color: var(--muted);
+  line-height: 1;
+}
+.cal-cell-today .cal-cell-date { color: var(--primary); }
+.cal-score {
+  font-size: 15px; font-weight: 700; color: var(--text);
+  line-height: 1;
+}
+.cal-score span {
+  font-size: 9px; font-weight: 500; color: var(--muted); margin-left: 1px;
+}
+.cal-score-empty { color: var(--muted); font-weight: 500; }
+.cal-cell-band-great .cal-score { color: #ca1d13; }  /* Dark */
+.cal-cell-band-good  .cal-score { color: #fa342c; }  /* Primary */
+.cal-cell-band-soso  .cal-score { color: #fc6a66; }  /* Sub */
+.cal-cell-band-bad   .cal-score { color: #e89591; }  /* Light보다 진한 중간 톤 (가독성) */
+
+/* 셀 하단: 3지표 텍스트 */
+.cal-cell-metrics {
+  display: flex; flex-direction: column; gap: 1px;
+  margin-top: auto;
+}
+.cal-metric {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 11px; line-height: 16.5px;
+}
+.cal-metric-label { color: var(--muted); font-weight: 500; }
+.cal-metric-val { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.cal-footnote {
+  margin-top: 12px; font-size: 11px; color: var(--muted);
+  text-align: center; line-height: 1.5;
+}
+
+/* ── 상세 모달: 점수 카드 + 항목별 breakdown ── */
+.cal-score-card {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 20px 16px; margin-top: 12px;
+  border: 1px solid; border-radius: 14px;
+}
+.cal-score-big {
+  font-size: 48px; font-weight: 700; line-height: 1;
+}
+.cal-score-big span {
+  font-size: 16px; line-height: 24px; font-weight: 500; margin-left: 2px;
+}
+.cal-score-band {
+  font-size: 13px; font-weight: 600;
+}
+.cal-bd-list {
+  display: flex; flex-direction: column; gap: 8px;
+  margin-top: 16px;
+}
+.cal-bd-row {
+  background: var(--seed-bg-layer, #fff);
+  border: 1px solid var(--seed-stroke-neutral, #e5e7eb);
+  border-radius: 12px; padding: 12px 14px;
+}
+.cal-bd-main {
+  display: flex; justify-content: space-between; align-items: baseline;
+  gap: 8px;
+}
+.cal-bd-label {
+  font-size: 14px; font-weight: 600; color: var(--text);
+}
+.cal-bd-score {
+  font-size: 15px; font-weight: 700; color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.cal-bd-score small {
+  font-size: 11px; font-weight: 500; color: var(--muted); margin-left: 1px;
+}
+.cal-bd-desc {
+  margin-top: 4px;
+  font-size: 12px; color: var(--muted); line-height: 1.5;
+}

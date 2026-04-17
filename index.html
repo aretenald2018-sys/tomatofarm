@@ -217,8 +217,8 @@
   <button class="tab-btn" data-tab="workout" onclick="switchTab('workout')">
     <span class="tab-icon">💪</span><span>운동</span>
   </button>
-  <button class="tab-btn" data-tab="stats" onclick="switchTab('stats')">
-    <span class="tab-icon">📊</span><span>통계</span>
+  <button class="tab-btn" data-tab="calendar" onclick="switchTab('calendar')">
+    <span class="tab-icon">📅</span><span>캘린더</span>
   </button>
   <button class="tab-btn tab-more-btn" data-tab="more" onclick="toggleMoreMenu()">
     <span class="tab-icon">⋯</span><span>더보기</span>
@@ -230,6 +230,7 @@
   <div class="more-menu-backdrop" onclick="toggleMoreMenu()"></div>
   <div class="more-menu-sheet">
     <div id="more-menu-dynamic-tabs"></div>
+    <button class="more-menu-item tab-btn" data-tab="stats" onclick="switchTab('stats');toggleMoreMenu()">📊 통계</button>
     <button class="more-menu-item tab-btn" data-tab="cooking" onclick="switchTab('cooking');toggleMoreMenu()">🍳 요리</button>
     <div id="admin-menu-items" style="display:none;">
       <div style="border-top:1px solid var(--border);margin-top:4px;padding-top:4px">
@@ -861,6 +862,11 @@
       </div>
     </div>
   </div>
+</div>
+
+<!-- ═══ 캘린더 탭 ═══ -->
+<div id="tab-calendar" class="tab-panel">
+  <div id="calendar-root"></div>
 </div>
 
 <!-- ═══ 요리 탭 ═══ -->

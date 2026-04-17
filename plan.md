@@ -49,6 +49,21 @@
 
 ## Phase 현재: 기능 개발
 
+### 2026-04-17 캘린더 탭 신설 ✅
+하단 탭 `통계`를 `캘린더`로 교체하고, 통계는 `더보기` 메뉴로 이동. 일자별 100점 만점 점수 + (섭취/소모/체중) 3지표 텍스트로 표시. 셀 클릭 시 항목별 점수 breakdown 모달.
+- [x] `index.html` 하단 탭바 `stats` 버튼 제거 → `calendar` 버튼(📅) 신설, 더보기 메뉴에 `📊 통계` 추가
+- [x] `index.html` `#tab-calendar` 패널 추가 (`#calendar-root` 마운트)
+- [x] `data/data-core.js` `DEFAULT_TAB_ORDER`=['home','diet','workout','calendar','cooking','stats']`, `DEFAULT_VISIBLE_TABS`에 calendar 추가
+- [x] `data.js` `_LIVE_TABS`에 `calendar` 허용
+- [x] `app.js` `_lazyRenderCalendar()` 추가 + `switchTab`/`renderAll` 케이스 추가
+- [x] `calc.js` `calcBurnedKcal(day, weightKg)` 순수함수 — MET 기반 운동 소모칼로리 (부위별 MET 매핑: chest 6.0 / back 6.5 / lower 7.0 / glute 6.5 / shoulder 5.0 / abs 4.0 / bicep 3.5 / tricep 3.5, 세트당 2분 가정. 런닝 속도별(6~11 MET), 수영 6.0, CF 8.0)
+- [x] `calc.js` `calcDayScore(ctx)` 순수함수 — 100점 만점, **최저 70점 하한**. 배점: 칼로리 12 / 탄단지 5 / 운동 8 / 체중 3 / 완결 2 (합 max 30). 대부분의 날이 90점 이상 유지. band: great(95+)/good(90+)/soso(80+)/bad(<80 = 70~79)/none
+- [x] `tests/calc.score.test.js` 57개 테스트 전원 통과 (재배점 반영)
+- [x] `render-calendar.js` 재설계 — 게이지바 제거, 셀에 점수+섭취/소모/체중 텍스트, 월 평균 점수 카드, 좌우 화살표
+- [x] `modals/calendar-day-modal.js` + `render-calendar.js._openDay` — 점수 breakdown 5항목 표시
+- [x] `style.css` TDS Mobile 스펙 (t6/t7 타이포, 세그먼트 r10/r12/r14, border 띠로 점수 밴드)
+- [x] `sw.js` `CACHE_VERSION` → `tomatofarm-v20260417z9-calendar-score` + STATIC_ASSETS에 2개 파일 추가
+
 ### 2026-04-17 레거시 기능 클린업 (플래시 버그 제거) ✅
 로그인 시 구 레거시 UI가 잠깐 렌더링된 뒤 홈탭이 오버라이드하는 플래시 현상 수정.
 - [x] 플래시 원인 진단: `DEFAULT_TAB_ORDER`에 존재하지 않는 'monthly' 탭이 포함되어, 저장된 `tab_order`가 비어있지 않은 유저는 있지도 않은 `#tab-monthly` 패널을 잠깐 타겟팅
