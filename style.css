@@ -7089,11 +7089,11 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
   gap: 4px;
 }
 .cal-cell {
-  min-height: 92px;
+  min-height: 82px;
   background: var(--seed-bg-layer, #fff);
   border: 1px solid var(--seed-stroke-neutral, #e5e7eb);
-  border-radius: 10px; padding: 5px 6px 6px;
-  display: flex; flex-direction: column; gap: 4px;
+  border-radius: 10px; padding: 4px 5px 5px;
+  display: flex; flex-direction: column; gap: 3px;
   cursor: pointer; transition: 0.1s ease-in-out;
   overflow: hidden;
   position: relative;
@@ -7125,27 +7125,27 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
 }
 
 /* 점수 밴드 색상 — 토마토 팔레트 농도 그라데이션 (낮을수록 약함, 높을수록 강함) */
-.cal-cell-band-great  { border-left: 3px solid #ca1d13; }  /* Dark */
-.cal-cell-band-good   { border-left: 3px solid #fa342c; }  /* Primary */
-.cal-cell-band-soso   { border-left: 3px solid #fc6a66; }  /* Sub */
-.cal-cell-band-bad    { border-left: 3px solid #fed4d2; }  /* Light */
+.cal-cell-band-great  { border-left: 3px solid #ca1d13; background: #fed4d2; }  /* Dark + Light BG */
+.cal-cell-band-good   { border-left: 3px solid #fa342c; background: #fdf0f0; }  /* Primary + BG */
+.cal-cell-band-soso   { border-left: 3px solid #fc6a66; }                       /* Sub */
+.cal-cell-band-bad    { border-left: 3px solid #fed4d2; }                       /* Light */
 
-/* 셀 상단: 날짜 + 점수 */
+/* 셀 상단: 날짜 + 점수 (전반 축소) */
 .cal-cell-head {
   display: flex; align-items: baseline; justify-content: space-between;
   gap: 2px;
 }
 .cal-cell-date {
-  font-size: 11px; font-weight: 600; color: var(--muted);
+  font-size: 10px; font-weight: 600; color: var(--muted);
   line-height: 1;
 }
 .cal-cell-today .cal-cell-date { color: var(--primary); }
 .cal-score {
-  font-size: 14px; font-weight: 700; color: var(--text);
+  font-size: 13px; font-weight: 700; color: var(--text);
   line-height: 1;
 }
 .cal-score span {
-  font-size: 8px; font-weight: 500; color: var(--muted); margin-left: 1px;
+  font-size: 7px; font-weight: 500; color: var(--muted); margin-left: 1px;
 }
 .cal-score-empty { color: var(--muted); font-weight: 500; }
 .cal-cell-band-great .cal-score { color: #ca1d13; }  /* Dark */
@@ -7161,7 +7161,7 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
 .cal-metric {
   display: flex; justify-content: space-between; align-items: baseline;
   gap: 2px;
-  font-size: 10px; line-height: 14px;
+  font-size: 9px; line-height: 12px;
   min-width: 0;
 }
 .cal-metric-label {
