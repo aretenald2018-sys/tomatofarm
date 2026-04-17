@@ -234,6 +234,15 @@ async function init() {
     // localStorage 캐시를 Firebase 최신으로 동기화
     const { refreshCurrentUserFromDB } = await import('./data.js');
     await refreshCurrentUserFromDB();
+
+    // AI 음식 프로파일 빌드 (P1: 메모리 전용, _cache 기반 — 네트워크 없음, 비동기 비차단)
+    // P2에서 runAIEstimate 파이프라인에 연결될 예정. 지금은 관측/축적 단계.
+    requestAnimationFrame(async () => {
+      try {
+        const { rebuildFoodProfile } = await import('./data/ai-food-profile.js');
+        rebuildFoodProfile();
+      } catch (e) { console.warn('[ai-food-profile]', e); }
+    });
     applyTabOrder(getTabOrder());
 
     // 하단 탭 가시성 적용

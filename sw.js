@@ -3,7 +3,7 @@
 
 // 캐시 버전: 타임스탬프 기반 자동 생성 — 파일 수정 시 SW 자동 업데이트
 // (SW 파일 내용이 1바이트라도 바뀌면 브라우저가 새 SW로 인식)
-const CACHE_VERSION = 'tomatofarm-v20260417z5-legacy-cleanup';
+const CACHE_VERSION = 'tomatofarm-v20260417z6-ai-food-profile';
 const RUNTIME_CACHE = 'dashboard3-runtime';
 const STATIC_ASSETS = [
   './',
@@ -90,6 +90,7 @@ const STATIC_ASSETS = [
   './data/data-social-interact.js',
   './data/data-social-log.js',
   './data/data-analytics.js',
+  './data/raw-ingredients.js',
   // 어드민 모듈
   './admin/admin-overview.js',
   './admin/admin-users.js',
@@ -118,6 +119,8 @@ const STATIC_ASSETS = [
   './data/korean-food-normalize.js',
   './workout/ai-estimate.js',
   './modals/ai-estimate-banner.js',
+  // AI 개인화 프로파일 (P1)
+  './data/ai-food-profile.js',
 ];
 
 self.addEventListener('install', (event) => {
