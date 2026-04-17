@@ -9,6 +9,6 @@
 - CRITICAL: If you modify any file included in `sw.js` `STATIC_ASSETS`, you must bump `CACHE_VERSION` in `sw.js` in the same change.
 - Firebase access must go through `data.js`. Do not call Firestore directly from views or feature modules.
 - Treat `setDoc` as a full overwrite. Preserve all existing fields, especially photo fields such as `bPhoto`, `lPhoto`, `dPhoto`, `sPhoto`, and `workoutPhoto`.
-- Deployment is forbidden for the agent. Do not push or deploy. The user pushes to the `tomatofarm` remote directly after local verification.
+- Deployment is allowed only when the user explicitly instructs it (e.g. "배포해", "푸시해", "deploy", "push it", "배포까지 해"). Without an explicit instruction, do not push or deploy automatically. When explicitly instructed, push to the `tomatofarm` remote — local verification is assumed to be completed by the user.
 - Keep the project in vanilla JavaScript. Do not introduce frameworks, bundlers, or build tooling.
 - Final verification must include changed files, the local URL or flow to test, and the exact server command.

@@ -8,7 +8,7 @@
 ## ⚠️ 절대 규칙 (위반 시 버그/장애)
 1. **Firebase 직접 호출 금지** — 모든 CRUD는 `data.js` 배럴이 노출하는 getter/setter만 사용. 뷰/feature-*.js에서 Firestore API 절대 금지.
 2. **setDoc은 전체 덮어쓰기** — 필드 하나라도 빠뜨리면 기존 데이터 삭제됨. 사진(`bPhoto`, `lPhoto`, `dPhoto`, `sPhoto`, `workoutPhoto`) 누락하면 사진 날아감.
-3. **배포 금지** — 코드 변경 중 push/배포 절대 금지. localhost 확인 후 유저가 직접 `tomatofarm` 리모트에만 push.
+3. **배포는 유저의 명시적 지시가 있을 때만** — 평소에는 push/배포 자동 실행 금지. 단, 유저가 명시적으로 "배포해", "푸시해", "배포까지 해" 등으로 지시한 경우에는 항상 `tomatofarm` 리모트에 push 가능. localhost 확인은 유저가 완료했다고 간주.
 4. **순수 로직은 calc.js** — BMR, 칼로리, 스트릭, 토마토 사이클 계산 등 사이드이펙트 없는 함수만. DOM 접근·Firebase 호출 금지.
 5. **SW 캐시 버전 범프** — `sw.js`의 `STATIC_ASSETS`에 등록된 파일을 수정했으면 `CACHE_VERSION`을 반드시 범프 + `sw.js` 함께 커밋.
 
