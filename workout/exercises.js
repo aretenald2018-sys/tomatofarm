@@ -13,7 +13,8 @@ import { getExList, getGymExList, getLastSession, detectPRs,
          dateKey, saveExercise,
          deleteExercise, getAllMuscles,
          saveCustomMuscle,
-         isExpertModeEnabled }          from '../data.js';
+         isExpertModeEnabled,
+         getExpertPreset }              from '../data.js';
 import { estimate1RM, rpeRepsToPct, targetWeightKg, weightRange } from '../calc.js';
 import { MOVEMENTS }                   from '../config.js';
 // resolveCurrentGymId는 expert.js의 단일 진실원 (preset + S.currentGymId 동기화).
@@ -85,7 +86,12 @@ export function wtRemoveSet(entryIdx, si) {
 }
 
 export function wtUpdateSet(entryIdx, si, field, val) {
-  S.exercises[entryIdx].sets[si][field] = field === 'setType' ? val : (parseFloat(val) || 0);
+  // RPE 빈 값은 null로 저장 — 0과 구분해 _computeExpertRec의 prevRpeKnown 판정을 명확히.
+  let parsed;
+  if (field === 'setType') parsed = val;
+  else if (field === 'rpe') parsed = (val === '' || val == null) ? null : (parseFloat(val) || null);
+  else parsed = (parseFloat(val) || 0);
+  S.exercises[entryIdx].sets[si][field] = parsed;
   if (field === 'kg' || field === 'reps') {
     S.exercises[entryIdx].sets[si].done = false;
   }
@@ -147,6 +153,18 @@ function _todayDateKey() {
 function _fmtNum(v) {
   const n = Number(v);
   return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
+
+// 유저 preferredRpe('6-7'|'7-8'|'8-9') → targetRpe 정수.
+// 범위 상한을 사용 — "오늘 마지막 세트에서 도달할 RPE" 의미이므로 상한이 적절.
+// 기본값 8(중강도)은 점진적 과부하 표준 타깃.
+function _presetTargetRpe() {
+  try {
+    const p = getExpertPreset();
+    const str = String(p?.preferredRpe || '7-8');
+    const high = parseInt(str.split('-').pop(), 10);
+    return [6,7,8,9,10].includes(high) ? high : 8;
+  } catch { return 8; }
 }
 
 // 추천 산출용 reference 세션 결정.
@@ -283,13 +301,23 @@ function _buildExpertSceneBlock({ entryIdx, exerciseId, last, targetRpe = 8 }) {
   const refLabel  = rec.fromCurrentEntry ? '방금' : '지난 기록';
   const nextLabel = rec.fromCurrentEntry ? '다음 세트' : '오늘';
   const foot2 = `e1RM ${rec.e1rm.toFixed(1)} · ${rec.todayReps}×RPE${targetRpe} 환산 · ±${fmt(rec.stepKg)}kg (${sizeLabel} 스텝)`;
+  // RTS 기반 RPE 갭 해설: 실제 수행 RPE가 목표 RPE보다 낮으면(여유) → 무게 증가 신호,
+  // 높으면(버거움) → 무게 유지/감량 신호. e1RM 역산이 이 원리를 이미 반영하지만,
+  // 사용자에게 "왜 이 무게인지"를 과학적으로 설명하기 위해 갭을 명시.
+  const rpeGap = rec.prevRpeKnown ? +(targetRpe - rec.prevRpe).toFixed(1) : null;
+  let rpeHint = '';
+  if (rec.prevRpeKnown && rpeGap !== null) {
+    if (rpeGap >= 1.5) rpeHint = ` · 지난 세트 여유(RPE${rec.prevRpe}) → 오늘 ${nextLabel} 강도 상향`;
+    else if (rpeGap <= -0.5) rpeHint = ` · 지난 세트 과부하(RPE${rec.prevRpe}) → 유지/조금 낮춤`;
+    else rpeHint = ` · 목표 RPE 근접 → 점진 증량 유지`;
+  }
   let foot1;
   if (rec.isPRChallenge) {
     foot1 = `지금까지 최고 ${fmt(rec.prInfo.prKg)}kg · 오늘 추천 ${fmt(rec.recommended)}kg을 채우면 <b style="color:var(--primary, #fa342c);">개인 신기록</b>!`;
   } else if (diff > 0) {
-    foot1 = `${refLabel} ${fmt(rec.prevKg)}kg×${rec.prevReps}@RPE${rec.prevRpe} → ${nextLabel} <b style="color:var(--success, #1b854a);">+${fmt(diff)}kg 점진 과부하</b>`;
+    foot1 = `${refLabel} ${fmt(rec.prevKg)}kg×${rec.prevReps}@RPE${rec.prevRpe}${rec.prevRpeKnown ? '' : '(추정)'} → ${nextLabel} <b style="color:var(--success, #1b854a);">+${fmt(diff)}kg 점진 과부하</b>${rpeHint}`;
   } else {
-    foot1 = `${refLabel} ${fmt(rec.prevKg)}kg×${rec.prevReps}@RPE${rec.prevRpe} → ${nextLabel} 동일 무게 유지`;
+    foot1 = `${refLabel} ${fmt(rec.prevKg)}kg×${rec.prevReps}@RPE${rec.prevRpe}${rec.prevRpeKnown ? '' : '(추정)'} → ${nextLabel} 동일 무게 유지${rpeHint}`;
   }
   const prBanner = rec.isPRChallenge
     ? `<div class="ws-foot" style="margin-bottom:6px;">${foot1}</div>`
@@ -390,8 +418,9 @@ export function _renderExerciseList() {
     let poPillHtml = '';
     if (isExpert) {
       const lastForRec = _resolveLastForRec(idx, entry.exerciseId);
-      expertHtml = _buildExpertSceneBlock({ entryIdx: idx, exerciseId: entry.exerciseId, last: lastForRec, targetRpe: 8 });
-      poPillHtml = _buildPoPillHtml({ exerciseId: entry.exerciseId, last: lastForRec, targetRpe: 8 });
+      const presetRpe = _presetTargetRpe();
+      expertHtml = _buildExpertSceneBlock({ entryIdx: idx, exerciseId: entry.exerciseId, last: lastForRec, targetRpe: presetRpe });
+      poPillHtml = _buildPoPillHtml({ exerciseId: entry.exerciseId, last: lastForRec, targetRpe: presetRpe });
     }
 
     const block = document.createElement('div');
@@ -430,12 +459,22 @@ function _renderSets(entryIdx) {
   const sets = S.exercises[entryIdx].sets;
   el.innerHTML = '';
 
+  const isExpert = _isExpertUiEnabled();
   sets.forEach((set, si) => {
     const isWarmup = set.setType === 'warmup';
     const isDone   = set.done !== false;
     const vol = (set.kg && set.reps && !isWarmup && isDone)
       ? `<span style="color:var(--accent)">${(set.kg*set.reps).toLocaleString()}vol</span>`
       : (isWarmup ? '<span style="color:var(--muted);font-size:9px">웜업</span>' : '');
+
+    // 실제 수행 RPE 선택 UI — Expert + 본세트 + 완료 상태에서만 노출.
+    // 저장된 RPE는 다음 세션 _computeExpertRec에서 e1RM 역산에 사용되어
+    // preferredRpe ↔ 실수행 RPE 갭 기반 점진적 과부하 루프를 구성.
+    const rpeSelHtml = (isExpert && !isWarmup && isDone) ? `
+      <select class="set-rpe-select" data-idx="${si}" title="실제 수행 RPE">
+        <option value="" ${!set.rpe?'selected':''}>RPE</option>
+        ${[6,7,8,9,10].map(r => `<option value="${r}" ${Number(set.rpe)===r?'selected':''}>RPE ${r}</option>`).join('')}
+      </select>` : '';
 
     const row = document.createElement('div');
     row.className = 'set-row';
@@ -449,6 +488,7 @@ function _renderSets(entryIdx) {
       <span class="set-sep">kg</span>
       <input class="set-input" type="number" placeholder="회"  min="1" step="1"   value="${set.reps||''}">
       <span class="set-sep">회</span>
+      ${rpeSelHtml}
       <span class="set-vol">${vol}</span>
       <button class="set-done-btn ${isDone?'done':''}" title="완료 체크">✓</button>
       <button class="set-remove-btn">✕</button>
@@ -461,6 +501,8 @@ function _renderSets(entryIdx) {
     row.querySelectorAll('.set-input')[1].addEventListener('focus', () => { if (S.restTimer.running) wtRestTimerSkip(); });
     row.querySelector('.set-done-btn').addEventListener('click', () => wtToggleSetDone(entryIdx, si));
     row.querySelector('.set-remove-btn').addEventListener('click', () => wtRemoveSet(entryIdx, si));
+    const rpeSel = row.querySelector('.set-rpe-select');
+    if (rpeSel) rpeSel.addEventListener('change', e => wtUpdateSet(entryIdx, si, 'rpe', e.target.value));
     el.appendChild(row);
   });
 

@@ -8,6 +8,9 @@ export const MODAL_HTML = `
       <div class="topbar-skip" id="insights-range"></div>
     </div>
     <div class="expert-onb-content" id="insights-content"></div>
+    <div class="bottom-cta">
+      <button class="btn btn-primary" onclick="insightsClose()">확인</button>
+    </div>
   </div>
 </div>
 `;

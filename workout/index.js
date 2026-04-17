@@ -52,6 +52,7 @@ import { wtStartWorkoutTimer, wtTogglePauseWorkoutTimer,
 import { _initRestTimerPresets }                   from './timers.js';
 import { _initRunningEvents }                      from './activity-forms.js';
 import { _initTypeFormEvents }                     from './activity-forms.js';
+import { confirmAction }                           from '../utils/confirm-modal.js';
 
 // ── window.* 등록 (HTML onclick 연결) ───────────────────────────
 window.wtSetGymStatus = wtSetGymStatus;
@@ -70,9 +71,16 @@ window.wtResetWorkoutTimer = wtResetWorkoutTimer;
 window.wtFinishWorkout = wtFinishWorkout;
 window.wtRecoverTimers = wtRecoverTimers;
 
-// 운동종료 → 실제 타이머 정지/저장 + 주간 인사이트(Scene 13) 모달 연결.
-// wtFinishWorkout만 부르면 UI 의도와 맞지 않고, insightsOpen만 부르면 타이머가 계속 감.
-window.wtEndAndShowInsights = () => {
+// 운동종료 → 확인 모달 → 실제 타이머 정지/저장 + 주간 인사이트(Scene 13) 모달 연결.
+// 실수 방지를 위해 confirm 모달을 먼저 띄우고, 승인 시에만 종료 흐름을 실행.
+window.wtEndAndShowInsights = async () => {
+  const ok = await confirmAction({
+    title: '운동을 종료할까요?',
+    message: '타이머가 정지되고 오늘 기록이 저장돼요.\n이번 주 인사이트를 바로 확인할 수 있어요.',
+    confirmLabel: '종료',
+    cancelLabel: '취소',
+  });
+  if (!ok) return;
   try { wtFinishWorkout(); } catch (e) { console.warn('[wtEndAndShowInsights.finish]:', e); }
   try {
     if (typeof window.insightsOpen === 'function') window.insightsOpen();

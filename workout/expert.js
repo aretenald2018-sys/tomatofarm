@@ -348,7 +348,7 @@ function _renderExpertStepperBody({ currentGym, gymCount, exCount, insight, step
   const hasTargets = _suggestState.targets.size > 0;
   const s2Class = hasTargets ? 'is-done' : (step1Done ? 'is-active' : '');
   const s2Dot = hasTargets ? '✓' : '2';
-  const muscleIds = ['back','bicep','shoulder','chest','tricep','abs','lower'];
+  const muscleIds = ['back','bicep','shoulder','chest','tricep','abs','lower','glute'];
   const musclesById = Object.fromEntries(MUSCLES.map(m => [m.id, m.name]));
   const minsOpts = [45, 60, 90];
   const rpeOpts = [['6-7','낮음 6-7'], ['7-8','보통 7-8'], ['8-9','높음 8-9']];
@@ -889,7 +889,7 @@ function _volumeEstimate(d, m) {
 }
 
 function _renderStep4Preference() {
-  const muscles = ['back','shoulder','chest','bicep','tricep','abs','lower'];
+  const muscles = ['back','shoulder','chest','bicep','tricep','abs','lower','glute'];
   const nameById = Object.fromEntries(MUSCLES.map(m => [m.id, m.name]));
   return `
     <div class="hero-title-in">더 키우고 싶은,<br/>피하고 싶은 부위가 있나요?</div>
@@ -1777,7 +1777,7 @@ export async function openRoutineCandidatesDirect() {
 function _renderSuggestContent() {
   const content = document.getElementById('routine-suggest-content');
   if (!content) return;
-  const muscles = ['back','bicep','shoulder','chest','tricep','abs','lower'];
+  const muscles = ['back','bicep','shoulder','chest','tricep','abs','lower','glute'];
   const nameById = Object.fromEntries(MUSCLES.map(m => [m.id, m.name]));
   const mins = [45,60,90];
   const rpeOpts = ['6-7','7-8','8-9'];

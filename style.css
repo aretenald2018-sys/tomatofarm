@@ -1639,6 +1639,13 @@ body {
 }
 .set-type-select.warmup { border-color: var(--primary); color: var(--primary); }
 .set-type-select.main { border-color: var(--gym); color: var(--gym); }
+.set-rpe-select {
+  width: 56px; background: var(--surface3); border: 1px solid var(--border);
+  border-radius: 4px; color: var(--text-secondary); font-size: 10px;
+  padding: 3px 2px; outline: none; flex-shrink: 0; appearance: none; text-align: center;
+  font-weight: 600;
+}
+.set-rpe-select:focus { border-color: var(--primary); color: var(--primary); }
 .set-done-btn {
   background: none; border: 1px solid var(--border); border-radius: 4px;
   color: var(--text-secondary); font-size: 11px; width: 22px; height: 22px;

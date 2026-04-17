@@ -76,7 +76,12 @@ function _buildSavePayload(cleanEx, isDietSuccess) {
 
 function _cleanExercises(includeNotes) {
   return S.exercises
-    .map(e => ({ ...e, sets: e.sets.filter(s => s.kg > 0 || s.reps > 0) }))
+    .map(e => ({
+      ...e,
+      // done=true 체크된 세트는 kg/reps가 0이어도 보존.
+      // 체중 맨몸/무중량 운동 또는 기록 누락 케이스에서 streak 손실 방지.
+      sets: e.sets.filter(s => s && (s.done === true || (s.kg || 0) > 0 || (s.reps || 0) > 0)),
+    }))
     .filter(e => e.sets.length > 0 || (includeNotes && e.note));
 }
 
