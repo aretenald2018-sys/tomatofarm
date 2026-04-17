@@ -297,19 +297,37 @@ describe('calcDayScore', () => {
     assert.equal(r.breakdown.kcal.penalty, 12);
   });
 
-  // 탄단지
-  test('단백질 60% 미만 → 감점 4', () => {
-    const day = { bKcal: 700, lKcal: 700, dKcal: 600, bProtein: 10, lProtein: 20, dProtein: 30 };
+  // 탄단지 — 범위 기반 (단백 80~130%, 탄/지 70~130% = 0감점)
+  test('모든 매크로 목표 100% → 감점 0', () => {
+    const day = {
+      bKcal: 700, lKcal: 700, dKcal: 600,
+      bProtein: 150, bCarbs: 230, bFat: 55,
+    };
     const r = calcDayScore({
       day, targetKcal: 2000, burnedKcal: 300,
       macroTarget: { proteinG: 150, carbG: 230, fatG: 55 },
       weightDirSign: -1,
     });
-    assert.equal(r.breakdown.macro.penalty, 4);
+    assert.equal(r.breakdown.macro.penalty, 0);
   });
 
-  test('단백질 60~80% → 감점 2', () => {
-    const day = { bKcal: 700, lKcal: 700, dKcal: 600, bProtein: 35, lProtein: 35, dProtein: 35 };
+  test('단백 80%+탄수 120%+지방 90% (전부 범위 내) → 감점 0', () => {
+    const day = {
+      bKcal: 700, lKcal: 700, dKcal: 600,
+      bProtein: 120,  // 80% of 150
+      bCarbs: 276,    // 120% of 230
+      bFat: 49.5,     // 90% of 55
+    };
+    const r = calcDayScore({
+      day, targetKcal: 2000, burnedKcal: 300,
+      macroTarget: { proteinG: 150, carbG: 230, fatG: 55 },
+      weightDirSign: -1,
+    });
+    assert.equal(r.breakdown.macro.penalty, 0);
+  });
+
+  test('단백질 70% (약한 이탈) → 감점 2 (기본1+가중1)', () => {
+    const day = { bKcal: 700, lKcal: 700, dKcal: 600, bProtein: 105, bCarbs: 230, bFat: 55 };
     const r = calcDayScore({
       day, targetKcal: 2000, burnedKcal: 300,
       macroTarget: { proteinG: 150, carbG: 230, fatG: 55 },
@@ -318,17 +336,47 @@ describe('calcDayScore', () => {
     assert.equal(r.breakdown.macro.penalty, 2);
   });
 
-  test('매크로 전부 엉망 → 감점 clamp 5', () => {
+  test('단백질 50% (극단 이탈) → 감점 3', () => {
+    const day = { bKcal: 700, lKcal: 700, dKcal: 600, bProtein: 75, bCarbs: 230, bFat: 55 };
+    const r = calcDayScore({
+      day, targetKcal: 2000, burnedKcal: 300,
+      macroTarget: { proteinG: 150, carbG: 230, fatG: 55 },
+      weightDirSign: -1,
+    });
+    assert.equal(r.breakdown.macro.penalty, 3);
+  });
+
+  test('탄수 150% (약한 이탈) → 감점 1', () => {
+    const day = { bKcal: 700, lKcal: 700, dKcal: 600, bProtein: 150, bCarbs: 345, bFat: 55 };
+    const r = calcDayScore({
+      day, targetKcal: 2000, burnedKcal: 300,
+      macroTarget: { proteinG: 150, carbG: 230, fatG: 55 },
+      weightDirSign: -1,
+    });
+    assert.equal(r.breakdown.macro.penalty, 1);
+  });
+
+  test('지방 200% (극단 이탈) → 감점 2', () => {
+    const day = { bKcal: 700, lKcal: 700, dKcal: 600, bProtein: 150, bCarbs: 230, bFat: 110 };
+    const r = calcDayScore({
+      day, targetKcal: 2000, burnedKcal: 300,
+      macroTarget: { proteinG: 150, carbG: 230, fatG: 55 },
+      weightDirSign: -1,
+    });
+    assert.equal(r.breakdown.macro.penalty, 2);
+  });
+
+  test('매크로 전부 극단 이탈 → 감점 clamp 5', () => {
     const day = {
       bKcal: 700, lKcal: 700, dKcal: 600,
-      bProtein: 5, bCarbs: 700, bFat: 110,
+      bProtein: 5, bCarbs: 700, bFat: 150,
     };
     const r = calcDayScore({
       day, targetKcal: 2000, burnedKcal: 300,
       macroTarget: { proteinG: 150, carbG: 230, fatG: 55 },
       weightDirSign: -1,
     });
-    assert.equal(r.breakdown.macro.penalty, 5);
+    assert.equal(r.breakdown.macro.penalty, 5); // 3+2+2=7 → clamp 5
   });
 
   // 운동
@@ -449,10 +497,10 @@ describe('calcDayScore', () => {
 
   // band 경계
   test('band 경계 — score=95 → great', () => {
-    // 감점 5 = 매크로 2 (단백 70%) + 체중 3 (역주행)
+    // 감점 5 = 매크로 2 (단백 70%만 이탈, 탄/지는 범위 내) + 체중 3 (역주행)
     const day = {
       bKcal: 700, lKcal: 700, dKcal: 600,
-      bProtein: 35, lProtein: 35, dProtein: 35,
+      bProtein: 105, bCarbs: 230, bFat: 55, // 단백 70%, 탄/지 100%
     };
     const r = calcDayScore({
       day, targetKcal: 2000, burnedKcal: 300,
@@ -464,10 +512,10 @@ describe('calcDayScore', () => {
   });
 
   test('band 경계 — score=90 → good', () => {
-    // 감점 10 = 칼로리 7 (30%) + 매크로 2 + 체중 1
+    // 감점 10 = 칼로리 7 (30%) + 매크로 2 (단백 70%) + 체중 1 (미기록)
     const day = {
       bKcal: 1000, lKcal: 900, dKcal: 700,
-      bProtein: 35, lProtein: 35, dProtein: 35,
+      bProtein: 105, bCarbs: 230, bFat: 55,
     };
     const r = calcDayScore({
       day, targetKcal: 2000, burnedKcal: 300,
