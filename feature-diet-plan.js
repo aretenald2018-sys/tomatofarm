@@ -185,12 +185,12 @@ async function saveDietPlanFromModal() {
     exerciseKcalSwimming: parseFloat(document.getElementById('dp-ex-swim')?.value) || 200,
     exerciseKcalRunning: parseFloat(document.getElementById('dp-ex-run')?.value) || 250,
   };
-  if (!plan.weight || !plan.height) { alert('키와 체중을 입력해주세요.'); return; }
+  if (!plan.weight || !plan.height) { window.showToast?.('키와 체중을 입력해주세요', 2500, 'warning'); return; }
   if (isAdvanced) {
     const defSum = plan.deficitProteinPct + plan.deficitCarbPct + plan.deficitFatPct;
     const refSum = plan.refeedProteinPct + plan.refeedCarbPct + plan.refeedFatPct;
     if (defSum !== 100 || refSum !== 100) {
-      alert(`매크로 비율 합계가 100%가 아닙니다.\n데피싯: ${defSum}% / 리피드: ${refSum}%`);
+      window.showToast?.(`매크로 비율 합계 100% 아님 · 데피싯 ${defSum}% / 리피드 ${refSum}%`, 3500, 'warning');
       return;
     }
   }

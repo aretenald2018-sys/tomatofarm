@@ -31,7 +31,7 @@ export function toggleGoalCondition() {
 export async function saveGoalFromModal() {
   const label = document.getElementById('goal-label').value.trim();
   const dday  = document.getElementById('goal-dday').value;
-  if (!label) { alert('목표 이름을 입력해주세요.'); return; }
+  if (!label) { window.showToast?.('목표 이름을 입력해주세요', 2500, 'warning'); return; }
 
   const useCondition = document.getElementById('goal-use-condition').checked;
   const condition = useCondition ? {
@@ -45,8 +45,10 @@ export async function saveGoalFromModal() {
 }
 
 export async function deleteGoalItem(id) {
-  if (!confirm('목표를 삭제할까요?')) return;
+  const ok = await (window.confirmSimple?.('목표를 삭제할까요?', { destructive: true }) || Promise.resolve(false));
+  if (!ok) return;
   await deleteGoal(id);
+  window.showToast?.('목표가 삭제됐어요', 2000, 'info');
   window.renderAll();
 }
 
@@ -60,7 +62,7 @@ export async function analyzeGoalFeasibilityHandler(id) {
     await saveGoal({ ...goal, aiAnalysis: result });
     renderAll();
   } catch(e) {
-    alert('분석 실패: ' + e.message);
+    window.showToast?.('분석 실패: ' + e.message, 3500, 'error');
     btns.forEach(b => { b.disabled=false; b.textContent='✨ AI 실현가능성 분석'; });
   }
 }

@@ -873,6 +873,26 @@ export const getStreakSettings = () => _settings.streak_settings || {
   fontSizeMode: 'default', cellWidthMode: 'default'
 };
 
+// ── 스트릭 경고 배너 ack (21시 이후 "오늘 기록 없어요" 노출 / 1일 1회) ──
+export const getStreakWarningAck = () => _settings.streak_warning_ack_date || '';
+export const saveStreakWarningAck = (dateStr) => _saveSetting('streak_warning_ack_date', dateStr);
+
+// ── 관리자 모드 onboarding ack (1회성) ─────────────────────────────
+export const getAdminOnboardingAck = () => !!_settings.ui_admin_onboarding_ack;
+export const saveAdminOnboardingAck = () => _saveSetting('ui_admin_onboarding_ack', true);
+
+// ── 홈 카드 개인화: 순서/숨김 ────────────────────────────────────────
+// order: ['hero', 'unit_goal', 'farm', 'goals', 'quests', ...] 카드 id 배열
+// hidden: ['mini_memo', 'friends'] 등 숨길 카드 id 배열
+export const getHomeCardOrder = () => _settings.home_card_order || null;
+export const saveHomeCardOrder = (orderArr) => _saveSetting('home_card_order', orderArr);
+export const getHomeCardHidden = () => _settings.home_card_hidden || [];
+export const saveHomeCardHidden = (hiddenArr) => _saveSetting('home_card_hidden', hiddenArr);
+
+// ── 햅틱 설정 ───────────────────────────────────────────────────────
+export const getHapticsEnabled = () => _settings.haptics_enabled !== false; // 기본 true
+export const saveHapticsEnabled = (flag) => _saveSetting('haptics_enabled', !!flag);
+
 export async function saveStreakSettings(key, value) {
   if (!_settings.streak_settings) {
     _settings.streak_settings = { fontSizeMode: 'default', cellWidthMode: 'default' };

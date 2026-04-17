@@ -254,7 +254,7 @@ export async function saveExerciseFromEditor() {
   const editor   = document.getElementById('ex-editor-modal');
   const name     = document.getElementById('ex-editor-name').value.trim();
   const muscleId = document.getElementById('ex-editor-muscle').value;
-  if (!name) { alert('종목 이름을 입력해주세요.'); return; }
+  if (!name) { window.showToast?.('종목 이름을 입력해주세요', 2500, 'warning'); return; }
 
   const editingId = editor.dataset.editingId;
   await saveExercise({ id: editingId || `custom_${Date.now()}`, muscleId, name, order:50 });
@@ -264,10 +264,19 @@ export async function saveExerciseFromEditor() {
 
 export async function deleteExerciseFromEditor() {
   const editor = document.getElementById('ex-editor-modal');
-  if (!confirm('종목을 삭제하시겠어요?')) return;
+  const ok = await (window.confirmAction?.({
+    title: '종목을 삭제할까요?',
+    message: '과거 세트 기록은 보존되지만,\n앞으로 이 종목을 선택할 수 없어요.',
+    confirmLabel: '삭제',
+    cancelLabel: '취소',
+    destructive: true,
+    longPress: 2000,
+  }) || Promise.resolve(false));
+  if (!ok) return;
   await deleteExercise(editor.dataset.editingId);
   editor.classList.remove('open');
   openExercisePicker();
+  window.showToast?.('종목이 삭제됐어요', 2000, 'info');
 }
 
 // ── 내부 렌더 ─────────────────────────────────────────────────────

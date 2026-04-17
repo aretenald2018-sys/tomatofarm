@@ -19,9 +19,14 @@ export function _renderDateLabel() {
   const isFutureDay = isFuture(y, m, d);
   const isToday  = y === TODAY.getFullYear() && m === TODAY.getMonth() && d === TODAY.getDate();
 
+  // TDS: "TODAY" 배지를 오늘 날짜일 때 inline 표시 (사용자가 자신 위치를 즉각 인식)
+  const todayTag = isToday ? '<span class="wt-today-tag">TODAY</span>' : '';
   ['wt-date-label', 'wt-date-label-diet'].forEach(id => {
     const label = document.getElementById(id);
-    if (label) { label.textContent = dateText; label.style.color = isFutureDay ? 'var(--muted)' : 'var(--text)'; }
+    if (label) {
+      label.innerHTML = `${todayTag}<span>${dateText}</span>`;
+      label.style.color = isFutureDay ? 'var(--muted)' : 'var(--text)';
+    }
   });
   ['wt-today-btn', 'wt-today-btn-diet'].forEach(id => {
     const btn = document.getElementById(id);
@@ -277,7 +282,9 @@ export function wtAddFoodItem(meal, item) {
 
 export function wtRemoveFoodItem(meal, idx) {
   const key = _mealKey(meal);
-  S.diet[key] = (S.diet[key] || []).filter((_, i) => i !== idx);
+  const arr = S.diet[key] || [];
+  const removed = arr[idx];
+  S.diet[key] = arr.filter((_, i) => i !== idx);
   if ((S.diet[key] || []).length > 0) {
     _recalcMealMacros(meal);
   } else {
@@ -292,6 +299,20 @@ export function wtRemoveFoodItem(meal, idx) {
   _renderMealFoodItems(meal);
   _renderDietResults();
   _autoSaveDiet();
+  if (!removed) return;
+  // Undo Toast 3초 — 원래 위치에 복원
+  window.showToast?.(`'${removed.name || '음식'}' 삭제됨`, 3000, 'info', {
+    action: '실행 취소',
+    onAction: () => {
+      const curr = S.diet[key] || [];
+      curr.splice(Math.min(idx, curr.length), 0, removed);
+      S.diet[key] = curr;
+      _recalcMealMacros(meal);
+      _renderMealFoodItems(meal);
+      _renderDietResults();
+      _autoSaveDiet();
+    },
+  });
 }
 
 // ── 사진 표시 ───────────────────────────────────────────────────

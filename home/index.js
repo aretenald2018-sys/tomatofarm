@@ -19,6 +19,9 @@ import { refreshNotifCenter, setNotificationsDeps }          from './notificatio
 import { clearCheerCard, renderCheerCard }                   from './cheer-card.js';
 import { renderGuildCard }                                   from './guild-card.js';
 import { renderCheersCard }                                  from './cheers-card.js';
+import { renderStreakWarning }                                from './streak-warning.js';
+import { renderAdminOnboarding }                              from './admin-onboarding.js';
+import { applyHomeCardPersonalization }                       from './personalize.js';
 
 let _lastCheerSignature = '';
 
@@ -42,6 +45,9 @@ export function renderHome(options = {}) {
   const { deferCheerCard = false } = options;
   try {
     _applyCardVisibility();
+    // 관리자 1회성 onboarding 배너 (스트릭 경고보다 먼저 prepend → 위에 배치)
+    try { renderStreakWarning(); } catch(e) { console.warn('[streak-warning]', e); }
+    try { renderAdminOnboarding(); } catch(e) { console.warn('[admin-onboarding]', e); }
     // 토마토 정산은 모든 사용자에게 실행
     try { settleTomatoCycleIfNeeded(); } catch(e) { console.warn('[tomato] settle error:', e); }
     if (!isAdmin()) {
@@ -66,6 +72,8 @@ export function renderHome(options = {}) {
     } else {
       _renderCheerCardIfNeeded().catch(e => console.warn('[cheer-card]', e));
     }
+    // 개인화 (순서 재배치 / 숨김) — 모든 카드 렌더 후 적용
+    try { applyHomeCardPersonalization(); } catch(e) { console.warn('[personalize]', e); }
   } catch(e) {
     console.error('[renderHome] 렌더링 오류:', e);
   }

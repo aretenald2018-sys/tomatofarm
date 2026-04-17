@@ -43,8 +43,13 @@ export function renderGoals() {
   if (!container) return;
   const goals = getGoals();
   if (!goals.length) {
-    container.innerHTML = `<div style="font-size:12px;color:var(--muted);text-align:center;padding:12px">
-      목표를 추가해보세요 <button class="quest-add-btn" onclick="openGoalModal()" style="margin-left:8px">+</button></div>`;
+    container.innerHTML = `
+      <div class="tds-empty">
+        <div class="tds-empty-icon">🎯</div>
+        <div class="tds-empty-title">아직 목표가 없어요</div>
+        <div class="tds-empty-desc">작은 목표부터 시작해볼까요?</div>
+        <button class="tds-btn tonal" onclick="openGoalModal()">+ 목표 추가</button>
+      </div>`;
     return;
   }
 

@@ -128,6 +128,9 @@ export async function saveWorkoutDay() {
 
   if (btn) { btn.disabled = false; btn.textContent = '저장'; }
   document.dispatchEvent(new CustomEvent('sheet:saved'));
+
+  // 사용자 피드백: TDS Toast (CLAUDE.md 규칙 — CRUD 완료 시 필수)
+  window.showToast?.('저장 완료', 2000, 'success');
 }
 
 // ── 식단 자동 저장 ──────────────────────────────────────────────

@@ -45,42 +45,42 @@
       <div class="login-subtitle">이름으로 로그인하세요</div>
 
       <div class="login-form">
-        <div style="display:flex;gap:8px;">
-          <input class="login-input" id="login-last-name" placeholder="성" style="flex:1;" maxlength="5">
-          <input class="login-input" id="login-first-name" placeholder="이름" style="flex:2;" maxlength="10">
+        <div class="u-flex u-gap-2">
+          <input class="login-input u-flex-1" id="login-last-name" placeholder="성" maxlength="5">
+          <input class="login-input u-flex-2" id="login-first-name" placeholder="이름" maxlength="10">
         </div>
 
         <!-- Admin/Guest 모드 선택 (김태우 전용) -->
-        <div id="login-mode-section" style="margin-top:12px;display:none;">
-          <div style="display:flex;gap:8px;">
-            <label style="flex:1;display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:var(--radius-md);background:var(--surface2);cursor:pointer;border:2px solid var(--primary);transition:border 0.1s ease-in-out;">
-              <input type="radio" name="login-mode" value="admin" checked style="accent-color:var(--primary);">
+        <div id="login-mode-section" class="u-mt-3" style="display:none;">
+          <div class="u-flex u-gap-2">
+            <label class="login-mode-option u-flex-1 active">
+              <input type="radio" name="login-mode" value="admin" checked>
               <div>
-                <div style="font-size:13px;font-weight:700;color:var(--text);">Admin</div>
-                <div style="font-size:10px;color:var(--text-tertiary);">전체 기능</div>
+                <div class="u-text-sm u-font-bold">Admin</div>
+                <div class="u-text-xs u-text-tertiary">전체 기능</div>
               </div>
             </label>
-            <label style="flex:1;display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:var(--radius-md);background:var(--surface2);cursor:pointer;border:2px solid transparent;transition:border 0.1s ease-in-out;">
-              <input type="radio" name="login-mode" value="guest" style="accent-color:var(--primary);">
+            <label class="login-mode-option u-flex-1">
+              <input type="radio" name="login-mode" value="guest">
               <div>
-                <div style="font-size:13px;font-weight:700;color:var(--text);">Guest</div>
-                <div style="font-size:10px;color:var(--text-tertiary);">게스트 UX</div>
+                <div class="u-text-sm u-font-bold">Guest</div>
+                <div class="u-text-xs u-text-tertiary">게스트 UX</div>
               </div>
             </label>
           </div>
         </div>
 
         <!-- 비밀번호 (기존 계정 전용) -->
-        <div id="login-pw-section" style="margin-top:12px;display:none;">
+        <div id="login-pw-section" class="u-mt-3" style="display:none;">
           <input class="login-input" id="login-password" type="password" placeholder="비밀번호" onkeydown="if(event.key==='Enter')createAccountAndLogin()">
         </div>
 
-        <div id="login-status" style="font-size:12px;color:var(--text-tertiary);margin-top:8px;min-height:18px;"></div>
+        <div id="login-status" class="u-text-xs u-text-tertiary u-mt-2 login-status"></div>
 
         <button class="login-btn" id="login-create-btn" onclick="createAccountAndLogin()">로그인</button>
 
-        <div style="text-align:center;margin-top:14px;">
-          <button onclick="showSignupView()" style="background:none;border:none;color:var(--primary);font-size:13px;font-weight:600;cursor:pointer;padding:8px 16px;">처음이신가요? 3초만에 가입하기</button>
+        <div class="u-text-center" style="margin-top:14px;">
+          <button class="login-signup-link" onclick="showSignupView()">처음이신가요? 3초만에 가입하기</button>
         </div>
       </div>
     </div>
@@ -91,65 +91,65 @@
       <div class="login-subtitle">이름만 있으면 바로 시작할 수 있어요</div>
 
       <div class="login-form">
-        <div style="display:flex;gap:8px;">
-          <input class="login-input" id="signup-last-name" placeholder="성" style="flex:1;" maxlength="5">
-          <input class="login-input" id="signup-first-name" placeholder="이름" style="flex:2;" maxlength="10">
+        <div class="u-flex u-gap-2">
+          <input class="login-input u-flex-1" id="signup-last-name" placeholder="성" maxlength="5">
+          <input class="login-input u-flex-2" id="signup-first-name" placeholder="이름" maxlength="10">
         </div>
 
         <!-- 별명 (필수) -->
-        <div style="margin-top:8px;">
+        <div class="u-mt-2">
           <input class="login-input" id="signup-nickname" placeholder="별명 (이웃에게 보여질 이름, 필수)" maxlength="15">
         </div>
 
         <!-- 선택사항 영역 -->
-        <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px;">
-          <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:10px;text-align:center;">아래는 나중에 설정해도 돼요</div>
+        <div class="signup-optional-wrap">
+          <div class="u-text-xs u-text-tertiary u-text-center signup-optional-note">아래는 나중에 설정해도 돼요</div>
 
           <!-- 소속 길드 설정(선택) -->
-          <div id="signup-guild-section" style="margin-top:10px;">
+          <div id="signup-guild-section" class="signup-section">
             <div class="signup-toggle-row" onclick="toggleSignupGuild()">
-              <div style="flex:1;">
-                <div style="font-size:13px;font-weight:600;color:var(--text);">소속 길드 설정(선택)</div>
-                <div style="font-size:11px;color:var(--text-tertiary);line-height:1.5;margin-top:2px;">길드에 가입하면 길드 랭킹에 참여할 수 있어요.</div>
+              <div class="u-flex-1">
+                <div class="u-text-sm u-font-semi">소속 길드 설정(선택)</div>
+                <div class="u-text-xs u-text-tertiary u-mt-1">길드에 가입하면 길드 랭킹에 참여할 수 있어요.</div>
               </div>
               <button type="button" class="toggle-switch signup-toggle" id="signup-guild-toggle" role="switch" aria-checked="false">
                 <span class="toggle-knob"></span>
               </button>
             </div>
-            <div id="signup-guild-field" style="display:none;margin-top:8px;">
-              <div style="position:relative;">
-                <input class="login-input" id="signup-guild-input" placeholder="길드 이름을 검색하거나 입력하세요" maxlength="20" style="margin:0;" autocomplete="off"
+            <div id="signup-guild-field" class="signup-field-reveal" style="display:none;">
+              <div class="u-relative">
+                <input class="login-input signup-guild-input" id="signup-guild-input" placeholder="길드 이름을 검색하거나 입력하세요" maxlength="20" autocomplete="off"
                        oninput="searchGuildsFor('signup')" onfocus="searchGuildsFor('signup')"
                        onkeydown="if(event.key==='Enter'){event.preventDefault();addGuildChipFor('signup');}">
                 <div id="signup-guild-suggestions" class="guild-suggest-list" style="display:none;"></div>
               </div>
-              <div id="signup-guild-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;"></div>
+              <div id="signup-guild-chips" class="signup-guild-chips"></div>
             </div>
           </div>
 
           <!-- 비밀번호 설정(선택) -->
-          <div style="margin-top:10px;">
+          <div class="signup-section">
             <div class="signup-toggle-row" onclick="toggleSignupPw()">
-              <div style="flex:1;">
-                <div style="font-size:13px;font-weight:600;color:var(--text);">비밀번호 설정(선택)</div>
-                <div style="font-size:11px;color:var(--text-tertiary);line-height:1.5;margin-top:2px;">설정하면 내 기록을 보호할 수 있어요.</div>
+              <div class="u-flex-1">
+                <div class="u-text-sm u-font-semi">비밀번호 설정(선택)</div>
+                <div class="u-text-xs u-text-tertiary u-mt-1">설정하면 내 기록을 보호할 수 있어요.</div>
               </div>
               <button type="button" class="toggle-switch signup-toggle" id="signup-pw-toggle" role="switch" aria-checked="false">
                 <span class="toggle-knob"></span>
               </button>
             </div>
-            <div id="signup-pw-field" style="display:none;margin-top:8px;">
+            <div id="signup-pw-field" class="signup-field-reveal" style="display:none;">
               <input class="login-input" id="signup-new-password" type="password" placeholder="비밀번호">
             </div>
           </div>
         </div>
 
-        <div id="signup-status" style="font-size:12px;color:var(--text-tertiary);margin-top:8px;min-height:18px;"></div>
+        <div id="signup-status" class="u-text-xs u-text-tertiary u-mt-2 login-status"></div>
 
-        <button class="login-btn" onclick="createAccountFromSignup()" style="margin-top:4px;">시작하기</button>
+        <button class="login-btn signup-submit-btn" onclick="createAccountFromSignup()">시작하기</button>
 
-        <div style="text-align:center;margin-top:14px;">
-          <button onclick="showLoginView()" style="background:none;border:none;color:var(--text-tertiary);font-size:13px;cursor:pointer;padding:8px 16px;">이미 계정이 있어요</button>
+        <div class="u-text-center signup-login-link-wrap">
+          <button class="signup-login-link" onclick="showLoginView()">이미 계정이 있어요</button>
         </div>
       </div>
     </div>
@@ -159,20 +159,20 @@
 
 <!-- 비밀번호 입력 모달 -->
 <div class="login-pw-modal" id="login-pw-modal" style="display:none;">
-  <div class="login-card" style="max-width:320px;">
+  <div class="login-card login-pw-card">
     <div class="login-subtitle" id="login-pw-modal-name"></div>
-    <input class="login-input" id="login-pw-modal-input" type="password" placeholder="비밀번호를 입력하세요" style="margin-top:12px;" onkeydown="if(event.key==='Enter')verifyAndLogin()">
-    <div id="login-pw-modal-error" style="color:#ef4444;font-size:12px;margin-top:4px;display:none;">비밀번호가 맞지 않습니다</div>
-    <div style="display:flex;gap:8px;margin-top:12px;">
-      <button class="login-btn" style="flex:1;background:var(--surface3);color:var(--text);" onclick="closePasswordModal()">취소</button>
-      <button class="login-btn" style="flex:2;" onclick="verifyAndLogin()">확인</button>
+    <input class="login-input login-pw-input" id="login-pw-modal-input" type="password" placeholder="비밀번호를 입력하세요" onkeydown="if(event.key==='Enter')verifyAndLogin()">
+    <div id="login-pw-modal-error" class="login-pw-error" style="display:none;">비밀번호가 맞지 않습니다</div>
+    <div class="login-pw-actions">
+      <button class="login-btn login-pw-cancel u-flex-1" onclick="closePasswordModal()">취소</button>
+      <button class="login-btn u-flex-2" onclick="verifyAndLogin()">확인</button>
     </div>
   </div>
 </div>
 
 <div class="loading-overlay" id="loading" style="display:none;">
   <div class="spinner"></div>
-  <div style="font-size:13px;color:var(--text-secondary)">데이터 불러오는 중...</div>
+  <div class="u-text-sm u-text-secondary">데이터 불러오는 중...</div>
 </div>
 
 <div class="sync-bar">
@@ -2457,7 +2457,21 @@ function toggleMoreMenu() {
 
 <!-- PWA Service Worker 등록 -->
 <script>
-if ('serviceWorker' in navigator) {
+// 로컬 개발 환경 감지: localhost / 127.0.0.1 / file:// 에서는 SW 건너뛰기
+// 이유: 배포용 scope '/tomatofarm/' 가 로컬 루트와 불일치 → 등록 실패 + 스테일 캐시가 ERR_EMPTY_RESPONSE 유발
+const _isLocalDev = ['localhost', '127.0.0.1', ''].includes(location.hostname);
+
+if (_isLocalDev) {
+  // 로컬 환경: 기존 SW 전부 해제하여 깨끗한 fetch 보장
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations().then((regs) => {
+      if (regs.length) {
+        console.log('[DEV] 로컬 환경 — 기존 SW', regs.length, '개 해제');
+        regs.forEach((r) => r.unregister());
+      }
+    }).catch(() => {});
+  }
+} else if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     console.log('[PWA] Service Worker 등록 시도 중...');
     navigator.serviceWorker.register('sw.js', { scope: '/tomatofarm/' })
@@ -2492,7 +2506,7 @@ if ('serviceWorker' in navigator) {
 }
 
 // Firebase Messaging 서비스워커 등록 (FCM 웹 푸시용)
-if ('serviceWorker' in navigator) {
+if (!_isLocalDev && 'serviceWorker' in navigator) {
   navigator.serviceWorker.register('firebase-messaging-sw.js', { scope: '/tomatofarm/' })
     .then(() => console.log('[FCM] Messaging SW 등록 성공'))
     .catch(e => console.warn('[FCM] Messaging SW 등록 실패:', e.message));

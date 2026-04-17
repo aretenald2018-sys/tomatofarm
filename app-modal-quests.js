@@ -43,7 +43,7 @@ export async function saveQuestFromModal() {
   const isAuto   = document.getElementById('quest-auto').checked;
   const autoType = document.getElementById('quest-auto-type')?.value || 'workout';
 
-  if (!title) { alert('퀘스트 이름을 입력해주세요.'); return; }
+  if (!title) { window.showToast?.('퀘스트 이름을 입력해주세요', 2500, 'warning'); return; }
 
   const today = new Date();
   const registeredAt = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
@@ -89,7 +89,7 @@ export async function saveQuestEdit() {
   const title  = document.getElementById('quest-edit-title').value.trim();
   const target = parseInt(document.getElementById('quest-edit-target').value) || 1;
   const dday   = document.getElementById('quest-edit-dday').value || null;
-  if (!title) { alert('퀘스트 이름을 입력해주세요.'); return; }
+  if (!title) { window.showToast?.('퀘스트 이름을 입력해주세요', 2500, 'warning'); return; }
 
   const quest = getQuests().find(q => q.id === id);
   if (!quest) return;
@@ -100,8 +100,10 @@ export async function saveQuestEdit() {
 }
 
 export async function deleteQuestItem(id) {
-  if (!confirm('퀘스트를 삭제할까요?')) return;
+  const ok = await (window.confirmSimple?.('퀘스트를 삭제할까요?', { destructive: true }) || Promise.resolve(false));
+  if (!ok) return;
   await deleteQuest(id);
+  window.showToast?.('퀘스트가 삭제됐어요', 2000, 'info');
   window.renderAll();
 }
 

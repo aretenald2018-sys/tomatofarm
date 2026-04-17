@@ -68,9 +68,20 @@ export function wtAddSet(entryIdx) {
 }
 
 export function wtRemoveSet(entryIdx, si) {
-  S.exercises[entryIdx].sets.splice(si, 1);
+  // Undo Toast 3초: 세트 객체와 원래 위치를 기억해두고 복원 지원
+  const removed = S.exercises[entryIdx].sets.splice(si, 1)[0];
   _renderSets(entryIdx);
   saveWorkoutDay().catch(e => console.error('Save error:', e));
+  if (!removed) return;
+  window.showToast?.('세트 삭제됨', 3000, 'info', {
+    action: '실행 취소',
+    onAction: () => {
+      if (!S.exercises[entryIdx]) return;
+      S.exercises[entryIdx].sets.splice(si, 0, removed);
+      _renderSets(entryIdx);
+      saveWorkoutDay().catch(e => console.error('Restore error:', e));
+    },
+  });
 }
 
 export function wtUpdateSet(entryIdx, si, field, val) {
@@ -628,10 +639,10 @@ export async function wtSaveExerciseFromEditor() {
   const name     = document.getElementById('ex-editor-name').value.trim();
   const muscleSelect = document.getElementById('ex-editor-muscle');
   let muscleId = muscleSelect.value;
-  if (!name) { alert('종목 이름을 입력해주세요.'); return; }
+  if (!name) { window.showToast?.('종목 이름을 입력해주세요', 2500, 'warning'); return; }
   if (muscleId === NEW_MUSCLE_OPTION) {
     const newMuscleName = document.getElementById('ex-editor-new-muscle-name')?.value?.trim() || '';
-    if (!newMuscleName) { alert('새 부위 이름을 입력해주세요.'); return; }
+    if (!newMuscleName) { window.showToast?.('새 부위 이름을 입력해주세요', 2500, 'warning'); return; }
     muscleId = `muscle_${Date.now()}`;
     await saveCustomMuscle({ id: muscleId, name: newMuscleName, color: '#8b5cf6' });
   }
@@ -643,8 +654,17 @@ export async function wtSaveExerciseFromEditor() {
 
 export async function wtDeleteExerciseFromEditor() {
   const editor = document.getElementById('ex-editor-modal');
-  if (!confirm('종목을 삭제하시겠어요?')) return;
+  const ok = await (window.confirmAction?.({
+    title: '종목을 삭제할까요?',
+    message: '이 종목으로 기록된 과거 세트 데이터는 유지되지만,\n앞으로는 선택할 수 없어요.',
+    confirmLabel: '삭제',
+    cancelLabel: '취소',
+    destructive: true,
+    longPress: 2000,
+  }) || Promise.resolve(false));
+  if (!ok) return;
   await deleteExercise(editor.dataset.editingId);
   editor.classList.remove('open');
   wtOpenExercisePicker();
+  window.showToast?.('종목이 삭제됐어요', 2000, 'info');
 }

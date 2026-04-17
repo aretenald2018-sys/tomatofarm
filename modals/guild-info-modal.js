@@ -272,10 +272,10 @@ window.sendGuildInvite = async function(guildName, userId) {
   const inviterName = _displayName(inviter);
   const result = await inviteUserToGuild(guildName, userId, inviterName);
   if (result?.error) {
-    alert(result.error);
+    window.showToast?.(result.error, 3500, 'error');
     return;
   }
-  alert('길드 초대를 보냈어요.');
+  window.showToast?.('길드 초대를 보냈어요', 2500, 'success');
   await _renderGuildInfo(guildName);
 };
 

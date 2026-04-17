@@ -178,7 +178,7 @@ function _updateFsCalcPreview() {
 function fatsecretAddFood() {
   if (!_fsSelectedFood) return;
   const grams = parseFloat(document.getElementById('fs-grams-input').value);
-  if (!grams || grams <= 0) { alert('중량을 입력해주세요.'); return; }
+  if (!grams || grams <= 0) { window.showToast?.('중량을 입력해주세요', 2500, 'warning'); return; }
 
   const p     = _fsSelectedFood.per100g;
   const ratio = grams / 100;

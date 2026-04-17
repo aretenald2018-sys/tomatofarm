@@ -309,6 +309,16 @@ export async function handleNutritionPhotoSelect(event) {
   const file = event.target.files?.[0];
   if (!file) return;
 
+  // 업로드 존 비활성화 (연타 방지)
+  const uploadZones = document.querySelectorAll('.ni-tab-content.active .ni-upload-zone');
+  uploadZones.forEach(zone => {
+    zone.style.pointerEvents = 'none';
+    zone.style.opacity = '0.5';
+  });
+
+  // 1단계: 업로드 중
+  window.showToast?.('📷 사진 압축 중...', 1500, 'info');
+
   try {
     // 리사이즈 + Base64 변환 (긴 변 1280px, JPEG 0.75)
     _niPhotoBase64 = await _resizeImageToBase64(file);
@@ -320,15 +330,20 @@ export async function handleNutritionPhotoSelect(event) {
     preview.style.display = 'block';
 
     // 갤러리/카메라 버튼 숨기기
-    const uploadZones = document.querySelectorAll('.ni-tab-content.active .ni-upload-zone');
     uploadZones.forEach(zone => {
       if (zone.parentElement) zone.parentElement.style.display = 'none';
     });
 
-    // OCR 분석 시작
+    // 2단계: OCR 분석 시작 (내부에서 토스트)
+    window.showToast?.('🔍 영양정보 분석 중...', 2500, 'info');
     _analyzeNutritionPhoto();
   } catch (e) {
-    alert('사진 업로드 실패: ' + e.message);
+    // 실패 시 업로드 존 복구
+    uploadZones.forEach(zone => {
+      zone.style.pointerEvents = '';
+      zone.style.opacity = '';
+    });
+    window.showToast?.('사진 업로드 실패: ' + e.message, 3500, 'error');
   }
 }
 
@@ -415,13 +430,19 @@ async function _analyzeNutritionPhoto() {
       _populateNutritionForm(_niParsedData);
       setTimeout(() => { switchNutritionTab('manual'); }, 300);
     }
+    // 3단계: 완료
+    window.showToast?.('✓ 분석 완료', 1800, 'success');
   } catch (e) {
     if (myToken !== _photoAnalyzeToken) return;
     console.error('OCR 분석 실패:', e);
-    if (window.showToast) window.showToast('사진 분석 실패: ' + e.message, 3000, 'error');
-    else alert('사진 분석 실패: ' + e.message);
+    window.showToast?.('사진 분석 실패: ' + e.message, 3000, 'error');
   } finally {
     if (myToken === _photoAnalyzeToken) analyzing.style.display = 'none';
+    // 업로드 존 복구 (재업로드 가능하게)
+    document.querySelectorAll('.ni-tab-content.active .ni-upload-zone').forEach(zone => {
+      zone.style.pointerEvents = '';
+      zone.style.opacity = '';
+    });
   }
 }
 
@@ -432,7 +453,7 @@ async function _analyzeNutritionPhoto() {
 export async function analyzeNutritionText() {
   const rawText = document.getElementById('ni-raw-text').value.trim();
   if (!rawText) {
-    alert('텍스트를 입력해주세요.');
+    window.showToast?.('텍스트를 입력해주세요', 2500, 'warning');
     return;
   }
 
@@ -475,7 +496,7 @@ export async function analyzeNutritionText() {
     }
   } catch (e) {
     console.error('텍스트 분석 실패:', e);
-    alert('텍스트 분석 실패: ' + e.message);
+    window.showToast?.('텍스트 분석 실패: ' + e.message, 3500, 'error');
   } finally {
     analyzing.style.display = 'none';
   }
@@ -488,7 +509,7 @@ export async function analyzeNutritionText() {
 export async function saveNutritionItemFromModal() {
   const name = document.getElementById('ni-name').value.trim();
   if (!name) {
-    alert('음식 이름을 입력해주세요.');
+    window.showToast?.('음식 이름을 입력해주세요', 2500, 'warning');
     return;
   }
 
@@ -522,7 +543,7 @@ export async function saveNutritionItemFromModal() {
   try {
     const { saveNutritionItem } = await import('../data.js');
     const savedItem = await saveNutritionItem(item);
-    alert('저장되었습니다!');
+    window.showToast?.('저장 완료', 2500, 'success');
     closeNutritionItemModal();
 
     // 콜백: 직접 추가 후 자동으로 해당 항목 선택 (요리 재료 / 식단 등)
@@ -540,21 +561,28 @@ export async function saveNutritionItemFromModal() {
       }, 100);
     }
   } catch (e) {
-    alert('저장 실패: ' + e.message);
+    window.showToast?.('저장 실패: ' + e.message, 3500, 'error');
   }
 }
 
 export async function deleteNutritionItemFromModal() {
   if (!_niEditingId) return;
-  if (!confirm('이 음식을 삭제하시겠습니까?')) return;
+  const ok = await (window.confirmAction?.({
+    title: '이 음식을 삭제할까요?',
+    message: '음식 DB에서 제거돼요.\n과거 기록에는 영향 없어요.',
+    confirmLabel: '삭제',
+    cancelLabel: '취소',
+    destructive: true,
+  }) || Promise.resolve(false));
+  if (!ok) return;
 
   try {
     const { deleteNutritionItem } = await import('../data.js');
     await deleteNutritionItem(_niEditingId);
-    alert('삭제되었습니다!');
+    window.showToast?.('삭제 완료', 2500, 'success');
     closeNutritionItemModal();
   } catch (e) {
-    alert('삭제 실패: ' + e.message);
+    window.showToast?.('삭제 실패: ' + e.message, 3500, 'error');
   }
 }
 
@@ -659,8 +687,7 @@ function _displayNutritionTextResult(data, langResult) {
   document.getElementById('ni-single-save-btn')?.addEventListener('click', async () => {
     const name = document.getElementById('ni-single-name').value.trim();
     if (!name) {
-      if (window.showToast) window.showToast('제품명을 입력해주세요', 2000, 'warning');
-      else alert('제품명을 입력해주세요.');
+      window.showToast?.('제품명을 입력해주세요', 2000, 'warning');
       return;
     }
     const btn = document.getElementById('ni-single-save-btn');
@@ -690,8 +717,7 @@ function _displayNutritionTextResult(data, langResult) {
         rawText: data.rawText || null,
       };
       await saveNutritionItem(entry);
-      if (window.showToast) window.showToast('저장 완료', 2500, 'success');
-      else alert('저장 완료!');
+      window.showToast?.('저장 완료', 2500, 'success');
       closeNutritionItemModal();
       if (window.renderNutritionSearchResults) {
         setTimeout(() => {
@@ -700,8 +726,7 @@ function _displayNutritionTextResult(data, langResult) {
         }, 100);
       }
     } catch (e) {
-      if (window.showToast) window.showToast('저장 실패: ' + e.message, 3000, 'error');
-      else alert('저장 실패: ' + e.message);
+      window.showToast?.('저장 실패: ' + e.message, 3000, 'error');
       if (btn) { btn.disabled = false; btn.textContent = '💾 저장'; }
     }
   });
@@ -792,8 +817,7 @@ function _renderInlineGrid(items, extracted, { saveBtnId, source }) {
       .filter(it => !it._skip)
       .map(it => source ? { ...it, _source: source } : it);
     if (toSave.length === 0) {
-      if (window.showToast) window.showToast('저장할 항목이 없습니다', 2000, 'warning');
-      else alert('저장할 항목이 없습니다');
+      window.showToast?.('저장할 항목이 없습니다', 2000, 'warning');
       return;
     }
     _saveMultipleItems(toSave, saveBtnId);
@@ -848,8 +872,7 @@ async function _saveMultipleItems(items, saveBtnId) {
       savedCount++;
     }
 
-    if (window.showToast) window.showToast(`${savedCount}개 저장 완료`, 2500, 'success');
-    else alert(`${savedCount}개 제품이 모두 저장되었습니다!`);
+    window.showToast?.(`${savedCount}개 저장 완료`, 2500, 'success');
     closeNutritionItemModal();
 
     if (window.renderNutritionSearchResults) {
@@ -859,8 +882,7 @@ async function _saveMultipleItems(items, saveBtnId) {
       }, 100);
     }
   } catch (e) {
-    if (window.showToast) window.showToast('저장 실패: ' + e.message, 3000, 'error');
-    else alert('저장 실패: ' + e.message);
+    window.showToast?.('저장 실패: ' + e.message, 3000, 'error');
   } finally {
     if (btn && document.contains(btn)) { btn.disabled = false; btn.textContent = '💾 체크된 항목 저장'; }
   }

@@ -64,7 +64,8 @@ export function resolveNickname(a, accounts) {
 }
 
 // ── TDS 토스트 알림 ──────────────────────────────────────────────
-export function showToast(message, duration = 2500, type = 'default') {
+// opts: { action?: string, onAction?: Function } — Undo 등 액션 버튼 지원
+export function showToast(message, duration = 2500, type = 'default', opts = null) {
   const existing = document.getElementById('tds-toast');
   if (existing) existing.remove();
   const toast = document.createElement('div');
@@ -72,13 +73,41 @@ export function showToast(message, duration = 2500, type = 'default') {
   toast.className = 'tds-toast';
   toast.dataset.type = type;
   const icons = { success: '✓ ', error: '✕ ', warning: '⚠ ', info: 'ℹ ', default: '' };
-  toast.textContent = (icons[type] || '') + message;
+  const hasAction = opts && typeof opts.action === 'string' && typeof opts.onAction === 'function';
+
+  if (hasAction) {
+    toast.classList.add('has-action');
+    const msgSpan = document.createElement('span');
+    msgSpan.className = 'tds-toast-msg';
+    msgSpan.textContent = (icons[type] || '') + message;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'tds-toast-action';
+    btn.textContent = opts.action;
+    btn.setAttribute('aria-label', opts.action);
+    btn.addEventListener('click', () => {
+      try { opts.onAction(); } finally {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300);
+      }
+    });
+    toast.appendChild(msgSpan);
+    toast.appendChild(btn);
+  } else {
+    toast.textContent = (icons[type] || '') + message;
+  }
+
   document.body.appendChild(toast);
   requestAnimationFrame(() => toast.classList.add('show'));
   setTimeout(() => {
     toast.classList.remove('show');
     setTimeout(() => toast.remove(), 300);
   }, duration);
+  // 햅틱: success → medium, error/warning → light, default → 없음
+  try {
+    if (type === 'success') window.haptic?.medium?.();
+    else if (type === 'error' || type === 'warning') window.haptic?.light?.();
+  } catch {}
 }
 
 // ── 화면 중앙 큰 토스트 (식단 저장 등) ──────────────────────────
@@ -99,6 +128,8 @@ export function showCenterToast(message, duration = 1800) {
 
 // ── Confetti 축하 애니메이션 ─────────────────────────────────────
 export function showConfetti(duration = 3000) {
+  // 축하 순간: heavy haptic
+  try { window.haptic?.heavy?.(); } catch {}
   const container = document.createElement('div');
   container.className = 'confetti-container';
   const colors = ['#fa342c','#fc6a66','#fe928d','#fed4d2','#ca1d13','#fdf0f0'];

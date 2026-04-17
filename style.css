@@ -20,10 +20,10 @@
   --border: #2c2c2e;
   --border-light: #3a3a3c;
 
-  /* Text */
+  /* Text — WCAG AA 4.5:1 on --bg 기준 상향 */
   --text: #f5f5f7;
-  --text-secondary: #a1a1a6;
-  --text-tertiary: #636366;
+  --text-secondary: #b0b0b5;  /* from #a1a1a6 — ~5.5:1 on #1c1c1e */
+  --text-tertiary: #8e8e93;   /* from #636366 — ~4.6:1 on #1c1c1e (WCAG AA) */
 
   /* Primary — 토마토 레드 A안 */
   --primary: #fa342c;
@@ -77,6 +77,26 @@
   /* Transition — TDS Mobile standard: 0.1s ease-in-out */
   --transition: 0.1s ease-in-out;
   --transition-slow: 0.3s ease;
+  --transition-progress: 0.5s ease-in-out;
+  --ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
+
+  /* Spacing — 4px grid */
+  --space-0: 0; --space-1: 4px; --space-2: 8px; --space-3: 12px;
+  --space-4: 16px; --space-5: 20px; --space-6: 24px; --space-8: 32px; --space-10: 40px;
+
+  /* Typography — TDS Mobile scale (size / line-height) */
+  --tds-t1-size: 30px; --tds-t1-lh: 40px;
+  --tds-t2-size: 26px; --tds-t2-lh: 36px;
+  --tds-t3-size: 22px; --tds-t3-lh: 32px;
+  --tds-t4-size: 20px; --tds-t4-lh: 29px;
+  --tds-t5-size: 17px; --tds-t5-lh: 25.5px;
+  --tds-t6-size: 15px; --tds-t6-lh: 22.5px;
+  --tds-t7-size: 13px; --tds-t7-lh: 19.5px;
+  --tds-st10-size: 16px; --tds-st10-lh: 24px;
+  --tds-st11-size: 14px; --tds-st11-lh: 21px;
+  --tds-st12-size: 13px; --tds-st12-lh: 19.5px;
+  --tds-st13-size: 11px; --tds-st13-lh: 16.5px;
+  --tds-w-bold: 700; --tds-w-semi: 600; --tds-w-med: 500; --tds-w-reg: 400;
 
   /* Shadows — TDS Mobile */
   --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
@@ -170,7 +190,7 @@
 
   --text: #191f28;
   --text-secondary: #4e5968;
-  --text-tertiary: #8b95a1;
+  --text-tertiary: #6b7684;  /* from #8b95a1 — ~4.6:1 on #fff (WCAG AA) */
 
   --primary: #fa342c;
   --primary-bg: rgba(250,52,44,0.08);
@@ -234,6 +254,22 @@
 .hidden { display: none !important; }
 
 /* ══════════════════════════════════════════════════════════════════
+   TDS Typography Helper Classes
+   — Use these instead of hardcoded font-size/line-height
+   ══════════════════════════════════════════════════════════════════ */
+.tds-t1 { font-size: var(--tds-t1-size); line-height: var(--tds-t1-lh); font-weight: var(--tds-w-bold); }
+.tds-t2 { font-size: var(--tds-t2-size); line-height: var(--tds-t2-lh); font-weight: var(--tds-w-bold); }
+.tds-t3 { font-size: var(--tds-t3-size); line-height: var(--tds-t3-lh); font-weight: var(--tds-w-bold); }
+.tds-t4 { font-size: var(--tds-t4-size); line-height: var(--tds-t4-lh); font-weight: var(--tds-w-bold); }
+.tds-t5 { font-size: var(--tds-t5-size); line-height: var(--tds-t5-lh); font-weight: var(--tds-w-bold); }
+.tds-t6 { font-size: var(--tds-t6-size); line-height: var(--tds-t6-lh); font-weight: var(--tds-w-semi); }
+.tds-t7 { font-size: var(--tds-t7-size); line-height: var(--tds-t7-lh); font-weight: var(--tds-w-semi); }
+.tds-st10 { font-size: var(--tds-st10-size); line-height: var(--tds-st10-lh); font-weight: var(--tds-w-med); }
+.tds-st11 { font-size: var(--tds-st11-size); line-height: var(--tds-st11-lh); font-weight: var(--tds-w-med); }
+.tds-st12 { font-size: var(--tds-st12-size); line-height: var(--tds-st12-lh); font-weight: var(--tds-w-med); }
+.tds-st13 { font-size: var(--tds-st13-size); line-height: var(--tds-st13-lh); font-weight: var(--tds-w-med); }
+
+/* ══════════════════════════════════════════════════════════════════
    TDS Component: Button
    ══════════════════════════════════════════════════════════════════ */
 /* TDS Mobile Button — sizes: sm(12px), md(14px/default), lg(17px), xl(20px) */
@@ -257,7 +293,12 @@
 .tds-btn.ghost:active { background: var(--surface2); }
 .tds-btn.tonal { background: var(--primary-bg, #fdf0f0); color: var(--primary); border: none; }
 .tds-btn.tonal:active { background: var(--primary-light, #fed4d2); }
-.tds-btn.danger { background: var(--diet-bad-dim); color: var(--diet-bad); border: 1px solid var(--diet-bad); }
+.tds-btn.danger,
+.tds-btn.destructive,
+.tds-btn-destructive { background: var(--diet-bad-dim); color: var(--diet-bad); border: 1px solid var(--diet-bad); }
+.tds-btn.danger:active,
+.tds-btn.destructive:active,
+.tds-btn-destructive:active { background: var(--diet-bad); color: #fff; }
 .tds-btn.sm { padding: 8px 14px; font-size: 12px; line-height: 18px; border-radius: var(--radius-sm); }
 .tds-btn.lg { padding: 14px 24px; font-size: 17px; line-height: 25.5px; border-radius: var(--radius-lg); }
 .tds-btn.xl { padding: 16px 28px; font-size: 20px; line-height: 29px; border-radius: var(--radius-lg); }
@@ -267,18 +308,130 @@
 /* ══════════════════════════════════════════════════════════════════
    TDS Component: Badge
    ══════════════════════════════════════════════════════════════════ */
-/* TDS Mobile Badge — sizes: xs/sm(9px r8), md/lg(10px r9), font-weight bold */
+/* TDS Mobile Badge — sm(9/13 r8), md(10/15 r9999 pill), font-weight 700 */
 .tds-badge {
   display: inline-flex; align-items: center; gap: 4px;
-  padding: 3px 7px; border-radius: 9px;
-  font-size: 10px; font-weight: 700; line-height: 1.5em;
+  padding: 3px 8px; border-radius: var(--radius-full, 9999px);
+  font-size: 10px; font-weight: 700; line-height: 15px;
   background: var(--surface3); color: var(--text-secondary);
+  white-space: nowrap;
 }
-.tds-badge.sm { font-size: 9px; padding: 3px 6px; border-radius: 8px; }
+.tds-badge.sm { font-size: 9px; line-height: 13px; padding: 2px 6px; border-radius: var(--radius-sm, 8px); }
+.tds-badge.md { font-size: 10px; line-height: 15px; padding: 3px 8px; border-radius: var(--radius-full, 9999px); }
 .tds-badge.primary { background: var(--primary-bg); color: var(--primary); }
 .tds-badge.success { background: var(--diet-ok-dim); color: var(--diet-ok); }
 .tds-badge.danger { background: var(--diet-bad-dim); color: var(--diet-bad); }
 .tds-badge.warning { background: rgba(245,158,11,0.12); color: #f59e0b; }
+.tds-badge.info { background: var(--surface2); color: var(--text-secondary); }
+.tds-badge.outlined { background: transparent; border: 1px solid currentColor; }
+
+/* ══════════════════════════════════════════════════════════════════
+   TDS Component: Switch (Toggle)
+   ══════════════════════════════════════════════════════════════════ */
+/* TDS Mobile Switch — 50x30px, r15, transition 0.1s ease-in-out, disabled opacity 0.3 */
+.tds-switch {
+  display: inline-block; position: relative;
+  width: 50px; height: 30px; flex-shrink: 0;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+.tds-switch input[type="checkbox"] {
+  opacity: 0; width: 0; height: 0; position: absolute;
+}
+.tds-switch-track {
+  position: absolute; inset: 0;
+  background: var(--surface3, #636366);
+  border-radius: 15px;
+  transition: background 0.1s ease-in-out;
+}
+.tds-switch-thumb {
+  position: absolute; top: 3px; left: 3px;
+  width: 24px; height: 24px;
+  background: #fff; border-radius: 50%;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  transition: transform 0.1s ease-in-out, box-shadow 0.1s ease-in-out;
+}
+.tds-switch input:checked ~ .tds-switch-track { background: var(--primary); }
+.tds-switch input:checked ~ .tds-switch-thumb { transform: translateX(20px); }
+.tds-switch input:disabled ~ .tds-switch-track,
+.tds-switch input:disabled ~ .tds-switch-thumb { opacity: 0.3; cursor: not-allowed; }
+.tds-switch input:focus-visible ~ .tds-switch-track {
+  box-shadow: 0 0 0 2px var(--primary-bg);
+}
+.tds-switch.sm {
+  width: 40px; height: 24px;
+}
+.tds-switch.sm .tds-switch-track { border-radius: 12px; }
+.tds-switch.sm .tds-switch-thumb {
+  top: 2px; left: 2px; width: 20px; height: 20px;
+}
+.tds-switch.sm input:checked ~ .tds-switch-thumb { transform: translateX(16px); }
+
+/* ══════════════════════════════════════════════════════════════════
+   TDS Component: Skeleton (Loading Placeholder)
+   ══════════════════════════════════════════════════════════════════ */
+/* TDS Mobile Skeleton — card r18, title r11, subtitle r9 */
+.tds-skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--surface2) 0%,
+    var(--surface3) 50%,
+    var(--surface2) 100%
+  );
+  background-size: 200% 100%;
+  animation: tds-skeleton-shimmer 1.5s ease-in-out infinite;
+}
+.tds-skeleton-card,
+.tds-skeleton-title,
+.tds-skeleton-subtitle,
+.tds-skeleton-text,
+.tds-skeleton-avatar {
+  background: linear-gradient(
+    90deg,
+    var(--surface2) 0%,
+    var(--surface3) 50%,
+    var(--surface2) 100%
+  );
+  background-size: 200% 100%;
+  animation: tds-skeleton-shimmer 1.5s ease-in-out infinite;
+}
+.tds-skeleton-card {
+  height: 120px;
+  border-radius: 18px;
+  margin-bottom: 12px;
+}
+.tds-skeleton-title {
+  height: 20px;
+  border-radius: 11px;
+  margin-bottom: 8px;
+  width: 60%;
+}
+.tds-skeleton-subtitle {
+  height: 14px;
+  border-radius: 9px;
+  margin-bottom: 6px;
+  width: 40%;
+}
+.tds-skeleton-text {
+  height: 12px;
+  border-radius: 6px;
+  margin-bottom: 4px;
+}
+.tds-skeleton-avatar {
+  width: 48px; height: 48px;
+  border-radius: 50%;
+}
+@keyframes tds-skeleton-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* 탭 로더 컨테이너 */
+.tds-tab-loader {
+  display: flex; flex-direction: column; gap: 12px;
+  padding: 16px;
+  animation: tds-loader-fadein 0.3s ease-in-out 0.1s both;
+}
 
 /* ══════════════════════════════════════════════════════════════════
    TDS Component: Card
@@ -288,6 +441,100 @@
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius-md); padding: 16px;
   transition: border-color var(--transition);
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   TDS Empty State — Phase B/D
+   빈 탭/리스트에 primary CTA를 승격하는 일관된 엠프티 블록
+   ══════════════════════════════════════════════════════════════════ */
+.tds-empty {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 12px; padding: 32px 20px;
+  text-align: center;
+  color: var(--text-secondary);
+}
+.tds-empty .tds-empty-icon {
+  font-size: 32px; opacity: 0.7; margin-bottom: 4px;
+}
+.tds-empty .tds-empty-title {
+  font-size: 16px; line-height: 24px; font-weight: 600; color: var(--text);
+}
+.tds-empty .tds-empty-desc {
+  font-size: 14px; line-height: 21px; color: var(--text-secondary); max-width: 280px;
+}
+.tds-empty .tds-btn { min-height: 44px; margin-top: 8px; }
+
+/* ══════════════════════════════════════════════════════════════════
+   TDS Offline Banner — Phase D
+   네트워크 끊김 시 상단 고정 배너 (JS에서 .online/.offline 토글)
+   ══════════════════════════════════════════════════════════════════ */
+#tds-offline-banner {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 9999;
+  padding: 8px 16px; text-align: center;
+  font-size: 12px; line-height: 18px; font-weight: 600;
+  background: var(--diet-bad); color: #fff;
+  transform: translateY(-100%);
+  transition: transform var(--transition-slow) var(--ease-sheet);
+  pointer-events: none;
+}
+#tds-offline-banner.visible {
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   TDS Autosave Indicator — Phase D
+   "저장됨 ✓ · 방금" 등 자동 저장 상태 인디케이터
+   ══════════════════════════════════════════════════════════════════ */
+.tds-autosave {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; line-height: 16.5px; font-weight: 500;
+  color: var(--text-tertiary);
+  opacity: 0; transition: opacity var(--transition-slow);
+}
+.tds-autosave.visible { opacity: 1; }
+.tds-autosave.saving { color: var(--text-tertiary); }
+.tds-autosave.saved { color: var(--diet-ok, #22c55e); }
+.tds-autosave.error { color: var(--diet-bad); }
+.tds-autosave::before {
+  content: ''; width: 8px; height: 8px; border-radius: 50%;
+  background: currentColor;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   TDS A11y — Phase E
+   포커스 링, 최소 터치 타깃, 시각적 스크린리더 유틸
+   ══════════════════════════════════════════════════════════════════ */
+/* 키보드 포커스 전용 링 — 마우스 포커스엔 노출 안 됨 */
+.tds-btn:focus-visible,
+.tds-text-btn:focus-visible,
+.tds-icon-btn:focus-visible,
+.tds-segmented-item:focus-visible,
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* 스크린리더 전용 라벨 (sr-only) */
+.tds-sr-only {
+  position: absolute !important;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* 최소 터치 타깃 — HIG / Material / TDS Mobile 공통 44px 기준 */
+.tds-touchable,
+.tds-icon-btn.touchable {
+  min-width: 44px; min-height: 44px;
 }
 
 /* TDS Mobile Segmented Control — container r14, item r12, indicator r10 */
@@ -301,7 +548,7 @@
   background: none; border: none; cursor: pointer; z-index: 1;
   font-family: var(--font-sans); font-size: 12px; line-height: 18px; font-weight: 500;
   color: var(--text-secondary); text-align: center; white-space: nowrap;
-  transition: color 0.2s ease;
+  transition: color var(--transition);
   -webkit-tap-highlight-color: transparent;
 }
 .tds-segmented-item.active { color: var(--text); font-weight: 600; }
@@ -310,7 +557,8 @@
   background: var(--surface); border-radius: 10px;
   box-shadow: var(--shadow-segmented);
   z-index: 0;
-  transition: left 0.2s ease, width 0.2s ease;
+  /* TDS slow: 0.3s ease for segmented/tab indicator motion */
+  transition: left var(--transition-slow), width var(--transition-slow);
 }
 
 /* TDS Mobile Text Button — font-weight 500, r8, disabled opacity 0.38 */
@@ -412,6 +660,59 @@
 .tds-list-row:active { background: var(--surface2); }
 
 /* ══════════════════════════════════════════════════════════════════
+   Utility Classes (인라인 스타일 치환용)
+   ══════════════════════════════════════════════════════════════════ */
+/* Flex */
+.u-flex { display: flex; }
+.u-flex-col { display: flex; flex-direction: column; }
+.u-flex-1 { flex: 1; }
+.u-flex-2 { flex: 2; }
+.u-flex-shrink-0 { flex-shrink: 0; }
+.u-items-center { align-items: center; }
+.u-items-start { align-items: flex-start; }
+.u-justify-between { justify-content: space-between; }
+.u-justify-center { justify-content: center; }
+
+/* Gap */
+.u-gap-1 { gap: 4px; }
+.u-gap-2 { gap: 8px; }
+.u-gap-3 { gap: 12px; }
+.u-gap-4 { gap: 16px; }
+
+/* Margin (top) */
+.u-mt-0 { margin-top: 0; }
+.u-mt-1 { margin-top: 4px; }
+.u-mt-2 { margin-top: 8px; }
+.u-mt-3 { margin-top: 12px; }
+.u-mt-4 { margin-top: 16px; }
+
+/* Text alignment */
+.u-text-center { text-align: center; }
+.u-text-left { text-align: left; }
+
+/* Text color / size */
+.u-text-primary { color: var(--primary); }
+.u-text-secondary { color: var(--text-secondary); }
+.u-text-tertiary { color: var(--text-tertiary); }
+.u-text-xs { font-size: 11px; line-height: 1.5; }
+.u-text-sm { font-size: 13px; line-height: 1.5; }
+.u-text-md { font-size: 14px; line-height: 1.5; }
+.u-font-bold { font-weight: 700; }
+.u-font-semi { font-weight: 600; }
+
+/* Width / Height */
+.u-w-full { width: 100%; }
+
+/* Display */
+.u-hidden { display: none !important; }
+.u-block { display: block; }
+.u-inline-block { display: inline-block; }
+
+/* Position */
+.u-relative { position: relative; }
+.u-absolute { position: absolute; }
+
+/* ══════════════════════════════════════════════════════════════════
    TDS Component: Tabs
    ══════════════════════════════════════════════════════════════════ */
 /* TDS Mobile Tab — indicator 2px/1px-radius, min-width 64px, 0.3s ease */
@@ -489,6 +790,82 @@
 
 @keyframes tds-fade-in { from { opacity: 0 } to { opacity: 1 } }
 @keyframes tds-slide-up { from { transform: translateY(100%); opacity: 0 } to { transform: translateY(0); opacity: 1 } }
+
+/* ── Confirm Modal (utils/confirm-modal.js) ───────────────────── */
+.confirm-modal-overlay { z-index: 900; }
+.confirm-modal-message {
+  font-size: 14px; line-height: 21px; color: var(--text-secondary);
+  text-align: center; margin: 0 0 24px; white-space: pre-line;
+}
+.confirm-modal-actions {
+  display: flex; gap: 8px; width: 100%;
+}
+.confirm-modal-actions .tds-btn { flex: 1; min-height: 48px; }
+.confirm-modal-confirm.long-press {
+  position: relative; overflow: hidden;
+}
+.confirm-modal-confirm.long-press .long-press-fill {
+  position: absolute; inset: 0 auto 0 0; width: 0%;
+  background: var(--diet-bad); opacity: 0.35;
+  transition: width 0.05s linear; pointer-events: none;
+}
+.confirm-modal-confirm.long-press .long-press-label {
+  position: relative; z-index: 1;
+  display: inline-flex; flex-direction: column; align-items: center; gap: 2px;
+  line-height: 1.15;
+}
+.confirm-modal-confirm.long-press .long-press-hint {
+  font-size: 10px; font-weight: 500; opacity: 0.8;
+}
+.confirm-modal-confirm.long-press.pressing { transform: scale(0.98); }
+
+/* ── TDS Banner (스트릭 경고 / 관리자 모드 안내 등) ─────────────── */
+.tds-banner {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 14px 16px;
+  background: var(--primary-bg, #fdf0f0);
+  border: 1px solid var(--primary-light, #fed4d2);
+  border-radius: var(--radius-md, 12px);
+  color: var(--text);
+  margin: 12px 16px;
+  transition: opacity 0.2s ease;
+}
+.tds-banner.variant-info { background: var(--surface2); border-color: var(--border); }
+.tds-banner-icon { font-size: 20px; line-height: 1; flex-shrink: 0; margin-top: 2px; }
+.tds-banner-body { flex: 1; display: flex; flex-direction: column; gap: 2px; font-size: 13px; line-height: 19.5px; }
+.tds-banner-body strong { font-weight: 700; font-size: 14px; line-height: 21px; }
+.tds-banner-body span { color: var(--text-secondary); }
+.tds-banner-close {
+  background: transparent; border: none; color: var(--text-tertiary);
+  font-size: 14px; padding: 4px 6px; cursor: pointer; flex-shrink: 0;
+  min-width: 28px; min-height: 28px; border-radius: var(--radius-sm, 8px);
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.1s ease-in-out;
+}
+.tds-banner-close:active { background: rgba(0,0,0,0.08); }
+
+.tds-streak-warning {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 14px 16px;
+  background: var(--primary-bg, #fdf0f0);
+  border: 1px solid var(--primary-light, #fed4d2);
+  border-radius: var(--radius-md, 12px);
+  color: var(--text);
+  margin: 12px 16px 0;
+  transition: opacity 0.2s ease;
+}
+.tds-streak-warning-icon { font-size: 22px; line-height: 1; flex-shrink: 0; margin-top: 1px; }
+.tds-streak-warning-body { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.tds-streak-warning-body strong { font-size: 14px; line-height: 21px; font-weight: 700; color: var(--primary); }
+.tds-streak-warning-body span { font-size: 12px; line-height: 18px; color: var(--text-secondary); }
+.tds-streak-warning-close {
+  background: transparent; border: none; color: var(--text-tertiary);
+  font-size: 14px; padding: 4px 6px; cursor: pointer; flex-shrink: 0;
+  min-width: 28px; min-height: 28px; border-radius: var(--radius-sm, 8px);
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.1s ease-in-out;
+}
+.tds-streak-warning-close:active { background: rgba(250,52,44,0.12); }
 
 /* ══════════════════════════════════════════════════════════════════
    Loading Spinner
@@ -613,7 +990,7 @@ body {
   position: fixed; inset: 0; z-index: 499;
   background: rgba(0,0,0,0.3);
   opacity: 0; pointer-events: none;
-  transition: opacity 0.2s ease;
+  transition: opacity var(--transition-slow);
 }
 .notif-center-backdrop.open { opacity: 1; pointer-events: auto; }
 
@@ -890,12 +1267,22 @@ body {
 }
 
 .home-section { padding: 0 16px 16px; }
+/* .home-card: TDS Card 정합 — r12, padding 16/20 (기존 20px 유지하되 r을 TDS md로)
+   TDS_AUDIT 2.2 권장: padding은 4px 그리드. 20px는 4 배수이므로 유지. */
 .home-card {
   background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius-lg); padding: 20px; margin-bottom: 10px;
+  border-radius: var(--radius-md); padding: 20px; margin-bottom: 10px;
   overflow-x: auto; -webkit-overflow-scrolling: touch;
-  transition: all var(--transition);
+  transition: border-color var(--transition);
 }
+/* 축하/강조 카드 (수확 완료 등) */
+.home-card.primary-bg {
+  background: var(--primary-bg);
+  border-color: var(--primary-light, #fed4d2);
+}
+.home-card.compact { padding: 16px; }
+.home-card.flat { border: none; background: transparent; padding: 0; }
+
 .home-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .home-card-title {
   font-size: 14px; font-weight: 600; color: var(--text);
@@ -1154,7 +1541,9 @@ body {
   border-radius: var(--radius-full); margin: 12px auto 16px;
 }
 .sheet-title {
-  font-size: 17px; font-weight: 700; color: var(--text);
+  /* TDS Mobile t4 — 20/29/700 */
+  font-size: var(--tds-t4-size); line-height: var(--tds-t4-lh);
+  font-weight: var(--tds-w-bold); color: var(--text);
   margin-bottom: 16px; text-align: center;
 }
 .sheet-section {
@@ -1163,7 +1552,9 @@ body {
   padding: 20px 16px;
 }
 .section-category-title {
-  font-size: 15px; font-weight: 600; color: var(--text); margin-bottom: 14px;
+  /* TDS Mobile t6 — 15/22.5/600 */
+  font-size: var(--tds-t6-size); line-height: var(--tds-t6-lh);
+  font-weight: var(--tds-w-semi); color: var(--text); margin-bottom: 14px;
   padding-bottom: 10px; border-bottom: 1px solid var(--border);
   display: flex; align-items: center; gap: 8px;
   letter-spacing: -0.01em;
@@ -1179,9 +1570,13 @@ body {
   position: sticky; bottom: 0; background: var(--surface); padding-top: 12px;
 }
 .sheet-btn {
-  flex: 1; padding: 14px; border-radius: var(--radius-md);
+  /* TDS md button: 12/20 padding, r12, 14/21/600 */
+  flex: 1; padding: 12px 20px; border-radius: var(--radius-md);
   border: 1px solid var(--border); font-family: var(--font-sans);
-  font-size: 14px; font-weight: 600; cursor: pointer;
+  font-size: var(--tds-st11-size); line-height: var(--tds-st11-lh);
+  font-weight: var(--tds-w-semi);
+  min-height: 44px; /* TDS touch target */
+  cursor: pointer;
   -webkit-tap-highlight-color: transparent; transition: all var(--transition);
 }
 .sheet-btn:active { transform: scale(0.97); }
@@ -1196,17 +1591,21 @@ body {
   display: none; align-items: flex-end; justify-content: center;
   backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
 }
-.modal-overlay.open, .modal-backdrop.open { display: flex; animation: fadeIn 0.2s ease; }
+.modal-overlay.open, .modal-backdrop.open { display: flex; animation: fadeIn var(--transition-slow) var(--ease-sheet); }
 .modal-sheet {
   width: 100%; max-width: 540px;
   background: var(--surface);
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   border-top: 1px solid var(--border-light);
-  padding: 0 20px 36px; max-height: 80vh; overflow-y: auto;
-  animation: slideUp 0.3s cubic-bezier(0.32,0.72,0,1);
+  /* TDS Mobile Modal — content padding 32px 20px 20px 20px */
+  padding: 32px 20px 20px 20px;
+  max-height: 80vh; overflow-y: auto;
+  animation: slideUp var(--transition-slow) var(--ease-sheet);
 }
 .modal-title {
-  font-size: 17px; font-weight: 700; color: var(--text);
+  /* TDS Mobile t4 — 20/29/700 */
+  font-size: var(--tds-t4-size); line-height: var(--tds-t4-lh);
+  font-weight: var(--tds-w-bold); color: var(--text);
   margin: 16px 0; text-align: center;
 }
 
@@ -1367,11 +1766,14 @@ body {
 
 /* ── Diet DB / Food chips ── */
 .diet-db-btn {
+  /* TDS Mobile sm — padding 8/14, font 12, r8 */
   background: var(--surface3); border: 1px solid var(--border);
-  border-radius: 6px; color: var(--text-tertiary); font-size: 11px;
-  padding: 4px 10px; cursor: pointer; margin-top: 4px;
+  border-radius: var(--radius-sm); color: var(--text-tertiary); font-size: 12px;
+  line-height: 18px; font-weight: 500;
+  padding: 6px 12px; cursor: pointer; margin-top: 4px;
   -webkit-tap-highlight-color: transparent; transition: all var(--transition);
   font-family: var(--font-sans);
+  min-height: 32px;
 }
 .diet-db-btn:active { background: var(--primary); color: #fff; border-color: var(--primary); }
 .diet-skip-btn {
@@ -1475,7 +1877,7 @@ body {
 .muscle-stat-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
 .muscle-stat-name { font-size: 12px; font-weight: 600; width: 44px; flex-shrink: 0; }
 .muscle-stat-bar-wrap { flex: 1; height: 7px; background: var(--surface2); border-radius: 4px; overflow: hidden; }
-.muscle-stat-bar { height: 100%; border-radius: 4px; transition: width 0.4s ease; }
+.muscle-stat-bar { height: 100%; border-radius: 4px; transition: width var(--transition-progress); }
 .muscle-stat-count { font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); width: 36px; text-align: right; flex-shrink: 0; }
 .muscle-stat-14d { font-size: 10px; padding: 2px 6px; border-radius: 10px; font-weight: 600; flex-shrink: 0; }
 .muscle-stat-14d.good { background: var(--diet-ok-dim); color: var(--streak); }
@@ -1812,22 +2214,40 @@ body {
   position: sticky; top: 52px; z-index: 10; /* top-nav 아래 */
 }
 .wt-date-nav-btn {
+  /* TDS sm button: padding 8/14, grid-aligned h-pad changed 18 → 20 */
   background: var(--surface2); border: 1px solid var(--border);
-  color: var(--text); padding: 8px 18px; border-radius: var(--radius-full);
-  font-size: 15px; cursor: pointer; -webkit-tap-highlight-color: transparent;
+  color: var(--text); padding: 8px 20px; border-radius: var(--radius-full);
+  min-height: 40px; /* Touch target */
+  font-size: var(--tds-st11-size); line-height: var(--tds-st11-lh);
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
   transition: all var(--transition);
 }
 .wt-date-nav-btn:active { background: var(--surface3); transform: scale(0.96); }
-.wt-date-nav-btn:active { transform: scale(0.94); }
 .workout-date-label {
   font-family: var(--font-mono); font-size: 14px; font-weight: 700;
   color: var(--text); min-width: 160px; text-align: center;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+}
+/* TODAY badge — shown inline next to date label when current date */
+.workout-date-label .wt-today-tag {
+  display: inline-flex; align-items: center;
+  font-size: 9px; font-weight: 700; line-height: 1;
+  padding: 3px 6px; border-radius: var(--radius-sm);
+  background: var(--primary); color: #fff;
+  letter-spacing: 0.02em;
 }
 .wt-today-btn {
-  padding: 5px 12px; background: var(--surface3);
-  border: 1px solid var(--primary); border-radius: 6px;
-  color: var(--primary); font-size: 11px; cursor: pointer; font-family: var(--font-sans);
+  /* TDS sm button: padding 8/14, r8 (was 5/12 r6) */
+  padding: 8px 14px; background: var(--surface3);
+  border: 1px solid var(--primary); border-radius: var(--radius-sm);
+  color: var(--primary); font-size: var(--tds-st13-size); line-height: var(--tds-st13-lh);
+  font-weight: var(--tds-w-semi);
+  min-height: 36px;
+  cursor: pointer; font-family: var(--font-sans);
+  transition: background-color var(--transition), color var(--transition), transform var(--transition);
+  -webkit-tap-highlight-color: transparent;
 }
+.wt-today-btn:active { background: var(--primary); color: #fff; transform: scale(0.97); }
 .wt-future-notice {
   background: var(--surface2); color: var(--text-secondary);
   font-size: 12px; text-align: center; padding: 8px 16px;
@@ -2320,6 +2740,48 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
 .login-btn:hover { opacity: 0.9; }
 .login-btn:active { transform: scale(0.98); }
 
+/* Login mode radio cards */
+.login-mode-option {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 12px; border-radius: var(--radius-md);
+  background: var(--surface2); cursor: pointer;
+  border: 2px solid transparent;
+  transition: border-color 0.1s ease-in-out;
+}
+.login-mode-option.active { border-color: var(--primary); }
+.login-mode-option input[type="radio"] { accent-color: var(--primary); }
+.login-status { min-height: 18px; }
+.login-signup-link {
+  background: none; border: none; color: var(--primary);
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  padding: 8px 16px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Signup view styles (인라인 → 클래스 이전) */
+.signup-optional-wrap {
+  margin-top: 14px; border-top: 1px solid var(--border); padding-top: 12px;
+}
+.signup-optional-note { margin-bottom: 10px; }
+.signup-section { margin-top: 10px; }
+.signup-field-reveal { margin-top: 8px; }
+.signup-guild-input { margin: 0; }
+.signup-guild-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.signup-submit-btn { margin-top: 4px; }
+.signup-login-link-wrap { margin-top: 14px; }
+.signup-login-link {
+  background: none; border: none; color: var(--text-tertiary);
+  font-size: 13px; cursor: pointer; padding: 8px 16px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Login PW modal styles */
+.login-pw-card { max-width: 320px; }
+.login-pw-input { margin-top: 12px; }
+.login-pw-error { color: #ef4444; font-size: 12px; margin-top: 4px; }
+.login-pw-actions { display: flex; gap: 8px; margin-top: 12px; }
+.login-pw-cancel { background: var(--surface3); color: var(--text); }
+
 .login-pw-modal {
   position: fixed; inset: 0; z-index: 10001;
   background: rgba(0,0,0,0.6);
@@ -2419,7 +2881,7 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
 .tomato-dot {
   width: 12px; height: 12px; border-radius: var(--radius-full);
   border: 2px solid var(--border); background: transparent;
-  transition: all 0.2s ease;
+  transition: all var(--transition);
 }
 .tomato-dot.success { background: var(--diet-ok); border-color: var(--diet-ok); }
 .tomato-dot.fail    { background: var(--diet-bad); border-color: var(--diet-bad); }
@@ -2787,7 +3249,7 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
   color: var(--text, #1f1f1f);
   font-size: 13px; line-height: 1.45;
   box-shadow: 0 1px 3px rgba(0,0,0,0.04);
-  transition: background 0.2s ease-in-out, border-color 0.2s ease-in-out;
+  transition: background var(--transition), border-color var(--transition);
 }
 .ai-estimate-banner[data-state="pending"] {
   border-color: rgba(124,58,237,0.28);
@@ -3340,7 +3802,7 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
   flex: 1; padding: 14px 12px; border-radius: var(--seed-r3);
   border: 1.5px solid var(--border); background: var(--surface);
   color: var(--text-secondary); font-size: var(--seed-t3); font-weight: 600;
-  cursor: pointer; transition: all 0.2s ease;
+  cursor: pointer; transition: all var(--transition);
   text-align: center; display: flex; flex-direction: column; gap: 4px;
 }
 .wt-alt-btn:active { background: var(--surface2); transform: scale(0.98); }
@@ -3789,7 +4251,7 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
   aspect-ratio: 1; border-radius: 10px;
   display: flex; align-items: center; justify-content: center;
   font-size: 28px; cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all var(--transition);
   position: relative;
 }
 .tf-plot.tf-growing {
@@ -4240,6 +4702,21 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
 .tds-toast[data-type="warning"] { background: var(--seed-gray-800, #333); border-left: 3px solid #fe928d; }
 .tds-toast[data-type="info"]    { background: var(--seed-gray-900); }
 
+/* Toast with action button (Undo 등) */
+.tds-toast.has-action {
+  white-space: normal; display: inline-flex; align-items: center; gap: 12px;
+  padding-right: var(--seed-x3);
+}
+.tds-toast.has-action .tds-toast-msg { flex: 1; white-space: nowrap; }
+.tds-toast.has-action .tds-toast-action {
+  background: transparent; border: none; color: var(--primary-light, #fed4d2);
+  font-size: 13px; font-weight: 700; padding: 6px 10px;
+  border-radius: var(--radius-sm, 8px); cursor: pointer; flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.1s ease-in-out;
+}
+.tds-toast.has-action .tds-toast-action:active { background: rgba(255,255,255,0.12); }
+
 /* ── TDS Center Toast (식단 저장 등 큰 피드백) ── */
 .tds-center-toast {
   position: fixed; top: 50%; left: 50%;
@@ -4250,7 +4727,7 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
   border-radius: var(--seed-r3, 16px); box-shadow: var(--seed-s3);
   z-index: 2000; opacity: 0; pointer-events: none;
   display: flex; align-items: center; gap: 10px;
-  transition: opacity 0.2s ease-in-out, transform 0.2s ease-in-out;
+  transition: opacity var(--transition), transform var(--transition);
 }
 .tds-center-toast.show {
   opacity: 1; transform: translate(-50%, -50%) scale(1); pointer-events: auto;
@@ -6171,7 +6648,8 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
   height: 100%;
   width: 0%;
   background: #217cf9;
-  transition: width 1s linear, background 0.2s ease;
+  /* Progress bar: 0.5s ease-in-out per TDS, background uses standard transition */
+  transition: width 1s linear, background var(--transition);
 }
 .wt-tbar.rest-expired .wt-tbar-fill {
   background: var(--primary);
@@ -6203,7 +6681,7 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
   border-radius: 20px 20px 0 0;
   padding: 22px 20px calc(22px + env(safe-area-inset-bottom, 0));
   transform: translateY(100%);
-  transition: transform 0.2s ease;
+  transition: transform var(--transition-slow) var(--ease-sheet);
   box-shadow: 0 -8px 24px rgba(0,0,0,0.12);
 }
 .wt-rest-sheet-back.show .wt-rest-sheet { transform: translateY(0); }
@@ -6363,7 +6841,7 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
   border-radius: 20px 20px 0 0;
   padding: 22px 20px calc(22px + env(safe-area-inset-bottom, 0));
   transform: translateY(100%);
-  transition: transform 0.2s ease;
+  transition: transform var(--transition-slow) var(--ease-sheet);
   box-shadow: 0 -8px 24px rgba(0,0,0,0.12);
   max-height: 75vh;
   overflow-y: auto;

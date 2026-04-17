@@ -51,7 +51,7 @@ async function saveCheckinFromModal() {
   const weight = parseFloat(document.getElementById('ci-weight').value);
   const bf     = parseFloat(document.getElementById('ci-bodyfat').value);
   const note   = document.getElementById('ci-note').value.trim();
-  if (!date || !weight) { alert('날짜와 체중을 입력해주세요.'); return; }
+  if (!date || !weight) { window.showToast?.('날짜와 체중을 입력해주세요', 2500, 'warning'); return; }
   const rec = {
     id:         _checkinId || `ci_${Date.now()}`,
     date,

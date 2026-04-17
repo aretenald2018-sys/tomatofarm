@@ -93,8 +93,8 @@ export function closeCookingModal(e) {
 export async function saveCookingFromModal() {
   const name   = document.getElementById('cooking-name').value.trim();
   const date   = document.getElementById('cooking-date').value;
-  if (!name) { alert('요리 이름을 입력해주세요.'); return; }
-  if (!date) { alert('날짜를 입력해주세요.'); return; }
+  if (!name) { window.showToast?.('요리 이름을 입력해주세요', 2500, 'warning'); return; }
+  if (!date) { window.showToast?.('날짜를 입력해주세요', 2500, 'warning'); return; }
 
   const servings = parseInt(document.getElementById('cooking-servings').value) || 1;
 

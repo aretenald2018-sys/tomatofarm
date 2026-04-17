@@ -192,7 +192,7 @@ export function installPWA() {
       _deferredInstallPrompt = null;
     });
   } else {
-    alert('이미 설치되었거나, 브라우저가 설치를 지원하지 않습니다.\n\n수동 설치: 브라우저 메뉴(⋮) → "홈 화면에 추가" 또는 "앱 설치"를 선택하세요.');
+    window.showToast?.('이미 설치되었거나, 브라우저가 미지원. 메뉴에서 "홈 화면에 추가" 또는 "앱 설치"를 이용하세요', 4500, 'info');
   }
 }
 

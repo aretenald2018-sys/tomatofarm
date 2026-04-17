@@ -19,6 +19,11 @@ import './workout/expert.js';  // 전문가 모드 (window.* 노출 + 렌더)
 import { showTutorialIfNeeded } from './feature-tutorial.js';
 import { initFCM, showPWAInstallBanner, updateInstallBtn } from './pwa-fcm.js';
 import { initTabDrag, initSwipeNavigation, applyTabOrder, applyVisibleTabs } from './navigation.js';
+import { initUxPolish } from './utils/ux-polish.js';
+import './utils/confirm-modal.js'; // window.confirmAction / confirmSimple 등록
+import './utils/form-guard.js';    // window.createFormGuard / registerFormGuard 등록
+import './utils/format.js';        // window.fmtKcal / fmtDate 등 로케일 포맷
+import './utils/haptics.js';       // window.haptic.light/medium/heavy (Capacitor + web fallback)
 // ── 코어 탭 (즉시 로드) ──
 import { renderHome, refreshNotifCenter, showToast } from './render-home.js';
 import { showWelcomeBackPopup } from './home/welcome-back.js';
@@ -35,10 +40,34 @@ async function _lazy(name, path) {
   return _lazyModules[name];
 }
 
+// ── 탭 스켈레톤 삽입 (레이지 로드 피드백) ──
+function _showTabSkeleton(tabId) {
+  const tab = document.getElementById(tabId);
+  if (!tab) return;
+  // 이미 실제 콘텐츠가 있으면 건너뛰기 (초기 1회만 노출)
+  if (tab.dataset.rendered === '1') return;
+  if (tab.querySelector('.tds-tab-loader')) return;
+  const loader = document.createElement('div');
+  loader.className = 'tds-tab-loader';
+  loader.innerHTML = `
+    <div class="tds-skeleton-card"></div>
+    <div class="tds-skeleton-title"></div>
+    <div class="tds-skeleton-subtitle"></div>
+    <div class="tds-skeleton-card"></div>
+  `;
+  tab.prepend(loader);
+}
+function _hideTabSkeleton(tabId) {
+  const tab = document.getElementById(tabId);
+  if (!tab) return;
+  tab.querySelector('.tds-tab-loader')?.remove();
+  tab.dataset.rendered = '1';
+}
+
 // ── 레이지 프록시: 탭 전환 시 모듈 로드, window.* 자동 등록 ──
-async function _lazyRenderStats() { const m = await _lazy('stats', './render-stats.js'); m.renderStats(); return m; }
-async function _lazyRenderAdmin() { const m = await _lazy('admin', './render-admin.js?v=20260410e'); m.renderAdmin(); return m; }
-async function _lazyRenderCooking() { const m = await _lazy('cooking', './render-cooking.js'); m.renderCooking(); return m; }
+async function _lazyRenderStats()   { _showTabSkeleton('tab-stats');   try { const m = await _lazy('stats',   './render-stats.js');              m.renderStats();   return m; } finally { _hideTabSkeleton('tab-stats'); } }
+async function _lazyRenderAdmin()   { _showTabSkeleton('tab-admin');   try { const m = await _lazy('admin',   './render-admin.js?v=20260410e');  m.renderAdmin();   return m; } finally { _hideTabSkeleton('tab-admin'); } }
+async function _lazyRenderCooking() { _showTabSkeleton('tab-cooking'); try { const m = await _lazy('cooking', './render-cooking.js');            m.renderCooking(); return m; } finally { _hideTabSkeleton('tab-cooking'); } }
 import { loadAndInjectModals } from './modal-manager.js';
 
 // ── 분리된 모달 핸들러 import ──────────────────────────────────
@@ -55,6 +84,9 @@ import {
 // ── 모달 및 CSV 초기화 ───────────────────────────────────────────
 async function initializeApp() {
   await loadAndInjectModals();
+
+  // Phase D/E UX 폴리시 (오프라인 배너 / 포커스 트랩 / aria-label)
+  try { initUxPolish(); } catch (e) { console.warn('[app] UX polish init 실패:', e); }
 
   // CSV 데이터 백그라운드 로드
   const basePath = window.location.pathname.replace(/\/[^/]*$/, '');

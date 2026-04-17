@@ -8,16 +8,23 @@ import { escapeHtml } from './admin-utils.js';
 
 let _rerender = null;
 
-function _askDelete(uid, name) {
-  const ok = confirm(`${name} 계정을 삭제할까요?\n이 작업은 되돌릴 수 없습니다.`);
+async function _askDelete(uid, name) {
+  const ok = await (window.confirmAction?.({
+    title: `${name} 계정을 삭제할까요?`,
+    message: '이 작업은 되돌릴 수 없어요.\n계정의 모든 운동·식단 기록이 함께 삭제돼요.',
+    confirmLabel: '삭제',
+    cancelLabel: '취소',
+    destructive: true,
+    longPress: 2000,
+  }) || Promise.resolve(false));
   if (!ok) return;
   deleteUserAccount(uid)
     .then(() => {
-      alert(`${name} 계정을 삭제했습니다.`);
+      window.showToast?.(`${name} 계정을 삭제했습니다`, 2500, 'success');
       if (_rerender) _rerender();
     })
     .catch((error) => {
-      alert(`삭제 실패: ${error.message}`);
+      window.showToast?.(`삭제 실패: ${error.message}`, 3500, 'error');
     });
 }
 

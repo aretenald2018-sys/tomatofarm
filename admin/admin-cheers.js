@@ -167,9 +167,9 @@ window._adminCheersSaveConfig = async () => {
   try {
     const modules = _defaultsFor(_config);
     await saveCheersConfig({ modules });
-    alert('축하 모듈 설정 저장 완료');
+    window.showToast?.('축하 모듈 설정 저장 완료', 2500, 'success');
   } catch (e) {
-    alert('저장 실패: ' + (e.message || e));
+    window.showToast?.('저장 실패: ' + (e.message || e), 3500, 'error');
   }
 };
 
@@ -181,8 +181,8 @@ window._adminCheersAddCustom = async () => {
   const targetUid = targetSel.value;
   const text = (textEl.value || '').trim();
   const days = Math.max(1, Math.min(30, parseInt(daysEl?.value || '3', 10) || 3));
-  if (!targetUid) { alert('대상 유저를 선택하세요'); return; }
-  if (!text) { alert('메시지를 입력하세요'); return; }
+  if (!targetUid) { window.showToast?.('대상 유저를 선택하세요', 2500, 'warning'); return; }
+  if (!text) { window.showToast?.('메시지를 입력하세요', 2500, 'warning'); return; }
   const targetAcc = _accounts.find((a) => a.id === targetUid);
   const targetName = targetAcc?.nickname || `${targetAcc?.lastName || ''}${targetAcc?.firstName || ''}` || targetUid;
   try {
@@ -198,7 +198,7 @@ window._adminCheersAddCustom = async () => {
     const container = document.querySelector('#admin-cheers-container');
     if (container) _paint(container);
   } catch (e) {
-    alert('추가 실패: ' + (e.message || e));
+    window.showToast?.('추가 실패: ' + (e.message || e), 3500, 'error');
   }
 };
 
@@ -211,6 +211,6 @@ window._adminCheersDelete = async (id) => {
     const container = document.querySelector('#admin-cheers-container');
     if (container) _paint(container);
   } catch (e) {
-    alert('삭제 실패: ' + (e.message || e));
+    window.showToast?.('삭제 실패: ' + (e.message || e), 3500, 'error');
   }
 };
