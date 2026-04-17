@@ -983,11 +983,14 @@ export function calcBurnedKcal(day, weightKg) {
 
 /**
  * 칼로리 이탈률 기반 감점 (최대 12)
- *   ±10% 이내 0 / 10~20% 3 / 20~40% 7 / 그 이상 12
+ *   - 목표 이하(실제 ≤ 목표): 0감점 — 감량/절제 친화적
+ *   - 초과 시 단계: 0~10% 0 / 10~20% 3 / 20~40% 7 / 그 이상 12
+ *   (극단적 단식 리스크는 단백질 달성률 감점에서 별도 커버)
  */
 function _kcalPenalty(actual, target) {
   if (!target || target <= 0) return 0;
-  const dev = Math.abs(actual - target) / target;
+  if (actual <= target) return 0; // 목표 이하 = 만점
+  const dev = (actual - target) / target;
   if (dev <= 0.10) return 0;
   if (dev <= 0.20) return 3;
   if (dev <= 0.40) return 7;
@@ -995,26 +998,25 @@ function _kcalPenalty(actual, target) {
 }
 
 /**
- * 단일 매크로 감점 (범위 기반)
- *   허용 범위 내: 0 / 약한 이탈: 1 / 극단 이탈: 2
- *   극단 경계: 범위 밖으로 허용폭과 같은 폭만큼 더 벗어난 지점
+ * 단일 매크로 감점 (상한 초과만 감점 — 목표 이하는 만점)
+ *   허용 ratio 이하: 0 / 약한 초과: 1 / 극단 초과: 2
+ *   극단 경계: 상한 밖으로 허용폭과 같은 폭만큼 더 벗어난 지점 (예 1.30→1.60)
  */
-function _macroItemPenalty(actual, target, lowRatio, highRatio) {
+function _macroItemPenalty(actual, target, highRatio) {
   if (!target || target <= 0) return 0;
   const ratio = actual / target;
-  if (ratio >= lowRatio && ratio <= highRatio) return 0;
-  const lowEdge  = lowRatio  - (1 - lowRatio);  // 예: 0.80 → 0.60
+  if (ratio <= highRatio) return 0; // 목표 이하 / 범위 내 = 만점
   const highEdge = highRatio + (highRatio - 1); // 예: 1.30 → 1.60
-  if (ratio < lowEdge || ratio > highEdge) return 2;
+  if (ratio > highEdge) return 2;
   return 1;
 }
 
 /**
- * 탄단지 감점 (최대 5)
- *   각 매크로 허용 범위 내 = 0감점 (만점)
- *     단백질: 80~130% / 탄수: 70~130% / 지방: 70~130%
+ * 탄단지 감점 (최대 5) — 목표 초과만 감점
+ *   각 매크로 목표 130% 이하 = 0감점 (만점)
  *   단백질은 중요도 +1 가중 (이탈 시 2 또는 3)
  *   최종 합 clamp 5
+ *   부족은 감점 없음 (감량/절제 친화적) — 극단적 영양 결핍은 칼로리 산식 외 범위
  */
 function _macroPenalty(day, macroTarget) {
   if (!macroTarget) return 0;
@@ -1022,10 +1024,10 @@ function _macroPenalty(day, macroTarget) {
   const carbG = (day.bCarbs||0)   + (day.lCarbs||0)   + (day.dCarbs||0)   + (day.sCarbs||0);
   const fatG  = (day.bFat||0)     + (day.lFat||0)     + (day.dFat||0)     + (day.sFat||0);
 
-  const pProtRaw = _macroItemPenalty(protG, macroTarget.proteinG, 0.80, 1.30);
+  const pProtRaw = _macroItemPenalty(protG, macroTarget.proteinG, 1.30);
   const pProt    = pProtRaw > 0 ? pProtRaw + 1 : 0; // 단백질 가중
-  const pCarb    = _macroItemPenalty(carbG, macroTarget.carbG, 0.70, 1.30);
-  const pFat     = _macroItemPenalty(fatG,  macroTarget.fatG,  0.70, 1.30);
+  const pCarb    = _macroItemPenalty(carbG, macroTarget.carbG, 1.30);
+  const pFat     = _macroItemPenalty(fatG,  macroTarget.fatG,  1.30);
 
   return Math.min(5, pProt + pCarb + pFat);
 }

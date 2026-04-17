@@ -297,7 +297,7 @@ describe('calcDayScore', () => {
     assert.equal(r.breakdown.kcal.penalty, 12);
   });
 
-  // 탄단지 — 범위 기반 (단백 80~130%, 탄/지 70~130% = 0감점)
+  // 탄단지 — 상한 초과만 감점 (목표 이하 = 만점)
   test('모든 매크로 목표 100% → 감점 0', () => {
     const day = {
       bKcal: 700, lKcal: 700, dKcal: 600,
@@ -311,12 +311,10 @@ describe('calcDayScore', () => {
     assert.equal(r.breakdown.macro.penalty, 0);
   });
 
-  test('단백 80%+탄수 120%+지방 90% (전부 범위 내) → 감점 0', () => {
+  test('매크로 전부 부족 (목표 이하) → 감점 0', () => {
     const day = {
-      bKcal: 700, lKcal: 700, dKcal: 600,
-      bProtein: 120,  // 80% of 150
-      bCarbs: 276,    // 120% of 230
-      bFat: 49.5,     // 90% of 55
+      bKcal: 400, lKcal: 400, dKcal: 400,
+      bProtein: 30, bCarbs: 60, bFat: 15,
     };
     const r = calcDayScore({
       day, targetKcal: 2000, burnedKcal: 300,
@@ -326,8 +324,8 @@ describe('calcDayScore', () => {
     assert.equal(r.breakdown.macro.penalty, 0);
   });
 
-  test('단백질 70% (약한 이탈) → 감점 2 (기본1+가중1)', () => {
-    const day = { bKcal: 700, lKcal: 700, dKcal: 600, bProtein: 105, bCarbs: 230, bFat: 55 };
+  test('단백질 140% (약한 초과) → 감점 2 (1+가중1)', () => {
+    const day = { bKcal: 700, lKcal: 700, dKcal: 600, bProtein: 210, bCarbs: 230, bFat: 55 };
     const r = calcDayScore({
       day, targetKcal: 2000, burnedKcal: 300,
       macroTarget: { proteinG: 150, carbG: 230, fatG: 55 },
@@ -336,8 +334,8 @@ describe('calcDayScore', () => {
     assert.equal(r.breakdown.macro.penalty, 2);
   });
 
-  test('단백질 50% (극단 이탈) → 감점 3', () => {
-    const day = { bKcal: 700, lKcal: 700, dKcal: 600, bProtein: 75, bCarbs: 230, bFat: 55 };
+  test('단백질 200% (극단 초과) → 감점 3', () => {
+    const day = { bKcal: 700, lKcal: 700, dKcal: 600, bProtein: 300, bCarbs: 230, bFat: 55 };
     const r = calcDayScore({
       day, targetKcal: 2000, burnedKcal: 300,
       macroTarget: { proteinG: 150, carbG: 230, fatG: 55 },
@@ -346,7 +344,7 @@ describe('calcDayScore', () => {
     assert.equal(r.breakdown.macro.penalty, 3);
   });
 
-  test('탄수 150% (약한 이탈) → 감점 1', () => {
+  test('탄수 150% (약한 초과) → 감점 1', () => {
     const day = { bKcal: 700, lKcal: 700, dKcal: 600, bProtein: 150, bCarbs: 345, bFat: 55 };
     const r = calcDayScore({
       day, targetKcal: 2000, burnedKcal: 300,
@@ -356,7 +354,7 @@ describe('calcDayScore', () => {
     assert.equal(r.breakdown.macro.penalty, 1);
   });
 
-  test('지방 200% (극단 이탈) → 감점 2', () => {
+  test('지방 200% (극단 초과) → 감점 2', () => {
     const day = { bKcal: 700, lKcal: 700, dKcal: 600, bProtein: 150, bCarbs: 230, bFat: 110 };
     const r = calcDayScore({
       day, targetKcal: 2000, burnedKcal: 300,
@@ -366,10 +364,10 @@ describe('calcDayScore', () => {
     assert.equal(r.breakdown.macro.penalty, 2);
   });
 
-  test('매크로 전부 극단 이탈 → 감점 clamp 5', () => {
+  test('매크로 전부 극단 초과 → 감점 clamp 5', () => {
     const day = {
       bKcal: 700, lKcal: 700, dKcal: 600,
-      bProtein: 5, bCarbs: 700, bFat: 150,
+      bProtein: 400, bCarbs: 700, bFat: 150, // 단백 267%, 탄수 304%, 지방 273%
     };
     const r = calcDayScore({
       day, targetKcal: 2000, burnedKcal: 300,
@@ -470,7 +468,7 @@ describe('calcDayScore', () => {
   test('최악 시나리오 → 최저 70점 clamp', () => {
     const day = {
       bKcal: 5000,
-      bProtein: 0, bCarbs: 800, bFat: 200,
+      bProtein: 400, bCarbs: 800, bFat: 200, // 단백/탄수/지방 모두 극단 초과
     };
     const r = calcDayScore({
       day, targetKcal: 2000, burnedKcal: 0,
@@ -497,10 +495,10 @@ describe('calcDayScore', () => {
 
   // band 경계
   test('band 경계 — score=95 → great', () => {
-    // 감점 5 = 매크로 2 (단백 70%만 이탈, 탄/지는 범위 내) + 체중 3 (역주행)
+    // 감점 5 = 매크로 2 (단백 140% 약한 초과) + 체중 3 (역주행)
     const day = {
       bKcal: 700, lKcal: 700, dKcal: 600,
-      bProtein: 105, bCarbs: 230, bFat: 55, // 단백 70%, 탄/지 100%
+      bProtein: 210, bCarbs: 230, bFat: 55, // 단백 140%, 탄/지 100%
     };
     const r = calcDayScore({
       day, targetKcal: 2000, burnedKcal: 300,
@@ -512,10 +510,10 @@ describe('calcDayScore', () => {
   });
 
   test('band 경계 — score=90 → good', () => {
-    // 감점 10 = 칼로리 7 (30%) + 매크로 2 (단백 70%) + 체중 1 (미기록)
+    // 감점 10 = 칼로리 7 (30%↑) + 매크로 2 (탄수 150%+지방 140% 각 1) + 체중 1 (미기록)
     const day = {
       bKcal: 1000, lKcal: 900, dKcal: 700,
-      bProtein: 105, bCarbs: 230, bFat: 55,
+      bProtein: 150, bCarbs: 345, bFat: 77, // 탄수 150%, 지방 140%
     };
     const r = calcDayScore({
       day, targetKcal: 2000, burnedKcal: 300,
