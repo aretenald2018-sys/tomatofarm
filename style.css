@@ -1150,50 +1150,6 @@ body {
 .more-menu-item:active { background: var(--surface3); }
 
 /* ══════════════════════════════════════════════════════════════════
-   Dashboard Board (horizontal scroll cards)
-   ══════════════════════════════════════════════════════════════════ */
-.dash-board {
-  display: flex; gap: 8px; padding: 12px 16px;
-  background: var(--bg); border-bottom: 1px solid var(--border);
-  overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none;
-}
-.dash-board::-webkit-scrollbar { display: none; }
-.dash-card {
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius-lg); padding: 14px 16px;
-  flex: 0 0 auto; min-width: 80px; text-align: center;
-  transition: all var(--transition);
-}
-.dash-card-title {
-  font-size: 11px; font-weight: 600; color: var(--text-secondary);
-  margin-bottom: 8px; letter-spacing: -0.01em; white-space: nowrap;
-}
-.dash-stat-val {
-  font-family: var(--font-mono); font-size: 26px; font-weight: 700; line-height: 1;
-  letter-spacing: -0.02em;
-}
-.dash-stat-lbl {
-  font-size: 9px; color: var(--text-secondary); margin-top: 4px; letter-spacing: 0.3px;
-}
-.dash-workout { border-color: rgba(249,115,22,0.3); }
-.dash-workout .dash-card-title { color: var(--gym); }
-.dash-workout .dash-stat-val { color: var(--gym); }
-.dash-diet { border-color: rgba(16,185,129,0.3); }
-.dash-diet .dash-card-title { color: var(--diet-ok); }
-.dash-diet .dash-stat-val { color: var(--diet-ok); }
-.dash-cf { border-color: rgba(250,52,44,0.3); }
-.dash-cf .dash-card-title { color: var(--cf); }
-.dash-cf .dash-stat-val { color: var(--cf); }
-
-/* ── Dashboard extensions (stretch / wine-free) ── */
-.dash-stretch { border-color: rgba(16,185,129,0.3); }
-.dash-stretch .dash-card-title { color: var(--streak); }
-.dash-stretch .dash-stat-val { color: var(--streak); }
-.dash-wine-free { border-color: rgba(167,139,250,0.3); }
-.dash-wine-free .dash-card-title { color: #a78bfa; }
-.dash-wine-free .dash-stat-val { color: #a78bfa; }
-
-/* ══════════════════════════════════════════════════════════════════
    AI Panel
    ══════════════════════════════════════════════════════════════════ */
 .ai-panel {
@@ -2582,9 +2538,6 @@ body {
 /* ══════════════════════════════════════════════════════════════════
    Responsive
    ══════════════════════════════════════════════════════════════════ */
-@media (min-width: 480px) {
-  .dash-card { flex: 1 1 0; }
-}
 
 /* ══════════════════════════════════════════════════════════════════
    Global Font Override — 토스 폰트 통일
@@ -2634,7 +2587,6 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
 
 /* 홈 카드 라이트 모드 */
 :root.light .home-card { background: #fff; border-color: var(--border); box-shadow: var(--shadow-sm); }
-:root.light .dash-card { background: #fff; border-color: var(--border); box-shadow: var(--shadow-sm); }
 
 /* 운동 탭 라이트 모드 */
 :root.light .sheet-section { background: #fff; border-color: var(--border); box-shadow: var(--shadow-sm); }

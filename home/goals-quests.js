@@ -30,7 +30,7 @@ export function renderMiniMemo() {
 
 // ── 구역 제목 일괄 적용 ───────────────────────────────────────────
 export function applyAllSectionTitles() {
-  const keys = ['mini_memo','goals','quests','stocks'];
+  const keys = ['mini_memo','goals','quests'];
   keys.forEach(k => {
     const el = document.getElementById(`title-${k}`);
     if (el) el.textContent = getSectionTitle(k);

@@ -924,84 +924,7 @@
 <!-- 모달들은 modals/*.js에서 동적으로 주입됩니다 -->
 <div id="modals-container"></div>
 
-<!-- Streak 설정 모달 -->
-<div class="modal-backdrop" id="streak-settings-modal" onclick="closeStreakSettingsModal(event)" style="display:none;z-index:1001">
-  <div class="modal-sheet">
-    <div class="sheet-handle"></div>
-    <div class="modal-title">Streak 탭 세팅</div>
-    <div class="ex-editor-form" style="padding-bottom:8px">
-      <div style="margin-bottom:16px">
-        <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:8px;font-weight:600">일정 글자 크기</label>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
-            <input type="radio" name="font-size" value="small" style="cursor:pointer">
-            작음
-          </label>
-          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
-            <input type="radio" name="font-size" value="default" checked style="cursor:pointer">
-            기본
-          </label>
-          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
-            <input type="radio" name="font-size" value="large" style="cursor:pointer">
-            큼
-          </label>
-        </div>
-      </div>
-      <div style="margin-bottom:16px">
-        <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:8px;font-weight:600">셀 너비</label>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
-            <input type="radio" name="cell-width" value="small" style="cursor:pointer">
-            좁음
-          </label>
-          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
-            <input type="radio" name="cell-width" value="default" checked style="cursor:pointer">
-            기본
-          </label>
-          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
-            <input type="radio" name="cell-width" value="large" style="cursor:pointer">
-            넓음
-          </label>
-        </div>
-      </div>
-      <div style="display:flex;gap:8px">
-        <button class="tds-btn fill md" onclick="saveStreakSettingsAndClose()" style="flex:1">저장</button>
-        <button class="tds-btn ghost md" onclick="closeStreakSettingsModal()" style="flex:1">취소</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<script>
-// Streak 설정 모달 함수
-function openStreakSettingsModal() {
-  const settings = window.getStreakSettings();
-  document.querySelector(`input[name="font-size"][value="${settings.fontSizeMode}"]`).checked = true;
-  document.querySelector(`input[name="cell-width"][value="${settings.cellWidthMode}"]`).checked = true;
-  document.getElementById('streak-settings-modal').style.display = 'flex';
-}
-
-function closeStreakSettingsModal(e) {
-  if (e && e.target !== document.getElementById('streak-settings-modal')) return;
-  document.getElementById('streak-settings-modal').style.display = 'none';
-}
-
-async function saveStreakSettingsAndClose() {
-  const fontSizeMode = document.querySelector('input[name="font-size"]:checked')?.value || 'default';
-  const cellWidthMode = document.querySelector('input[name="cell-width"]:checked')?.value || 'default';
-
-  await window.saveStreakSettings('fontSizeMode', fontSizeMode);
-  await window.saveStreakSettings('cellWidthMode', cellWidthMode);
-
-  if (window.renderCalendar) {
-    window.renderCalendar();
-  }
-
-  document.getElementById('streak-settings-modal').style.display = 'none';
-}
-</script>
-
-<!-- 월간 캘린더 모달 -->
+<!-- 레거시 streak-settings 모달/스크립트, 월간 캘린더 등은 경량화 2026-04 때 제거됨. -->
 <div id="tab-admin" class="tab-panel">
   <div id="admin-container"></div>
 </div>
@@ -2526,5 +2449,3 @@ window.addEventListener('appinstalled', () => {
 </script>
 </body>
 </html>
-
-

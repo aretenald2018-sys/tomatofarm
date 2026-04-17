@@ -118,6 +118,21 @@ export {
 } from './data/data-workout-equipment.js';
 
 // ═══════════════════════════════════════════════════════════════
+// Legacy tab sanitizer
+// ═══════════════════════════════════════════════════════════════
+// 과거 경량화 이전에 저장된 tab_order/visible_tabs에는 이미 UI가 제거된
+// 레거시 탭('monthly' 캘린더, 'finance', 'wine', 'movie', 'dev', 'calendar' 등)이
+// 남아 있을 수 있음. 이 탭들이 남아 있으면 applyTabOrder/initSwipeNavigation이
+// 존재하지 않는 #tab-* 패널을 찾으려 하여 잠깐의 플래시/빈 렌더가 발생함.
+// 알려진 live 탭만 필터링해 그 플래시를 차단한다.
+const _LIVE_TABS = new Set(['home','diet','workout','cooking','stats','admin']);
+function _sanitizeTabList(list) {
+  if (!Array.isArray(list)) return [...DEFAULT_TAB_ORDER];
+  const cleaned = list.filter(t => _LIVE_TABS.has(t));
+  return cleaned.length ? cleaned : [...DEFAULT_TAB_ORDER];
+}
+
+// ═══════════════════════════════════════════════════════════════
 // loadAll — 앱 시작 시 전체 데이터 로드
 // ═══════════════════════════════════════════════════════════════
 
@@ -219,8 +234,8 @@ export async function loadAll() {
     _settings.section_titles = fbMap.section_titles ?? _migrateFromLS('section_titles', {});
     _settings.mini_memo_items= fbMap.mini_memo_items?? [];
     _settings.weekly_memos   = fbMap.weekly_memos   ?? _migrateFromLS('weekly_memos',   {});
-    _settings.tab_order      = fbMap.tab_order      ?? DEFAULT_TAB_ORDER;
-    _settings.visible_tabs   = fbMap.visible_tabs   ?? null;
+    _settings.tab_order      = _sanitizeTabList(fbMap.tab_order ?? DEFAULT_TAB_ORDER);
+    _settings.visible_tabs   = fbMap.visible_tabs ? _sanitizeTabList(fbMap.visible_tabs) : null;
     _settings.diet_plan = fbMap.diet_plan ?? null;
     if ((isAdmin() || isAdminGuest()) && !_settings.diet_plan) {
       const restored = localStorage.getItem('diet_restored_admin');
@@ -235,7 +250,6 @@ export async function loadAll() {
         localStorage.setItem('diet_restored_admin', 'done');
       }
     }
-    _settings.streak_settings= fbMap.streak_settings ?? { fontSizeMode: 'default', cellWidthMode: 'default' };
     _settings.home_streak_days = fbMap.home_streak_days ?? 6;
     _settings.unit_goal_start  = fbMap.unit_goal_start  ?? null;
     _settings.cheer_last_seen  = fbMap.cheer_last_seen  ?? 0;
@@ -837,7 +851,7 @@ export const getQuestOrder = () => _settings.quest_order || ['quarterly','monthl
 export const saveQuestOrder = (order) => _saveSetting('quest_order', order);
 
 const _defaultTitles = {
-  stocks: '📈 주가 · RSI', ai: '🤖 AI 추천', quests: '📋 퀘스트',
+  ai: '🤖 AI 추천', quests: '📋 퀘스트',
   goals: '🎯 목표', today_diet: '🥗 오늘 식단', today_workout: '💪 오늘 운동',
   mini_memo: '📝 미니 메모',
 };
@@ -865,14 +879,6 @@ export const saveWeeklyMemo = async (weekKey, text) => {
   await _saveSetting('weekly_memos', m);
 };
 
-// ═══════════════════════════════════════════════════════════════
-// Streak Settings
-// ═══════════════════════════════════════════════════════════════
-
-export const getStreakSettings = () => _settings.streak_settings || {
-  fontSizeMode: 'default', cellWidthMode: 'default'
-};
-
 // ── 스트릭 경고 배너 ack (21시 이후 "오늘 기록 없어요" 노출 / 1일 1회) ──
 export const getStreakWarningAck = () => _settings.streak_warning_ack_date || '';
 export const saveStreakWarningAck = (dateStr) => _saveSetting('streak_warning_ack_date', dateStr);
@@ -892,14 +898,6 @@ export const saveHomeCardHidden = (hiddenArr) => _saveSetting('home_card_hidden'
 // ── 햅틱 설정 ───────────────────────────────────────────────────────
 export const getHapticsEnabled = () => _settings.haptics_enabled !== false; // 기본 true
 export const saveHapticsEnabled = (flag) => _saveSetting('haptics_enabled', !!flag);
-
-export async function saveStreakSettings(key, value) {
-  if (!_settings.streak_settings) {
-    _settings.streak_settings = { fontSizeMode: 'default', cellWidthMode: 'default' };
-  }
-  _settings.streak_settings[key] = value;
-  await _saveSetting('streak_settings', _settings.streak_settings);
-}
 
 export const getHomeStreakDays = () => _settings.home_streak_days ?? 6;
 export async function saveHomeStreakDays(n) {
@@ -1112,10 +1110,3 @@ export async function moveFarmCharacter(tileIndex) {
   farm.characterPos = tileIndex;
   await saveFarmState(farm);
 }
-
-// ═══════════════════════════════════════════════════════════════
-// Window 전역 노출
-// ═══════════════════════════════════════════════════════════════
-
-window.getStreakSettings = getStreakSettings;
-window.saveStreakSettings = saveStreakSettings;

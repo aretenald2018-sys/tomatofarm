@@ -85,7 +85,6 @@ export function initSwipeNavigation() {
     const t = e.target;
     if (t.closest('.tab-nav') || t.closest('input[type="range"]') ||
         t.closest('canvas') || t.closest('textarea') ||
-        t.closest('.dash-board') || t.closest('.stock-panel') ||
         t.closest('.grid-wrap') ||
         t.closest('#neighbor-section') || t.closest('.friend-paging-controls') ||
         t.closest('#friend-feed')) return;

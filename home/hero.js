@@ -2,7 +2,7 @@
 // home/hero.js — 히어로 카드, 스트릭 대시보드, 리더보드
 // ================================================================
 
-import { TODAY, calcStreaks, countLocalWeeklyActiveDays, getCF,
+import { TODAY, calcStreaks, countLocalWeeklyActiveDays,
          getMilestoneShown, saveMilestoneShown,
          getStreakFreezes, getTomatoState, useStreakFreeze,
          getGlobalWeeklyRanking, getMyFriends, getAccountList, getCurrentUser,
@@ -168,30 +168,6 @@ window.useStreakFreezeUI = async function() {
   renderStreakFreeze();
   if (_renderHomeFn) _renderHomeFn();
 };
-
-// ── 스트릭 대시보드 ──────────────────────────────────────────────
-export function renderDashboard() {
-  const { workout, diet, stretching, wineFree } = calcStreaks();
-  const cfStreak = calcCFStreak();
-
-  setText('dash-workout-streak',  workout);
-  setText('dash-diet-streak',     diet);
-  setText('dash-cf-streak',       cfStreak);
-  setText('dash-stretch-streak',  stretching);
-  setText('dash-wine-free-streak',wineFree);
-}
-
-function calcCFStreak() {
-  let streak = 0;
-  const cur  = new Date(TODAY);
-  while (true) {
-    const y = cur.getFullYear(), m = cur.getMonth(), d = cur.getDate();
-    if (!getCF(y, m, d)) break;
-    streak++;
-    cur.setDate(cur.getDate() - 1);
-  }
-  return streak;
-}
 
 // ── 주간 리더보드 (글로벌 랭킹 + 이웃 폴백) ─────────────────────
 let _leaderboardTab = 'individual';

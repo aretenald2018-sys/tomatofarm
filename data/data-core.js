@@ -160,7 +160,7 @@ export function _setGyms(v)             { _gyms = v; }
 export function _setRoutineTemplates(v) { _routineTemplates = v; }
 
 // ── 설정 캐시 ───────────────────────────────────────────────────
-export const DEFAULT_TAB_ORDER = ['home','workout','cooking','monthly','stats'];
+export const DEFAULT_TAB_ORDER = ['home','workout','cooking','stats'];
 export const DEFAULT_VISIBLE_TABS = ['home','diet','workout','stats'];
 
 export const DEFAULT_DIET_PLAN = {
@@ -206,7 +206,6 @@ export let _settings = {
   tab_order:        DEFAULT_TAB_ORDER,
   visible_tabs:     null,
   diet_plan:        null,
-  streak_settings:  { fontSizeMode: 'default', cellWidthMode: 'default' },
   home_streak_days: 6,
   unit_goal_start: null,
   tomato_state: { quarterlyTomatoes: {}, totalTomatoes: 0, giftedReceived: 0, giftedSent: 0 },
