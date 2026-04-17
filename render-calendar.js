@@ -191,9 +191,9 @@ export function renderCalendar() {
           ${scoreHtml}
         </div>
         <div class="cal-cell-metrics">
-          <div class="cal-metric"><span class="cal-metric-label">섭취</span><span class="cal-metric-val">${kcalInTxt}</span></div>
-          <div class="cal-metric"><span class="cal-metric-label">소모</span><span class="cal-metric-val">${kcalBurnTxt}</span></div>
-          <div class="cal-metric"><span class="cal-metric-label">체중</span><span class="cal-metric-val">${weightTxt}</span></div>
+          <div class="cal-metric"><span class="cal-metric-label">섭</span><span class="cal-metric-val">${kcalInTxt}</span></div>
+          <div class="cal-metric"><span class="cal-metric-label">소</span><span class="cal-metric-val">${kcalBurnTxt}</span></div>
+          <div class="cal-metric"><span class="cal-metric-label">체</span><span class="cal-metric-val">${weightTxt}</span></div>
         </div>
       </div>
     `);

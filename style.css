@@ -7099,17 +7099,18 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
   position: relative;
 }
 
-/* 90점 이상 도장: 셀 가운데에 기울인 토마토 로고 */
+/* 90점 이상 도장: favicon.svg (embedded PNG) — 모든 OS/브라우저 동일 렌더 */
 .cal-stamp {
   position: absolute;
   top: 50%; left: 50%;
-  width: 64px; height: 64px;
-  opacity: 0.18;
-  transform: translate(-50%, -50%) rotate(-16deg);
+  width: 56px; height: 56px;
+  opacity: 0.28;
+  transform: translate(-50%, -50%) rotate(-14deg);
   pointer-events: none;
+  user-select: none;
   z-index: 0;
 }
-.cal-cell-band-great .cal-stamp { opacity: 0.28; }
+.cal-cell-band-great .cal-stamp { opacity: 0.42; width: 60px; height: 60px; }
 .cal-cell > .cal-cell-head,
 .cal-cell > .cal-cell-metrics { position: relative; z-index: 1; }
 .cal-cell:not(.cal-cell-disabled):hover {
@@ -7132,7 +7133,7 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
 /* 셀 상단: 날짜 + 점수 */
 .cal-cell-head {
   display: flex; align-items: baseline; justify-content: space-between;
-  gap: 4px;
+  gap: 2px;
 }
 .cal-cell-date {
   font-size: 11px; font-weight: 600; color: var(--muted);
@@ -7140,11 +7141,11 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
 }
 .cal-cell-today .cal-cell-date { color: var(--primary); }
 .cal-score {
-  font-size: 15px; font-weight: 700; color: var(--text);
+  font-size: 14px; font-weight: 700; color: var(--text);
   line-height: 1;
 }
 .cal-score span {
-  font-size: 9px; font-weight: 500; color: var(--muted); margin-left: 1px;
+  font-size: 8px; font-weight: 500; color: var(--muted); margin-left: 1px;
 }
 .cal-score-empty { color: var(--muted); font-weight: 500; }
 .cal-cell-band-great .cal-score { color: #ca1d13; }  /* Dark */
@@ -7152,17 +7153,26 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
 .cal-cell-band-soso  .cal-score { color: #fc6a66; }  /* Sub */
 .cal-cell-band-bad   .cal-score { color: #e89591; }  /* Light보다 진한 중간 톤 (가독성) */
 
-/* 셀 하단: 3지표 텍스트 */
+/* 셀 하단: 3지표 텍스트 — 모바일 폭 제약 고려 1글자 라벨 */
 .cal-cell-metrics {
-  display: flex; flex-direction: column; gap: 1px;
+  display: flex; flex-direction: column; gap: 0;
   margin-top: auto;
 }
 .cal-metric {
   display: flex; justify-content: space-between; align-items: baseline;
-  font-size: 11px; line-height: 16.5px;
+  gap: 2px;
+  font-size: 10px; line-height: 14px;
+  min-width: 0;
 }
-.cal-metric-label { color: var(--muted); font-weight: 500; }
-.cal-metric-val { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.cal-metric-label {
+  color: var(--muted); font-weight: 500;
+  flex-shrink: 0;
+}
+.cal-metric-val {
+  color: var(--text); font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 
 .cal-footnote {
   margin-top: 12px; font-size: 11px; color: var(--muted);
