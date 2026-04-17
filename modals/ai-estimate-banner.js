@@ -377,13 +377,135 @@ export async function dismiss(meal, options = {}) {
   }
 }
 
-// ── 상세 편집 (1차 MVP: placeholder) ─────────────────────────────
-// 의도된 미완성: 2차에서 nutrition-item-modal pre-fill 구현 예정.
-// 현재는 사용자에게 명확히 알림.
-export async function openEditor(meal) {
+// ── 상세 편집 (인라인) ──────────────────────────────────────────
+// 같은 host 안에서 preview → editor 로 전환. 모달 중첩 회피.
+// 저장 시 baseEstimate 갱신 → fixes 유지 → _deriveEstimate 재실행.
+// 취소 시 state 변경 없이 preview 복귀.
+export function openEditor(meal) {
   const st = _state[meal];
   if (!st || !st.estimate) return;
-  showToast('상세 편집은 다음 업데이트에서 지원 예정. 지금은 확정 후 일반 편집을 이용해 주세요', 3500, 'info');
+  st.status = 'editing';
+  renderEditor(meal);
+}
+
+export function renderEditor(meal) {
+  const host = _getHostContainer(meal);
+  const st = _state[meal];
+  if (!host || !st || !st.estimate) return;
+
+  const items = st.estimate.detectedItems || [];
+  const rows = items.map((it, idx) => _rowHtml(idx, it)).join('');
+
+  host.innerHTML = `
+    <div class="ai-estimate-banner ai-estimate-editor" data-state="editing">
+      <div class="ai-estimate-editor-head">
+        <span class="ai-bot">✎</span>
+        <span>AI 추정 상세 편집</span>
+        <button class="ai-close" onclick="aiEstimateCancelEditor('${meal}')" title="취소">✕</button>
+      </div>
+      <div class="ai-estimate-editor-rows" id="ai-edit-rows-${meal}">${rows || _rowHtml(0, null)}</div>
+      <button class="ai-edit-add" onclick="aiEstimateAddEditorItem('${meal}')">＋ 항목 추가</button>
+      <div class="ai-estimate-editor-hint">
+        값을 비우면 해당 항목은 제외됩니다. 칼로리·단탄지는 숫자만 (단위 빼고).
+      </div>
+      <div class="ai-estimate-actions">
+        <button class="btn-confirm" onclick="aiEstimateSaveEditor('${meal}')">✓ 저장</button>
+        <button class="btn-edit" onclick="aiEstimateCancelEditor('${meal}')">취소</button>
+      </div>
+    </div>`;
+  _openMealAccordion(meal);
+}
+
+function _rowHtml(idx, it) {
+  const v = (x) => (x == null || x === 0) ? '' : String(x);
+  const name = _esc(it?.name || '');
+  return `
+    <div class="ai-edit-row" data-idx="${idx}">
+      <div class="ai-edit-row-top">
+        <input class="ai-edit-name" placeholder="음식명" value="${name}">
+        <input class="ai-edit-grams" type="number" inputmode="numeric" placeholder="g" value="${v(it?.grams)}">
+        <input class="ai-edit-kcal" type="number" inputmode="numeric" placeholder="kcal" value="${v(it?.kcal)}">
+        <button class="ai-edit-del" onclick="aiEstimateDelEditorRow(this)" title="삭제">✕</button>
+      </div>
+      <div class="ai-edit-row-macro">
+        <input class="ai-edit-p" type="number" step="0.1" inputmode="decimal" placeholder="단" value="${v(it?.protein)}">
+        <input class="ai-edit-c" type="number" step="0.1" inputmode="decimal" placeholder="탄" value="${v(it?.carbs)}">
+        <input class="ai-edit-f" type="number" step="0.1" inputmode="decimal" placeholder="지" value="${v(it?.fat)}">
+      </div>
+    </div>`;
+}
+
+export function addEditorItem(meal) {
+  const container = document.getElementById(`ai-edit-rows-${meal}`);
+  if (!container) return;
+  const nextIdx = container.children.length;
+  const tmp = document.createElement('div');
+  tmp.innerHTML = _rowHtml(nextIdx, null);
+  const newRow = tmp.firstElementChild;
+  container.appendChild(newRow);
+  // 신규 row의 이름 input에 포커스
+  newRow.querySelector('.ai-edit-name')?.focus();
+}
+
+export function delEditorRow(btn) {
+  const row = btn.closest('.ai-edit-row');
+  if (row) row.remove();
+}
+
+export function cancelEditor(meal) {
+  const st = _state[meal];
+  if (!st) return;
+  st.status = 'preview';
+  renderPreview(meal);
+}
+
+export function saveEditor(meal) {
+  const st = _state[meal];
+  if (!st || !st.baseEstimate) return;
+  const container = document.getElementById(`ai-edit-rows-${meal}`);
+  if (!container) return;
+
+  const newItems = [];
+  for (const row of container.querySelectorAll('.ai-edit-row')) {
+    const name  = row.querySelector('.ai-edit-name')?.value?.trim();
+    if (!name) continue; // 이름 비어있으면 제외
+    const grams   = Number(row.querySelector('.ai-edit-grams')?.value) || 0;
+    const kcal    = Number(row.querySelector('.ai-edit-kcal')?.value)  || 0;
+    const protein = Number(row.querySelector('.ai-edit-p')?.value)     || 0;
+    const carbs   = Number(row.querySelector('.ai-edit-c')?.value)     || 0;
+    const fat     = Number(row.querySelector('.ai-edit-f')?.value)     || 0;
+    if (kcal <= 0 && grams <= 0) continue; // 둘 다 0이면 의미없는 row 스킵
+    newItems.push({ name, grams, kcal, protein, carbs, fat, edited: true });
+  }
+
+  if (newItems.length === 0) {
+    showToast('최소 1개 항목이 필요해요', 2000, 'warning');
+    return;
+  }
+
+  // baseEstimate 갱신 — totals 재계산
+  const totalKcal    = Math.round(newItems.reduce((s, i) => s + (i.kcal    || 0), 0));
+  const totalProtein = Math.round(newItems.reduce((s, i) => s + (i.protein || 0), 0) * 10) / 10;
+  const totalCarbs   = Math.round(newItems.reduce((s, i) => s + (i.carbs   || 0), 0) * 10) / 10;
+  const totalFat     = Math.round(newItems.reduce((s, i) => s + (i.fat     || 0), 0) * 10) / 10;
+
+  st.baseEstimate = {
+    ...st.baseEstimate,
+    detectedItems: newItems,
+    totalKcal,
+    totalProtein,
+    totalCarbs,
+    totalFat,
+    // 사용자가 편집했으니 priorApplied/kcalCorrected 흔적은 제거 (이후 sanity check도 안 돌림)
+    priorApplied: false,
+    userEdited: true,
+  };
+
+  // fixes는 유지 (편집 후 양보정 버튼 다시 누를 수 있도록)
+  st.estimate = _deriveEstimate(st.baseEstimate, st.fixes);
+  st.status = 'preview';
+  renderPreview(meal);
+  showToast(`편집 저장 · 약 ${totalKcal}kcal`, 1800, 'success');
 }
 
 export async function retry(meal) {
@@ -404,9 +526,14 @@ export function clearAllForDateChange() {
 }
 
 // ── window 노출 ─────────────────────────────────────────────────
-window.aiEstimateConfirm    = (meal) => confirmEstimate(meal);
-window.aiEstimateDismiss    = (meal) => dismiss(meal);
-window.aiEstimateQuickFix   = (meal, action) => handleQuickFix(meal, action);
-window.aiEstimateOpenEditor = (meal) => openEditor(meal);
-window.aiEstimateRetry      = (meal) => retry(meal);
-window.aiEstimateClearAll   = () => clearAllForDateChange();
+window.aiEstimateConfirm        = (meal) => confirmEstimate(meal);
+window.aiEstimateDismiss        = (meal) => dismiss(meal);
+window.aiEstimateQuickFix       = (meal, action) => handleQuickFix(meal, action);
+window.aiEstimateOpenEditor     = (meal) => openEditor(meal);
+window.aiEstimateRetry          = (meal) => retry(meal);
+window.aiEstimateClearAll       = () => clearAllForDateChange();
+// 편집 모드 전용
+window.aiEstimateSaveEditor     = (meal) => saveEditor(meal);
+window.aiEstimateCancelEditor   = (meal) => cancelEditor(meal);
+window.aiEstimateAddEditorItem  = (meal) => addEditorItem(meal);
+window.aiEstimateDelEditorRow   = (btn) => delEditorRow(btn);

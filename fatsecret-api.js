@@ -174,10 +174,64 @@ function _saveGovCache() {
   } catch {}
 }
 
+// ── 표기 변형 정규화 ──────────────────────────────────────────────
+// 한국어 식재료는 같은 재료인데 표기가 여러 개인 경우가 많다
+// (ex: 샐러리/셀러리, 도너츠/도넛, 프라이드/후라이드).
+// API는 표기 그대로만 검색하므로, 변형을 전부 병렬 질의한 뒤 합쳐야
+// 원재료성 결과가 누락되지 않는다.
+const _QUERY_VARIANTS = {
+  '샐러리': ['셀러리'],
+  '셀러리': ['샐러리'],
+  '도넛':   ['도너츠'],
+  '도너츠': ['도넛'],
+  '후라이드': ['프라이드'],
+  '프라이드': ['후라이드'],
+  '자장면':  ['짜장면'],
+  '짜장면':  ['자장면'],
+  '돈까스':  ['돈가스'],
+  '돈가스':  ['돈까스'],
+};
+function _expandQueryVariants(term) {
+  const t = (term || '').trim();
+  if (!t) return [];
+  const variants = new Set([t]);
+  for (const key of Object.keys(_QUERY_VARIANTS)) {
+    if (t.includes(key)) {
+      for (const v of _QUERY_VARIANTS[key]) {
+        variants.add(t.split(key).join(v));
+      }
+    }
+  }
+  return Array.from(variants);
+}
+
+async function _fetchGovPage(term, pageNo, numOfRows) {
+  const params = new URLSearchParams({
+    serviceKey: CONFIG.FOOD_DB_KEY,
+    FOOD_NM_KR: term,
+    pageNo: String(pageNo),
+    numOfRows: String(numOfRows),
+    type: 'json',
+  });
+  const url = `${CONFIG.FOOD_DB_URL}?${params.toString()}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  return data?.body || {};
+}
+
 /**
  * 공공데이터포털 API로 식품 검색 (자연식품 + 가공식품 모두 포함)
- * CSV에 없는 원재료(우둔살, 닭가슴살 등) 검색 시 사용
- * 결과는 메모리 + sessionStorage에 캐시 (같은 검색어 즉시 반환)
+ * CSV에 없는 원재료(우둔살, 닭가슴살, 셀러리 등) 검색 시 사용.
+ *
+ * 주요 전략:
+ *  1. 표기 변형(샐러리↔셀러리 등) 모두 병렬 질의해서 합친다.
+ *  2. 한 쿼리당 100행을 받는다 (이전 20행이면 원재료성이 뒤로 밀려서 누락됨).
+ *     예: "셀러리" totalCount=31 중 원재료성 2건은 30,31번째 위치 → 20행으로는 포함 X.
+ *  3. 쿼리와 완전 일치하는 이름, 원재료성(raw)을 최상위로 올림.
+ *  4. 같은 이름은 dedupe, 최종 상위 N개 반환.
+ *
+ * 결과는 메모리 + sessionStorage에 캐시 (같은 검색어 즉시 반환).
  */
 export async function searchGovFoodAPI(searchTerm) {
   // 캐시 히트 → 즉시 반환
@@ -187,38 +241,68 @@ export async function searchGovFoodAPI(searchTerm) {
   }
 
   try {
-    // data.go.kr 직접 호출 (CORS 허용됨)
-    const params = new URLSearchParams({
-      serviceKey: CONFIG.FOOD_DB_KEY,
-      FOOD_NM_KR: searchTerm,
-      pageNo: '1',
-      numOfRows: '20',
-      type: 'json',
-    });
-    const url = `${CONFIG.FOOD_DB_URL}?${params.toString()}`;
-    console.log('[공공API] 검색:', searchTerm);
+    const variants = _expandQueryVariants(searchTerm);
+    console.log('[공공API] 검색:', searchTerm, variants.length > 1 ? `(+변형 ${variants.slice(1).join(',')})` : '');
 
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
+    // 변형 쿼리를 병렬 호출. 각 쿼리 결과가 100개 이상이면 page2도 한 번 더 가져와서
+    // 원재료성(뒤쪽에 몰림)이 포함될 확률을 높인다.
+    const pagePromises = [];
+    for (const v of variants) {
+      pagePromises.push(
+        _fetchGovPage(v, 1, 100).then(async (body) => {
+          const items = body.items || [];
+          const total = parseInt(body.totalCount) || items.length;
+          // 원재료성이 100번 이후에 있을 수 있어서 마지막 페이지도 한 번 더 시도
+          if (total > 100 && total <= 500) {
+            const lastPage = Math.ceil(total / 100);
+            try {
+              const body2 = await _fetchGovPage(v, lastPage, 100);
+              return [...items, ...(body2.items || [])];
+            } catch { return items; }
+          }
+          return items;
+        }).catch(err => {
+          console.warn(`[공공API] variant "${v}" 실패:`, err.message);
+          return [];
+        })
+      );
+    }
+    const allItems = (await Promise.all(pagePromises)).flat();
+    if (allItems.length === 0) return [];
 
-    const items = data?.body?.items;
-    if (!items || items.length === 0) return [];
+    const qLower = (searchTerm || '').toLowerCase();
 
-    // 중복 제거 + 매핑
+    // 중복 제거 + 매핑 + 스코어링
     const seen = new Set();
     const results = [];
 
-    for (const item of items) {
+    for (const item of allItems) {
       const name = item.FOOD_NM_KR || '';
-      if (seen.has(name)) continue;
+      if (!name || seen.has(name)) continue;
       seen.add(name);
 
-      const isRaw = item.DB_GRP_NM === '원재료성';
-      const foodName = name;
+      const grp = item.DB_GRP_NM || '';
+      const isRaw  = grp === '원재료성';
+      const isMeal = grp === '음식';
+      const isProc = grp === '가공식품';
+      const nLower = name.toLowerCase();
+
+      // 스코어: 원재료 > 음식 > 가공식품, 같은 카테고리 안에서는 이름 일치도 우선
+      let score = 0;
+      if (isRaw)  score = 100;
+      else if (isMeal) score = 70;
+      else if (isProc) score = 50;
+      else             score = 40;
+
+      // 이름 매칭 보너스 (원재료성은 "셀러리_생것"처럼 언더스코어로 표기됨 → 시작 일치 판단)
+      if (nLower === qLower) score += 15;
+      else if (nLower.startsWith(qLower)) score += 10;
+      else if (nLower.startsWith(qLower + '_')) score += 12;  // 셀러리_생것 패턴
+      else if (nLower.includes('_' + qLower)) score += 5;
+
       results.push({
         id: `gov_${encodeURIComponent(name)}`,
-        name: foodName,
+        name,
         manufacturer: item.MAKER_NM || (isRaw ? '자연식품' : ''),
         energy:  parseFloat(item.AMT_NUM1)  || 0,   // kcal
         protein: parseFloat(item.AMT_NUM3)  || 0,   // 단백질(g)
@@ -227,21 +311,24 @@ export async function searchGovFoodAPI(searchTerm) {
         sodium:  parseFloat(item.AMT_NUM13) || 0,   // 나트륨(mg)
         calcium: 0,
         iron: 0,
-        defaultWeight: _estimateServingSize(foodName),
-        score: isRaw ? 95 : 85,  // 원재료 우선 표시
-        source: isRaw ? '자연식품(공공DB)' : '가공식품(공공DB)',
+        defaultWeight: isRaw ? 100 : _estimateServingSize(name),
+        score,
+        source: isRaw ? '자연식품(공공DB)' : (isMeal ? '음식(공공DB)' : '가공식품(공공DB)'),
+        _grp: grp,
         rawData: item,
       });
     }
 
-    // 원재료(자연식품)를 상위에 배치
+    // 스코어 내림차순
     results.sort((a, b) => b.score - a.score);
-    const sliced = results.slice(0, 10);
+    const sliced = results.slice(0, 15);
 
     // 캐시 저장 (rawData 제외 — 용량 절약)
     _govFoodCache[searchTerm] = sliced.map(({ rawData, ...rest }) => rest);
     _saveGovCache();
-    console.log(`[공공API] 결과: ${sliced.length}개 (캐시 저장됨)`);
+
+    const rawCount = sliced.filter(r => r._grp === '원재료성').length;
+    console.log(`[공공API] 결과: ${sliced.length}개 (원재료 ${rawCount}개, 캐시 저장됨)`);
     return sliced;
   } catch (err) {
     console.error('[공공API] 검색 실패:', err);

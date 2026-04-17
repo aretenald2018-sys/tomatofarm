@@ -5,221 +5,19 @@
 import { searchNutritionDB, getNutritionDB, getRecentNutritionItems,
          deleteNutritionItem, getCookingRecords } from './data.js';
 import { loadCSVDatabase, searchCSVFood, searchGovFoodAPI } from './fatsecret-api.js';
+import { searchRawIngredients } from './data/raw-ingredients.js';
 import { wtAddFoodItem } from './render-workout.js';
 
 // ── 상태 ──────────────────────────────────────────────────────────
 let _nutritionSearchMeal = null;
-let _nutritionSearchCache = { db: [], csv: [], recent: [] };
+let _nutritionSearchCache = { db: [], csv: [], recent: [], raw: [] };
 let _nutritionSearchTimer = null;
 let _lastSearchQuery = null;
 
-// ── 공공데이터 식품영양성분 API ──────────────────────────────────────
-const _PUBLIC_FOOD_API = 'https://api.data.go.kr/openapi/tn_pubr_public_nutri_food_info_api';
-const _PUBLIC_FOOD_KEY = 'e54c5a3ae4ee20df7abd68a1b14528ad309c2fbe25a9ab1128bf7e410414d59b';
-let _publicFoodCache = null;
-let _publicFoodLoading = false;
-
-// ── 농촌진흥청 메뉴젠 식품영양성분 API ──────────────────────────────
-const _AGRI_FOOD_API = 'https://apis.data.go.kr/1390803/AgriFood/MzenFoodNutri/getKoreanFoodIdntList';
-const _AGRI_FOOD_KEY = 'e54c5a3ae4ee20df7abd68a1b14528ad309c2fbe25a9ab1128bf7e410414d59b';
-let _agriFoodCache = null;
-let _agriFoodLoading = false;
-
-// ── 공공DB 로드 ─────────────────────────────────────────────────
-async function _loadPublicFoodDB() {
-  if (_publicFoodCache) return _publicFoodCache;
-  if (_publicFoodLoading) return [];
-
-  try {
-    const cached = localStorage.getItem('publicFoodDB');
-    if (cached) {
-      const parsed = JSON.parse(cached);
-      if (parsed.ts && Date.now() - parsed.ts < 7 * 86400000) {
-        _publicFoodCache = parsed.data;
-        console.log(`[식품DB] 캐시 로드: ${_publicFoodCache.length}건`);
-        return _publicFoodCache;
-      }
-    }
-  } catch {}
-
-  _publicFoodLoading = true;
-  console.log('[식품DB] API에서 전체 데이터 로딩 중...');
-
-  try {
-    const allItems = [];
-    const pageSize = 1000;
-    const firstRes = await fetch(`${_PUBLIC_FOOD_API}?serviceKey=${_PUBLIC_FOOD_KEY}&pageNo=1&numOfRows=${pageSize}&type=json`);
-    const firstData = await firstRes.json();
-    const total = parseInt(firstData.response?.body?.totalCount || 0);
-    const firstItems = firstData.response?.body?.items || [];
-    firstItems.forEach(it => allItems.push(_parsePublicFoodItem(it)));
-
-    const totalPages = Math.ceil(total / pageSize);
-    console.log(`[식품DB] 총 ${total}건, ${totalPages}페이지`);
-
-    for (let batch = 2; batch <= totalPages; batch += 5) {
-      const promises = [];
-      for (let p = batch; p < batch + 5 && p <= totalPages; p++) {
-        promises.push(
-          fetch(`${_PUBLIC_FOOD_API}?serviceKey=${_PUBLIC_FOOD_KEY}&pageNo=${p}&numOfRows=${pageSize}&type=json`)
-            .then(r => r.json())
-            .then(d => (d.response?.body?.items || []).forEach(it => allItems.push(_parsePublicFoodItem(it))))
-            .catch(() => {})
-        );
-      }
-      await Promise.all(promises);
-    }
-
-    _publicFoodCache = allItems;
-    console.log(`[식품DB] 로드 완료: ${allItems.length}건`);
-
-    try {
-      localStorage.setItem('publicFoodDB', JSON.stringify({ ts: Date.now(), data: allItems }));
-    } catch { /* storage full */ }
-  } catch (e) {
-    console.error('[식품DB] 로드 실패:', e);
-    _publicFoodCache = [];
-  } finally {
-    _publicFoodLoading = false;
-  }
-  return _publicFoodCache;
-}
-
-function _parsePublicFoodItem(raw) {
-  const baseUnit = raw.nutConSrtrQua || '100g';
-  const baseGrams = parseFloat(baseUnit) || 100;
-  const foodSize = parseFloat(raw.foodSize) || 0;
-  const defaultWeight = foodSize > 0 && foodSize !== baseGrams ? foodSize : baseGrams;
-
-  return {
-    id: 'pub_' + (raw.foodCd || Math.random().toString(36).slice(2)),
-    name: raw.foodNm || '',
-    unit: baseUnit,
-    defaultWeight,
-    kcal: parseFloat(raw.enerc) || 0,
-    protein: parseFloat(raw.prot) || 0,
-    fat: parseFloat(raw.fatce) || 0,
-    carbs: parseFloat(raw.chocdf) || 0,
-    sugar: parseFloat(raw.sugar) || 0,
-    sodium: parseFloat(raw.nat) || 0,
-    fiber: parseFloat(raw.fibtg) || 0,
-    _source: 'public_api',
-  };
-}
-
-function searchPublicFoodDB(query) {
-  if (!_publicFoodCache || !query) return [];
-  const q = query.toLowerCase();
-  return _publicFoodCache
-    .filter(it => it.name && it.name.toLowerCase().includes(q))
-    .slice(0, 20);
-}
-
-// ── 농식품DB 로드 ────────────────────────────────────────────────
-async function _loadAgriFoodDB() {
-  if (_agriFoodCache) return _agriFoodCache;
-  if (_agriFoodLoading) return [];
-
-  try {
-    const cached = localStorage.getItem('agriFoodDB');
-    if (cached) {
-      const parsed = JSON.parse(cached);
-      if (parsed.ts && Date.now() - parsed.ts < 7 * 86400000) {
-        _agriFoodCache = parsed.data;
-        console.log(`[농식품DB] 캐시 로드: ${_agriFoodCache.length}건`);
-        return _agriFoodCache;
-      }
-    }
-  } catch {}
-
-  _agriFoodLoading = true;
-  console.log('[농식품DB] API 로딩 중...');
-
-  try {
-    const allItems = [];
-    const res = await fetch(`${_AGRI_FOOD_API}?serviceKey=${_AGRI_FOOD_KEY}&pageNo=1&numOfRows=1000&type=json`);
-    if (!res.ok) {
-      console.warn('[농식품DB] API 응답 에러:', res.status);
-      _agriFoodCache = [];
-      return [];
-    }
-
-    const text = await res.text();
-    let data;
-    try {
-      data = JSON.parse(text);
-    } catch {
-      const parser = new DOMParser();
-      const xml = parser.parseFromString(text, 'text/xml');
-      const items = xml.querySelectorAll('item');
-      items.forEach(item => {
-        const get = (tag) => item.querySelector(tag)?.textContent || '';
-        allItems.push({
-          id: 'agri_' + get('foodCd'),
-          name: get('foodNm'),
-          unit: '1인분',
-          defaultWeight: parseFloat(get('servSize')) || parseFloat(get('foodSize')) || 100,
-          kcal: parseFloat(get('enerc')) || 0,
-          protein: parseFloat(get('prot')) || 0,
-          fat: parseFloat(get('fatce')) || 0,
-          carbs: parseFloat(get('chocdf')) || 0,
-          _source: 'agri_api',
-        });
-      });
-      _agriFoodCache = allItems;
-      console.log(`[농식품DB] XML 파싱 완료: ${allItems.length}건`);
-      try { localStorage.setItem('agriFoodDB', JSON.stringify({ ts: Date.now(), data: allItems })); } catch {}
-      return allItems;
-    }
-
-    const body = data?.response?.body;
-    const total = parseInt(body?.totalCount || 0);
-    const items = body?.items || [];
-    items.forEach(it => allItems.push(_parseAgriFoodItem(it)));
-
-    const pageSize = 1000;
-    const totalPages = Math.ceil(total / pageSize);
-    for (let p = 2; p <= totalPages; p++) {
-      try {
-        const r = await fetch(`${_AGRI_FOOD_API}?serviceKey=${_AGRI_FOOD_KEY}&pageNo=${p}&numOfRows=${pageSize}&type=json`);
-        const d = await r.json();
-        (d?.response?.body?.items || []).forEach(it => allItems.push(_parseAgriFoodItem(it)));
-      } catch {}
-    }
-
-    _agriFoodCache = allItems;
-    console.log(`[농식품DB] 로드 완료: ${allItems.length}건`);
-    try { localStorage.setItem('agriFoodDB', JSON.stringify({ ts: Date.now(), data: allItems })); } catch {}
-  } catch (e) {
-    console.warn('[농식품DB] 로드 실패:', e.message);
-    _agriFoodCache = [];
-  } finally {
-    _agriFoodLoading = false;
-  }
-  return _agriFoodCache;
-}
-
-function _parseAgriFoodItem(raw) {
-  return {
-    id: 'agri_' + (raw.foodCd || raw.FOOD_CD || Math.random().toString(36).slice(2)),
-    name: raw.foodNm || raw.FOOD_NM_KR || '',
-    unit: '1인분',
-    defaultWeight: parseFloat(raw.servSize || raw.SERVING_SIZE || raw.foodSize) || 100,
-    kcal: parseFloat(raw.enerc || raw.AMT_NUM1) || 0,
-    protein: parseFloat(raw.prot || raw.AMT_NUM3) || 0,
-    fat: parseFloat(raw.fatce || raw.AMT_NUM4) || 0,
-    carbs: parseFloat(raw.chocdf || raw.AMT_NUM7) || 0,
-    _source: 'agri_api',
-  };
-}
-
-function searchAgriFoodDB(query) {
-  if (!_agriFoodCache || !query) return [];
-  const q = query.toLowerCase();
-  return _agriFoodCache
-    .filter(it => it.name && it.name.toLowerCase().includes(q))
-    .slice(0, 20);
-}
+// NOTE: _loadPublicFoodDB / _loadAgriFoodDB는 과거에 19,495건을 localStorage에
+// 적재했지만 검색에 쓰지 않아 비용 대비 효용이 없었음. 2026-04-17 제거.
+// 원재료 검색은 1) 로컬 큐레이티드 DB(data/raw-ingredients.js) 우선,
+// 2) 식약처 공공API(searchGovFoodAPI) 보조로 처리.
 
 // ── 영양 검색 모달 ────────────────────────────────────────────────
 export async function openNutritionSearch(mealId) {
@@ -237,11 +35,6 @@ export async function openNutritionSearch(mealId) {
       console.warn('[영양검색] CSV 로드 실패:', e);
     }
   }
-
-  Promise.all([_loadPublicFoodDB(), _loadAgriFoodDB()]).then(() => {
-    const q = document.getElementById('nutrition-search-input')?.value?.trim();
-    if (q) renderNutritionSearchResults();
-  });
 
   renderNutritionSearchInitial();
   document.getElementById('nutrition-search-modal').classList.add('open');
@@ -337,24 +130,31 @@ export async function renderNutritionSearchResults() {
     const dbMatchedIds = new Set(dbResults.map(item => item.id));
     const recentFiltered = getRecentNutritionItems(10).filter(item => dbMatchedIds.has(item.id));
     const csvResults = searchCSVFood(q);
-    _nutritionSearchCache = { db: dbResults, csv: csvResults, recent: recentFiltered };
+    // 로컬 원재료(큐레이티드) DB 검색 — 샐러리/닭가슴살처럼 단일 재료일 때 즉시 나옴
+    const rawResults = searchRawIngredients(q);
+    _nutritionSearchCache = { db: dbResults, csv: csvResults, recent: recentFiltered, raw: rawResults };
 
     html += _renderNutritionSection('⭐ 즐겨찾기', recentFiltered, { removable: true, color: 'var(--accent)' });
+
+    // 원재료를 최상단에 — 자연식품은 보통 여기서 해결됨
+    const rawForRender = rawResults.map(r => ({
+      ...r,
+      // 표시용: 카테고리 뱃지를 이름 뒤에 덧붙이지 않고 별도 메타에 이미 노출
+    }));
+    html += _renderNutritionSection('🥦 원재료 · 자연식품', rawForRender.slice(0, 10), { icon: '🥦', marginTop: true });
+
     html += _renderNutritionSection('🏠 DB 검색 결과', dbResults.slice(0, 15), { marginTop: true });
 
+    const rawNames = new Set(rawResults.map(r => r.name?.toLowerCase()));
     const dbNames = new Set([...dbResults, ...recentFiltered].map(r => r.name?.toLowerCase()));
-    const dedupedCsv = csvResults.filter(c => !dbNames.has(c.name?.toLowerCase()));
+    const dedupedCsv = csvResults.filter(c => !dbNames.has(c.name?.toLowerCase()) && !rawNames.has(c.name?.toLowerCase()));
     html += _renderNutritionSection('📊 CSV 검색 결과', dedupedCsv.slice(0, 15), { icon: '📊', isCSV: true, marginTop: true });
 
-    allNames = new Set([...dbNames, ...dedupedCsv.map(c => c.name?.toLowerCase())]);
+    allNames = new Set([...dbNames, ...rawNames, ...dedupedCsv.map(c => c.name?.toLowerCase())]);
 
     html += `<div id="gov-api-results-placeholder" style="font-size:11px;color:var(--text-tertiary);text-align:center;padding:12px">🏛️ 공공 식품DB 검색 중...</div>`;
 
     html += _buildRecipeResultsHtml(q);
-
-    if (!recentFiltered.length && !dbResults.length && !dedupedCsv.length && !html.includes('🍳 내 요리')) {
-      // CSV/DB 결과 없으면 공공API 결과를 기다림
-    }
   }
 
   html += `<div style="padding:14px;text-align:center;border-top:1px solid var(--border);margin-top:8px">
@@ -372,7 +172,7 @@ export async function renderNutritionSearchResults() {
       if (placeholder && govResults && govResults.length > 0) {
         const dedupedGov = govResults.filter(g => !allNames?.has(g.name?.toLowerCase()));
         if (dedupedGov.length > 0) {
-          const govItems = dedupedGov.map(g => ({
+          const mapItem = (g) => ({
             id: g.id,
             name: g.name,
             defaultWeight: g.defaultWeight || 100,
@@ -382,13 +182,34 @@ export async function renderNutritionSearchResults() {
             fat: g.fat,
             carbs: g.carbs,
             _source: g.source || '공공DB',
-          }));
-          let govHtml = _renderNutritionSection(
-            '🏛️ 공공 식품DB (자연식품 포함)',
-            govItems.slice(0, 15),
-            { icon: '🏛️', marginTop: false }
-          );
-          placeholder.outerHTML = govHtml;
+          });
+          const rawItems  = dedupedGov.filter(g => g._grp === '원재료성').map(mapItem);
+          const mealItems = dedupedGov.filter(g => g._grp === '음식').map(mapItem);
+          const procItems = dedupedGov.filter(g => !g._grp || (g._grp !== '원재료성' && g._grp !== '음식')).map(mapItem);
+
+          let govHtml = '';
+          if (rawItems.length) {
+            govHtml += _renderNutritionSection(
+              '🌿 공공DB 원재료',
+              rawItems.slice(0, 10),
+              { icon: '🌿', marginTop: false }
+            );
+          }
+          if (mealItems.length) {
+            govHtml += _renderNutritionSection(
+              '🍽️ 공공DB 음식',
+              mealItems.slice(0, 8),
+              { icon: '🍽️', marginTop: true }
+            );
+          }
+          if (procItems.length) {
+            govHtml += _renderNutritionSection(
+              '🏛️ 공공DB 가공식품',
+              procItems.slice(0, 8),
+              { icon: '🏛️', marginTop: true }
+            );
+          }
+          placeholder.outerHTML = govHtml || '';
         } else {
           placeholder.remove();
         }
@@ -503,6 +324,9 @@ export function selectNutritionItem(itemId) {
   }
   if (!item && _nutritionSearchCache.db && _nutritionSearchCache.db.length > 0) {
     item = _nutritionSearchCache.db.find(n => n.id === itemId);
+  }
+  if (!item && _nutritionSearchCache.raw && _nutritionSearchCache.raw.length > 0) {
+    item = _nutritionSearchCache.raw.find(n => n.id === itemId);
   }
   if (!item && _nutritionSearchCache.csv && _nutritionSearchCache.csv.length > 0) {
     item = _nutritionSearchCache.csv.find(c => c.id === itemId);
