@@ -20,8 +20,7 @@ export const S = {
   date:       null,   // { y, m, d }
   exercises:  [],
   hiddenExercises: [],
-  gymStatus:  'none', // 'done'|'skip'|'health'|'none'
-  cfStatus:   'none',
+  cf:         false,
   stretching: false,
   swimming:   false,
   running:    false,

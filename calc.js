@@ -117,7 +117,7 @@ export function calcDietMetrics(plan) {
 export function calcExerciseCalorieCredit(plan, dayData) {
   if (!plan.advancedMode || !plan.exerciseCalorieCredit || !dayData) return 0;
   let credit = 0;
-  const hasGym = (dayData.exercises || []).length > 0 && !dayData.gym_skip;
+  const hasGym = (dayData.exercises || []).length > 0;
   if (hasGym)          credit += (plan.exerciseKcalGym      || 250);
   if (dayData.cf)      credit += (plan.exerciseKcalCF       || 300);
   if (dayData.swimming) credit += (plan.exerciseKcalSwimming || 200);
@@ -928,7 +928,7 @@ export function calcBurnedKcal(day, weightKg) {
 
   // 근력: 완료 세트(done) × 부위별 MET
   let gym = 0;
-  if (!d.gym_skip && Array.isArray(d.exercises)) {
+  if (Array.isArray(d.exercises)) {
     for (const ex of d.exercises) {
       const mid = ex?.muscleId;
       const met = MUSCLE_MET[mid];
@@ -962,7 +962,7 @@ export function calcBurnedKcal(day, weightKg) {
 
   // CF: 기본 30분 (workoutDuration 있으면 우선)
   let cf = 0;
-  if (d.cf && !d.cf_skip) {
+  if (d.cf) {
     const durH = Number(d.workoutDuration) > 0 ? Number(d.workoutDuration) / 3600 : 0.5;
     cf = 8.0 * w * durH;
   }
@@ -1034,12 +1034,10 @@ function _macroPenalty(day, macroTarget) {
 
 /**
  * 운동 감점 (최대 8)
+ * 랜딩 '쉬었어요/건강이슈' 제거 후 — 기록 없는 날은 전부 감점 대상.
  */
-function _workoutPenalty(burnedKcal, day) {
-  const skipped = !!(day.gym_skip || day.cf_skip || day.running_skip || day.swimming_skip);
-  const anyLogged = burnedKcal > 0;
-  if (!anyLogged && skipped) return 2;  // 의도적 휴식
-  if (!anyLogged)            return 8;  // 기록 전무
+function _workoutPenalty(burnedKcal) {
+  if (burnedKcal <= 0)   return 8;  // 기록 전무
   if (burnedKcal >= 300) return 0;
   if (burnedKcal >= 150) return 2;
   if (burnedKcal >= 50)  return 5;
@@ -1105,7 +1103,7 @@ export function calcDayScore(ctx) {
 
   const pKcal    = _kcalPenalty(actualKcal, targetKcal);
   const pMacro   = _macroPenalty(day, macroTarget);
-  const pWorkout = _workoutPenalty(burnedKcal, day);
+  const pWorkout = _workoutPenalty(burnedKcal);
   const pWeight  = _weightPenalty(weightDirSign, weightDeltaKg);
   const pDone    = _completenessPenalty(day);
 
@@ -1126,5 +1124,85 @@ export function calcDayScore(ctx) {
       complete: { penalty: pDone,    max: 2  },
     },
   };
+}
+
+// ═════════════════════════════════════════════════════════════════
+// 영양 단위 환산 (pure) — 2026-04-18 NUTRITION_REFACTOR
+// ─────────────────────────────────────────────────────────────────
+// 모든 canonical NutritionItem의 base는 아래 중 하나:
+//   - { type: 'per_100g', grams: 100 }
+//   - { type: 'per_100ml', ml: 100 }            (액상 음료)
+//   - { type: 'per_serving', grams: 30 }        (가공식품 1회 제공량)
+//
+// convertNutrition(nutritionPerBase, base, toGrams) → 해당 중량의 환산값
+// ─────────────────────────────────────────────────────────────────
+
+const _NUTRITION_FIELDS = ['kcal', 'protein', 'carbs', 'fat', 'fiber', 'sugar', 'sodium'];
+
+/**
+ * base 단위의 영양값을 toGrams(또는 toMl)에 맞춰 환산.
+ * @param {object} nutritionPerBase  {kcal, protein, carbs, fat, ...} — base 기준 값
+ * @param {object} base              {type:'per_100g'|'per_100ml'|'per_serving', grams?, ml?}
+ * @param {number} toGrams           환산할 실 중량(g) 또는 부피(ml)
+ * @returns {object}                 환산된 영양 객체 (kcal 정수, 매크로 소수1자리)
+ */
+export function convertNutrition(nutritionPerBase, base, toGrams) {
+  const out = { kcal: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0 };
+  if (!nutritionPerBase || !base) return out;
+
+  const amount = Number(toGrams) || 0;
+  // base의 기준 중량/부피 (per_100g/per_100ml은 100, per_serving은 명시 grams)
+  let baseAmount = 100;
+  if (base.type === 'per_serving') baseAmount = Number(base.grams) || 100;
+  else if (base.type === 'per_100ml') baseAmount = Number(base.ml) || 100;
+  else if (base.type === 'per_100g')  baseAmount = Number(base.grams) || 100;
+  if (baseAmount <= 0) baseAmount = 100;
+
+  const ratio = amount / baseAmount;
+  for (const f of _NUTRITION_FIELDS) {
+    const v = Number(nutritionPerBase[f]) || 0;
+    const scaled = v * ratio;
+    if (f === 'kcal' || f === 'sodium') {
+      out[f] = Math.round(scaled);
+    } else {
+      out[f] = Math.round(scaled * 10) / 10;
+    }
+  }
+  return out;
+}
+
+/**
+ * 매크로 총합이 kcal 공식(4C + 4P + 9F)과 일치하는지 ±tolerance 범위 검증.
+ * 라벨 OCR/Gemini 결과가 엉뚱한 컬럼을 잡았을 때 감지하는 안전장치.
+ * @returns {{ok:boolean, derivedKcal:number, diffPct:number}}
+ */
+export function validateNutritionConsistency(n, tolerancePct = 20) {
+  const kcal = Number(n?.kcal) || 0;
+  const p = Number(n?.protein) || 0;
+  const c = Number(n?.carbs) || 0;
+  const f = Number(n?.fat) || 0;
+  const derivedKcal = 4 * c + 4 * p + 9 * f;
+  if (kcal <= 0 || derivedKcal <= 0) return { ok: false, derivedKcal, diffPct: Infinity };
+  const diff = Math.abs(kcal - derivedKcal);
+  const diffPct = (diff / kcal) * 100;
+  return { ok: diffPct <= tolerancePct, derivedKcal: Math.round(derivedKcal), diffPct };
+}
+
+/**
+ * servings 배열에서 기본 단위(가공식품=per_serving, 원재료=per_100g) 자동 선택.
+ */
+export function pickDefaultServing(servings, groupHint) {
+  if (!Array.isArray(servings) || !servings.length) return null;
+  const byId = (id) => servings.find(s => s.id === id);
+  // 원재료: per_100g 우선
+  if (groupHint === '원재료성' || groupHint === 'raw') {
+    return byId('per_100g') || servings[0];
+  }
+  // 가공식품: per_serving 우선
+  if (groupHint === '가공식품' || groupHint === 'processed') {
+    return byId('per_serving') || byId('per_100g') || servings[0];
+  }
+  // 음식/기타: 1인분(per_serving) 있으면 그걸로, 없으면 per_100g
+  return byId('per_serving') || byId('per_100g') || servings[0];
 }
 

@@ -3,7 +3,7 @@
 
 // 캐시 버전: 타임스탬프 기반 자동 생성 — 파일 수정 시 SW 자동 업데이트
 // (SW 파일 내용이 1바이트라도 바뀌면 브라우저가 새 SW로 인식)
-const CACHE_VERSION = 'tomatofarm-v20260417zm-deficit-friendly';
+const CACHE_VERSION = 'tomatofarm-v20260418z10-unknown-weight';
 const RUNTIME_CACHE = 'dashboard3-runtime';
 const STATIC_ASSETS = [
   './',
@@ -121,9 +121,12 @@ const STATIC_ASSETS = [
   './modals/ai-estimate-banner.js',
   // AI 개인화 프로파일 (P1)
   './data/ai-food-profile.js',
+  // 영양정보 리팩토링 (2026-04-18 신규)
+  './data/nutrition-normalize.js',
   // 캘린더 탭 (2026-04-17 신규)
   './render-calendar.js',
   './modals/calendar-day-modal.js',
+  './modals/custom-muscles-modal.js',
 ];
 
 self.addEventListener('install', (event) => {

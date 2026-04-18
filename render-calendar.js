@@ -311,7 +311,7 @@ function _openDay(key) {
   if (b.cf > 0)       workoutParts.push(`CF ${b.cf}`);
   const workoutDesc = workoutParts.length
     ? `총 ${b.total} kcal (${workoutParts.join(' · ')})`
-    : (day.gym_skip || day.cf_skip ? '의도적 휴식' : '운동 기록 없음');
+    : '운동 기록 없음';
 
   const weightDesc = mx.weight != null
     ? (mx.weightDeltaKg != null

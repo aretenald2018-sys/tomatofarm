@@ -513,32 +513,73 @@ export async function saveNutritionItemFromModal() {
     return;
   }
 
-  const item = {
+  // unit 필드에서 servingSize/servingUnit 재추출
+  // 과거: parseFloat(unit.match(/[\d.]+/)?.[0] || 100) — 숫자 없으면 무조건 100g로 fallback.
+  //       결과: "1공기"처럼 숫자 없는 단위가 서버에 100g로 저장되는 오염 발생.
+  // 수정: 1) unit에서 숫자+단위(g|ml) 추출 성공 시 그 값 사용
+  //       2) 실패하고 _niParsedData에 servingSize가 있으면 파서 결과 신뢰
+  //       3) 그래도 없으면 100g 기본 (보수적)
+  const unitStr = document.getElementById('ni-unit').value.trim() || '100g';
+  const unitMatch = unitStr.match(/([\d.]+)\s*(ml|mL|g|그램|밀리리터)?/i);
+  let servingSize = null;
+  let servingUnit = 'g';
+  if (unitMatch) {
+    servingSize = parseFloat(unitMatch[1]);
+    const u = (unitMatch[2] || '').toLowerCase();
+    if (u === 'ml' || u === '밀리리터') servingUnit = 'ml';
+  }
+  if (!servingSize || !Number.isFinite(servingSize) || servingSize <= 0) {
+    // unit에서 못 뽑았으면 파서 결과 신뢰
+    if (_niParsedData?.servingSize && _niParsedData.servingSize > 0) {
+      servingSize = _niParsedData.servingSize;
+      if (_niParsedData.servingUnit) servingUnit = _niParsedData.servingUnit;
+    } else {
+      servingSize = 100; // 최종 fallback
+    }
+  }
+
+  const nutrition = {
+    kcal: parseFloat(document.getElementById('ni-kcal').value || 0),
+    protein: parseFloat(document.getElementById('ni-protein').value || 0),
+    carbs: parseFloat(document.getElementById('ni-carbs').value || 0),
+    fat: parseFloat(document.getElementById('ni-fat').value || 0),
+    fiber: 0,
+    sugar: 0,
+    sodium: 0,
+  };
+  const aliases = document.getElementById('ni-aliases').value
+    .split(/[,\n/]/)
+    .map(v => v.trim())
+    .filter(Boolean);
+  const source = _niCurrentTab === 'manual' ? 'manual' : (_niCurrentTab === 'photo' ? 'ocr' : 'text');
+
+  // canonical base/servings/defaultServingId 와 레거시 필드를 함께 저장
+  // (refactor 이전: legacy만 저장 → 재로드 시 base/servings가 사라져서
+  //  _toCanonical이 매번 normalizeFromLocalDB로 재구성 + per100/totalAmount 유실)
+  const { normalizeFromParse, serializeForStorage } = await import('../data/nutrition-normalize.js');
+  const parsedInput = {
     id: _niEditingId,
-    name: name,
-    aliases: document.getElementById('ni-aliases').value
-      .split(/[,\n/]/)
-      .map(v => v.trim())
-      .filter(Boolean),
-    unit: document.getElementById('ni-unit').value.trim() || '100g',
-    servingSize: parseFloat(document.getElementById('ni-unit').value.match(/[\d.]+/)?.[0] || 100),
-    servingUnit: 'g',
-    nutrition: {
-      kcal: parseFloat(document.getElementById('ni-kcal').value || 0),
-      protein: parseFloat(document.getElementById('ni-protein').value || 0),
-      carbs: parseFloat(document.getElementById('ni-carbs').value || 0),
-      fat: parseFloat(document.getElementById('ni-fat').value || 0),
-      fiber: 0,
-      sugar: 0,
-      sodium: 0,
-    },
+    name,
+    brand: _niParsedData?.brand || null,
+    servingSize,
+    servingUnit,
+    unit: unitStr,
+    nutrition,
+    _source: source,
+  };
+  const canonical = normalizeFromParse(parsedInput);
+  const item = serializeForStorage(canonical, {
+    aliases,
     notes: document.getElementById('ni-note').value.trim(),
-    source: _niCurrentTab === 'manual' ? 'manual' : (_niCurrentTab === 'photo' ? 'ocr' : 'text'),
+    source,
     language: _niParsedData?.language || 'ko',
     confidence: _niParsedData?.confidence || (name ? 1.0 : 0),
     photoUrl: null,
     rawText: _niCurrentTab === 'text' ? document.getElementById('ni-raw-text').value : null,
-  };
+    // Phase B에서 AI/파서가 뽑는 보조 필드 — 과거엔 저장에서 버려졌음
+    per100: _niParsedData?.per100 || null,
+    totalAmount: _niParsedData?.totalAmount ?? null,
+  });
 
   try {
     const { saveNutritionItem } = await import('../data.js');

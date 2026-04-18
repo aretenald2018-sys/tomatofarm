@@ -14,9 +14,7 @@ export { renderCalorieTracker, _renderMealPhotos,
          openNutritionPhotoUpload }
   from './render.js';
 
-export { wtSetGymStatus, wtSetCFStatus,
-         wtToggleStretching, wtToggleSwimming, wtToggleRunning,
-         wtToggleWineFree, wtToggleMealSkipped }
+export { wtToggleWineFree, wtToggleMealSkipped }
   from './status.js';
 
 export { wtAddSet, wtRemoveSet, wtUpdateSet,
@@ -38,8 +36,7 @@ export { wtStartWorkoutTimer, wtPauseWorkoutTimer,
 // ── 내부 import (window 등록 + 초기화용) ─────────────────────────
 import { saveWorkoutDay }                          from './save.js';
 import { wtAddFoodItem, wtRemoveFoodItem }         from './render.js';
-import { wtSetGymStatus, wtSetCFStatus,
-         wtToggleMealSkipped }                     from './status.js';
+import { wtToggleMealSkipped }                     from './status.js';
 import { wtOpenExercisePicker, wtCloseExercisePicker,
          wtOpenExerciseEditor, wtCloseExerciseEditor,
          wtSaveExerciseFromEditor,
@@ -55,8 +52,6 @@ import { _initTypeFormEvents }                     from './activity-forms.js';
 import { confirmAction }                           from '../utils/confirm-modal.js';
 
 // ── window.* 등록 (HTML onclick 연결) ───────────────────────────
-window.wtSetGymStatus = wtSetGymStatus;
-window.wtSetCFStatus = wtSetCFStatus;
 window.wtToggleMealSkipped = wtToggleMealSkipped;
 window.saveWorkoutDay = saveWorkoutDay;
 window.wtOpenExercisePicker = wtOpenExercisePicker;

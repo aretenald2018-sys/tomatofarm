@@ -2,7 +2,7 @@
 // data.js — 배럴 모듈 (하위 모듈 re-export + loadAll/saveDay 잔여 로직)
 // ================================================================
 
-import { CONFIG, MUSCLES } from './config.js';
+import { CONFIG, MUSCLES, MOVEMENTS } from './config.js';
 
 // ── data-core: 공유 상태 + Firebase 기반 ─────────────────────────
 import {
@@ -301,8 +301,6 @@ export async function saveDay(key, data) {
   const isEmpty = !data || (
     !data.exercises?.length && !data.cf && !data.memo &&
     !data.breakfast && !data.lunch && !data.dinner && !data.snack &&
-    !data.gym_skip && !data.gym_health &&
-    !data.cf_skip  && !data.cf_health &&
     !data.stretching && !data.swimming && !data.running && !data.wine_free &&
     !data.breakfast_skipped && !data.lunch_skipped && !data.dinner_skipped &&
     !data.bKcal && !data.lKcal && !data.dKcal && !data.sKcal &&
@@ -348,10 +346,17 @@ export async function saveDay(key, data) {
 // ═══════════════════════════════════════════════════════════════
 
 export async function saveExercise(ex) {
+  // movementId가 있고 category가 없으면 MOVEMENTS에서 equipment_category 자동 주입.
+  // 피커의 장비 카테고리 필터가 movementId 없는 커스텀에도 점진적으로 동작하게 됨.
+  const record = { ...ex };
+  if (!record.category && record.movementId) {
+    const mv = MOVEMENTS.find(m => m.id === record.movementId);
+    if (mv?.equipment_category) record.category = mv.equipment_category;
+  }
   return _fbOp('saveExercise', async () => {
-    await setDoc(_doc('exercises', ex.id), ex);
-    const idx = _exList.findIndex(e => e.id === ex.id);
-    if (idx >= 0) _exList[idx] = ex; else _exList.push(ex);
+    await setDoc(_doc('exercises', record.id), record);
+    const idx = _exList.findIndex(e => e.id === record.id);
+    if (idx >= 0) _exList[idx] = record; else _exList.push(record);
     _setExList(_sortExList(_exList));
   }, { sync: false });
 }
@@ -652,10 +657,12 @@ export const getCustomMuscles = ()  => _customMuscles;
 export const getAllMuscles = () => {
   const byId = new Map(MUSCLES.map(m => [m.id, m]));
   _customMuscles.forEach(m => {
-    if (m?.id && m?.name) byId.set(m.id, m);
+    if (m?.id && m?.name) byId.set(m.id, { ...m, kind: m.kind || 'part' });
   });
   return [...byId.values()];
 };
+// 헬스 자극부위(유산소 활동 제외) — Expert/종목추가/장비 모달에서 사용.
+export const getMuscleParts = () => getAllMuscles().filter(m => (m.kind || 'part') === 'part');
 export const getCache     = ()      => _cache;
 export const getAllDateKeys = () => Object.keys(_cache).filter(k => /^\d{4}-\d{2}-\d{2}$/.test(k));
 export const getDay       = (y,m,d) => _cache[dateKey(y,m,d)] || {};
@@ -782,11 +789,6 @@ export const getMuscles   = (y,m,d) => {
 };
 export const getCF        = (y,m,d) => !!getDay(y,m,d).cf;
 export const getMemo      = (y,m,d) => getDay(y,m,d).memo || '';
-
-export const getGymSkip   = (y,m,d) => !!getDay(y,m,d)?.gym_skip;
-export const getGymHealth = (y,m,d) => !!getDay(y,m,d)?.gym_health;
-export const getCFSkip    = (y,m,d) => !!getDay(y,m,d)?.cf_skip;
-export const getCFHealth  = (y,m,d) => !!getDay(y,m,d)?.cf_health;
 
 export const getStretching = (y,m,d) => !!getDay(y,m,d)?.stretching;
 export const getWineFree   = (y,m,d) => !!getDay(y,m,d)?.wine_free;

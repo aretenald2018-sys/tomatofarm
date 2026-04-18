@@ -13,11 +13,13 @@ import {
   getRecentRoutineTemplate, getRoutineTemplates,
   detectPRs as _detectPRsFromData,
   getVolumeHistory as _getVolumeHistory,
+  getMuscleParts, getCustomMuscles, saveCustomMuscle, deleteCustomMuscle,
   dateKey, TODAY,
 } from '../data.js';
-import { MUSCLES, MOVEMENTS, MOVEMENT_PATTERNS } from '../config.js';
+import { MOVEMENTS, MOVEMENT_PATTERNS } from '../config.js';
 import { parseEquipmentFromText, parseEquipmentFromImage } from '../ai.js';
 import { S } from './state.js';
+import { confirmAction } from '../utils/confirm-modal.js';
 
 // ── Onboarding 내부 state ────────────────────────────────────────
 // phase: 'wizard' (step 1~5) | 'review' (파싱 리뷰) | 'done' (완료)
@@ -87,10 +89,8 @@ export function renderExpertTopArea() {
   _renderInlineExpertPill();
   _syncExpertFlowClass(true);
 
-  // 프로 모드에는 상태 선택 UI가 없으므로 skip/health 외 값('none'/'done'/undefined)은
-  // 모두 'done'으로 정규화. fresh day(load.js가 'none' 로드)에도 step3가 열리도록.
-  const rawStatus = S.gymStatus;
-  const status = (rawStatus === 'skip' || rawStatus === 'health') ? rawStatus : 'done';
+  // 랜딩 '쉬었어요/건강이슈' 제거 후 — 상태는 항상 'done'으로 간주.
+  const status = 'done';
   const currentGymId = _resolveCurrentGymId();
   const currentGym = getGyms().find(g => g.id === currentGymId) || null;
   const gymCount = getGyms().length;
@@ -101,22 +101,13 @@ export function renderExpertTopArea() {
   const step1Done = !!currentGym && exCount > 0;
   const stepNum = !step1Done ? 1 : (!hasRoutine ? 2 : 3);
 
-  // 모든 스텝 완료 + 운동 상태 → 아래 헬스 종목 섹션 표시 허용
-  _syncStep3ReadyClass(status === 'done' && step1Done && hasRoutine);
+  // 모든 스텝 완료 → 아래 헬스 종목 섹션 표시 허용
+  _syncStep3ReadyClass(step1Done && hasRoutine);
 
-  // P2-9: 상태별 타이틀/메타도 함께 바뀌어야 의미 일치 — STEP 표시는 운동일 때만
-  const headTitle = (status === 'skip') ? '😴 오늘은 쉬었어요'
-                  : (status === 'health') ? '🩹 건강이슈로 쉼'
-                  : '🏋️ 오늘의 운동';
-  const headMetaHtml = (status === 'done')
-    ? `<div class="wt-exc-meta">STEP ${stepNum} / 3</div>` : '';
+  const headTitle = '🏋️ 오늘의 운동';
+  const headMetaHtml = `<div class="wt-exc-meta">STEP ${stepNum} / 3</div>`;
 
-  const bodyHtml =
-    (status === 'skip')
-      ? `<div class="wt-st-info"><b>쉬었어요</b>로 저장됩니다. 기록이 남지 않고 토마토도 적립되지 않아요.</div>`
-    : (status === 'health')
-      ? `<div class="wt-st-info"><b>건강이슈</b>로 저장됩니다. 기록은 남지 않지만 토마토는 계속 적립돼요.</div>`
-    : _renderExpertStepperBody({ currentGym, gymCount, exCount, insight, step1Done, hasRoutine, recent });
+  const bodyHtml = _renderExpertStepperBody({ currentGym, gymCount, exCount, insight, step1Done, hasRoutine, recent });
 
   // 통합 TDS SegmentedControl — [프로 모드 | 일반 모드]로 토글 명확화.
   // 프로 모드에서는 기본적으로 '운동'을 하는 사용자이므로 쉬었어요/건강이슈/운동 세그먼트 제거.
@@ -303,10 +294,10 @@ function _renderExpertStepperBody({ currentGym, gymCount, exCount, insight, step
       const isActive = g.id === currentId;
       const n = getGymExList(g.id).length;
       const subText = n === 0 ? '⚠ 기구 등록 필요' : `기구 ${n}개`;
-      // 활성 슬라이드에만 편집 아이콘 (기구 CRUD 진입점). 더블클릭도 동일 핸들러.
-      const editIcon = isActive
-        ? `<span class="wt-gym-slide-edit" data-gym-edit="${_esc(g.id)}" role="button" aria-label="기구 관리" title="기구 관리">✏️</span>`
-        : '';
+      // D-2: 편집 아이콘을 모든 슬라이드에 노출 — 비활성 헬스장도 기구 관리 가능.
+      //       (과거: 활성 슬라이드에만 있었음 → 비활성 gym을 고치려면 선택 전환 필수,
+      //        전환 시 진행 중 루틴 초기화 모달이 뜨는 부수효과가 있어 UX가 막혔음)
+      const editIcon = `<span class="wt-gym-slide-edit" data-gym-edit="${_esc(g.id)}" role="button" aria-label="기구 관리" title="기구 관리">✏️</span>`;
       return `
         <button type="button" class="wt-gym-slide${isActive ? ' is-active' : ''}" data-gym-id="${_esc(g.id)}">
           <span class="wt-gym-slide-icon">🏋️</span>
@@ -348,8 +339,9 @@ function _renderExpertStepperBody({ currentGym, gymCount, exCount, insight, step
   const hasTargets = _suggestState.targets.size > 0;
   const s2Class = hasTargets ? 'is-done' : (step1Done ? 'is-active' : '');
   const s2Dot = hasTargets ? '✓' : '2';
-  const muscleIds = ['back','bicep','shoulder','chest','tricep','abs','lower','glute'];
-  const musclesById = Object.fromEntries(MUSCLES.map(m => [m.id, m.name]));
+  const parts = getMuscleParts();
+  const muscleIds = parts.map(m => m.id);
+  const musclesById = Object.fromEntries(parts.map(m => [m.id, m.name]));
   const minsOpts = [45, 60, 90];
   const rpeOpts = [['6-7','낮음 6-7'], ['7-8','보통 7-8'], ['8-9','높음 8-9']];
   const step2Body = `
@@ -376,15 +368,28 @@ function _renderExpertStepperBody({ currentGym, gymCount, exCount, insight, step
     </div>
   `;
 
-  // Step 3 — AI 루틴 생성하기 (Step 1+2 완료 시 활성)
+  // Step 3 — AI 루틴 생성 vs 직접 선택 (Step 1+2 완료 시 활성)
+  // D-3: 두 경로를 동등한 시각 비중으로 배치 — AI만 primary CTA였던 구조를
+  //      "AI 추천"과 "직접 선택" 두 카드가 나란히 존재하는 형태로 변경.
+  //      (AI 의존도가 강했던 onboarding에서 수동 사용자가 배제되던 문제 해결)
   const canGenerate = step1Done && hasTargets;
   const s3Class = hasRoutine ? 'is-done' : (canGenerate ? 'is-active' : '');
   const s3Dot = hasRoutine ? '✓' : '3';
   const step3Body = `
-    <button class="wt-ai-cta" type="button" onclick="openRoutineCandidatesDirect()"${!canGenerate ? ' disabled' : ''}>
-      AI 루틴 생성하기
-    </button>
-    <button class="wt-manual-nudge" type="button" onclick="wtOpenExercisePicker()"${!step1Done ? ' disabled' : ''}>직접 선택할 수도 있어요.</button>
+    <div class="wt-routine-choice" style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+      <button class="wt-ai-cta" type="button" onclick="openRoutineCandidatesDirect()"${!canGenerate ? ' disabled' : ''}
+        style="padding:16px 12px; border-radius:14px; text-align:center;">
+        <div style="font-size:18px; margin-bottom:4px;">🤖</div>
+        <div style="font-weight:700; font-size:14px;">AI 추천</div>
+        <div style="font-size:11px; opacity:0.85; margin-top:2px;">부위·시간 기반</div>
+      </button>
+      <button class="wt-manual-cta" type="button" onclick="wtOpenExercisePicker()"${!step1Done ? ' disabled' : ''}
+        style="padding:16px 12px; border-radius:14px; background:var(--seed-bg-fill,var(--surface2)); border:1px solid var(--border); color:var(--text); text-align:center;">
+        <div style="font-size:18px; margin-bottom:4px;">✍️</div>
+        <div style="font-weight:700; font-size:14px;">직접 선택</div>
+        <div style="font-size:11px; opacity:0.7; margin-top:2px;">내가 고를래요</div>
+      </button>
+    </div>
   `;
 
   return `
@@ -889,20 +894,20 @@ function _volumeEstimate(d, m) {
 }
 
 function _renderStep4Preference() {
-  const muscles = ['back','shoulder','chest','bicep','tricep','abs','lower','glute'];
-  const nameById = Object.fromEntries(MUSCLES.map(m => [m.id, m.name]));
+  const parts = getMuscleParts();
   return `
     <div class="hero-title-in">더 키우고 싶은,<br/>피하고 싶은 부위가 있나요?</div>
     <div class="hero-sub-in">탭할수록 <b style="color:var(--primary);">선호 ♥</b> → 중립 → <s>기피</s> 순으로 바뀝니다.</div>
     <div class="section-label">부위</div>
     <div class="chips" id="expert-prefer-chips">
-      ${muscles.map(id => {
-        const prefer = _obState.preferMuscles.has(id);
-        const avoid  = _obState.avoidMuscles.has(id);
+      ${parts.map(m => {
+        const prefer = _obState.preferMuscles.has(m.id);
+        const avoid  = _obState.avoidMuscles.has(m.id);
         const cls = prefer ? 'chip prefer' : (avoid ? 'chip avoid' : 'chip');
         const mark = prefer ? '<span class="mark">♥</span>' : '';
-        return `<div class="${cls}" data-muscle="${id}">${mark}${nameById[id] || id}</div>`;
+        return `<div class="${cls}" data-muscle="${m.id}">${mark}${m.name}</div>`;
       }).join('')}
+      <button type="button" class="chip chip-add" onclick="openCustomMusclesModal()" style="border-style:dashed;">+ 새 부위</button>
     </div>
     ${_mismatchWarning() ? `<div class="hero-sub-in" style="font-size:11px; margin-top:6px;">${_mismatchWarning()}</div>` : ''}
     <div class="section-label" style="margin-top:22px;">금지 동작 <span style="font-weight:500; text-transform:none; color:var(--text-disabled);">(선택)</span></div>
@@ -1409,14 +1414,25 @@ function _openReviewScreen() {
       `;
     }
 
+    // Hybrid C: 멀티퍼포스 기구에서 확장된 row는 "출처: 파워랙" 메타 표기.
+    const metaParts = [];
+    if (p.sourceEquipment) metaParts.push(`출처: ${p.sourceEquipment}`);
+    if (p.brand) metaParts.push(p.brand);
+    if (p.machineType) metaParts.push(p.machineType);
+    if (p.maxKg) metaParts.push(`최대 ${p.maxKg}kg`);
+    if (p.incKg) metaParts.push(`${p.incKg}kg 증량`);
+
     return `
       <div class="eq-row ${rowClass}">
         <div class="${iconClass}">${icon}</div>
         <div class="eq-body">
           <div class="eq-name">${_esc(p.name)}</div>
-          <div class="eq-meta">${_esc([p.brand, p.machineType, p.maxKg?`최대 ${p.maxKg}kg`:'', p.incKg?`${p.incKg}kg 증량`:''].filter(Boolean).join(' · '))}</div>
+          <div class="eq-meta">${_esc(metaParts.join(' · '))}</div>
         </div>
         ${movementCell}
+        <button type="button" class="eq-remove" onclick="expertOnbRemoveItem(${i})" aria-label="삭제"
+          title="이 항목 삭제"
+          style="background:transparent;border:0;padding:8px;cursor:pointer;color:var(--text-secondary);font-size:18px;line-height:1;">✕</button>
       </div>
     `;
   }).join('');
@@ -1519,6 +1535,65 @@ export function expertOnbEditMovement(idx) {
   if (!_obState.editing) _obState.editing = new Set();
   _obState.editing.add(i);
   _openReviewScreen();
+}
+
+// Hybrid C: 리뷰 화면에서 X 버튼으로 row 삭제.
+// 멀티퍼포스 확장으로 너무 많은 동작이 생성됐거나, 원치 않는 항목을 빼고 싶을 때 사용.
+// - dbId가 있으면 DB에서 exercise 레코드도 삭제
+// - Undo 토스트(3초) — 잘못 눌렀을 때 복원
+export async function expertOnbRemoveItem(idx) {
+  const i = Number(idx);
+  if (!Number.isInteger(i) || i < 0 || i >= _obState.parsed.length) return;
+  const removed = _obState.parsed[i];
+  const prevDbId = removed.dbId || null;
+  _obState.parsed.splice(i, 1);
+  // _obState.editing Set의 인덱스 shift
+  if (_obState.editing && _obState.editing.size > 0) {
+    const next = new Set();
+    for (const oldIdx of _obState.editing) {
+      if (oldIdx === i) continue;
+      next.add(oldIdx > i ? oldIdx - 1 : oldIdx);
+    }
+    _obState.editing = next;
+  }
+  // DB 정리
+  if (prevDbId) { try { await deleteExercise(prevDbId); } catch (e) { console.warn('[remove-item] delete fail:', e?.message || e); } }
+  _openReviewScreen();
+  try {
+    const { showToast } = await import('../home/utils.js');
+    showToast(`'${removed.name}' 제거됨`, 3000, 'success', {
+      action: '실행 취소',
+      onAction: async () => {
+        _obState.parsed.splice(i, 0, { ...removed, dbId: null });
+        // dbId는 복원 후 다시 저장되며 새로 발급됨
+        try {
+          const gymId = _obState.draftGymId || getExpertPreset().draftGymId;
+          if (gymId && removed.movementId && removed.movementId !== 'unknown') {
+            const mov = MOVEMENTS.find(m => m.id === removed.movementId);
+            if (mov) {
+              const { _generateId } = await import('../data/data-core.js');
+              const exId = _generateId();
+              await saveExercise({
+                id: exId,
+                muscleId: mov.primary,
+                name: removed.name,
+                movementId: removed.movementId,
+                brand: removed.brand || '',
+                machineType: removed.machineType || '',
+                maxWeightKg: removed.maxKg || null,
+                incrementKg: removed.incKg || mov.stepKg || 2.5,
+                weightUnit: removed.weightUnit || 'kg',
+                gymId,
+                notes: '',
+              });
+              _obState.parsed[i].dbId = exId;
+            }
+          }
+        } catch (e) { console.warn('[remove-item undo] save fail:', e?.message || e); }
+        _openReviewScreen();
+      },
+    });
+  } catch {}
 }
 
 function _calcCoverage(parsed) {
@@ -1641,7 +1716,7 @@ function _renderDoneScreen() {
   if (backBtn) backBtn.style.display = 'none';
   if (skipBtn) skipBtn.style.display = 'none';
   if (stepper) stepper.style.display = 'none';
-  const nameById = Object.fromEntries(MUSCLES.map(m => [m.id, m.name]));
+  const nameById = Object.fromEntries(getMuscleParts().map(m => [m.id, m.name]));
   const preferNames = [..._obState.preferMuscles].map(id => nameById[id] || id).join(' · ') || '-';
   const avoidNames  = [..._obState.avoidMuscles].map(id => nameById[id] || id).join(' · ') || '-';
   const forbidNames = _obState.forbiddenMovements.map(_moveLabel).join(' · ') || '-';
@@ -1777,8 +1852,9 @@ export async function openRoutineCandidatesDirect() {
 function _renderSuggestContent() {
   const content = document.getElementById('routine-suggest-content');
   if (!content) return;
-  const muscles = ['back','bicep','shoulder','chest','tricep','abs','lower','glute'];
-  const nameById = Object.fromEntries(MUSCLES.map(m => [m.id, m.name]));
+  const parts = getMuscleParts();
+  const muscles = parts.map(m => m.id);
+  const nameById = Object.fromEntries(parts.map(m => [m.id, m.name]));
   const mins = [45,60,90];
   const rpeOpts = ['6-7','7-8','8-9'];
   content.innerHTML = `
@@ -1987,13 +2063,28 @@ export async function routineSuggestGenerate() {
       },
     });
     console.log('[routine-suggest] AI returned', cands.length, 'candidates:', cands);
-    // AI 응답 검증: 존재하지 않는 exerciseId 제거, 빈 후보 제거, 1세트 → 3세트 확장
+    // AI 응답 검증 (3중 방어의 마지막 층):
+    //   1) exerciseId가 현재 헬스장에 존재하는가 (기존)
+    //   2) muscleId가 오늘 선택 부위에 포함되는가 (신규) — ai.js가 이미 프롬프트에서 타겟 외
+    //      기구를 숨기지만, AI가 환각으로 엉뚱한 id를 만들어내는 경우 최종 거름망.
+    //   3) 빈 items 후보 제거
     const validExIds = new Set(gymExercises.map(e => e.id));
+    const exById = new Map(gymExercises.map(e => [e.id, e]));
+    const allowedMuscles = new Set(_suggestState.targets); // 오늘 유저가 고른 부위만
+    const muscleCheckEnabled = allowedMuscles.size > 0;
     for (const c of cands) {
-      const before = (c.items || []).length;
-      const invalid = (c.items || []).filter(it => !validExIds.has(it.exerciseId)).map(it => it.exerciseId);
-      c.items = (c.items || []).filter(it => validExIds.has(it.exerciseId));
-      if (invalid.length) console.warn('[routine-suggest] dropped invalid exerciseIds:', invalid, '(valid:', [...validExIds], ')');
+      const invalidIds = [];
+      const offMuscles = [];
+      c.items = (c.items || []).filter(it => {
+        if (!validExIds.has(it.exerciseId)) { invalidIds.push(it.exerciseId); return false; }
+        if (muscleCheckEnabled) {
+          const mid = exById.get(it.exerciseId)?.muscleId;
+          if (mid && !allowedMuscles.has(mid)) { offMuscles.push(`${it.exerciseId}(${mid})`); return false; }
+        }
+        return true;
+      });
+      if (invalidIds.length) console.warn('[routine-suggest] dropped invalid exerciseIds:', invalidIds);
+      if (offMuscles.length) console.warn('[routine-suggest] dropped off-target muscle items:', offMuscles, '(allowed:', [...allowedMuscles], ')');
       for (const it of c.items) {
         if (!it.sets || it.sets.length === 0) it.sets = [{ reps: 10, rpeTarget: 8 }];
         if (it.sets.length === 1) {
@@ -2028,6 +2119,9 @@ export async function routineSuggestGenerate() {
     if (isQuotaAllFail) {
       title = 'AI 사용량 한도 초과';
       detail = '잠시 AI 제공자들이 모두 혼잡해요. 30초~1분 후 자동 복구되니 다시 시도하거나, 지금은 직접 선택으로 진행할 수 있어요.';
+    } else if (code === 'NO_GYM_FOR_TARGETS') {
+      title = '선택한 부위의 기구가 없어요';
+      detail = '오늘 선택한 부위에 등록된 기구가 현재 헬스장에 없어요. 다른 부위를 고르거나, 기구를 추가한 뒤 다시 시도해주세요.';
     } else if (code === 'NO_CANDIDATES') {
       title = 'AI가 후보를 만들지 못했어요';
       detail = '등록된 기구 정보가 부족할 수 있어요. 기구를 추가하거나 부위를 다시 선택해주세요.';
@@ -2388,6 +2482,7 @@ window.expertOnbAddManual = expertOnbAddManual;
 window.expertOnbPickPhoto = expertOnbPickPhoto;
 window.expertOnbAssignMovement = expertOnbAssignMovement;
 window.expertOnbEditMovement = expertOnbEditMovement;
+window.expertOnbRemoveItem = expertOnbRemoveItem;
 window.expertOnbAddAnotherGym = expertOnbAddAnotherGym;
 window.openRoutineSuggest = openRoutineSuggest;
 window.openRoutineCandidatesDirect = openRoutineCandidatesDirect;
@@ -2485,27 +2580,23 @@ window.openRoutineSuggestWithRecent = async () => {
   } catch (e) { console.warn('[reuse-template] fail:', e); openRoutineSuggest(); }
 };
 
-// ── 전문가 카드 세그먼트 상태 전환 ───────────────────────────────
-// 'done' (운동) → 기존 wtSelectStatus('workout') + 헬스 섹션 자동 활성
-// 'skip'/'health' → 기존 wtSelectStatus(status)
-window.wtExcSelectStatus = (status) => {
+// ── 전문가 카드 세그먼트 상태 전환 (레거시 호환용) ────────────────
+// 랜딩 '쉬었어요/건강이슈' 제거 후 — 항상 헬스 탭 활성화만 수행.
+window.wtExcSelectStatus = () => {
   try {
-    if (status === 'done') {
-      if (typeof window.wtSelectStatus === 'function') window.wtSelectStatus('workout');
-      const gymAlreadyOn = document.getElementById('wt-chip-gym')?.classList.contains('active');
-      if (!gymAlreadyOn && typeof window.wtToggleType === 'function') {
-        window.wtToggleType('gym');
-      }
-    } else {
-      if (typeof window.wtSelectStatus === 'function') window.wtSelectStatus(status);
-    }
+    if (typeof window.wtSwitchType === 'function') window.wtSwitchType('gym');
   } catch (e) { console.warn('[wtExcSelectStatus]:', e); }
   renderExpertTopArea();
 };
 
 // ── 일반 모드로 전환 ─────────────────────────────────────────────
 window.wtExcLeaveExpertMode = async () => {
-  const ok = window.confirm('일반 모드로 전환하시겠어요?\n\n프로 모드 설정(헬스장·기구·루틴)은 유지되고, 헬스 종목 옆의 ⚡ 버튼으로 언제든 다시 켤 수 있어요.');
+  const ok = await confirmAction({
+    title: '일반 모드로 전환할까요?',
+    message: '프로 모드 설정(헬스장·기구·루틴)은 유지돼요.\n헬스 종목 옆 ⚡ 버튼으로 언제든 다시 켤 수 있어요.',
+    confirmLabel: '일반 모드로',
+    cancelLabel: '취소',
+  });
   if (!ok) return;
   try {
     await saveExpertPreset({ enabled: false });
@@ -2600,9 +2691,13 @@ async function _switchToGym(gymId) {
   const hasActiveSession = !!S.routineMeta
     || (Array.isArray(S.exercises) && S.exercises.length > 0);
   if (hasActiveSession) {
-    const ok = window.confirm(
-      `${gym.name}으로 전환하면 지금 선택한 루틴과 세트 기록이 초기화돼요.\n\n계속하시겠어요?`
-    );
+    const ok = await confirmAction({
+      title: `${gym.name}으로 전환할까요?`,
+      message: '지금 선택한 루틴과 세트 기록이 초기화돼요.',
+      confirmLabel: '전환',
+      cancelLabel: '취소',
+      destructive: true,
+    });
     if (!ok) return;
   }
 
@@ -2788,7 +2883,15 @@ window.expertGymManageOpen = (gymId) => {
     const delBtn = e.target.closest('[data-ex-del]');
     if (delBtn) {
       const exId = delBtn.getAttribute('data-ex-del');
-      if (!window.confirm('이 기구를 삭제할까요?')) return;
+      const ex = getExList().find(x => x.id === exId);
+      const ok = await confirmAction({
+        title: '이 기구를 삭제할까요?',
+        message: ex ? `"${ex.name}"을(를) 목록에서 제거해요.` : '',
+        confirmLabel: '삭제',
+        cancelLabel: '취소',
+        destructive: true,
+      });
+      if (!ok) return;
       try {
         await deleteExercise(exId);
         const row = delBtn.closest('.wt-gym-manage-row');
@@ -2801,4 +2904,113 @@ window.expertGymManageOpen = (gymId) => {
       }
     }
   });
+};
+
+// ── 커스텀 자극부위 CRUD 모달 ─────────────────────────────────────
+// 전역 — 프로모드/일반모드 구분 없이 자극부위 자율 추가/삭제 가능.
+async function _ensureCustomMusclesModal() {
+  let modal = document.getElementById('custom-muscles-modal');
+  if (!modal) {
+    const { loadAndInjectModals } = await import('../modal-manager.js');
+    await loadAndInjectModals();
+    modal = document.getElementById('custom-muscles-modal');
+  }
+  return modal;
+}
+
+function _renderCmmList() {
+  const host = document.getElementById('cmm-list');
+  if (!host) return;
+  const all = getMuscleParts();
+  const customIds = new Set(getCustomMuscles().map(m => m.id));
+  host.innerHTML = all.map(m => {
+    const isCustom = customIds.has(m.id);
+    const delBtn = isCustom
+      ? `<button class="tds-btn tonal sm" onclick="deleteCustomMuscleUi('${m.id.replace(/'/g, "\\'")}')">삭제</button>`
+      : `<span style="color:var(--text-tertiary); font-size:12px;">기본</span>`;
+    return `<div class="wt-list-row" style="display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--border);">
+      <span style="width:14px; height:14px; border-radius:50%; background:${m.color || '#8b5cf6'}; flex-shrink:0;"></span>
+      <span style="flex:1; font-weight:500;">${m.name}</span>
+      ${delBtn}
+    </div>`;
+  }).join('');
+}
+
+window.openCustomMusclesModal = async () => {
+  const modal = await _ensureCustomMusclesModal();
+  if (!modal) return;
+  _renderCmmList();
+  modal.classList.add('open');
+};
+
+window.closeCustomMusclesModal = () => {
+  document.getElementById('custom-muscles-modal')?.classList.remove('open');
+};
+
+window.addCustomMuscle = async () => {
+  const nameEl  = document.getElementById('cmm-new-name');
+  const colorEl = document.getElementById('cmm-new-color');
+  const name = (nameEl?.value || '').trim();
+  if (!name) { _toast('이름을 입력하세요', 'error'); return; }
+  if (name.length > 12) { _toast('이름은 12자 이내', 'error'); return; }
+  const color = colorEl?.value || '#8b5cf6';
+  const id = 'custom_' + Date.now();
+  try {
+    await saveCustomMuscle({ id, name, color, kind: 'part' });
+    if (nameEl) nameEl.value = '';
+    _renderCmmList();
+    _toast('추가했어요', 'success');
+    // 프로모드 Step 4가 열려 있으면 즉시 재렌더
+    if (typeof renderExpertTopArea === 'function') renderExpertTopArea();
+  } catch (e) {
+    console.warn('[addCustomMuscle]:', e);
+    _toast('추가 실패', 'error');
+  }
+};
+
+window.deleteCustomMuscleUi = async (id) => {
+  const m = getCustomMuscles().find(x => x.id === id);
+  if (!m) return;
+  // D-4: orphan 방지 — 참조 중인 Exercise가 있으면 삭제 차단 + 영향 종목명을 나열.
+  //      (과거엔 개수만 노출해서 "뭐가 걸렸는지" 확인하러 피커를 뒤져야 했음)
+  const refs = getExList().filter(e => e.muscleId === id);
+  if (refs.length > 0) {
+    const MAX_LIST = 8;
+    const sample = refs.slice(0, MAX_LIST).map(e => `• ${e.name}`).join('\n');
+    const more = refs.length > MAX_LIST ? `\n… 외 ${refs.length - MAX_LIST}개` : '';
+    await confirmAction({
+      title: `"${m.name}" 부위를 먼저 비워주세요`,
+      message: `이 부위로 등록된 운동 ${refs.length}건:\n${sample}${more}\n\n해당 운동의 부위를 바꾸거나 삭제한 뒤 이 부위를 지울 수 있어요.`,
+      confirmLabel: '확인',
+      cancelLabel: '',
+    });
+    return;
+  }
+  const ok = await confirmAction({
+    title: `"${m.name}" 부위를 삭제할까요?`,
+    message: '이 부위는 등록된 운동이 없어 안전하게 제거돼요.',
+    confirmLabel: '삭제',
+    cancelLabel: '취소',
+    destructive: true,
+  });
+  if (!ok) return;
+  try {
+    await deleteCustomMuscle(id);
+    // preset 정리 — preferMuscles/avoidMuscles에 남아 있으면 AI 추천으로 유령 id가 흐름.
+    const preset = getExpertPreset() || {};
+    const nextPrefer = (preset.preferMuscles || []).filter(x => x !== id);
+    const nextAvoid  = (preset.avoidMuscles  || []).filter(x => x !== id);
+    if (nextPrefer.length !== (preset.preferMuscles || []).length
+     || nextAvoid.length  !== (preset.avoidMuscles  || []).length) {
+      await saveExpertPreset({ preferMuscles: nextPrefer, avoidMuscles: nextAvoid });
+      // 온보딩 state도 동기화 (열려 있는 경우)
+      try { _obState.preferMuscles.delete(id); _obState.avoidMuscles.delete(id); } catch {}
+    }
+    _renderCmmList();
+    _toast('삭제했어요', 'success');
+    if (typeof renderExpertTopArea === 'function') renderExpertTopArea();
+  } catch (e) {
+    console.warn('[deleteCustomMuscleUi]:', e);
+    _toast('삭제 실패', 'error');
+  }
 };

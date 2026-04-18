@@ -6,8 +6,6 @@ export {
   saveWorkoutDay,
   renderCalorieTracker, _renderMealPhotos, openNutritionPhotoUpload,
   wtAddFoodItem, wtRemoveFoodItem,
-  wtSetGymStatus, wtSetCFStatus,
-  wtToggleStretching, wtToggleSwimming, wtToggleRunning,
   wtToggleWineFree, wtToggleMealSkipped,
   wtAddSet, wtRemoveSet, wtUpdateSet,
   wtToggleSetDone, wtUpdateSetType, wtMoveSet,

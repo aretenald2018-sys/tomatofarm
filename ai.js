@@ -172,6 +172,14 @@ export async function getWorkoutRec() {
 // ── 영양성분 파싱 공통 규칙 ──────────────────────────────────────
 // 이미지/텍스트 양쪽이 같은 엔티티 기반 판정을 쓰도록 통일.
 // 판정축: 표의 행/열 구조가 아니라 "독립된 식품 엔티티의 수".
+//
+// 2026-04-18 refactor: 영양성분표(라벨) 컬럼 disambiguate 로직 추가.
+// 가공식품 라벨은 보통 "총 내용량 / 1회 제공량 / 100g(또는 100ml) 기준 / %영양성분기준치" 컬럼이 섞여 있어
+// 잘못된 컬럼을 읽으면 kcal이 엉뚱하게 잡힘. 본 프롬프트는 다음 원칙을 강제한다:
+//  1. %영양성분기준치(%DV)는 절대 값으로 쓰지 않는다.
+//  2. 1회 제공량당 컬럼이 있으면 servingSize = 실제 g/ml 값, servingUnit = 'g'|'ml'
+//  3. 100g당(또는 100ml당) 컬럼은 항상 servingSize=100.
+//  4. 두 컬럼이 다 보이면 1회 제공량당을 우선하고, 100g당 값은 `per100` 필드에 보조로 기록.
 const _NUTRITION_RULES_KO = `═══ STEP 1: 식품 엔티티 식별 ═══
 "엔티티" = 독립된 식품/제품/메뉴 1개. 표의 행/열 구조가 아니라 **서로 다른 식품의 수**만 센다.
 
@@ -188,23 +196,51 @@ const _NUTRITION_RULES_KO = `═══ STEP 1: 식품 엔티티 식별 ═══
 - 같은 제품의 다른 단위 표기(100g당 / 1개당)
 - 단위 없는 숫자 나열
 
-═══ STEP 2: 우선순위 (충돌 시 위에서부터) ═══
+═══ STEP 2: 영양성분표(라벨) 컬럼 disambiguate ⚠️ 매우 중요 ═══
+가공식품 영양성분표에는 **여러 기준 컬럼이 섞여 있으므로 반드시 어느 컬럼을 쓰는지 식별한다.**
+
+등장하는 컬럼 종류:
+(a) **1회 제공량당** ("1회 제공량 30g당", "per serving", "단위 섭취량당", "1회분당")
+(b) **100g당 / 100ml당** ("100g당", "100ml당", "per 100g", "per 100ml")
+(c) **총 내용량당** (1통/1봉 전체 기준) — 환산 없이 그대로 쓰지 말고 totalAmount만 기록
+(d) **%영양성분기준치 / %Daily Value / %1일 영양성분 기준치** — ⚠️ **절대 실제 값으로 쓰지 말 것!**
+    (예: "나트륨 15%"는 300mg이 아니라 "하루 권장량의 15%"라는 뜻. 실제 값은 같은 행의 mg/g 컬럼에서 읽어야 함.)
+
+컬럼 선택 우선순위:
+1. 1회 제공량당 컬럼이 명확히 보이면 → 그 값을 nutrition으로, servingSize = 1회 제공량 숫자(g|ml), unit = "1회 제공량 Ng" 같이 기록
+2. 1회 제공량당이 없고 100g당(또는 100ml당)만 보이면 → servingSize=100, servingUnit='g' 또는 'ml', unit="100g" 또는 "100ml"
+3. 두 컬럼 다 보이면 → **기본은 1회 제공량당**을 nutrition에 쓰고, 100g당 값을 \`per100\` 보조 객체에 기록 (앱이 사용자에게 선택지를 주기 위함)
+4. 총 내용량당만 있는 경우 (예: "1통 500g 기준") → servingSize=총 내용량 수치, unit="1통 500g" 식으로 기록
+5. % 기준치 컬럼의 숫자는 **무시**. 숫자 뒤에 % 표시가 붙은 행은 값으로 쓰지 않음.
+
+servingUnit 판정:
+- 라벨에 "내용량 250ml", "1회 제공량 200ml", "per 100ml" 가 보이면 servingUnit='ml'
+- 그 외 고체/반고체는 'g'
+- 단위가 불명확하면 'g' (기본값)
+
+totalAmount 추출:
+- "총 내용량 500g", "내용량 250ml", "Net Wt. 100g" 같은 표기가 보이면 totalAmount 숫자로 기록
+- 없으면 totalAmount는 null
+
+═══ STEP 3: 우선순위 (충돌 시 위에서부터) ═══
 1. 서로 다른 식품 이름이 2개 이상 식별 → 복수
 2. 한 제품(라벨/포장/Nutrition Facts/영양성분표)만 인식 → 단일
 3. 판단 불가(흐림/부분 노출) → detectedFoods를 {"name":"unknown","evidence":"..."} 1개로 두고 단일, confidence 하향
 
-═══ STEP 3: 출력 순서 (반드시 지킬 것) ═══
+═══ STEP 4: 출력 shape (반드시 지킬 것) ═══
 먼저 detectedFoods 배열을 채우고, 그 개수 N에 따라 최종 shape을 결정한다.
 items.length는 반드시 detectedFoods.length와 동일해야 한다.
 
 N === 1 (단일):
 {
-  "detectedFoods": [{"name":"음식명 또는 unknown","evidence":"왜 1개로 판단했는지"}],
+  "detectedFoods": [{"name":"음식명 또는 unknown","evidence":"왜 1개로 판단했는지. 어느 컬럼을 읽었는지 명시 (예: '1회 제공량 30g당 컬럼 사용')"}],
   "name": "음식명",
-  "unit": "100g",
-  "servingSize": 100,
-  "servingUnit": "g",
-  "nutrition": { "kcal": 165, "protein": 31, "carbs": 0.4, "fat": 3.6, "fiber": 0, "sugar": 0, "sodium": 60 },
+  "unit": "1회 제공량 30g",                 // 또는 "100g" / "100ml" / "1통 500g"
+  "servingSize": 30,                        // 숫자만. 1회 제공량이면 실제 g/ml. 100g 기준이면 100.
+  "servingUnit": "g",                       // "g" 또는 "ml"
+  "totalAmount": 500,                       // 총 내용량 수치 (없으면 null)
+  "nutrition": { "kcal": 150, "protein": 3, "carbs": 20, "fat": 7, "fiber": 0, "sugar": 8, "sodium": 150 },
+  "per100": { "kcal": 500, "protein": 10, "carbs": 66, "fat": 23, "sodium": 500 }, // 100g당 컬럼이 보일 때만. 없으면 생략.
   "brand": "브랜드명 또는 null",
   "language": "__LANG__",
   "confidence": 0.95
@@ -215,18 +251,24 @@ N >= 2 (복수):
   "detectedFoods": [{"name":"A","evidence":"..."},{"name":"B","evidence":"..."}],
   "multiple": true,
   "items": [
-    { "name":"A","unit":"100g","servingSize":100,"servingUnit":"g","nutrition":{"kcal":165,"protein":31,"carbs":0.4,"fat":3.6,"fiber":0,"sugar":0,"sodium":60},"brand":null,"language":"__LANG__","confidence":0.9 },
-    { "name":"B","unit":"1개","servingSize":50,"servingUnit":"g","nutrition":{"kcal":200,"protein":8,"carbs":30,"fat":7,"fiber":1,"sugar":12,"sodium":150},"brand":null,"language":"__LANG__","confidence":0.85 }
+    { "name":"A","unit":"100g","servingSize":100,"servingUnit":"g","totalAmount":null,"nutrition":{"kcal":165,"protein":31,"carbs":0.4,"fat":3.6,"fiber":0,"sugar":0,"sodium":60},"brand":null,"language":"__LANG__","confidence":0.9 },
+    { "name":"B","unit":"1회 제공량 50g","servingSize":50,"servingUnit":"g","totalAmount":null,"nutrition":{"kcal":200,"protein":8,"carbs":30,"fat":7,"fiber":1,"sugar":12,"sodium":150},"brand":null,"language":"__LANG__","confidence":0.85 }
   ]
 }
 
-공통 규칙:
+═══ STEP 5: 공통 규칙 ═══
 - 정확히 보이는 값만 (불확실하면 confidence 낮춤)
 - 없는 필드는 0 또는 null (fiber/sugar/sodium은 선택)
 - 단위 g 통일 (mg → ÷1000, mcg → ÷1000000)
+  ⚠️ 단 sodium(나트륨)은 라벨에 보통 mg 단위로 표기 → 그대로 mg 수치로 기록 (예: "나트륨 300mg" → sodium: 300)
 - 범위값은 중간값 평균 ("3~4kcal" → 3.5, "15~20g" → 17.5)
 - "약 3.5kcal" → 3.5 (수사 제거)
-- **JSON만 출력. 다른 텍스트 금지.**`;
+- %영양성분기준치/%DV/%1일 기준치 값은 **절대 nutrition 필드에 쓰지 않는다.**
+- **JSON만 출력. 다른 텍스트 금지.**
+
+═══ STEP 6: 자체 검증 (출력 전 점검) ═══
+nutrition.kcal ≈ 4 × carbs + 4 × protein + 9 × fat ± 25% 범위인지 스스로 확인.
+범위를 심하게 벗어나면 잘못된 컬럼(%DV 등)을 읽었을 가능성이 높으므로 **confidence를 0.5 이하로 낮추고 evidence에 "kcal-매크로 불일치" 명시**.`;
 
 // 응답 정규화: {multiple:true}인데 items<2면 단일로 강등, 불일치 경고
 function _normalizeNutritionParse(parsed) {
@@ -716,6 +758,83 @@ function _classifyEquipment(item, movements) {
   return { state: 'unsupported', topId: null, candidates: [], reason: 'low-score' };
 }
 
+// ── Hybrid C: 1:N 다중 매핑 (multi-purpose 기구 확장) ─────────────────
+// 파워랙/스미스/벤치/덤벨 같이 한 기구로 여러 동작이 가능한 경우,
+// 기본으로 여러 movementId로 확장해서 리뷰 화면에 개별 row로 표시.
+// 사용자가 원치 않는 row는 × 버튼으로 삭제 가능.
+//
+// 출력 계약: 멀티퍼포스면 [{movementId, ...}, ...] 반환, 아니면 null.
+// 각 확장 아이템은 mappingState='mapped', confidence=0.7 (사용자 검토 권유)
+// 예: "파워랙" → [백스쿼트, 바벨 벤치프레스, 오버헤드프레스, 데드리프트, 바벨 로우]
+const MULTI_PURPOSE_MAP = [
+  // 파워랙/스쿼트랙 — 바벨 free-weight 전방위. 순서는 빈도/대표성 기준 Top N.
+  { pattern: /^(파워|스쿼트)?\s*랙$|^power\s*rack$|^squat\s*rack$|^half\s*rack$/i,
+    movementIds: ['back_squat', 'barbell_bench', 'ohp', 'deadlift', 'barbell_row'],
+    machineType: '바벨', source: '파워랙' },
+
+  // 스미스 머신 — 가이드 바 기반. 스미스 계열 4종.
+  { pattern: /^스미스(\s*머신)?$|^smith(\s*machine)?$/i,
+    movementIds: ['smith_squat', 'incline_smith_bench', 'smith_shoulder_press', 'smith_row'],
+    machineType: '스미스', source: '스미스 머신' },
+
+  // 플랫 벤치 — 벤치에서 할 수 있는 핵심 2종.
+  { pattern: /^플랫\s*벤치(프레스)?(\s*랙)?$|^flat\s*bench$/i,
+    movementIds: ['barbell_bench', 'dumbbell_bench'],
+    machineType: '벤치', source: '플랫 벤치' },
+
+  // 인클라인 벤치 — 상부 가슴/이두 각도 변형 3종.
+  { pattern: /^인클라인\s*벤치$|^incline\s*bench$/i,
+    movementIds: ['incline_barbell_bench', 'incline_dumbbell_bench', 'incline_dumbbell_curl'],
+    machineType: '벤치', source: '인클라인 벤치' },
+
+  // 덤벨 랙 / 덤벨 세트 — 덤벨 종목 Top 6 (가슴/어깨/등/팔/하체).
+  { pattern: /^덤벨(\s*랙|\s*세트)?$|^dumbbell(\s*rack|\s*set)?$/i,
+    movementIds: ['dumbbell_bench', 'dumbbell_shoulder_press', 'dumbbell_row', 'lateral_raise', 'dumbbell_curl', 'hammer_curl'],
+    machineType: '덤벨', source: '덤벨 랙' },
+
+  // 일반 "벤치" 단독 — 플랫/인클라인 구분 없을 때 가장 보수적으로 2종.
+  { pattern: /^벤치$|^bench$/i,
+    movementIds: ['barbell_bench', 'dumbbell_bench'],
+    machineType: '벤치', source: '벤치' },
+
+  // 원판 + 바벨 세트 — free weight 바벨 전방위.
+  { pattern: /^바벨(\s*\+\s*원판)?(\s*세트)?$|^원판$|^플랫폼$|^platform$/i,
+    movementIds: ['back_squat', 'barbell_bench', 'ohp', 'deadlift', 'barbell_row', 'barbell_curl'],
+    machineType: '바벨', source: '바벨/원판' },
+];
+
+// 멀티퍼포스 기구면 [{name, brand, machineType, maxKg, incKg, movementId, mappingState:'mapped', ...}] 배열.
+// 일반 기구면 null. 호출부에서 null이면 기존 1:1 매핑 유지.
+function _expandMultiPurposeItem(item, movements, aiWeights) {
+  const rawName = String(item.name || '').trim();
+  if (!rawName) return null;
+  const matched = MULTI_PURPOSE_MAP.find(entry => entry.pattern.test(rawName));
+  if (!matched) return null;
+
+  const w = aiWeights || { maxKg: null, incKg: null };
+  const baseMaxKg = (item.maxKg != null ? item.maxKg : w.maxKg) || null;
+  const baseIncKg = (item.incKg != null ? item.incKg : w.incKg) || null;
+  const expanded = [];
+  for (const movId of matched.movementIds) {
+    const mov = movements.find(m => m.id === movId);
+    if (!mov) continue;
+    expanded.push({
+      name: mov.nameKo,                                 // 저장 시 exercise.name = 동작명
+      brand: item.brand || '',
+      machineType: matched.machineType,
+      maxKg: baseMaxKg,
+      incKg: baseIncKg || mov.stepKg || 2.5,
+      weightUnit: 'kg',
+      movementId: mov.id,
+      mappingState: 'mapped',
+      candidates: [],
+      confidence: 0.7,                                  // 사용자 검토 권유 수준
+      sourceEquipment: matched.source,                  // 리뷰 메타에 "출처: 파워랙" 표기
+    });
+  }
+  return expanded.length > 0 ? expanded : null;
+}
+
 export async function parseEquipmentFromText(rawText, movements) {
   const candidates = _extractEquipmentLines(rawText);
   if (candidates.length === 0) {
@@ -785,23 +904,33 @@ export async function parseEquipmentFromText(rawText, movements) {
   console.log(`[parseEquipmentFromText] 분류 → mapped ${counts.mapped} · ambiguous ${counts.ambiguous} · unsupported ${counts.unsupported} (AI ${aiUsed ? (aiFailed ? '일부 실패' : '사용') : '미사용'})`);
 
   // 최종 스키마로 정규화 (리뷰 화면이 기대하는 필드 맞춤)
-  return classified.map((x, i) => {
+  // Hybrid C: 멀티퍼포스 기구(랙/스미스/벤치 등)는 여러 row로 확장.
+  const out = [];
+  classified.forEach((x, i) => {
     const c = x.classification;
     const w = aiWeights.get(i) || { maxKg: null, incKg: null };
-    return {
+    const base = {
       name: x.name,
       brand: x.brand || (x.series || ''),
       machineType: _standardizeMachineType(x.machineType),
-      maxKg: w.maxKg,                         // AI가 원본 입력에서 추출 (없으면 null)
-      incKg: w.incKg,                         // AI가 추론 (없으면 null → 저장 시 동작 기본값 적용)
-      weightUnit: 'kg',
-      // unsupported는 movementId='unknown' (저장 시 자동 제외)
-      movementId: c.state === 'unsupported' ? 'unknown' : (c.topId || 'unknown'),
-      mappingState: c.state,                 // 'mapped' | 'ambiguous' | 'unsupported'
-      candidates: c.candidates || [],        // [{id, score}, ...] (최대 3개)
-      confidence: c.state === 'mapped' ? 0.9 : (c.state === 'ambiguous' ? 0.5 : 0),
+      maxKg: w.maxKg,
+      incKg: w.incKg,
     };
+    // 멀티퍼포스 확장 시도 — unsupported 분류 중 랙/스미스/벤치 같은 보조장비가 타겟.
+    if (c.state === 'unsupported') {
+      const expanded = _expandMultiPurposeItem(base, movements, w);
+      if (expanded && expanded.length > 0) { out.push(...expanded); return; }
+    }
+    out.push({
+      ...base,
+      weightUnit: 'kg',
+      movementId: c.state === 'unsupported' ? 'unknown' : (c.topId || 'unknown'),
+      mappingState: c.state,
+      candidates: c.candidates || [],
+      confidence: c.state === 'mapped' ? 0.9 : (c.state === 'ambiguous' ? 0.5 : 0),
+    });
   });
+  return out;
 }
 
 export async function parseEquipmentFromImage(imageBase64, movements) {
@@ -845,16 +974,32 @@ JSON 배열 스키마:
   if (items.length === 0) throw _makeParseError('PARSE_EMPTY', '추출된 기구 없음');
   // 공통 정규화 — 숫자 필드는 유효성 검증 (AI가 문자열/NaN 반환 가능)
   const num = (v) => (v != null && isFinite(+v) && +v > 0) ? +v : null;
-  return items.map(x => ({
-    name: x.name || '',
-    brand: x.brand || '',
-    machineType: _standardizeMachineType(x.machineType),
-    maxKg: num(x.maxKg),
-    incKg: num(x.incKg),
-    weightUnit: 'kg',
-    movementId: x.movementId || 'unknown',
-    confidence: (x.movementId && x.movementId !== 'unknown') ? 0.8 : 0.3,
-  })).filter(x => x.name && x.name.length >= 2);
+  // Hybrid C: 멀티퍼포스 기구(랙/스미스/벤치)는 여러 동작으로 확장.
+  const out = [];
+  for (const x of items) {
+    const name = x.name || '';
+    if (!name || name.length < 2) continue;
+    const base = {
+      name,
+      brand: x.brand || '',
+      machineType: _standardizeMachineType(x.machineType),
+      maxKg: num(x.maxKg),
+      incKg: num(x.incKg),
+    };
+    const movId = x.movementId || 'unknown';
+    // AI가 움직임 매핑을 못하면(unknown) 이름 기반으로 멀티퍼포스 확장 시도.
+    if (!movId || movId === 'unknown') {
+      const expanded = _expandMultiPurposeItem(base, movements, { maxKg: base.maxKg, incKg: base.incKg });
+      if (expanded && expanded.length > 0) { out.push(...expanded); continue; }
+    }
+    out.push({
+      ...base,
+      weightUnit: 'kg',
+      movementId: movId,
+      confidence: (movId && movId !== 'unknown') ? 0.8 : 0.3,
+    });
+  }
+  return out;
 }
 
 // ── 균형 nudge (Scene 10 노란 카드 문구) ────────────────────────
@@ -890,28 +1035,60 @@ JSON 스키마:
 
 // ── 오늘의 루틴 후보 2개 생성 (Scene 11) ────────────────────────
 // onProviderSwitch({provider, reason}): Groq로 전환될 때 UI 중간 상태 콜백.
+// ⚠️ 이 함수의 핵심 불변식: 반환되는 items의 exerciseId는
+//   (a) gymExercises에 존재하고 (b) muscleId가 targetMuscles에 포함돼야 한다.
+//   AI가 "균형 보완" 지시를 과해석해 선택 안 한 부위를 추가하는 버그가 있었음 →
+//   서버사이드 gymExercises 필터 + 프롬프트 강제 규칙 + 호출부 post-validate 3중 방어.
 export async function generateRoutineCandidates({ preset, targetMuscles, sessionMinutes, preferredRpe, gymExercises, recentHistory, movements, onProviderSwitch }) {
-  const gymList = (gymExercises || []).map(e =>
+  const targets = (Array.isArray(targetMuscles) ? targetMuscles : []).filter(Boolean);
+  const hasTargets = targets.length > 0;
+
+  // 서버사이드 1차 방어: 타겟 외 기구는 아예 프롬프트에 노출하지 않음.
+  // AI가 눈에 보이지 않는 건 고를 수 없다 — "균형 보완" 지시와 무관하게 타 부위 유입 차단.
+  const filteredGym = hasTargets
+    ? (gymExercises || []).filter(e => e && targets.includes(e.muscleId))
+    : (gymExercises || []);
+
+  if (hasTargets && filteredGym.length === 0) {
+    const err = new Error(`선택한 부위(${targets.join(',')})에 등록된 기구가 없어요`);
+    err.code = 'NO_GYM_FOR_TARGETS';
+    throw err;
+  }
+
+  const gymList = filteredGym.map(e =>
     `${e.id}:${e.name}(${e.movementId || 'unknown'}, ${e.muscleId}, max ${e.maxWeightKg || '?'}kg, step ${e.incrementKg || 2.5}kg)`
   ).join('\n');
   const hist = (recentHistory || []).slice(0, 20).map(h => `- ${h.exerciseId} ${h.date}: top ${h.topKg}kg×${h.topReps}`).join('\n') || '기록 없음';
 
+  // NOTE: 프롬프트에서 `선호=preset.preferMuscles`를 일부러 뺐다.
+  //   과거엔 preset.preferMuscles가 오늘 targets와 불일치할 때 AI가 preset 쪽을
+  //   "사용자 선호 부위"로 오해해 오늘 선택 밖 부위(예: 등)를 포함시키는 원인이었음.
+  //   오늘 세션 설계에 영향을 미쳐야 하는 단 하나의 부위 신호는 `오늘 선택 부위`다.
+  const targetsLabel = hasTargets ? targets.join(',') : '자동';
   const prompt = `당신은 전문 트레이너. 오늘 루틴 후보 2개를 JSON으로 설계하라.
 
-프리셋: 목표=${preset?.goal}, 주${preset?.daysPerWeek}회, 선호=${(preset?.preferMuscles||[]).join(',')}, 기피=${(preset?.avoidMuscles||[]).join(',')}, 금지동작=${(preset?.forbiddenMovements||[]).join(',')}
-오늘 부위: ${(targetMuscles||[]).join(',') || '자동'}  / 시간: ${sessionMinutes}분 / RPE: ${preferredRpe}
+프리셋: 목표=${preset?.goal}, 주${preset?.daysPerWeek}회, 기피=${(preset?.avoidMuscles||[]).join(',')}, 금지동작=${(preset?.forbiddenMovements||[]).join(',')}
+오늘 선택 부위(반드시 이 부위만): ${targetsLabel}  / 시간: ${sessionMinutes}분 / RPE: ${preferredRpe}
 
-가능한 기구(이것만 사용):
+⚠️ 절대 규칙 (위반 시 응답 무효):
+- items의 exerciseId는 반드시 아래 "가능한 기구" 목록 중 하나.
+- 목록에 없는 id는 생성 금지.
+- 오늘 선택 부위 외의 부위(예: '등'이 위 선택에 없으면 등/랫풀다운/풀업류) 절대 포함 금지.
+- "균형 보완"은 오늘 선택 부위 **내부**의 subPattern 다양화를 의미한다
+  (예: 등 선택 시 넓이 vs 두께, 가슴 선택 시 상부 vs 중부 vs 하부).
+  선택 부위 자체를 바꾸거나 추가하는 것이 아니다.
+
+가능한 기구(오늘 부위로 이미 필터된 목록 — 이 중에서만 선택):
 ${gymList || '없음 — 일반 기구 추천'}
 
 최근 14일 기록(참고):
 ${hist}
 
 규칙:
-- 후보 A는 "균형 보완" 의도(최근 부족한 subPattern 보강). candidateTag="A · 균형 보완 ⭐".
-- 후보 B는 "익숙한 패턴" 유지. candidateTag="B · 익숙한 패턴".
+- 후보 A는 "오늘 선택 부위 내에서 균형 보완" (선택 부위의 subPattern을 다양화). candidateTag="A · 균형 보완 ⭐".
+- 후보 B는 "오늘 선택 부위 내에서 익숙한 패턴" 유지. candidateTag="B · 익숙한 패턴".
 - 각 후보는 items 5~7개, 총 소요 ≈ ${sessionMinutes}분.
-- exerciseId는 위 기구 id 중 하나. movementId는 카탈로그(${(movements||[]).map(m=>m.id).slice(0,60).join(',')}).
+- movementId는 카탈로그(${(movements||[]).map(m=>m.id).slice(0,60).join(',')}).
 - sets: reps는 4~15, rpeTarget은 6~10.
 
 JSON 스키마:

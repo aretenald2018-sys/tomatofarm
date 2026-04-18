@@ -5,7 +5,6 @@
 import { DAYS }  from '../config.js';
 import { TODAY, getMuscles, getCF, dietDayOk,
          getHomeStreakDays, saveHomeStreakDays,
-         getGymSkip, getGymHealth, getCFHealth,
          getBreakfastSkipped, getLunchSkipped, getDinnerSkipped,
          isFuture, isToday }  from '../data.js';
 import { getMonday } from './utils.js';
@@ -57,21 +56,12 @@ export function renderWeeklyStreak() {
       if (future) {
         cls += ' ws-future';
       } else if (r.key === 'gym') {
-        const muscles   = getMuscles(y, m, dd);
-        const gymHealth = getGymHealth(y, m, dd);
-        const gymSkip   = getGymSkip(y, m, dd);
-        if (gymHealth) {
-          cls += ' health-issue'; icon = '✚';
-        } else if (muscles.length) {
+        const muscles = getMuscles(y, m, dd);
+        if (muscles.length) {
           cls += ' gym-on'; icon = '✓';
-        } else if (gymSkip) {
-          cls += ' skip-disabled'; icon = '❌';
         }
       } else if (r.key === 'cf') {
-        const cfHealth = getCFHealth(y, m, dd);
-        if (cfHealth) {
-          cls += ' health-issue'; icon = '✚';
-        } else if (getCF(y, m, dd)) {
+        if (getCF(y, m, dd)) {
           cls += ' cf-on'; icon = '✓';
         }
       } else if (r.key === 'diet') {

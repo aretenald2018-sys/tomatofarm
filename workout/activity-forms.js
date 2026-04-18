@@ -5,6 +5,23 @@
 import { S }              from './state.js';
 import { saveWorkoutDay } from './save.js';
 import { dateKey, getLastActivitySession } from '../data.js';
+import { showToast }      from '../home/utils.js';
+
+// 복사 후 저장 + Undo 토스트 공통 처리 (C-1 — 헬스 종목 세트 복사와 일관성 확보).
+// stateKey: 'runData'|'cfData'|'stretchData'|'swimData'
+// prev: 복사 직전 상태 스냅샷(깊은 복사본)
+// rerender: 해당 폼의 _renderXxxForm 함수
+function _afterActivityCopy(stateKey, prev, rerender) {
+  saveWorkoutDay().catch(e => console.error('Activity copy save error:', e));
+  showToast('직전 기록을 불러왔어요', 3000, 'success', {
+    action: '실행 취소',
+    onAction: () => {
+      S[stateKey] = prev;
+      try { rerender(); } catch (e) { console.error('Undo rerender:', e); }
+      saveWorkoutDay().catch(e => console.error('Undo save error:', e));
+    },
+  });
+}
 
 function _currentDateKey() {
   if (!S.date) return null;
@@ -48,6 +65,7 @@ export function _renderRunningForm() {
   if (memo) memo.value = S.runData.memo || '';
   _calcRunPace();
   _renderActivityCopyHint('running', (last) => {
+    const prev = JSON.parse(JSON.stringify(S.runData || {}));
     S.runData = {
       distance: last.distance || 0,
       durationMin: last.durationMin || 0,
@@ -55,6 +73,7 @@ export function _renderRunningForm() {
       memo: last.memo || '',
     };
     _renderRunningForm();
+    _afterActivityCopy('runData', prev, _renderRunningForm);
   });
 }
 
@@ -107,6 +126,7 @@ export function _renderCfForm() {
   if (durS) durS.value = S.cfData.durationSec || '';
   if (memo) memo.value = S.cfData.memo || '';
   _renderActivityCopyHint('cf', (last) => {
+    const prev = JSON.parse(JSON.stringify(S.cfData || {}));
     S.cfData = {
       wod: last.wod || '',
       durationMin: last.durationMin || 0,
@@ -114,6 +134,7 @@ export function _renderCfForm() {
       memo: last.memo || '',
     };
     _renderCfForm();
+    _afterActivityCopy('cfData', prev, _renderCfForm);
   });
 }
 
@@ -124,11 +145,13 @@ export function _renderStretchForm() {
   if (dur)  dur.value  = S.stretchData.duration || '';
   if (memo) memo.value = S.stretchData.memo || '';
   _renderActivityCopyHint('stretching', (last) => {
+    const prev = JSON.parse(JSON.stringify(S.stretchData || {}));
     S.stretchData = {
       duration: last.duration || 0,
       memo: last.memo || '',
     };
     _renderStretchForm();
+    _afterActivityCopy('stretchData', prev, _renderStretchForm);
   });
 }
 
@@ -145,6 +168,7 @@ export function _renderSwimForm() {
   if (stroke) stroke.value = S.swimData.stroke || '';
   if (memo)   memo.value   = S.swimData.memo || '';
   _renderActivityCopyHint('swimming', (last) => {
+    const prev = JSON.parse(JSON.stringify(S.swimData || {}));
     S.swimData = {
       distance: last.distance || 0,
       durationMin: last.durationMin || 0,
@@ -153,6 +177,7 @@ export function _renderSwimForm() {
       memo: last.memo || '',
     };
     _renderSwimForm();
+    _afterActivityCopy('swimData', prev, _renderSwimForm);
   });
 }
 

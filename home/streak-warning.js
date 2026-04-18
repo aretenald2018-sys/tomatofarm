@@ -64,8 +64,7 @@ function _shouldShow() {
   const muscles = getMuscles(y, m, d);
   const day = getDay(y, m, d) || {};
   const hasWorkout = muscles.length > 0 || getCF(y, m, d)
-    || !!day.stretching || !!day.swimming || !!day.running
-    || !!day.gym_skip || !!day.gym_health || !!day.cf_skip || !!day.cf_health;
+    || !!day.stretching || !!day.swimming || !!day.running;
   const hasMeal = !!(day.breakfast || day.lunch || day.dinner || day.snack)
     || (day.bKcal || 0) > 0 || (day.lKcal || 0) > 0
     || (day.dKcal || 0) > 0 || (day.sKcal || 0) > 0

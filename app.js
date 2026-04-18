@@ -29,7 +29,6 @@ import { renderHome, refreshNotifCenter, showToast } from './render-home.js';
 import { showWelcomeBackPopup } from './home/welcome-back.js';
 import {
   loadWorkoutDate, changeWorkoutDate, goToTodayWorkout, saveWorkoutDay,
-  wtSetGymStatus, wtSetCFStatus, wtToggleStretching, wtToggleSwimming, wtToggleRunning,
   openNutritionPhotoUpload, wtRecoverTimers,
 } from './render-workout.js';
 
@@ -374,11 +373,6 @@ window.changeWorkoutDate        = changeWorkoutDate;
 window.goToTodayWorkout         = goToTodayWorkout;
 window.saveWorkoutDay           = saveWorkoutDay;
 window._wtExports = { loadWorkoutDate };
-window.wtSetGymStatus           = wtSetGymStatus;
-window.wtSetCFStatus            = wtSetCFStatus;
-window.wtToggleStretching       = wtToggleStretching;
-window.wtToggleSwimming         = wtToggleSwimming;
-window.wtToggleRunning          = wtToggleRunning;
 // 요리 탭 (레이지)
 window.openCookingModal         = async (...a) => (await _lazy('cooking', './render-cooking.js')).openCookingModal(...a);
 window.closeCookingModal        = async (...a) => (await _lazy('cooking', './render-cooking.js')).closeCookingModal(...a);

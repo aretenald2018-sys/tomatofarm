@@ -40,18 +40,77 @@ function _toNum(s) {
   return Number.isFinite(n) ? n : 0;
 }
 
-// 특정 라벨의 값 추출 — 같은 줄 또는 직후 줄에서
+// 특정 라벨의 값 추출 — 같은 줄에서 첫 유효 값(% 제외)
+// 라벨이 라인 일부에 끼어있고 그 뒤에 "15% 300mg" 처럼 %DV와 실제값이 섞여 있으면
+// % 붙은 숫자는 건너뛰고 실제 g/mg/kcal 단위의 숫자를 선택한다.
 function _extractField(text, labelRe) {
-  // 같은 줄 패턴: "단백질 21.00g" 또는 "Protein 21 g"
-  const sameLineRe = new RegExp(
-    labelRe.source + `\\s*[:\\s]*([\\d]{1,4}(?:[.,]\\d{1,3})?)\\s*(kcal|kJ|mg|g)?`,
-    'i'
-  );
-  const m = text.match(sameLineRe);
-  if (m) {
-    return { num: _toNum(m[1]), unit: (m[2] || '').toLowerCase() };
+  // 라벨을 포함한 줄을 찾음
+  const lineRe = new RegExp('^.*' + labelRe.source + '.*$', 'im');
+  const lineMatch = text.match(lineRe);
+  if (!lineMatch) return null;
+  const line = lineMatch[0];
+
+  // 라벨 이후 부분만 대상으로
+  const afterLabelIdx = line.search(labelRe);
+  const label = line.match(labelRe)[0];
+  const rest = line.slice(afterLabelIdx + label.length);
+
+  // 숫자+단위 후보를 전부 뽑고, % 또는 "기준치" 계열은 제외
+  // 우선순위: kcal|kJ|mg|g 단위가 붙은 것 > 단위 없는 것
+  const candidates = [];
+  const re = /([\d]{1,4}(?:[.,]\d{1,3})?)\s*(kcal|kJ|mg|g|%|％)?/gi;
+  let m;
+  while ((m = re.exec(rest)) !== null) {
+    const unit = (m[2] || '').toLowerCase();
+    if (unit === '%' || unit === '％') continue; // %DV 무시
+    candidates.push({ num: _toNum(m[1]), unit, idx: m.index, hasUnit: !!unit });
   }
-  return null;
+  if (candidates.length === 0) return null;
+
+  // 단위 있는 것을 우선, 없으면 첫번째
+  const withUnit = candidates.find(c => c.hasUnit);
+  const pick = withUnit || candidates[0];
+  return { num: pick.num, unit: pick.unit };
+}
+
+// ── 1회 제공량 / 총 내용량 / 기준 단위 탐지 ──────────────────────
+// 라벨에 "1회 제공량 30g" / "1회 분량 45ml" / "per serving 2oz(56g)" 같은 표기가 있으면 추출
+function _extractServingInfo(text) {
+  const info = { servingSize: null, servingUnit: null, totalAmount: null, per100Unit: null };
+
+  // 1회 제공량 / 1회분당 / 1회분
+  // 예: "1회 제공량 30g", "1회 분량 200ml", "1회 제공량: 45 g", "단위섭취량 30g"
+  const servingMatch = text.match(
+    /(?:1\s*회\s*(?:제\s*공\s*량|분\s*량|섭\s*취\s*량)|단\s*위\s*섭\s*취\s*량|per\s*serving)[^\n:()]{0,20}?([\d]{1,4}(?:[.,]\d{1,3})?)\s*(g|ml|mL|ML|그램|밀리리터)/i
+  );
+  if (servingMatch) {
+    info.servingSize = _toNum(servingMatch[1]);
+    const u = servingMatch[2].toLowerCase();
+    info.servingUnit = (u === 'ml' || u === 'mL'.toLowerCase() || u === '밀리리터') ? 'ml' : 'g';
+  }
+
+  // 총 내용량
+  // 예: "총 내용량 500g", "내용량 250ml", "Net Wt. 100g"
+  const totalMatch = text.match(
+    /(?:총\s*내\s*용\s*량|내\s*용\s*량|total\s*(?:amount|weight)|net\s*w(?:ei)?ght|net\s*wt\.?)[^\n:()]{0,10}?([\d]{1,4}(?:[.,]\d{1,3})?)\s*(g|ml|mL|ML)/i
+  );
+  if (totalMatch) {
+    info.totalAmount = _toNum(totalMatch[1]);
+    if (!info.servingUnit) {
+      info.servingUnit = totalMatch[2].toLowerCase() === 'ml' ? 'ml' : 'g';
+    }
+  }
+
+  // 100g당 / 100ml당 / per 100g / per 100ml — 명시적으로 100 기준 단위 존재 여부
+  if (/(?:100\s*ml\s*당|per\s*100\s*ml)/i.test(text)) {
+    info.per100Unit = 'ml';
+    if (!info.servingUnit) info.servingUnit = 'ml';
+  } else if (/(?:100\s*g\s*당|per\s*100\s*g)/i.test(text)) {
+    info.per100Unit = 'g';
+    if (!info.servingUnit) info.servingUnit = 'g';
+  }
+
+  return info;
 }
 
 // 이름 추출: 메타/헤더/영양라벨 줄을 제외한 첫 번째 짧은 자연어 줄
@@ -153,17 +212,49 @@ export function parseNutritionRegex(rawText) {
     return { ok: false, confidence: 0, data: null, reason: 'name-not-found' };
   }
 
-  const confidence = 0.92;
   const language = _detectLanguage(text);
+
+  // 1회 제공량 / 총 내용량 / 기준 단위 추출 — 라벨 기반 동적 servingSize
+  const serving = _extractServingInfo(text);
+
+  // servingSize 결정 우선순위:
+  //   1) 라벨에 "1회 제공량 N (g|ml)" 명시 → 그 값
+  //   2) "100g당"/"100ml당" 명시 → 100 + unit
+  //   3) 그 외 → 100g 보수적 기본값
+  let servingSize = 100;
+  let servingUnit = 'g';
+  let unitLabel = '100g';
+
+  if (serving.servingSize && serving.servingSize > 0 && serving.servingSize !== 100) {
+    servingSize = serving.servingSize;
+    servingUnit = serving.servingUnit || 'g';
+    unitLabel = `1회 제공량 ${servingSize}${servingUnit}`;
+  } else if (serving.per100Unit === 'ml') {
+    servingUnit = 'ml';
+    unitLabel = '100ml';
+  } else if (serving.servingUnit === 'ml') {
+    servingUnit = 'ml';
+    unitLabel = '100ml';
+  }
+
+  // 매크로 일관성 검증 — kcal ≈ 4C + 4P + 9F ± 30%
+  // 크게 어긋나면 %DV를 값으로 오인했을 가능성 → confidence 하향
+  let confidence = 0.92;
+  const derivedKcal = 4 * nutrition.carbs + 4 * nutrition.protein + 9 * nutrition.fat;
+  if (derivedKcal > 0 && nutrition.kcal > 0) {
+    const diffPct = Math.abs(nutrition.kcal - derivedKcal) / nutrition.kcal * 100;
+    if (diffPct > 30) confidence = 0.55;
+  }
 
   return {
     ok: true,
     confidence,
     data: {
       name,
-      unit: '100g',
-      servingSize: 100,
-      servingUnit: 'g',
+      unit: unitLabel,
+      servingSize,
+      servingUnit,
+      totalAmount: serving.totalAmount || null,
       nutrition,
       brand: null,
       language,

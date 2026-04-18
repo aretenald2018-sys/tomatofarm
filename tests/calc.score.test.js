@@ -92,14 +92,8 @@ describe('calcBurnedKcal', () => {
     assert.equal(none, 0);
   });
 
-  test('gym_skip:true이면 근력 칼로리 0', () => {
-    const day = {
-      gym_skip: true,
-      exercises: [{ muscleId: 'chest', sets: [{ done: true }, { done: true }] }],
-    };
-    const r = calcBurnedKcal(day, 70);
-    assert.equal(r.gym, 0);
-  });
+  // 'gym_skip' 플래그 폐기 (2026-04-18) — 기록 유무만으로 집계.
+  // 기록 없는 날은 exercises 자체가 없거나 done 세트가 0개라 자동 0이 됨.
 
   test('운동 종목에 muscleId 없으면 근력 집계 제외', () => {
     const day = {
@@ -185,11 +179,7 @@ describe('calcBurnedKcal', () => {
     assert.equal(r.cf, 280);
   });
 
-  test('cf_skip:true이면 cf 칼로리 0', () => {
-    const day = { cf: true, cf_skip: true, workoutDuration: 1800 };
-    const r = calcBurnedKcal(day, 70);
-    assert.equal(r.cf, 0);
-  });
+  // 'cf_skip' 플래그 폐기 (2026-04-18) — cf: false면 자동으로 CF 집계 제외됨.
 
   test('수영 30분 기본 → MET 6 × 70 × 0.5 = 210', () => {
     const day = { swimming: true };
@@ -384,11 +374,8 @@ describe('calcDayScore', () => {
     assert.equal(r.breakdown.workout.penalty, 8);
   });
 
-  test('의도적 휴식(gym_skip) → 감점 2', () => {
-    const day = { bKcal: 700, lKcal: 700, dKcal: 600, gym_skip: true };
-    const r = calcDayScore({ day, targetKcal: 2000, burnedKcal: 0, weightDirSign: -1 });
-    assert.equal(r.breakdown.workout.penalty, 2);
-  });
+  // '의도적 휴식(gym_skip)' 테스트 제거 — 랜딩 '쉬었어요/건강이슈' 플래그 폐기 후
+  // 기록 없는 날은 전부 '기록 전무(8점 감점)'으로 통합됨 (refactor 2026-04-18).
 
   test('운동 50 미만(기록有) → 감점 6', () => {
     const day = { bKcal: 700, lKcal: 700, dKcal: 600, exercises: [{ sets: [] }] };

@@ -34,20 +34,9 @@ export function _renderDateLabel() {
   });
 }
 
-// ── 상태 버튼 렌더 ──────────────────────────────────────────────
-export function _renderGymStatusBtns() {
-  ['done','skip','health'].forEach(s => {
-    const btn = document.getElementById(`wt-gym-btn-${s}`);
-    if (btn) btn.classList.toggle('active', S.gymStatus === s);
-  });
-}
-
-export function _renderCFStatusBtns() {
-  ['done','skip','health'].forEach(s => {
-    const btn = document.getElementById(`wt-cf-btn-${s}`);
-    if (btn) btn.classList.toggle('active', S.cfStatus === s);
-  });
-}
+// ── 상태 버튼 렌더 (레거시 — 랜딩 제거 후 no-op, import 호환용) ─
+export function _renderGymStatusBtns() { /* noop */ }
+export function _renderCFStatusBtns()  { /* noop */ }
 
 export function _renderStretchingToggle() {
   document.getElementById('wt-stretching-toggle')?.classList.toggle('on', S.stretching);
@@ -159,10 +148,9 @@ function _renderCalorieTracker() {
 
   const dayData = {
     exercises: S.exercises,
-    cf: S.cfStatus === 'done',
+    cf: S.cf,
     swimming: S.swimming,
     running: S.running,
-    gym_skip: S.gymStatus === 'skip',
   };
   const exerciseCredit = calcExerciseCalorieCredit(plan, dayData);
   const adjustedGoalKcal = dayTarget.kcal + exerciseCredit;

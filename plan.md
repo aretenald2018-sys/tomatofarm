@@ -49,6 +49,35 @@
 
 ## Phase 현재: 기능 개발
 
+### 2026-04-18 영양정보 파이프라인 리팩토링 🛠
+설계: `@NUTRITION_REFACTOR_PLAN.md`
+
+**Phase A — 데이터 정규화 + 순수 로직 (테스트 용이)** ✅
+- [x] `calc.js` `convertNutrition(base, toGrams)` 순수 함수 추가 (+ `validateNutritionConsistency`, `pickDefaultServing`)
+- [x] `data/nutrition-normalize.js` 신규 — CSV/공공API/raw/로컬DB/레시피/OCR → canonical NutritionItem 변환기 (`serializeForStorage` 포함)
+- [x] `tests/calc.nutrition.test.js` 35개 케이스 — per_100g/per_serving/ml 환산, 라운딩, 레거시 재환산, integration (전부 PASS)
+
+**Phase B — 영양성분표 파싱 개선** ✅
+- [x] `ai.js` `_NUTRITION_RULES_KO` 재작성: STEP 2에 컬럼 disambiguate 규칙 6단계 명시. `%영양성분기준치`/`%DV` 값 금지 경고. `totalAmount`/`per100` 필드 추가. STEP 6 자체 검증(kcal≈4C+4P+9F ±25%)
+- [x] `utils/nutrition-text-parser.js`: `_extractField` 가 `%`/`％` 단위 숫자를 스킵하도록 재작성. `_extractServingInfo` 신규 — "1회 제공량 N (g|ml)", "총 내용량 N (g|ml)", "100ml당/100g당" 감지. 동적 servingSize/servingUnit 반환. kcal-매크로 불일치 감지 시 confidence 0.55로 하향
+- [x] `tests/calc.nutrition.test.js` 에 parseNutritionRegex 케이스 6개 추가 (1회 제공량/100g당/100ml당/%DV 혼합/kcal 불일치/표 감지)
+
+**Phase C — 검색 UX + 단위 드롭다운** ✅
+- [x] `modals/nutrition-weight-modal.js` 전면 재작성:
+  - `_toCanonical(item)` 헬퍼 — CSV/레거시/공공API 아무 shape이든 canonical NutritionItem로 변환
+  - 단위 `<select>` 드롭다운 (`servings[]` + `직접 입력…` 옵션)
+  - 수량 ½/1/2/3 프리셋 버튼 + 자유 배수 입력
+  - `calc.js convertNutrition()` 기반 실시간 환산 (g ↔ ml 자동 라벨)
+  - 저장 시 `servingRef` 메타(servingId/label/multiplier/baseGrams/unit) + `serializeForStorage`로 canonical + 레거시 필드 병존 저장
+- [x] `modals/nutrition-item-modal.js` `saveNutritionItemFromModal` — unit 문자열에서 숫자+단위(g|ml) 재추출, 실패 시 파서 servingSize/servingUnit 신뢰, 최종 fallback만 100g. (과거: 숫자 없으면 조용히 100g 덮어쓰기)
+- 비고: `feature-nutrition.js _renderNutritionRow` 의 isCSV 분기는 호환성 유지 목적으로 유지. 실제 아이템 소비(모달 진입)는 `_toCanonical`이 일괄 정규화하므로 신호 오염 없음.
+
+**Phase D — 검증 & 회귀 방지** ✅
+- [x] `sw.js` `CACHE_VERSION` → `tomatofarm-v20260418z4-nutrition-refactor` + `STATIC_ASSETS`에 `./data/nutrition-normalize.js` 추가
+- [x] 전 8개 변경파일(calc/ai/텍스트파서/정규화/모달×2/feature/sw) `node --check` 구문 통과
+- [x] `node --test tests/*.test.js` — 총 126개 (expert 27 / score 58 / nutrition 41) 전원 PASS
+- [ ] 로컬 수동 테스트 (유저 수행): 가공식품 라벨 사진/텍스트, 원재료 검색, 1인분 음식 검색, ml 음료, 기존 저장 아이템 재로드
+
 ### 2026-04-17 캘린더 탭 신설 ✅
 하단 탭 `통계`를 `캘린더`로 교체하고, 통계는 `더보기` 메뉴로 이동. 일자별 100점 만점 점수 + (섭취/소모/체중) 3지표 텍스트로 표시. 셀 클릭 시 항목별 점수 breakdown 모달.
 - [x] `index.html` 하단 탭바 `stats` 버튼 제거 → `calendar` 버튼(📅) 신설, 더보기 메뉴에 `📊 통계` 추가

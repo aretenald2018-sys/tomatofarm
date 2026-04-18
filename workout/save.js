@@ -4,20 +4,27 @@
 
 import { S }                        from './state.js';
 import { showCenterToast }          from '../home/utils.js';
-import { saveDay, dateKey,
+import { saveDay, dateKey, isFuture,
          getDietPlan, getDayTargetKcal,
          isDietDaySuccess, trackEvent } from '../data.js';
+
+// 미래 날짜 저장 가드 — 어떤 경로로든 미래 날짜 쓰기 금지 (B-3).
+// - UI disable을 우회하는 onclick/자동저장/스크립트 호출을 한 번 더 차단.
+// - 저장 함수에서 S.date가 미래면 true 반환 → 호출자는 조기 리턴.
+function _blockIfFutureDate() {
+  if (!S.date) return false;
+  if (!isFuture(S.date.y, S.date.m, S.date.d)) return false;
+  // 사용자에게 사유 알림 (토스트 1회면 충분)
+  try { window.showToast?.('미래 날짜는 저장할 수 없어요', 1800, 'warning'); } catch {}
+  return true;
+}
 
 // ── 공통 저장 페이로드 빌더 ──────────────────────────────────────
 // saveWorkoutDay()와 _autoSaveDiet() 양쪽에서 호출하여 필드 누락 방지
 function _buildSavePayload(cleanEx, isDietSuccess) {
   return {
     exercises:  cleanEx,
-    cf:         S.cfStatus === 'done',
-    cf_skip:    S.cfStatus === 'skip',
-    cf_health:  S.cfStatus === 'health',
-    gym_skip:   S.gymStatus === 'skip',
-    gym_health: S.gymStatus === 'health',
+    cf:         S.cf,
     stretching: S.stretching,
     swimming:   S.swimming,
     running:    S.running,
@@ -74,6 +81,29 @@ function _buildSavePayload(cleanEx, isDietSuccess) {
   };
 }
 
+// 각 활동 탭의 입력 데이터 유무로 boolean 플래그 자동 판정.
+// (랜딩 '쉬었어요/건강이슈' 제거 후 — 기록이 있으면 했다는 의미.)
+function _autoDeriveActivityFlags() {
+  S.cf         = !!(S.cfData?.wod || S.cfData?.durationMin || S.cfData?.durationSec);
+  S.running    = !!(S.runData?.distance || S.runData?.durationMin || S.runData?.durationSec);
+  S.swimming   = !!(S.swimData?.distance || S.swimData?.durationMin || S.swimData?.durationSec);
+  S.stretching = !!(S.stretchData?.duration);
+}
+
+// 탭 칩의 기록 힌트(has-record) 즉시 동기화 — 저장/상태 변경 후 호출.
+function _refreshTabDots() {
+  const flags = {
+    gym: (S.exercises || []).length > 0,
+    cf: !!S.cf,
+    stretch: !!S.stretching,
+    swimming: !!S.swimming,
+    running: !!S.running,
+  };
+  Object.entries(flags).forEach(([t, on]) => {
+    document.getElementById('wt-chip-' + t)?.classList.toggle('has-record', !!on);
+  });
+}
+
 function _cleanExercises(includeNotes) {
   return S.exercises
     .map(e => ({
@@ -90,10 +120,9 @@ function _computeDietSuccess(cleanEx) {
   const { y, m, d } = S.date;
   const dayData = {
     exercises: cleanEx,
-    cf: S.cfStatus === 'done',
+    cf: S.cf,
     swimming: S.swimming,
     running: S.running,
-    gym_skip: S.gymStatus === 'skip',
   };
   const dayTarget = getDayTargetKcal(plan, y, m, d, dayData);
   const totalKcal = (S.diet.bKcal||0) + (S.diet.lKcal||0) + (S.diet.dKcal||0) + (S.diet.sKcal||0);
@@ -104,6 +133,7 @@ function _computeDietSuccess(cleanEx) {
 // ── 명시적 저장 ──────────────────────────────────────────────────
 export async function saveWorkoutDay() {
   if (!S.date) return;
+  if (_blockIfFutureDate()) return;
   const { y, m, d } = S.date;
 
   S.diet.breakfast = document.getElementById('wt-meal-breakfast')?.value.trim() || '';
@@ -116,6 +146,8 @@ export async function saveWorkoutDay() {
   S.runData.durationMin = parseInt(document.getElementById('wt-run-duration-min')?.value) || 0;
   S.runData.durationSec = parseInt(document.getElementById('wt-run-duration-sec')?.value) || 0;
   S.runData.memo        = document.getElementById('wt-run-memo')?.value.trim() || '';
+
+  _autoDeriveActivityFlags();
 
   const cleanEx = _cleanExercises(false);
   const isDietSuccess = _computeDietSuccess(cleanEx);
@@ -132,6 +164,7 @@ export async function saveWorkoutDay() {
   }
 
   if (btn) { btn.disabled = false; btn.textContent = '저장'; }
+  _refreshTabDots();
   document.dispatchEvent(new CustomEvent('sheet:saved'));
 
   // 사용자 피드백: TDS Toast (CLAUDE.md 규칙 — CRUD 완료 시 필수)
@@ -144,6 +177,7 @@ export async function _autoSaveDiet() {
     console.warn('[render-workout] 날짜 정보가 없어 저장할 수 없습니다');
     return;
   }
+  if (_blockIfFutureDate()) return;
   const { y, m, d } = S.date;
 
   S.diet.breakfast = document.getElementById('wt-meal-breakfast')?.value.trim() || S.diet.breakfast;
@@ -151,6 +185,7 @@ export async function _autoSaveDiet() {
   S.diet.dinner    = document.getElementById('wt-meal-dinner')?.value.trim() || S.diet.dinner;
   S.diet.snack     = document.getElementById('wt-meal-snack')?.value.trim() || S.diet.snack;
 
+  _autoDeriveActivityFlags();
   const cleanEx = _cleanExercises(true);
   const isDietSuccess = _computeDietSuccess(cleanEx);
 
@@ -171,6 +206,7 @@ export async function _autoSaveDiet() {
     }
 
     console.log('[render-workout] 식단 자동 저장 완료');
+    _refreshTabDots();
     showCenterToast('저장되었습니다');
   } catch(e) {
     console.error('[render-workout] 자동 저장 실패:', e);

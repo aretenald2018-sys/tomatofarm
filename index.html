@@ -397,44 +397,22 @@
   </div>
   <div id="wt-future-notice" class="wt-future-notice" style="display:none">📅 미래 날짜에는 기록할 수 없습니다.</div>
 
-  <!-- 선택된 상태 뱃지 — workout-date-nav 바로 아래 고정 (덩그러니 중간에 뜨지 않도록) -->
-  <div class="wt-selected-badge" id="wt-selected-badge">
-    <span class="wt-status-badge" id="wt-badge-text"></span>
-    <button class="wt-link-btn" onclick="wtResetStatus()">변경</button>
-  </div>
-
   <div class="workout-tab-content">
 
     <!-- 전문가 모드 영역 (조건부 렌더링됨) -->
     <div id="expert-top-area"></div>
 
-    <!-- 전체 운동 플로우 (CSS 전환) -->
+    <!-- 전체 운동 플로우 — 랜딩 제거, 헬스 탭 기본 활성 -->
     <div class="wt-flow" id="wt-flow">
 
-      <!-- 질문 + CTA -->
-      <div class="wt-ask" id="wt-ask">
-        <div class="wt-question">오늘의 운동을 기록해보세요</div>
-        <button class="wt-cta-btn" id="wt-cta-workout" onclick="wtSelectStatus('workout')">운동 기록하기</button>
-        <div class="wt-alt-actions">
-          <button class="wt-alt-btn" id="wt-gym-btn-skip" onclick="wtSelectStatus('skip')">
-            오늘은 쉬었어요
-            <span class="wt-alt-desc">토마토가 적립되지 않아요</span>
-          </button>
-          <button class="wt-alt-btn" id="wt-gym-btn-health" onclick="wtSelectStatus('health')">
-            건강이슈가 있어요
-            <span class="wt-alt-desc">토마토는 계속 적립돼요</span>
-          </button>
-        </div>
-      </div>
-
-      <!-- 운동 유형 탭 바 (처음엔 숨김, "운동했어요" 시 표시) -->
+      <!-- 운동 유형 탭 바 (항상 노출) -->
       <div class="wt-type-section" id="wt-type-section">
         <div class="wt-type-tabs" id="wt-type-tabs-bar">
-          <button class="wt-type-tab" id="wt-chip-gym" onclick="wtToggleType('gym')">🏋️ 헬스</button>
-          <button class="wt-type-tab" id="wt-chip-cf" onclick="wtToggleType('cf')">🔥 크로스핏</button>
-          <button class="wt-type-tab" id="wt-chip-stretch" onclick="wtToggleType('stretch')">🧘 스트레칭</button>
-          <button class="wt-type-tab" id="wt-chip-swimming" onclick="wtToggleType('swimming')">🏊 수영</button>
-          <button class="wt-type-tab" id="wt-chip-running" onclick="wtToggleType('running')">🏃 런닝</button>
+          <button class="wt-type-tab active" id="wt-chip-gym" onclick="wtSwitchType('gym')">🏋️ 헬스</button>
+          <button class="wt-type-tab" id="wt-chip-cf" onclick="wtSwitchType('cf')">🔥 크로스핏</button>
+          <button class="wt-type-tab" id="wt-chip-stretch" onclick="wtSwitchType('stretch')">🧘 스트레칭</button>
+          <button class="wt-type-tab" id="wt-chip-swimming" onclick="wtSwitchType('swimming')">🏊 수영</button>
+          <button class="wt-type-tab" id="wt-chip-running" onclick="wtSwitchType('running')">🏃 런닝</button>
         </div>
       </div>
 
@@ -482,7 +460,7 @@
             <button class="wt-tbar-btn" id="wt-timer-reset-btn" onclick="wtResetWorkoutTimer()" style="display:none" title="초기화" aria-label="초기화">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
             </button>
-            <button class="wt-tbar-cta" id="wt-finish-workout-btn" onclick="wtFinishWorkout()" style="display:none">끝내기</button>
+            <button class="wt-tbar-cta" id="wt-finish-workout-btn" onclick="wtEndAndShowInsights()" style="display:none">끝내기</button>
           </div>
         </div>
 
@@ -493,7 +471,7 @@
       </div>
 
       <!-- 헬스 종목 -->
-      <div class="wt-detail-section" id="wt-gym-section">
+      <div class="wt-detail-section wt-open" id="wt-gym-section">
         <div class="ex-list-header">
           <span class="sheet-section-label" style="margin-bottom:0">헬스 종목</span>
           <div class="ex-header-actions">
@@ -637,11 +615,7 @@
           운동 인증사진
         </button>
         <input type="file" id="photo-input-workout" accept="image/*" style="display:none" onchange="uploadMealPhoto('workout',this)">
-
-        <!-- 운동 종료: 실제 타이머 정지 + 저장 후 주간 인사이트(Scene 13) -->
-        <button class="wt-end-workout-btn" onclick="wtEndAndShowInsights()">
-          🏁 운동종료
-        </button>
+        <!-- (운동종료 버튼은 타이머 바(wt-finish-workout-btn)로 단일화. 중복 제거.) -->
       </div>
 
       <!-- 저장 (자동 저장으로 대체 — 숨김) -->
@@ -652,10 +626,6 @@
 
     <!-- 호환용 숨김 요소 -->
     <div style="display:none">
-      <button id="wt-gym-btn-done"></button>
-      <button id="wt-cf-btn-done"></button>
-      <button id="wt-cf-btn-skip"></button>
-      <button id="wt-cf-btn-health"></button>
       <div id="wt-stretching-toggle"></div>
     </div>
   </div>

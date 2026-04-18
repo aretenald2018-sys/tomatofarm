@@ -4,7 +4,7 @@
 
 import { S, emptyDiet }              from './state.js';
 import { saveWorkoutDay }            from './save.js';
-import { _renderDateLabel, _renderGymStatusBtns, _renderCFStatusBtns,
+import { _renderDateLabel,
          _renderStretchingToggle, _renderWineFreeToggle,
          _renderMealSkippedToggles, _renderDietResults,
          _renderMealFoodItems, _renderMealPhotos,
@@ -46,17 +46,7 @@ export function loadWorkoutDate(y, m, d) {
   S.date      = { y, m, d };
   const day  = getDay(y, m, d);
   S.exercises = JSON.parse(JSON.stringify(day.exercises || []));
-
-  if (day.gym_health)                      S.gymStatus = 'health';
-  else if (day.gym_skip)                   S.gymStatus = 'skip';
-  else if ((day.exercises||[]).length > 0) S.gymStatus = 'done';
-  else                                     S.gymStatus = 'none';
-
-  if (day.cf_health)    S.cfStatus = 'health';
-  else if (day.cf_skip) S.cfStatus = 'skip';
-  else if (day.cf)      S.cfStatus = 'done';
-  else                  S.cfStatus = 'none';
-
+  S.cf         = !!day.cf;
   S.stretching = !!day.stretching;
   S.swimming   = !!day.swimming;
   S.running    = !!day.running;
@@ -124,8 +114,6 @@ export function loadWorkoutDate(y, m, d) {
   if (day.workoutPhoto) window._mealPhotos.workout = day.workoutPhoto;
 
   _renderDateLabel();
-  _renderGymStatusBtns();
-  _renderCFStatusBtns();
   _renderStretchingToggle();
   document.getElementById('wt-chip-swimming')?.classList.toggle('active', S.swimming);
   document.getElementById('wt-chip-running')?.classList.toggle('active', S.running);
@@ -164,48 +152,44 @@ export function loadWorkoutDate(y, m, d) {
 }
 
 function _restoreFlowState(day) {
-  const flow       = document.getElementById('wt-flow');
-  const badge      = document.getElementById('wt-badge-text');
-  const timerBar   = document.getElementById('wt-workout-timer-bar');
-  if (!flow) return;
+  const timerBar = document.getElementById('wt-workout-timer-bar');
 
   const hasExercises  = (day.exercises || []).length > 0;
   const hasCf         = !!day.cf;
   const hasStretching = !!day.stretching;
   const hasSwimming   = !!day.swimming;
   const hasRunning    = !!day.running;
-  const isSkip        = !!day.gym_skip;
-  const isHealth      = !!day.gym_health;
-  const hasWorkout    = hasExercises || hasCf || hasStretching || hasSwimming || hasRunning;
 
-  if (!hasWorkout && !isSkip && !isHealth) return;
-
-  flow.classList.add('wt-chosen');
-  // 구형 WebView에서 :has() 미지원 대비 — 뱃지에 직접 클래스 부여
-  document.getElementById('wt-selected-badge')?.classList.add('is-chosen');
-
-  if (isSkip && !hasWorkout) {
-    if (badge) { badge.className = 'wt-status-badge wt-skip'; badge.textContent = '오늘은 쉬었어요'; }
-    flow.classList.remove('wt-show-type');
-  } else if (isHealth && !hasWorkout) {
-    if (badge) { badge.className = 'wt-status-badge wt-health'; badge.textContent = '건강 이슈가 있어요'; }
-    flow.classList.remove('wt-show-type');
-  } else {
-    if (badge) { badge.className = 'wt-status-badge wt-active'; badge.textContent = '운동했어요 💪'; }
-    flow.classList.add('wt-show-type');
-    const typesToRestore = [];
-    if (hasExercises) typesToRestore.push('gym');
-    if (hasCf) typesToRestore.push('cf');
-    if (hasStretching) typesToRestore.push('stretch');
-    if (hasSwimming) typesToRestore.push('swimming');
-    if (hasRunning) typesToRestore.push('running');
-    typesToRestore.forEach(t => {
-      document.getElementById('wt-chip-' + t)?.classList.add('active');
-    });
-    if (window._wtRestoreTypes) window._wtRestoreTypes(typesToRestore);
-    if (timerBar) timerBar.classList.add('wt-open');
+  // 기록이 있는 탭에 점 힌트 + 기본 활성 탭 결정
+  // 우선순위: 헬스 기록 있으면 헬스, 아니면 기록 있는 첫 탭, 모두 없으면 헬스
+  const flags = {
+    gym: hasExercises, cf: hasCf, stretch: hasStretching,
+    swimming: hasSwimming, running: hasRunning,
+  };
+  Object.entries(flags).forEach(([t, on]) => {
+    const chip = document.getElementById('wt-chip-' + t);
+    if (!chip) return;
+    chip.classList.toggle('has-record', on);
+  });
+  let active = 'gym';
+  if (!hasExercises) {
+    const firstWithRecord = Object.entries(flags).find(([, on]) => on);
+    if (firstWithRecord) active = firstWithRecord[0];
   }
-  document.getElementById('wt-memo-section')?.classList.add('wt-open');
+  if (window._wtSetActiveType) window._wtSetActiveType(active);
+
+  // B-2: 기록이 하나라도 있는 날에만 타이머바/메모/저장 섹션을 자동 오픈.
+  // (빈 날에 섹션을 다 열어두면 "이미 뭘 했나?" 오해. 칩 클릭/기록 추가 시에만 열리게.)
+  const hasAnyRecord = hasExercises || hasCf || hasStretching || hasSwimming || hasRunning;
+  if (timerBar && hasAnyRecord) timerBar.classList.add('wt-open');
+  if (hasAnyRecord) {
+    document.getElementById('wt-memo-section')?.classList.add('wt-open');
+    document.getElementById('wt-save-section')?.classList.add('wt-open');
+  } else {
+    document.getElementById('wt-memo-section')?.classList.remove('wt-open');
+    document.getElementById('wt-save-section')?.classList.remove('wt-open');
+    timerBar?.classList.remove('wt-open');
+  }
 
   const isToday = S.date && S.date.y === TODAY.getFullYear() && S.date.m === TODAY.getMonth() && S.date.d === TODAY.getDate();
   if (!isToday && timerBar) {
@@ -225,10 +209,15 @@ function _restoreFlowState(day) {
 function _setInputsDisabled(disabled) {
   const panel = document.getElementById('tab-workout');
   if (!panel) return;
-  panel.querySelectorAll('input, textarea, select, button.act-btn, button.ex-add-btn, button.ex-add-set-btn, button.wt-save-btn').forEach(el => {
+  // 날짜 네비/투데이 점프만 살리고, 탭 내부의 모든 input/textarea/select/button을 일괄 비활성.
+  // (과거: act-btn/ex-add-btn 등 특정 클래스 화이트리스트 → 새 버튼 추가 시 가드 누락)
+  panel.querySelectorAll('input, textarea, select, button').forEach(el => {
     if (el.classList.contains('wt-date-nav-btn')) return;
+    if (el.classList.contains('wt-today-btn')) return;
     el.disabled = disabled;
   });
+  // CSS 단계 가드 — 커스텀 요소(<div onclick>, 칩 등)를 disabled 없이도 차단.
+  panel.classList.toggle('wt-readonly', !!disabled);
   const notice = document.getElementById('wt-future-notice');
   if (notice) notice.style.display = disabled ? 'block' : 'none';
 }

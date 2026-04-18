@@ -5,6 +5,7 @@
 import { S }                from './state.js';
 import { saveWorkoutDay }   from './save.js';
 import { showToast, showCenterToast } from '../home/utils.js';
+import { confirmAction }    from '../utils/confirm-modal.js';
 
 // ── 운동 시간 측정 ───────────────────────────────────────────────
 export function wtStartWorkoutTimer() {
@@ -25,7 +26,19 @@ export function wtPauseWorkoutTimer() {
   saveWorkoutDay().catch(e => console.error('Save error:', e));
 }
 
-export function wtResetWorkoutTimer() {
+export async function wtResetWorkoutTimer() {
+  // 운동 시간 초기화는 파괴적 액션. 실수 방지 위해 confirm 필수.
+  const hasTime = S.workoutDuration > 0 || !!S.workoutStartTime;
+  if (hasTime) {
+    const ok = await confirmAction({
+      title: '운동 시간을 초기화할까요?',
+      message: '지금까지 측정된 운동 시간이 0으로 돌아가요.',
+      confirmLabel: '초기화',
+      cancelLabel: '취소',
+      destructive: true,
+    });
+    if (!ok) return;
+  }
   S.workoutDuration = 0;
   S.workoutStartTime = null;
   if (S.workoutTimerInterval) { clearInterval(S.workoutTimerInterval); S.workoutTimerInterval = null; }
@@ -58,7 +71,9 @@ export function _renderTimerControls() {
   if (pauseBtn) pauseBtn.style.display = (hasTime && isRunning) ? '' : 'none';
   if (playBtn)  playBtn.style.display  = (hasTime && !isRunning) ? '' : 'none';
   if (resetBtn) resetBtn.style.display = hasTime ? '' : 'none';
-  if (finBtn)   finBtn.style.display   = isRunning ? '' : 'none';
+  // 끝내기 버튼은 "시간이 측정된 상태" 내내 표시되어야 함.
+  // (이전엔 isRunning 기준이라 일시정지 시 사라져서 "끝낼 방법이 없다"는 착각 유발)
+  if (finBtn)   finBtn.style.display   = hasTime ? '' : 'none';
   if (resultEl) resultEl.style.display = 'none';
 }
 

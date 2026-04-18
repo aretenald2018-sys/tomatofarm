@@ -3,7 +3,6 @@
 // ================================================================
 
 import {
-  wtSetGymStatus, wtSetCFStatus, wtToggleStretching, wtToggleSwimming, wtToggleRunning,
   wtToggleWineFree, wtToggleMealSkipped,
   wtOpenExercisePicker, wtCloseExercisePicker,
   wtOpenExerciseEditor, wtCloseExerciseEditor,
@@ -13,8 +12,9 @@ import {
   wtStartWorkoutTimer, wtRestTimerShowIdle, wtRestTimerHideIdle,
 } from './render-workout.js';
 
-// ── 운동 상태 머신 ──────────────────────────────────────────────
-let _wtSelectedTypes = new Set();
+// ── 운동 유형 단일 탭 ────────────────────────────────────────────
+// 이전: 복수 선택(Set). 현재: 한 번에 한 탭만 노출. 기록은 각 탭 독립 저장.
+let _wtActiveType = 'gym';
 
 const _WT_TYPE_SECTIONS = {
   gym: 'wt-gym-section',
@@ -24,115 +24,59 @@ const _WT_TYPE_SECTIONS = {
   running: 'wt-running-section',
 };
 
-window.wtSelectStatus = function(status) {
-  const flow = document.getElementById('wt-flow');
-  const badge = document.getElementById('wt-badge-text');
-  const badgeRow = document.getElementById('wt-selected-badge');
-
-  flow.classList.add('wt-chosen');
-  // 직접 클래스 토글 (구형 WebView :has() 미지원 대비)
-  if (badgeRow) badgeRow.classList.add('is-chosen');
-
-  if (status === 'skip') {
-    wtSetGymStatus('skip'); wtSetCFStatus('skip');
-    badge.className = 'wt-status-badge wt-skip';
-    badge.textContent = '오늘은 쉬었어요';
-    flow.classList.remove('wt-show-type');
-    document.getElementById('wt-memo-section').classList.add('wt-open');
-    document.getElementById('wt-save-section').classList.add('wt-open');
-    return;
-  }
-  if (status === 'health') {
-    wtSetGymStatus('health'); wtSetCFStatus('health');
-    badge.className = 'wt-status-badge wt-health';
-    badge.textContent = '건강 이슈가 있어요';
-    flow.classList.remove('wt-show-type');
-    document.getElementById('wt-memo-section').classList.add('wt-open');
-    document.getElementById('wt-save-section').classList.add('wt-open');
-    return;
-  }
-  // 운동했어요
-  badge.className = 'wt-status-badge wt-active';
-  badge.textContent = '운동했어요 💪';
-  flow.classList.add('wt-show-type');
-  document.getElementById('wt-memo-section').classList.add('wt-open');
-  document.getElementById('wt-save-section').classList.add('wt-open');
-  _wtSelectedTypes.clear();
-};
-
-window.wtToggleType = function(type) {
-  const tab = document.getElementById('wt-chip-' + type);
-  const wasSelected = _wtSelectedTypes.has(type);
-  if (_wtSelectedTypes.has(type)) {
-    _wtSelectedTypes.delete(type);
-    if (tab) tab.classList.remove('active');
-  } else {
-    _wtSelectedTypes.add(type);
-    if (tab) tab.classList.add('active');
-  }
-  wtSetGymStatus(_wtSelectedTypes.has('gym') ? 'done' : 'none');
-  wtSetCFStatus(_wtSelectedTypes.has('cf') ? 'done' : 'none');
-  if (type === 'stretch') wtToggleStretching();
-  if (type === 'swimming') wtToggleSwimming();
-  if (type === 'running') wtToggleRunning();
-
-  Object.entries(_WT_TYPE_SECTIONS).forEach(([t, id]) => {
-    const sec = document.getElementById(id);
-    if (!sec) return;
-    if (_wtSelectedTypes.has(t)) sec.classList.add('wt-open');
-    else sec.classList.remove('wt-open');
+function _applyActive(type) {
+  Object.keys(_WT_TYPE_SECTIONS).forEach(t => {
+    const tab = document.getElementById('wt-chip-' + t);
+    if (tab) tab.classList.toggle('active', t === type);
+    const sec = document.getElementById(_WT_TYPE_SECTIONS[t]);
+    if (sec) sec.classList.toggle('wt-open', t === type);
   });
+  // B-2: 탭(유형 칩) 클릭은 "지금부터 이 종류 기록하겠다"는 의사 표시.
+  // → 이때만 타이머 바/메모/저장 섹션 오픈.
+  //   (로드 시점 자동 오픈은 load.js _restoreFlowState가 기록 유무로만 판단)
+  const timerBar = document.getElementById('wt-workout-timer-bar');
+  if (timerBar) timerBar.classList.add('wt-open');
+  document.getElementById('wt-memo-section')?.classList.add('wt-open');
+  document.getElementById('wt-save-section')?.classList.add('wt-open');
+}
 
-  if (type === 'gym') {
-    const timerBar = document.getElementById('wt-workout-timer-bar');
-    if (!wasSelected) {
-      if (timerBar) timerBar.classList.add('wt-open');
-      wtStartWorkoutTimer();
-      wtRestTimerShowIdle();
-    } else {
-      wtRestTimerHideIdle();
-    }
+window.wtSwitchType = function(type) {
+  if (!_WT_TYPE_SECTIONS[type]) return;
+  const isReclick = _wtActiveType === type;
+  _wtActiveType = type;
+  _applyActive(type);
+
+  // 헬스 탭 최초 진입 시 타이머 시작 (사용자 명시 액션으로 간주)
+  if (type === 'gym' && !isReclick) {
+    wtStartWorkoutTimer();
+    wtRestTimerShowIdle();
   }
 };
 
-window.wtResetStatus = function() {
-  _wtSelectedTypes.clear();
-  const flow = document.getElementById('wt-flow');
-  flow.classList.remove('wt-chosen', 'wt-show-type');
-  document.getElementById('wt-selected-badge')?.classList.remove('is-chosen');
-  Object.values(_WT_TYPE_SECTIONS).forEach(id =>
-    document.getElementById(id)?.classList.remove('wt-open'));
-  ['wt-memo-section','wt-save-section'].forEach(id =>
-    document.getElementById(id)?.classList.remove('wt-open'));
-  document.getElementById('wt-workout-timer-bar')?.classList.remove('wt-open');
-  ['wt-chip-gym','wt-chip-cf','wt-chip-stretch','wt-chip-swimming','wt-chip-running'].forEach(id =>
-    document.getElementById(id)?.classList.remove('active'));
-  wtSetGymStatus('none'); wtSetCFStatus('none');
+// 레거시 호환 — 기존 index.html의 onclick이 wtToggleType을 부를 수 있으니 alias
+window.wtToggleType = window.wtSwitchType;
+
+window._wtSetActiveType = function(type) {
+  if (!_WT_TYPE_SECTIONS[type]) type = 'gym';
+  _wtActiveType = type;
+  _applyActive(type);
 };
 
 window._wtResetFlowUI = function() {
-  _wtSelectedTypes.clear();
-  const flow = document.getElementById('wt-flow');
-  if (flow) flow.classList.remove('wt-chosen', 'wt-show-type');
-  document.getElementById('wt-selected-badge')?.classList.remove('is-chosen');
-  Object.values(_WT_TYPE_SECTIONS).forEach(id =>
-    document.getElementById(id)?.classList.remove('wt-open'));
-  ['wt-memo-section','wt-save-section'].forEach(id =>
-    document.getElementById(id)?.classList.remove('wt-open'));
-  document.getElementById('wt-workout-timer-bar')?.classList.remove('wt-open');
+  _wtActiveType = 'gym';
+  _applyActive('gym');
   wtRestTimerHideIdle();
-  ['wt-chip-gym','wt-chip-cf','wt-chip-stretch','wt-chip-swimming','wt-chip-running'].forEach(id =>
-    document.getElementById(id)?.classList.remove('active'));
+  Object.keys(_WT_TYPE_SECTIONS).forEach(t => {
+    document.getElementById('wt-chip-' + t)?.classList.remove('has-record');
+  });
 };
 
+// 레거시 호환: load.js 이전 버전이 호출하던 함수
 window._wtRestoreTypes = function(types) {
-  _wtSelectedTypes.clear();
-  types.forEach(t => _wtSelectedTypes.add(t));
-  types.forEach(t => {
-    document.getElementById('wt-chip-' + t)?.classList.add('active');
-    const secId = _WT_TYPE_SECTIONS[t];
-    if (secId) document.getElementById(secId)?.classList.add('wt-open');
-  });
+  if (!Array.isArray(types) || types.length === 0) return;
+  const first = types.find(t => _WT_TYPE_SECTIONS[t]) || 'gym';
+  _wtActiveType = first;
+  _applyActive(first);
 };
 
 window.wtToggleWineFree         = wtToggleWineFree;

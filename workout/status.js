@@ -4,8 +4,7 @@
 
 import { S }              from './state.js';
 import { saveWorkoutDay } from './save.js';
-import { _renderGymStatusBtns, _renderCFStatusBtns,
-         _renderStretchingToggle, _renderWineFreeToggle,
+import { _renderStretchingToggle, _renderWineFreeToggle,
          _renderMealSkippedToggles, _renderDietResults, _renderMealFoodItems,
          renderCalorieTracker as _renderCalorieTracker }
                           from './render.js';
@@ -33,35 +32,9 @@ function _clearMealState(meal) {
   _renderMealFoodItems(meal);
 }
 
-export function wtSetGymStatus(status, skipSave = false) {
-  S.gymStatus = status;
-  _renderGymStatusBtns();
-  const list = document.getElementById('wt-exercise-list');
-  if (list) list.style.opacity = (status === 'done' || status === 'none') ? '1' : '0.4';
-  _persist(skipSave);
-}
-
-export function wtSetCFStatus(status, skipSave = false) {
-  S.cfStatus = status;
-  _renderCFStatusBtns();
-  _persist(skipSave);
-}
-
-export function wtToggleStretching(skipSave = false) {
-  S.stretching = !S.stretching;
-  _renderStretchingToggle();
-  _persist(skipSave);
-}
-
-export function wtToggleSwimming(skipSave = false) {
-  S.swimming = !S.swimming;
-  _persist(skipSave);
-}
-
-export function wtToggleRunning(skipSave = false) {
-  S.running = !S.running;
-  _persist(skipSave);
-}
+// cf/stretching/swimming/running boolean은 save 시점에 _autoDeriveActivityFlags()가
+// 각 탭의 입력 데이터 유무로 자동 판정 → 수동 토글 API 삭제.
+// 이중 진실원 제거(codex review).
 
 export function wtToggleWineFree(skipSave = false) {
   S.wineFree = !S.wineFree;
@@ -86,21 +59,9 @@ export function wtToggleMealSkipped(meal, skipSave = false) {
   _persist(skipSave);
 }
 
-// ── 이벤트 위임: 상태 버튼 클릭 ─────────────────────────────────
+// 호환용 no-op: 삭제된 랜딩의 이벤트 위임 유지 비용 회피
 let _eventsBound = false;
 export function _initButtonEventListeners() {
   if (_eventsBound) return;
   _eventsBound = true;
-
-  document.addEventListener('click', (e) => {
-    const target = e.target;
-
-    if (target.closest('#wt-gym-btn-done')) { e.stopPropagation(); wtSetGymStatus('done'); }
-    else if (target.closest('#wt-gym-btn-skip')) { e.stopPropagation(); wtSetGymStatus('skip'); }
-    else if (target.closest('#wt-gym-btn-health')) { e.stopPropagation(); wtSetGymStatus('health'); }
-
-    else if (target.closest('#wt-cf-btn-done')) { e.stopPropagation(); wtSetCFStatus('done'); }
-    else if (target.closest('#wt-cf-btn-skip')) { e.stopPropagation(); wtSetCFStatus('skip'); }
-    else if (target.closest('#wt-cf-btn-health')) { e.stopPropagation(); wtSetCFStatus('health'); }
-  });
 }

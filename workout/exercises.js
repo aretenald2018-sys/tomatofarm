@@ -11,12 +11,12 @@ import { wtStartWorkoutTimer,
 import { showToast }                   from '../home/utils.js';
 import { getExList, getGymExList, getLastSession, detectPRs,
          dateKey, saveExercise,
-         deleteExercise, getAllMuscles,
+         deleteExercise, getMuscleParts,
          saveCustomMuscle,
          isExpertModeEnabled,
          getExpertPreset }              from '../data.js';
 import { estimate1RM, rpeRepsToPct, targetWeightKg, weightRange } from '../calc.js';
-import { MOVEMENTS }                   from '../config.js';
+import { MOVEMENTS, EQUIPMENT_CATEGORIES } from '../config.js';
 // resolveCurrentGymId는 expert.js의 단일 진실원 (preset + S.currentGymId 동기화).
 // expert.js는 exercises.js를 static import 하지 않으므로 순환 참조 없음.
 import { resolveCurrentGymId }           from './expert.js';
@@ -393,7 +393,7 @@ export function _renderExerciseList() {
     });
   }
   container.innerHTML = '';
-  const allMuscles = getAllMuscles();
+  const allMuscles = getMuscleParts();
   const isExpert = _isExpertUiEnabled();
 
   // Finding 2: 오늘 세션 제외 → 자기참조 방지. 최근 기록(today 제외).
@@ -443,8 +443,18 @@ export function _renderExerciseList() {
     const copyBtn = block.querySelector('.ex-copy-btn');
     if (copyBtn && last) {
       copyBtn.addEventListener('click', () => {
+        // C-1: 종목 세트 복사도 활동 복사와 동일하게 Undo 토스트 제공.
+        const prevSets = JSON.parse(JSON.stringify(S.exercises[idx].sets || []));
         S.exercises[idx].sets = JSON.parse(JSON.stringify(last.sets)).map(s => ({ ...s, done: false }));
         saveWorkoutDay().then(() => _renderExerciseList()).catch(e => console.error('Save error:', e));
+        showToast('직전 세트를 불러왔어요', 3000, 'success', {
+          action: '실행 취소',
+          onAction: () => {
+            if (!S.exercises[idx]) return;
+            S.exercises[idx].sets = prevSets;
+            saveWorkoutDay().then(() => _renderExerciseList()).catch(e => console.error('Undo save:', e));
+          },
+        });
       });
     }
     container.appendChild(block);
@@ -536,21 +546,104 @@ function _getPickerExercisePool() {
   } catch { return getExList(); }
 }
 
+// 장비 카테고리 필터 상태 (null = 전체)
+let _pickerCategoryFilter = null;
+window._wtSetPickerCategoryFilter = (cat) => {
+  _pickerCategoryFilter = (_pickerCategoryFilter === cat) ? null : cat;
+  _renderPickerList();
+};
+
+// C-2: 종목명 검색 상태 (trim + lowercase)
+let _pickerSearchQuery = '';
+window._wtOnPickerSearch = (q) => {
+  _pickerSearchQuery = String(q || '').trim().toLowerCase();
+  const clearBtn = document.getElementById('ex-picker-search-clear');
+  if (clearBtn) clearBtn.style.display = _pickerSearchQuery ? '' : 'none';
+  _renderPickerList();
+};
+window._wtClearPickerSearch = () => {
+  _pickerSearchQuery = '';
+  const input = document.getElementById('ex-picker-search');
+  if (input) input.value = '';
+  const clearBtn = document.getElementById('ex-picker-search-clear');
+  if (clearBtn) clearBtn.style.display = 'none';
+  _renderPickerList();
+};
+// C-4: 모든 필터 일괄 해제 ("필터 초기화" 버튼용)
+window._wtResetAllPickerFilters = () => {
+  _pickerCategoryFilter = null;
+  window._wtClearPickerSearch();
+};
+
+// Exercise → equipment_category 역조회 (movementId 기반)
+function _exerciseCategory(ex) {
+  if (ex?.category) return ex.category;
+  const mv = MOVEMENTS.find(m => m.id === ex?.movementId);
+  return mv?.equipment_category || null;
+}
+
 export function _renderPickerList() {
   const container = document.getElementById('ex-picker-list');
   if (!container) return;
   container.innerHTML = '';
-  const allMuscles = getAllMuscles();
-  const pool = _getPickerExercisePool();
+  const allMuscles = getMuscleParts();
+  const rawPool = _getPickerExercisePool();
+  const availableCats = new Set(rawPool.map(_exerciseCategory).filter(Boolean));
+
+  // 필터 유효성 체크: 현재 풀에 해당 카테고리 없으면 자동 해제
+  if (_pickerCategoryFilter && !availableCats.has(_pickerCategoryFilter)) {
+    _pickerCategoryFilter = null;
+  }
+  const catFiltered = _pickerCategoryFilter
+    ? rawPool.filter(e => _exerciseCategory(e) === _pickerCategoryFilter)
+    : rawPool;
+  // C-2: 검색어 적용 (종목명 부분 일치, 대소문자 무시)
+  const pool = _pickerSearchQuery
+    ? catFiltered.filter(e => String(e.name || '').toLowerCase().includes(_pickerSearchQuery))
+    : catFiltered;
+
+  // C-4: 현재 활성 필터 배너 — 무엇이 걸려있는지 명시적으로 보여주고 한 번에 해제.
+  const filterBadges = [];
+  if (_pickerCategoryFilter) {
+    const cat = EQUIPMENT_CATEGORIES.find(c => c.id === _pickerCategoryFilter);
+    if (cat) filterBadges.push({ type: 'cat', label: `장비: ${cat.label}` });
+  }
+  if (_pickerSearchQuery) filterBadges.push({ type: 'search', label: `검색: "${_pickerSearchQuery}"` });
+  if (filterBadges.length > 0) {
+    const banner = document.createElement('div');
+    banner.className = 'ex-picker-filter-active-bar';
+    banner.style.cssText = 'display:flex; align-items:center; gap:8px; padding:8px 12px; margin-bottom:8px; background:var(--primary-bg); border-radius:10px; font-size:13px; color:var(--text);';
+    banner.innerHTML =
+      `<span style="flex:1;">필터 적용: ${filterBadges.map(b => `<b>${b.label}</b>`).join(' · ')}</span>` +
+      `<button type="button" class="tds-btn tonal sm" onclick="window._wtResetAllPickerFilters()" style="white-space:nowrap;">필터 해제</button>`;
+    container.appendChild(banner);
+  }
+
+  // 필터 칩 UI — 카테고리 있는 Exercise가 하나라도 있으면 "전체"+해당 카테고리들 표시
+  if (availableCats.size >= 1) {
+    const chipBar = document.createElement('div');
+    chipBar.className = 'ex-picker-filter-bar';
+    chipBar.style.cssText = 'display:flex; gap:6px; padding:8px 0 12px; overflow-x:auto; -webkit-overflow-scrolling:touch;';
+    const allActive = _pickerCategoryFilter === null;
+    chipBar.innerHTML = `<button class="wt-type-tab${allActive?' active':''}" onclick="window._wtSetPickerCategoryFilter(null)">전체</button>` +
+      EQUIPMENT_CATEGORIES
+        .filter(c => availableCats.has(c.id))
+        .map(c => `<button class="wt-type-tab${_pickerCategoryFilter===c.id?' active':''}" onclick="window._wtSetPickerCategoryFilter('${c.id}')">${c.label}</button>`)
+        .join('');
+    container.appendChild(chipBar);
+  }
+
   // P1-5: 맞춤 루틴 모드에서는 선택 전용 — 편집/삭제/신규 종목 추가는 숨김.
   // 오늘 할 운동을 고르는 순간에 카탈로그 편집 UI가 섞이면 멘탈모델이 깨짐.
   const isExpert = (() => { try { return isExpertModeEnabled(); } catch { return false; } })();
+  let renderedGroupCount = 0;
   allMuscles.forEach(muscle => {
     const list = pool
       .filter(e => e.muscleId === muscle.id)
       .filter(e => !S.hiddenExercises.includes(e.id));
 
     if (list.length === 0) return;
+    renderedGroupCount++;
 
     const group = document.createElement('div');
     group.className = 'ex-picker-group';
@@ -562,10 +655,14 @@ export function _renderPickerList() {
       if (isExpert) {
         btn.innerHTML = `<span>${ex.name}${alreadyAdded?' ✓':''}</span>`;
       } else {
+        // C-3: ✕(삭제 연상) → 눈감김 아이콘 + "이 목록에서 숨기기" tooltip.
+        //     실제로는 "이 헬스장에선 안 써요" 의미라 파괴적 삭제가 아님.
         btn.innerHTML = `<span>${ex.name}${alreadyAdded?' ✓':''}</span>
           <div class="ex-picker-actions">
-            <span class="ex-picker-edit" data-exid="${ex.id}">✏️</span>
-            <span class="ex-picker-delete" data-exid="${ex.id}">✕</span>
+            <span class="ex-picker-edit" data-exid="${ex.id}" title="종목 수정">✏️</span>
+            <span class="ex-picker-hide" data-exid="${ex.id}" title="이 헬스장 목록에서 숨기기" aria-label="이 헬스장 목록에서 숨기기">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+            </span>
           </div>`;
 
         btn.querySelector('.ex-picker-edit').addEventListener('click', e => {
@@ -573,10 +670,19 @@ export function _renderPickerList() {
           wtOpenExerciseEditor(ex.id, null);
         });
 
-        btn.querySelector('.ex-picker-delete').addEventListener('click', e => {
+        btn.querySelector('.ex-picker-hide').addEventListener('click', e => {
           e.stopPropagation();
           S.hiddenExercises.push(ex.id);
           _renderPickerList();
+          // Undo 토스트 — 오조작 되돌릴 수 있게 (C-3)
+          showToast(`'${ex.name}'을(를) 목록에서 숨겼어요`, 3000, 'success', {
+            action: '실행 취소',
+            onAction: () => {
+              const i = S.hiddenExercises.indexOf(ex.id);
+              if (i >= 0) S.hiddenExercises.splice(i, 1);
+              _renderPickerList();
+            },
+          });
         });
       }
 
@@ -605,6 +711,19 @@ export function _renderPickerList() {
     }
     container.appendChild(group);
   });
+
+  // C-4: 필터/검색 결과가 0건이면 명시적 empty-state (버튼 한 번에 초기화)
+  if (renderedGroupCount === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'ex-picker-empty';
+    empty.style.cssText = 'padding:32px 16px; text-align:center; color:var(--text-secondary); font-size:14px; line-height:1.5;';
+    const hasFilter = filterBadges.length > 0;
+    empty.innerHTML = hasFilter
+      ? `<div style="margin-bottom:12px;">조건에 맞는 종목이 없어요</div>
+         <button type="button" class="tds-btn tonal sm" onclick="window._wtResetAllPickerFilters()">필터 초기화</button>`
+      : `<div>이 헬스장에 등록된 종목이 없어요</div>`;
+    container.appendChild(empty);
+  }
 }
 
 export async function wtOpenExercisePicker() {
@@ -615,6 +734,13 @@ export async function wtOpenExercisePicker() {
     modal = document.getElementById('ex-picker-modal');
   }
   if (!modal) { console.error('[workout] ex-picker-modal not found'); return; }
+  // 피커 열 때마다 카테고리/검색 필터 초기화 — 다른 gym/풀 전환 후 빈 화면 lock 방지
+  _pickerCategoryFilter = null;
+  _pickerSearchQuery = '';
+  const searchInput = document.getElementById('ex-picker-search');
+  if (searchInput) searchInput.value = '';
+  const clearBtn = document.getElementById('ex-picker-search-clear');
+  if (clearBtn) clearBtn.style.display = 'none';
   _renderPickerList();
   modal.classList.add('open');
 }
@@ -625,7 +751,7 @@ export function wtOpenExerciseEditor(exId, defaultMuscleId) {
   const muscleSelect = document.getElementById('ex-editor-muscle');
   const deleteBtn    = document.getElementById('tds-btn danger sm');
   const titleEl      = document.getElementById('ex-editor-title');
-  const allMuscles = getAllMuscles();
+  const allMuscles = getMuscleParts();
   let addMuscleWrap = document.getElementById('ex-editor-new-muscle-wrap');
   if (!addMuscleWrap) {
     addMuscleWrap = document.createElement('div');
