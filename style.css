@@ -1806,6 +1806,51 @@ body {
 /* ══════════════════════════════════════════════════════════════════
    Exercise Picker Modal
    ══════════════════════════════════════════════════════════════════ */
+/* 카테고리 필터 칩 — 상단 .wt-type-tab과 독립. 같은 DOM에 공존해도 간섭 없음. */
+.ex-picker-filter-bar {
+  display: flex;
+  gap: 6px;
+  padding: 8px 0 12px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.ex-picker-filter-chip {
+  padding: var(--seed-x2) var(--seed-x3);
+  border-radius: var(--seed-r2);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--seed-fg-muted, var(--text-tertiary));
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  min-width: 64px;
+  text-align: center;
+  transition: all 0.1s ease-in-out;
+  -webkit-tap-highlight-color: transparent;
+}
+.ex-picker-filter-chip.active {
+  background: var(--seed-bg-brand-weak, var(--primary-bg));
+  border-color: var(--primary);
+  color: var(--primary);
+  font-weight: 700;
+}
+.ex-picker-filter-chip:active { transform: scale(0.96); }
+
+.ex-picker-filter-active-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  background: var(--primary-bg);
+  border-radius: var(--seed-r2);
+  font-size: 13px;
+  color: var(--text);
+}
+.ex-picker-filter-active-text { flex: 1; }
+.ex-picker-filter-reset { white-space: nowrap; }
+
 .ex-picker-group { margin-bottom: 14px; }
 .ex-picker-group-label {
   font-size: 11px; font-weight: 700; letter-spacing: 0.5px;
@@ -6268,6 +6313,44 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
   letter-spacing: -0.2px;
   opacity: 0.92;
 }
+
+/* Step 3 루틴 선택 — AI 추천 / 직접 선택 동등 비중 카드(TDS Tonal).
+   두 경로 모두 시각 무게 동일, 아이콘·라벨로만 구분. */
+.wt-routine-choice {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.wt-routine-card {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 16px 12px;
+  border: 1px solid var(--seed-stroke-weak);
+  border-radius: var(--seed-r3);
+  background: var(--seed-bg-fill, var(--surface2));
+  color: var(--text);
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform 0.1s ease-in-out, background 0.1s ease-in-out, border-color 0.1s ease-in-out;
+  min-height: 88px;
+  text-align: center;
+}
+.wt-routine-card:active {
+  transform: scale(0.98);
+  background: var(--primary-bg);
+  border-color: var(--primary);
+}
+.wt-routine-card:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.wt-routine-card-icon { font-size: 18px; margin-bottom: 4px; line-height: 1; }
+.wt-routine-card-title { font-weight: 700; font-size: 14px; line-height: 1.35; }
+.wt-routine-card-sub { font-size: 11px; line-height: 1.4; opacity: 0.7; margin-top: 2px; }
 
 /* AI CTA — TDS Primary 솔리드 */
 .wt-ai-cta {

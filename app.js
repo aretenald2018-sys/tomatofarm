@@ -178,6 +178,8 @@ async function switchTab(tab) {
   if (tab === 'workout') {
     loadWorkoutDate(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
     wtRecoverTimers();
+    // 탭 진입 시 프로 모드 뷰는 리셋 → 항상 일반 모드 뷰가 디폴트.
+    if (typeof window.resetExpertView === 'function') window.resetExpertView();
     if (typeof window.renderExpertTopArea === 'function') window.renderExpertTopArea();
   }
   if (tab === 'diet')     loadWorkoutDate(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());

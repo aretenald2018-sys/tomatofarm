@@ -612,23 +612,22 @@ export function _renderPickerList() {
   if (filterBadges.length > 0) {
     const banner = document.createElement('div');
     banner.className = 'ex-picker-filter-active-bar';
-    banner.style.cssText = 'display:flex; align-items:center; gap:8px; padding:8px 12px; margin-bottom:8px; background:var(--primary-bg); border-radius:10px; font-size:13px; color:var(--text);';
     banner.innerHTML =
-      `<span style="flex:1;">필터 적용: ${filterBadges.map(b => `<b>${b.label}</b>`).join(' · ')}</span>` +
-      `<button type="button" class="tds-btn tonal sm" onclick="window._wtResetAllPickerFilters()" style="white-space:nowrap;">필터 해제</button>`;
+      `<span class="ex-picker-filter-active-text">필터 적용: ${filterBadges.map(b => `<b>${b.label}</b>`).join(' · ')}</span>` +
+      `<button type="button" class="tds-btn tonal sm ex-picker-filter-reset" onclick="window._wtResetAllPickerFilters()">필터 해제</button>`;
     container.appendChild(banner);
   }
 
-  // 필터 칩 UI — 카테고리 있는 Exercise가 하나라도 있으면 "전체"+해당 카테고리들 표시
+  // 필터 칩 UI — 카테고리 있는 Exercise가 하나라도 있으면 "전체"+해당 카테고리들 표시.
+  // 상단 운동유형 탭(.wt-type-tab)과 클래스 분리 — 같은 DOM에 공존해도 스키마 간섭 없음.
   if (availableCats.size >= 1) {
     const chipBar = document.createElement('div');
     chipBar.className = 'ex-picker-filter-bar';
-    chipBar.style.cssText = 'display:flex; gap:6px; padding:8px 0 12px; overflow-x:auto; -webkit-overflow-scrolling:touch;';
     const allActive = _pickerCategoryFilter === null;
-    chipBar.innerHTML = `<button class="wt-type-tab${allActive?' active':''}" onclick="window._wtSetPickerCategoryFilter(null)">전체</button>` +
+    chipBar.innerHTML = `<button type="button" class="ex-picker-filter-chip${allActive?' active':''}" onclick="window._wtSetPickerCategoryFilter(null)">전체</button>` +
       EQUIPMENT_CATEGORIES
         .filter(c => availableCats.has(c.id))
-        .map(c => `<button class="wt-type-tab${_pickerCategoryFilter===c.id?' active':''}" onclick="window._wtSetPickerCategoryFilter('${c.id}')">${c.label}</button>`)
+        .map(c => `<button type="button" class="ex-picker-filter-chip${_pickerCategoryFilter===c.id?' active':''}" onclick="window._wtSetPickerCategoryFilter('${c.id}')">${c.label}</button>`)
         .join('');
     container.appendChild(chipBar);
   }

@@ -50,6 +50,12 @@ const _obState = {
 // false면 renderExpertTopArea 첫 호출에서 preset.preferMuscles / sessionMinutes / preferredRpe를 주입.
 let _stepperSeeded = false;
 
+// 세션 단위 뷰 상태 — 프로 모드 preset(enabled)은 유지하되,
+// 운동탭 진입 시 '일반 모드 뷰'가 디폴트로 보이도록 함.
+// true일 때만 상단 프로 카드(스테퍼) 렌더. 탭 재진입 시 resetExpertView()로 false 복귀.
+let _expertViewShown = false;
+export function resetExpertView() { _expertViewShown = false; }
+
 function _resetOnboardingState() {
   _obState.phase = 'wizard';
   _obState.step = 1;
@@ -85,8 +91,23 @@ export function renderExpertTopArea() {
     _renderInlineExpertPill();
     return;
   }
-  // 활성 상태 — 최상단 카드 표시, inline pill 숨김
   _renderInlineExpertPill();
+
+  // 일반 모드 뷰 (디폴트) — 프로 모드 preset은 유지하되 화면은 일반 헬스 흐름.
+  // 상단 세그먼트로 프로 모드 뷰 전환 가능. preset 자체는 건드리지 않음.
+  if (!_expertViewShown) {
+    _syncExpertFlowClass(false);
+    _syncStep3ReadyClass(false);
+    host.innerHTML = `
+      <div class="wt-mode-seg" role="tablist" aria-label="운동 모드">
+        <button type="button" class="wt-mode-seg-btn is-on" role="tab" aria-selected="true">일반 모드</button>
+        <button type="button" class="wt-mode-seg-btn" role="tab" aria-selected="false" onclick="wtExcShowExpertView()">프로 모드</button>
+      </div>
+    `;
+    return;
+  }
+
+  // 프로 모드 뷰 — 스테퍼 카드 노출
   _syncExpertFlowClass(true);
 
   // 랜딩 '쉬었어요/건강이슈' 제거 후 — 상태는 항상 'done'으로 간주.
@@ -109,12 +130,12 @@ export function renderExpertTopArea() {
 
   const bodyHtml = _renderExpertStepperBody({ currentGym, gymCount, exCount, insight, step1Done, hasRoutine, recent });
 
-  // 통합 TDS SegmentedControl — [프로 모드 | 일반 모드]로 토글 명확화.
+  // 통합 TDS SegmentedControl — [일반 모드 | 프로 모드]. 디폴트가 일반 모드라 좌측 배치.
   // 프로 모드에서는 기본적으로 '운동'을 하는 사용자이므로 쉬었어요/건강이슈/운동 세그먼트 제거.
   host.innerHTML = `
     <div class="wt-mode-seg" role="tablist" aria-label="운동 모드">
+      <button type="button" class="wt-mode-seg-btn" role="tab" aria-selected="false" onclick="wtExcSwitchToNormalView()">일반 모드</button>
       <button type="button" class="wt-mode-seg-btn is-on" role="tab" aria-selected="true">프로 모드</button>
-      <button type="button" class="wt-mode-seg-btn" role="tab" aria-selected="false" onclick="wtExcLeaveExpertMode()">일반 모드</button>
     </div>
     <div class="wt-exc" id="wt-expert-card">
       <div class="wt-exc-head">
@@ -376,18 +397,16 @@ function _renderExpertStepperBody({ currentGym, gymCount, exCount, insight, step
   const s3Class = hasRoutine ? 'is-done' : (canGenerate ? 'is-active' : '');
   const s3Dot = hasRoutine ? '✓' : '3';
   const step3Body = `
-    <div class="wt-routine-choice" style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-      <button class="wt-ai-cta" type="button" onclick="openRoutineCandidatesDirect()"${!canGenerate ? ' disabled' : ''}
-        style="padding:16px 12px; border-radius:14px; text-align:center;">
-        <div style="font-size:18px; margin-bottom:4px;">🤖</div>
-        <div style="font-weight:700; font-size:14px;">AI 추천</div>
-        <div style="font-size:11px; opacity:0.85; margin-top:2px;">부위·시간 기반</div>
+    <div class="wt-routine-choice">
+      <button class="wt-routine-card" type="button" onclick="openRoutineCandidatesDirect()"${!canGenerate ? ' disabled' : ''}>
+        <div class="wt-routine-card-icon">🤖</div>
+        <div class="wt-routine-card-title">AI 추천</div>
+        <div class="wt-routine-card-sub">부위·시간 기반</div>
       </button>
-      <button class="wt-manual-cta" type="button" onclick="wtOpenExercisePicker()"${!step1Done ? ' disabled' : ''}
-        style="padding:16px 12px; border-radius:14px; background:var(--seed-bg-fill,var(--surface2)); border:1px solid var(--border); color:var(--text); text-align:center;">
-        <div style="font-size:18px; margin-bottom:4px;">✍️</div>
-        <div style="font-weight:700; font-size:14px;">직접 선택</div>
-        <div style="font-size:11px; opacity:0.7; margin-top:2px;">내가 고를래요</div>
+      <button class="wt-routine-card" type="button" onclick="wtOpenExercisePicker()"${!step1Done ? ' disabled' : ''}>
+        <div class="wt-routine-card-icon">✍️</div>
+        <div class="wt-routine-card-title">직접 선택</div>
+        <div class="wt-routine-card-sub">내가 고를래요</div>
       </button>
     </div>
   `;
@@ -1564,8 +1583,19 @@ export async function expertOnbRemoveItem(idx) {
     showToast(`'${removed.name}' 제거됨`, 3000, 'success', {
       action: '실행 취소',
       onAction: async () => {
-        _obState.parsed.splice(i, 0, { ...removed, dbId: null });
-        // dbId는 복원 후 다시 저장되며 새로 발급됨
+        // 캡처된 i는 이후 다른 삭제/추가로 stale일 수 있음 → 현재 길이로 clamp.
+        const insertAt = Math.min(i, _obState.parsed.length);
+        const restoreEntry = { ...removed, dbId: null };
+        _obState.parsed.splice(insertAt, 0, restoreEntry);
+        // editing 재시프트: 삭제 때 인덱스가 당겨졌던 것을 되돌림 (insertAt 이상은 +1)
+        if (_obState.editing && _obState.editing.size > 0) {
+          const shifted = new Set();
+          for (const idxE of _obState.editing) {
+            shifted.add(idxE >= insertAt ? idxE + 1 : idxE);
+          }
+          _obState.editing = shifted;
+        }
+        // dbId는 복원 후 다시 저장되며 새로 발급됨 — 쓸 때 insertAt(식별자)으로 써야 이후 splice에 안 밀림
         try {
           const gymId = _obState.draftGymId || getExpertPreset().draftGymId;
           if (gymId && removed.movementId && removed.movementId !== 'unknown') {
@@ -1586,7 +1616,8 @@ export async function expertOnbRemoveItem(idx) {
                 gymId,
                 notes: '',
               });
-              _obState.parsed[i].dbId = exId;
+              // splice한 객체 레퍼런스에 직접 쓰기 (이후 추가 삭제/삽입에도 올바른 행에 붙음)
+              restoreEntry.dbId = exId;
             }
           }
         } catch (e) { console.warn('[remove-item undo] save fail:', e?.message || e); }
@@ -2240,19 +2271,23 @@ export async function routineCandidatesSelect() {
       candidateKey: cand.candidateKey,
       rationale: cand.rationale || '',
     };
-    S.exercises = (cand.items || []).map(it => {
-      const ex = exById[it.exerciseId];
-      return {
-        exerciseId: it.exerciseId,
-        muscleId: ex?.muscleId || 'chest',
-        name: ex?.name || it.exerciseId,
-        sets: (it.sets || []).map(s => ({
-          kg: 0, reps: s.reps || 10,
-          rpeTarget: s.rpeTarget || null,
-          setType: null, done: false,
-        })),
-      };
-    });
+    // template 재사용 경로와 동일하게 orphan(exerciseId가 DB에 없는 항목) 필터링 —
+    // stale candidate가 chest-기본 orphan row를 만들던 회귀 방지.
+    S.exercises = (cand.items || [])
+      .filter(it => exById[it.exerciseId])
+      .map(it => {
+        const ex = exById[it.exerciseId];
+        return {
+          exerciseId: it.exerciseId,
+          muscleId: ex?.muscleId || 'chest',
+          name: ex?.name || it.exerciseId,
+          sets: (it.sets || []).map(s => ({
+            kg: 0, reps: s.reps || 10,
+            rpeTarget: s.rpeTarget || null,
+            setType: null, done: false,
+          })),
+        };
+      });
     const { _renderExerciseList } = await import('./exercises.js');
     _renderExerciseList();
     // 즉시 persist — 새로고침/이탈해도 루틴 유지
@@ -2495,6 +2530,16 @@ window.insightsOpen = insightsOpen;
 window.insightsClose = insightsClose;
 window.gymEqClose = gymEqClose;
 window.renderExpertTopArea = renderExpertTopArea;
+window.resetExpertView = resetExpertView;
+// 일반 모드 뷰 ↔ 프로 모드 뷰 — preset.enabled 건드리지 않고 세션 상태만 토글.
+window.wtExcShowExpertView = () => {
+  _expertViewShown = true;
+  renderExpertTopArea();
+};
+window.wtExcSwitchToNormalView = () => {
+  _expertViewShown = false;
+  renderExpertTopArea();
+};
 // 개발자 디버그: 콘솔에서 __expertDebug() 호출
 window.__expertDebug = () => {
   const preset = getExpertPreset();
@@ -2996,21 +3041,10 @@ window.deleteCustomMuscleUi = async (id) => {
   if (!ok) return;
   try {
     await deleteCustomMuscle(id);
-    // preset 정리 — preferMuscles/avoidMuscles에 남아 있으면 AI 추천으로 유령 id가 흐름.
-    const preset = getExpertPreset() || {};
-    const nextPrefer = (preset.preferMuscles || []).filter(x => x !== id);
-    const nextAvoid  = (preset.avoidMuscles  || []).filter(x => x !== id);
-    if (nextPrefer.length !== (preset.preferMuscles || []).length
-     || nextAvoid.length  !== (preset.avoidMuscles  || []).length) {
-      await saveExpertPreset({ preferMuscles: nextPrefer, avoidMuscles: nextAvoid });
-      // 온보딩 state도 동기화 (열려 있는 경우)
-      try { _obState.preferMuscles.delete(id); _obState.avoidMuscles.delete(id); } catch {}
-    }
-    _renderCmmList();
-    _toast('삭제했어요', 'success');
-    if (typeof renderExpertTopArea === 'function') renderExpertTopArea();
+    _toast('부위 삭제 완료', 'success');
+    renderExpertTopArea();
   } catch (e) {
-    console.warn('[deleteCustomMuscleUi]:', e);
+    console.warn('[deleteCustomMuscle]:', e);
     _toast('삭제 실패', 'error');
   }
 };
