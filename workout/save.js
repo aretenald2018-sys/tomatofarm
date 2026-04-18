@@ -83,11 +83,14 @@ function _buildSavePayload(cleanEx, isDietSuccess) {
 
 // 각 활동 탭의 입력 데이터 유무로 boolean 플래그 자동 판정.
 // (랜딩 '쉬었어요/건강이슈' 제거 후 — 기록이 있으면 했다는 의미.)
+// 메모도 의도적 기록 신호로 포함 — "30분 조깅"만 메모에 남긴 케이스가 기록 없음으로
+// 처리되던 회귀를 막음. 공백만 있는 경우는 제외.
 function _autoDeriveActivityFlags() {
-  S.cf         = !!(S.cfData?.wod || S.cfData?.durationMin || S.cfData?.durationSec);
-  S.running    = !!(S.runData?.distance || S.runData?.durationMin || S.runData?.durationSec);
-  S.swimming   = !!(S.swimData?.distance || S.swimData?.durationMin || S.swimData?.durationSec);
-  S.stretching = !!(S.stretchData?.duration);
+  const _m = (v) => !!(v && String(v).trim());
+  S.cf         = !!(S.cfData?.wod || S.cfData?.durationMin || S.cfData?.durationSec || _m(S.cfData?.memo));
+  S.running    = !!(S.runData?.distance || S.runData?.durationMin || S.runData?.durationSec || _m(S.runData?.memo));
+  S.swimming   = !!(S.swimData?.distance || S.swimData?.durationMin || S.swimData?.durationSec || _m(S.swimData?.memo));
+  S.stretching = !!(S.stretchData?.duration || _m(S.stretchData?.memo));
 }
 
 // 탭 칩의 기록 힌트(has-record) 즉시 동기화 — 저장/상태 변경 후 호출.

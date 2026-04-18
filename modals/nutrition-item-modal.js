@@ -735,12 +735,14 @@ function _displayNutritionTextResult(data, langResult) {
     if (btn) { btn.disabled = true; btn.textContent = '저장 중...'; }
     try {
       const { saveNutritionItem } = await import('../data.js');
-      const entry = {
+      const { normalizeFromParse, serializeForStorage } = await import('../data/nutrition-normalize.js');
+      const parsedInput = {
         id: null,
         name,
-        unit: data.unit || '100g',
+        brand: data.brand || null,
         servingSize: data.servingSize || 100,
         servingUnit: data.servingUnit || 'g',
+        unit: data.unit || '100g',
         nutrition: {
           kcal: N(document.getElementById('ni-single-kcal').value),
           protein: N(document.getElementById('ni-single-protein').value),
@@ -750,13 +752,17 @@ function _displayNutritionTextResult(data, langResult) {
           sugar: N(data.nutrition?.sugar),
           sodium: N(data.nutrition?.sodium),
         },
+        _source: 'text',
+      };
+      const canonical = normalizeFromParse(parsedInput);
+      const entry = serializeForStorage(canonical, {
         notes: '텍스트 파싱 (단일)',
         source: 'text',
         language: data.language || 'ko',
         confidence: data.confidence || 0.8,
         photoUrl: null,
         rawText: data.rawText || null,
-      };
+      });
       await saveNutritionItem(entry);
       window.showToast?.('저장 완료', 2500, 'success');
       closeNutritionItemModal();
@@ -884,15 +890,17 @@ async function _saveMultipleItems(items, saveBtnId) {
 
   try {
     const { saveNutritionItem } = await import('../data.js');
+    const { normalizeFromParse, serializeForStorage } = await import('../data/nutrition-normalize.js');
     let savedCount = 0;
 
     for (const item of toSave) {
-      const entry = {
+      const parsedInput = {
         id: null,
         name: item.name || '미확인 제품',
-        unit: item.unit || '100g',
+        brand: item.brand || null,
         servingSize: item.servingSize || 100,
         servingUnit: item.servingUnit || 'g',
+        unit: item.unit || '100g',
         nutrition: {
           kcal: item.nutrition?.kcal || 0,
           protein: item.nutrition?.protein || 0,
@@ -902,13 +910,17 @@ async function _saveMultipleItems(items, saveBtnId) {
           sugar: item.nutrition?.sugar || 0,
           sodium: item.nutrition?.sodium || 0,
         },
+        _source: item._source || 'ocr',
+      };
+      const canonical = normalizeFromParse(parsedInput);
+      const entry = serializeForStorage(canonical, {
         notes: `복수 파싱 (${toSave.length}개 중 ${savedCount + 1}번째)`,
         source: item._source || 'ocr',
         language: item.language || 'ko',
         confidence: item.confidence || 0.8,
         photoUrl: item.photoUrl || null,
         rawText: item.rawText || null, // provenance 보존
-      };
+      });
       await saveNutritionItem(entry);
       savedCount++;
     }
@@ -930,16 +942,4 @@ async function _saveMultipleItems(items, saveBtnId) {
 }
 
 // ═════════════════════════════════════════════════════════════
-// Window 전역 등록 (HTML onclick에서 호출 가능하도록)
-// ═════════════════════════════════════════════════════════════
-
-if (typeof window !== 'undefined') {
-  window.switchNutritionTab = switchNutritionTab;
-  window.handleNutritionPhotoSelect = handleNutritionPhotoSelect;
-  window.clearNutritionPhoto = clearNutritionPhoto;
-  window.analyzeNutritionText = analyzeNutritionText;
-  window.openNutritionItemEditor = openNutritionItemEditor;
-  window.closeNutritionItemModal = closeNutritionItemModal;
-  window.saveNutritionItemFromModal = saveNutritionItemFromModal;
-  window.deleteNutritionItemFromModal = deleteNutritionItemFromModal;
-}
+// Window

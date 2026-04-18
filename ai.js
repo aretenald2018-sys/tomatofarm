@@ -905,6 +905,9 @@ export async function parseEquipmentFromText(rawText, movements) {
 
   // 최종 스키마로 정규화 (리뷰 화면이 기대하는 필드 맞춤)
   // Hybrid C: 멀티퍼포스 기구(랙/스미스/벤치 등)는 여러 row로 확장.
+  // ⚠ 패턴 매칭을 분류 결과보다 선행시킴 — "파워랙"이 우연히 한 alias(예: squat)에 걸려
+  //    single mapped로 떨어지면 false precision이 됨. 이름이 멀티퍼포스 패턴에 맞으면
+  //    분류와 무관하게 확장.
   const out = [];
   classified.forEach((x, i) => {
     const c = x.classification;
@@ -916,11 +919,9 @@ export async function parseEquipmentFromText(rawText, movements) {
       maxKg: w.maxKg,
       incKg: w.incKg,
     };
-    // 멀티퍼포스 확장 시도 — unsupported 분류 중 랙/스미스/벤치 같은 보조장비가 타겟.
-    if (c.state === 'unsupported') {
-      const expanded = _expandMultiPurposeItem(base, movements, w);
-      if (expanded && expanded.length > 0) { out.push(...expanded); return; }
-    }
+    // 선행: 이름이 멀티퍼포스 패턴에 맞으면 분류 결과와 무관하게 확장.
+    const expanded = _expandMultiPurposeItem(base, movements, w);
+    if (expanded && expanded.length > 0) { out.push(...expanded); return; }
     out.push({
       ...base,
       weightUnit: 'kg',
@@ -987,11 +988,10 @@ JSON 배열 스키마:
       incKg: num(x.incKg),
     };
     const movId = x.movementId || 'unknown';
-    // AI가 움직임 매핑을 못하면(unknown) 이름 기반으로 멀티퍼포스 확장 시도.
-    if (!movId || movId === 'unknown') {
-      const expanded = _expandMultiPurposeItem(base, movements, { maxKg: base.maxKg, incKg: base.incKg });
-      if (expanded && expanded.length > 0) { out.push(...expanded); continue; }
-    }
+    // 선행: 이름이 멀티퍼포스 패턴에 맞으면 AI movementId와 무관하게 확장.
+    // (AI가 우연히 한 movementId에 매핑했어도, 실제로는 다목적 기구임을 이름이 말해줌.)
+    const expanded = _expandMultiPurposeItem(base, movements, { maxKg: base.maxKg, incKg: base.incKg });
+    if (expanded && expanded.length > 0) { out.push(...expanded); continue; }
     out.push({
       ...base,
       weightUnit: 'kg',
