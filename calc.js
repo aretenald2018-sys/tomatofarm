@@ -600,8 +600,8 @@ export function getVolumeHistoryMulti(cache, exerciseIds) {
  * 반환: { back_width: 5, back_thickness: 14, ... }
  */
 export function calcBalanceByPattern(cache, exList, movements, weekRange) {
-  if (!cache || !exList?.length || !movements?.length) return {};
-  const movById   = new Map(movements.map(m => [m.id, m]));
+  if (!cache || !exList?.length) return {};
+  const movById   = new Map((movements || []).map(m => [m.id, m]));
   const exByExId  = new Map(exList.map(e => [e.id, e]));
   const { fromKey, toKey } = weekRange || {};
   const out = {};
@@ -611,9 +611,23 @@ export function calcBalanceByPattern(cache, exList, movements, weekRange) {
     if (toKey   && key > toKey)   continue;
     for (const entry of (day.exercises || [])) {
       const ex = exByExId.get(entry.exerciseId);
-      if (!ex?.movementId) continue;
-      const mov = movById.get(ex.movementId);
-      if (!mov?.subPattern) continue;
+      // 2026-04-19: 자극 부위 결정 우선순위 — muscleIds[0] (주동근) > movement.subPattern.
+      // 유저가 칩 에디터에서 직접 편집한 muscleIds 값을 존중. 없으면 movementId 폴백.
+      // 2026-04-20: exList에서 사라진 종목(삭제됨)이나 커스텀 종목도 포함되도록
+      //             entry 자체의 스냅샷 필드(muscleIds/movementId)를 fallback으로 사용.
+      //             저장 시 _cleanExercises가 스냅샷을 찍어둠. (Codex 지적 #3)
+      const muscleIds = (ex && Array.isArray(ex.muscleIds) && ex.muscleIds.length)
+        ? ex.muscleIds
+        : (Array.isArray(entry.muscleIds) ? entry.muscleIds : []);
+      const movementId = ex?.movementId || entry.movementId || null;
+      let subPattern = null;
+      if (muscleIds.length > 0) {
+        subPattern = muscleIds[0];
+      } else if (movementId) {
+        const mov = movById.get(movementId);
+        if (mov?.subPattern) subPattern = mov.subPattern;
+      }
+      if (!subPattern) continue;
       const workSets = (entry.sets || []).filter(s => {
         if (s.setType === 'warmup') return false;
         if (s.done === true) return true;
@@ -621,7 +635,7 @@ export function calcBalanceByPattern(cache, exList, movements, weekRange) {
         return (s.kg || 0) > 0 && (s.reps || 0) > 0;
       }).length;
       if (workSets > 0) {
-        out[mov.subPattern] = (out[mov.subPattern] || 0) + workSets;
+        out[subPattern] = (out[subPattern] || 0) + workSets;
       }
     }
   }

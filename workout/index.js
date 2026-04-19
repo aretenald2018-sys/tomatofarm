@@ -50,6 +50,8 @@ import { _initRestTimerPresets }                   from './timers.js';
 import { _initRunningEvents }                      from './activity-forms.js';
 import { _initTypeFormEvents }                     from './activity-forms.js';
 import { confirmAction }                           from '../utils/confirm-modal.js';
+import { S }                                       from './state.js';
+import { dateKey }                                 from '../data.js';
 
 // ── window.* 등록 (HTML onclick 연결) ───────────────────────────
 window.wtToggleMealSkipped = wtToggleMealSkipped;
@@ -82,14 +84,23 @@ window.wtEndAndShowInsights = async () => {
   });
   if (!ok) return;
   // 저장이 끝난 뒤에만 insights 열기 — 당일 기록이 cache/Firestore에 확실히 반영된 상태.
+  // 2026-04-20: 저장 실패 시 인사이트 모달을 열지 않는다 (Codex 지적 #1).
+  //             실패하면 save.js에서 이미 error toast를 띄웠으므로 여기서는 조용히 종료.
+  // 2026-04-20: 세션 날짜(sessionKey)를 insightsOpen 에 전달 (Codex 지적 #2).
+  //             TODAY 고정값 대신 사용자가 기록한 실제 날짜로 주/오늘 범위 계산.
+  //             과거 날짜 편집이나 자정을 넘긴 세션에서도 정확히 반영.
+  const sessionKey = S.date ? dateKey(S.date.y, S.date.m, S.date.d) : null;
   try {
     const savePromise = wtFinishWorkout();
     if (savePromise && typeof savePromise.then === 'function') {
       await savePromise;
     }
-  } catch (e) { console.warn('[wtEndAndShowInsights.finish]:', e); }
+  } catch (e) {
+    console.warn('[wtEndAndShowInsights.finish] 저장 실패 — 인사이트 모달 열지 않음:', e);
+    return;
+  }
   try {
-    if (typeof window.insightsOpen === 'function') await window.insightsOpen();
+    if (typeof window.insightsOpen === 'function') await window.insightsOpen(sessionKey);
   } catch (e) { console.warn('[wtEndAndShowInsights.insights]:', e); }
 };
 window.wtRestTimerStart = wtRestTimerStart;

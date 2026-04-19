@@ -6,7 +6,8 @@ import { S }                        from './state.js';
 import { showCenterToast }          from '../home/utils.js';
 import { saveDay, dateKey, isFuture,
          getDietPlan, getDayTargetKcal,
-         isDietDaySuccess, trackEvent } from '../data.js';
+         isDietDaySuccess, trackEvent,
+         getExList } from '../data.js';
 
 // 미래 날짜 저장 가드 — 어떤 경로로든 미래 날짜 쓰기 금지 (B-3).
 // - UI disable을 우회하는 onclick/자동저장/스크립트 호출을 한 번 더 차단.
@@ -137,13 +138,29 @@ function _refreshTabDots() {
 }
 
 function _cleanExercises(includeNotes) {
+  // 2026-04-20: 저장 시점에 exList에서 movementId/muscleIds 를 스냅샷.
+  // 배경: 종목이 이후 exList에서 삭제되거나 muscleIds가 바뀌어도, 그 날짜의
+  //       balance/trend 계산이 원본 종목의 자극 부위를 복원할 수 있어야 함.
+  //       (Codex 지적: calcBalanceByPattern 이 exList 에 없는 exerciseId 를 건너뛰어
+  //        삭제 종목·커스텀 종목이 자극 균형에서 누락되던 회귀.)
+  const exById = new Map((getExList() || []).map(e => [e.id, e]));
   return S.exercises
-    .map(e => ({
-      ...e,
-      // done=true 체크된 세트는 kg/reps가 0이어도 보존.
-      // 체중 맨몸/무중량 운동 또는 기록 누락 케이스에서 streak 손실 방지.
-      sets: e.sets.filter(s => s && (s.done === true || (s.kg || 0) > 0 || (s.reps || 0) > 0)),
-    }))
+    .map(e => {
+      const lib = exById.get(e.exerciseId);
+      const movementId = e.movementId || lib?.movementId || null;
+      const muscleIds  = Array.isArray(e.muscleIds) && e.muscleIds.length
+        ? e.muscleIds
+        : (Array.isArray(lib?.muscleIds) ? lib.muscleIds : []);
+      return {
+        ...e,
+        // muscleIds/movementId 스냅샷 (없으면 null/[] — 과거 데이터 호환)
+        movementId,
+        muscleIds,
+        // done=true 체크된 세트는 kg/reps가 0이어도 보존.
+        // 체중 맨몸/무중량 운동 또는 기록 누락 케이스에서 streak 손실 방지.
+        sets: e.sets.filter(s => s && (s.done === true || (s.kg || 0) > 0 || (s.reps || 0) > 0)),
+      };
+    })
     .filter(e => e.sets.length > 0 || (includeNotes && e.note));
 }
 
@@ -163,6 +180,12 @@ function _computeDietSuccess(cleanEx) {
 }
 
 // ── 명시적 저장 ──────────────────────────────────────────────────
+// 2026-04-20: Firebase 저장 실패를 호출자에게 전파 (Codex 지적 사항 #1).
+// 기존엔 `_fbOp`이 예외를 삼켜서 실제 저장 실패 + 성공 토스트 + 인사이트 모달이
+// 동시에 뜨는 거짓말 경로가 있었음. 이제:
+//   - saveDay(..., { rethrow: true }) 로 호출 → 실패 시 throw
+//   - 실패 시 error toast + rethrow → wtFinishWorkout/wtEndAndShowInsights 경로에서 catch
+//   - 성공 시 저장 완료 토스트 + sheet:saved 디스패치 (기존 동작 유지)
 export async function saveWorkoutDay() {
   if (!S.date) return;
   if (_blockIfFutureDate()) return;
@@ -188,7 +211,14 @@ export async function saveWorkoutDay() {
   if (btn) { btn.disabled = true; btn.textContent = '저장 중...'; }
 
   const payload = _buildSavePayload(cleanEx, isDietSuccess);
-  await saveDay(dateKey(y, m, d), payload);
+  try {
+    await saveDay(dateKey(y, m, d), payload, { rethrow: true });
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = '저장'; }
+    console.error('[workout/save] saveWorkoutDay 실패:', e);
+    window.showToast?.('저장 실패 — 네트워크를 확인해주세요', 2800, 'error');
+    throw e;
+  }
 
   // analytics 계측
   if (cleanEx.length > 0 || S.cf || S.swimming || S.running) {
@@ -229,7 +259,7 @@ export async function _autoSaveDiet() {
 
   try {
     const payload = _buildSavePayload(cleanEx, isDietSuccess);
-    await saveDay(dateKey(y, m, d), payload);
+    await saveDay(dateKey(y, m, d), payload, { rethrow: true });
 
     // analytics 계측
     const totalFoods = (S.diet.bFoods?.length || 0) + (S.diet.lFoods?.length || 0)

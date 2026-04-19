@@ -2463,9 +2463,62 @@ function _scrollToFirstExerciseSet() {
 
 let _lastInsightSnapshot = null;
 
-export async function insightsOpen() {
+// 2026-04-20: 주어진 dateKey 기준 "이번 주" 범위(월~해당일).
+// 과거 날짜나 자정 넘긴 세션에서도 정확한 범위를 계산하려면 sessionKey를 입력받아야 함.
+function _weekRangeForKey(baseKey) {
+  if (!baseKey || !/^\d{4}-\d{2}-\d{2}$/.test(baseKey)) return _weekRange();
+  const [y, m, d] = baseKey.split('-').map(Number);
+  const today = new Date(y, m - 1, d);
+  const dow = today.getDay() || 7;
+  const from = new Date(today); from.setDate(today.getDate() - dow + 1);
+  const toKey = baseKey;
+  const fromKey = dateKey(from.getFullYear(), from.getMonth(), from.getDate());
+  return { fromKey, toKey };
+}
+
+// 2026-04-20: 추세/PR 카드의 "관련성" 정렬 (Codex 지적 #4).
+//   우선순위: (a) 오늘 세션에 등장한 종목 → (b) 이번 주 세션에 등장한 종목 → (c) 기타 exList.
+//   하체 세션 직후에도 상체 종목이 먼저 뜨던 회귀 방지.
+function _rankExListByRelevance(exList, cache, sessionKey, range) {
+  const day = sessionKey ? cache?.[sessionKey] : null;
+  const todaysIds = new Set();
+  if (day?.exercises) {
+    for (const entry of day.exercises) {
+      if (entry?.exerciseId) todaysIds.add(entry.exerciseId);
+    }
+  }
+  const weekIds = new Set();
+  if (range?.fromKey && range?.toKey && cache) {
+    for (const [key, d] of Object.entries(cache)) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) continue;
+      if (key < range.fromKey || key > range.toKey) continue;
+      for (const entry of (d?.exercises || [])) {
+        if (entry?.exerciseId) weekIds.add(entry.exerciseId);
+      }
+    }
+  }
+  const score = (ex) => {
+    if (!ex?.id) return 9;
+    if (todaysIds.has(ex.id)) return 0;
+    if (weekIds.has(ex.id))  return 1;
+    return 2;
+  };
+  // 원래 순서를 보존하는 안정 정렬
+  return [...exList].map((ex, i) => ({ ex, i })).sort((a, b) => {
+    const s = score(a.ex) - score(b.ex);
+    return s !== 0 ? s : a.i - b.i;
+  }).map(x => x.ex);
+}
+
+// 오늘 세션 날짜(sessionKey)를 인자로 받아 과거 날짜/자정 경계에서도 정확히 반영.
+// 기본값은 TODAY → 기존 메뉴 오픈 경로 호환.
+export async function insightsOpen(sessionKey) {
   _openModal('insights-modal');
-  const range = _weekRange();
+  // 2026-04-20: TODAY 고정값 대신 호출자가 넘긴 sessionKey를 우선 사용 (Codex 지적 #2).
+  const today = (sessionKey && /^\d{4}-\d{2}-\d{2}$/.test(sessionKey))
+    ? sessionKey
+    : dateKey(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
+  const range = _weekRangeForKey(today);
   const rangeEl = document.getElementById('insights-range');
   if (rangeEl) rangeEl.textContent = `${_prettyDate(range.fromKey)} - ${_prettyDate(range.toKey)}`;
   const content = document.getElementById('insights-content');
@@ -2482,26 +2535,26 @@ export async function insightsOpen() {
   // gym을 떠나서 전체 종목 라이브러리를 참조해 오늘의 세트를 반드시 포함시킨다.
   // 참고: picker/루틴 생성은 여전히 _resolveCurrentGymId()로 헬스장 범위를 존중.
   const exList = getExList();
+  // 2026-04-20: relevance-sorted 리스트 — 오늘 운동한 종목 우선 (Codex 지적 #4).
+  const rankedExList = _rankExListByRelevance(exList, cache, today, range);
   const bal = _rawCalcBal(cache, exList, MOVEMENTS, range);
 
   // 이번 주 ─────────────────────────────────────────────────────
   const entries = Object.entries(bal).sort((a,b) => b[1]-a[1]);
   const maxSets = Math.max(1, ...entries.map(([,v]) => v));
-  const prs = _collectThisWeekPRs(exList, range);
+  const prs = _collectThisWeekPRs(rankedExList, range);
   const progressPct = _calcProgressPct(exList);
 
   // 오늘 ───────────────────────────────────────────────────────
   // 오늘 운동: 부위별 세트 수, 총 볼륨(kg×reps), 총 운동시간, PR 여부
   // 오늘 자극 균형: 오늘만의 subPattern 카운트 (calcBalanceByPattern 날짜 1일)
-  // 주의: TODAY는 Date 객체. cache/dateKey 범위/prDate 비교/diet 서머리 모두 YYYY-MM-DD
-  // 문자열 기준이므로 여기서 dateKey로 변환해 사용한다. (2026-04-19: TODAY/dateKey 혼용 버그 수정)
-  const today = dateKey(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
   const todayRange = { fromKey: today, toKey: today };
   const todayBal = _rawCalcBal(cache, exList, MOVEMENTS, todayRange);
   const todayBalEntries = Object.entries(todayBal).sort((a,b) => b[1]-a[1]);
   const todayMaxSets = Math.max(1, ...todayBalEntries.map(([,v]) => v));
   const todayStats = _calcTodayStats(cache, exList, today);
-  const todayPRs = _collectTodayPRs(exList, today);
+  // PR/trend는 relevance-sorted 리스트 기반 (Codex 지적 #4).
+  const todayPRs = _collectTodayPRs(rankedExList, today);
 
   // 최근 3일 식단 ─────────────────────────────────────────────
   const recentDiet = _collect3DayDietSummary(cache, today);
@@ -2533,7 +2586,7 @@ export async function insightsOpen() {
       ${entries.length ? `<div style="font-size:11px; color:#87878e; margin-top:8px; line-height:16px;">💡 <b style="color:#fa342c;">${_weakestLabel(entries)}</b>이(가) 부족해요. 다음 세션 추천에 자동 반영합니다.</div>` : ''}
     </div>
     <div class="section-label">이번 주 · 주요 종목 추세</div>
-    ${_renderTrendCards(exList)}
+    ${_renderTrendCards(rankedExList)}
     ${prs.length ? `<div class="section-label">이번 주 PR</div>${prs.map(p => `
       <div class="pr-row">
         <div class="pr-icon">🏆</div>
@@ -2610,19 +2663,63 @@ export async function insightsOpen() {
     </div>
   `;
 
-  // AI 공유 버튼을 위한 요약 텍스트 스냅샷 저장
-  _lastInsightSnapshot = _buildInsightTextSnapshot({
-    range, weekBalance: entries, weekPRs: prs, progressPct,
-    today, todayStats, todayBalance: todayBalEntries, todayPRs, recentDiet,
-  });
+  // 공유 모드 세그먼트를 현재 전역 상태로 동기화 (모달 재오픈 시 UI 반영)
+  insightsSetShareMode(window.insightsShareMode || 'summary');
+
+  // AI 공유 버튼을 위한 스냅샷 저장 (요약 + 상세 2가지 모드)
+  // 상세(detail) 모드는 세션 raw 세트 로그를 포함해 AI가 실제 훈련량에 근거한
+  // 피드백을 줄 수 있게 함 (Codex 지적 #5 — 요약/상세 분리, raw 세트 로그 포함).
+  _lastInsightSnapshot = {
+    summary: _buildInsightTextSnapshot({
+      range, weekBalance: entries, weekPRs: prs, progressPct,
+      today, todayStats, todayBalance: todayBalEntries, todayPRs, recentDiet,
+    }),
+    detail: _buildInsightDetailSnapshot({
+      range, weekBalance: entries, weekPRs: prs, progressPct,
+      today, todayStats, todayBalance: todayBalEntries, todayPRs, recentDiet,
+      cache, exList,
+    }),
+  };
 }
 export function insightsClose() { _closeModal('insights-modal'); }
+
+// 2026-04-20: AI 공유 모드 세그먼트 토글 (요약/상세). window.insightsShareMode 전역에 저장.
+//   onclick 핸들러가 현재 모드를 읽어 provider 버튼을 누를 때 대응되는 본문을 복사.
+export function insightsSetShareMode(mode) {
+  const next = mode === 'detail' ? 'detail' : 'summary';
+  window.insightsShareMode = next;
+  const seg = document.getElementById('ai-share-mode-seg');
+  if (seg) {
+    seg.querySelectorAll('.ai-share-mode-btn').forEach(btn => {
+      btn.classList.toggle('on', btn.dataset.mode === next);
+    });
+  }
+  const hint = document.getElementById('ai-share-mode-hint');
+  if (hint) {
+    hint.textContent = next === 'detail'
+      ? '오늘 세션 세트 로그 + JSON 포함 — AI가 숫자 기준으로 피드백합니다.'
+      : '주간 상위 부위 · PR · 최근 식단을 짧게 요약합니다.';
+  }
+}
 
 // ── AI 공유 (클립보드 복사 + 앱/웹 열기) ──
 // 버튼 클릭 시 최근 스냅샷을 클립보드에 복사하고 AI 웹/앱 홈으로 이동.
 // 딥링크는 각 AI의 공식 웹 도메인 — 대부분의 경우 OS가 설치된 앱으로 자동 리다이렉트.
-export async function insightsShareToAI(provider) {
-  const text = _lastInsightSnapshot || _buildInsightTextSnapshot(null);
+// 2026-04-20: mode 파라미터 추가 ('summary' | 'detail') — Codex 지적 #5.
+//   summary: 기존 요약 — 주간 상위 부위/PR, 오늘 총계, 최근 3일 식단.
+//   detail : 주간은 요약, 오늘 세션은 raw (종목별 세트 로그 + JSON 블록).
+//            AI 프롬프트 끝에 "로그를 그대로 근거로 피드백" 고정 지시 포함.
+export async function insightsShareToAI(provider, mode = 'summary') {
+  const snapshot = _lastInsightSnapshot;
+  let text;
+  if (snapshot && typeof snapshot === 'object' && 'summary' in snapshot) {
+    text = (mode === 'detail' ? snapshot.detail : snapshot.summary)
+      || snapshot.summary
+      || '인사이트 데이터 없음';
+  } else {
+    // 레거시 경로 호환 — 과거 _lastInsightSnapshot 이 문자열이었던 시점 대비.
+    text = (typeof snapshot === 'string' && snapshot) || '인사이트 데이터 없음';
+  }
   const urls = {
     gemini:  'https://gemini.google.com/app',
     chatgpt: 'https://chat.openai.com/',
@@ -2640,7 +2737,8 @@ export async function insightsShareToAI(provider) {
       document.execCommand('copy');
       document.body.removeChild(ta);
     }
-    _toast('인사이트 복사 완료 — AI 앱에 붙여넣으세요', 'success');
+    const label = mode === 'detail' ? '상세 로그' : '요약';
+    _toast(`${label} 복사 완료 — AI 앱에 붙여넣으세요`, 'success');
   } catch (e) {
     console.warn('[insights-share] clipboard fail:', e?.message || e);
     _toast('복사 실패 — 브라우저 권한을 확인해주세요', 'error');
@@ -2756,6 +2854,140 @@ function _buildInsightTextSnapshot(ctx) {
   lines.push('');
   lines.push(`---`);
   lines.push(`이 데이터를 기반으로 오늘/이번 주 운동·식단에 대한 피드백과 내일 개선안을 알려줘.`);
+  return lines.join('\n');
+}
+
+// 2026-04-20: AI "상세 복사" — Codex 지적 #5.
+//   주간은 요약, 오늘 세션은 raw 로그(세트 단위). 마크다운 + JSON 혼합 포맷.
+//   AI가 총계만 보고 재추상화하는 것을 막기 위해 프롬프트 말미에 고정 지시를 덧붙임.
+function _buildInsightDetailSnapshot(ctx) {
+  if (!ctx) return '인사이트 데이터 없음';
+  const { today, cache, exList } = ctx;
+  const day = cache?.[today];
+  const exById = new Map((exList || []).map(e => [e.id, e]));
+  const lines = [];
+
+  // ── 헤더 ────────────────────────────────────────────
+  lines.push(`# 🍅 토마토팜 인사이트 (상세)`);
+  lines.push(`범위: ${_prettyDate(ctx.range.fromKey)} ~ ${_prettyDate(ctx.range.toKey)}`);
+  lines.push('');
+
+  // ── 주간 요약 ────────────────────────────────────────
+  lines.push(`## 이번 주 요약`);
+  lines.push(`- 무게 변화 평균: ${ctx.progressPct >= 0 ? '+' : ''}${ctx.progressPct}%`);
+  if (ctx.weekBalance.length > 0) {
+    lines.push(`- 부위별 세트 (상위 6):`);
+    for (const [sp, v] of ctx.weekBalance.slice(0, 6)) {
+      lines.push(`  · ${_subPatternLabel(sp)} ${v}세트`);
+    }
+  } else {
+    lines.push(`- 주간 운동 기록 없음`);
+  }
+  if (ctx.weekPRs.length > 0) {
+    lines.push(`- 주간 PR: ${ctx.weekPRs.map(p => `${p.name} ${p.prKg}kg×${p.prReps}회 (+${p.diff}kg)`).join(', ')}`);
+  }
+  lines.push('');
+
+  // ── 오늘 세션 raw ───────────────────────────────────
+  lines.push(`## 오늘 세션 (${_prettyDate(today)})`);
+  lines.push(`운동 시간: ${_fmtDuration(ctx.todayStats.duration)}`);
+  lines.push(`총 세트: ${ctx.todayStats.totalSets}  ·  총 볼륨: ${ctx.todayStats.totalVolume.toLocaleString()} kg·회`);
+  if (ctx.todayBalance.length > 0) {
+    lines.push(`오늘 자극 부위: ${ctx.todayBalance.map(([sp, v]) => `${_subPatternLabel(sp)} ${v}`).join(' / ')}`);
+  }
+  lines.push('');
+
+  const entries = day?.exercises || [];
+  if (entries.length === 0) {
+    lines.push(`_오늘 종목 기록 없음_`);
+  } else {
+    lines.push(`### 종목별 로그`);
+    const structuredEntries = [];
+    entries.forEach((entry, idx) => {
+      const lib = exById.get(entry.exerciseId);
+      const name = lib?.name || entry.name || entry.exerciseId;
+      const muscleIds = (Array.isArray(entry.muscleIds) && entry.muscleIds.length)
+        ? entry.muscleIds
+        : (Array.isArray(lib?.muscleIds) ? lib.muscleIds : []);
+      const movementId = entry.movementId || lib?.movementId || null;
+      const sets = (entry.sets || []).map((s, i) => ({
+        setNo: i + 1,
+        setType: s.setType || 'main',
+        done: s.done === true,
+        kg: Number(s.kg) || 0,
+        reps: Number(s.reps) || 0,
+        volume: (Number(s.kg) || 0) * (Number(s.reps) || 0),
+        rpe: s.rpe ?? null,
+      }));
+      const metaBits = [`exerciseId: ${entry.exerciseId}`];
+      if (movementId) metaBits.push(`movementId: ${movementId}`);
+      if (muscleIds.length > 0) metaBits.push(`muscles: ${muscleIds.join(',')}`);
+      lines.push(`${idx + 1}. ${name} (${metaBits.join(' · ')})`);
+      sets.forEach(s => {
+        const typeLabel = s.setType !== 'main' ? ` [${s.setType}]` : '';
+        const check = s.done ? '✓' : '·';
+        const rpe = s.rpe != null ? ` RPE ${s.rpe}` : '';
+        lines.push(`   ${check} Set ${s.setNo}${typeLabel} ${s.kg}kg × ${s.reps}회${rpe}`);
+      });
+      const workSets = sets.filter(s => s.setType !== 'warmup' && (s.done || (s.kg > 0 && s.reps > 0)));
+      if (workSets.length > 0) {
+        const top = workSets.reduce((a, b) => (a.kg >= b.kg ? a : b));
+        const vol = workSets.reduce((acc, s) => acc + s.volume, 0);
+        lines.push(`   _요약: workSets ${workSets.length} · topSet ${top.kg}kg×${top.reps} · volume ${Math.round(vol).toLocaleString()}_`);
+      }
+      structuredEntries.push({
+        order: idx + 1,
+        exerciseId: entry.exerciseId,
+        name,
+        movementId,
+        muscleIds,
+        note: entry.note || null,
+        sets,
+      });
+    });
+
+    // JSON 블록 — AI가 정확한 숫자로 읽을 수 있도록.
+    lines.push('');
+    lines.push(`### 세션 JSON`);
+    lines.push('```json');
+    lines.push(JSON.stringify({
+      sessionDate: today,
+      weekRange: ctx.range,
+      gymId: day?.gymId || null,
+      durationSec: ctx.todayStats.duration,
+      totalSets: ctx.todayStats.totalSets,
+      totalVolume: ctx.todayStats.totalVolume,
+      routineMeta: day?.routineMeta || null,
+      exercises: structuredEntries,
+    }, null, 2));
+    lines.push('```');
+  }
+
+  if (ctx.todayPRs.length > 0) {
+    lines.push('');
+    lines.push(`### 오늘 PR`);
+    for (const p of ctx.todayPRs) {
+      lines.push(`- ${p.name} ${p.prKg}kg × ${p.prReps}회 (+${p.diff}kg)`);
+    }
+  }
+
+  // ── 최근 3일 식단 ───────────────────────────────────
+  lines.push('');
+  lines.push(`## 최근 3일 식단`);
+  for (const d of ctx.recentDiet) {
+    if (d.kcal > 0) {
+      lines.push(`- ${_prettyDate(d.dateKey)}: ${d.kcal}kcal · P${d.protein} C${d.carbs} F${d.fat}`);
+    } else {
+      lines.push(`- ${_prettyDate(d.dateKey)}: 기록 없음`);
+    }
+  }
+
+  // ── 고정 프롬프트 ───────────────────────────────────
+  lines.push('');
+  lines.push(`---`);
+  lines.push(`위 종목명/세트 로그를 다시 추상화하지 말고, 적힌 숫자를 근거로`);
+  lines.push(`(1) 오늘 세션에 대한 피드백, (2) 이번 주 자극 균형 관점의 보완점,`);
+  lines.push(`(3) 다음 세션 증량/세트 조정안을 종목 단위로 구체적으로 제안해줘.`);
   return lines.join('\n');
 }
 
@@ -2937,6 +3169,9 @@ window.routineCandidatesSelect = routineCandidatesSelect;
 window.insightsOpen = insightsOpen;
 window.insightsClose = insightsClose;
 window.insightsShareToAI = insightsShareToAI;
+window.insightsSetShareMode = insightsSetShareMode;
+// 기본 모드: summary. insightsOpen 호출 시 DOM 세그먼트와 동기화.
+if (typeof window.insightsShareMode !== 'string') window.insightsShareMode = 'summary';
 window.gymEqClose = gymEqClose;
 window.renderExpertTopArea = renderExpertTopArea;
 window.resetExpertView = resetExpertView;

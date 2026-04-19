@@ -165,8 +165,10 @@ export function wtFinishWorkout() {
   const bar = document.getElementById('wt-workout-timer-bar');
   if (bar) bar.classList.remove('wt-running');
   showCenterToast(`운동 완료! ${_fmtDuration(S.workoutDuration)}`, 2200);
-  // 반환값이 saveWorkoutDay의 Promise — 호출자가 await 할 수 있도록.
-  return saveWorkoutDay().catch(e => { console.error('Save error:', e); });
+  // 2026-04-20: 저장 실패가 상위로 전파되도록 .catch 제거 (Codex 지적 #1).
+  //   기존엔 여기서 swallow → wtEndAndShowInsights가 인사이트 모달을 성공처럼 오픈.
+  //   이제는 saveWorkoutDay가 throw 하면 wtEndAndShowInsights가 catch하여 모달을 막음.
+  return saveWorkoutDay();
 }
 
 export function wtRecoverTimers() {

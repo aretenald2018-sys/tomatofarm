@@ -303,7 +303,12 @@ export async function loadAll() {
 // saveDay — 운동/식단 데이터 저장
 // ═══════════════════════════════════════════════════════════════
 
-export async function saveDay(key, data) {
+// 2026-04-20: `opts.rethrow=true`로 호출하면 Firebase 저장 실패가 호출자에게 전파됨.
+// 기본은 기존 동작(swallow) — sheet.js/render-cooking.js의 fire-and-forget 호환.
+// 운동 종료 흐름(saveWorkoutDay → wtFinishWorkout → wtEndAndShowInsights)은
+// rethrow=true로 호출해 실패 시 성공 토스트/인사이트 모달이 거짓말하지 않도록 한다.
+export async function saveDay(key, data, opts = {}) {
+  const { rethrow = false } = opts;
   const isEmpty = !data || (
     !data.exercises?.length && !data.cf && !data.memo &&
     !data.breakfast && !data.lunch && !data.dinner && !data.snack &&
@@ -344,7 +349,7 @@ export async function saveDay(key, data) {
   return _fbOp('saveDay', async () => {
     if (isEmpty) { delete _cache[key]; await deleteDoc(_doc('workouts', key)); }
     else { _cache[key] = data; await setDoc(_doc('workouts', key), data); }
-  });
+  }, { rethrow });
 }
 
 // ═══════════════════════════════════════════════════════════════
