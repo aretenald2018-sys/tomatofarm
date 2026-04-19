@@ -18,8 +18,17 @@ import { getExList, getGymExList, getLastSession, detectPRs,
 import { estimate1RM, rpeRepsToPct, targetWeightKg, weightRange } from '../calc.js';
 import { MOVEMENTS, EQUIPMENT_CATEGORIES } from '../config.js';
 // resolveCurrentGymId는 expert.js의 단일 진실원 (preset + S.currentGymId 동기화).
+// isExpertViewShown은 세션 뷰 상태 (일반 모드 뷰 ↔ 프로 모드 뷰) 조회용.
 // expert.js는 exercises.js를 static import 하지 않으므로 순환 참조 없음.
-import { resolveCurrentGymId }           from './expert.js';
+import { resolveCurrentGymId, isExpertViewShown } from './expert.js';
+
+// preset.enabled=true + 프로 모드 뷰 둘 다일 때만 'expert 세션'으로 간주.
+// '일반 모드 뷰' 중에는 picker가 전체 기구 풀을 쓰도록 분기 (현재 헬스장에 기구 0개여도
+// 디폴트 종목이 보이게 함).
+function _isExpertSessionActive() {
+  try { return !!isExpertModeEnabled() && !!isExpertViewShown(); }
+  catch { return false; }
+}
 
 const NEW_MUSCLE_OPTION = '__new_custom_muscle__';
 
@@ -535,12 +544,13 @@ function _renderSets(entryIdx) {
 }
 
 // ── 종목 선택/에디터 모달 ───────────────────────────────────────
-// 전문가 모드에서는 resolveCurrentGymId()로 단일 진실원 조회 후 해당 헬스장 기구만.
+// 전문가 세션(preset.enabled + 프로 모드 뷰)에서만 해당 헬스장 기구만.
 // S.currentGymId가 stale이어도 resolveCurrentGymId가 자동 복구 + 동기화.
-// 일반 모드는 전체 기구 풀 사용.
+// 일반 모드 뷰(세션 토글) 중이면 preset.enabled=true여도 전체 풀을 써서
+// 현재 헬스장이 비어있어도 디폴트 종목이 보이게 함.
 function _getPickerExercisePool() {
   try {
-    if (!isExpertModeEnabled()) return getExList();
+    if (!_isExpertSessionActive()) return getExList();
     const gymId = resolveCurrentGymId();
     return gymId ? getGymExList(gymId) : getExList();
   } catch { return getExList(); }
@@ -634,7 +644,8 @@ export function _renderPickerList() {
 
   // P1-5: 맞춤 루틴 모드에서는 선택 전용 — 편집/삭제/신규 종목 추가는 숨김.
   // 오늘 할 운동을 고르는 순간에 카탈로그 편집 UI가 섞이면 멘탈모델이 깨짐.
-  const isExpert = (() => { try { return isExpertModeEnabled(); } catch { return false; } })();
+  // '일반 모드 뷰'에서는 preset.enabled=true여도 일반 모드처럼 편집 UI 노출.
+  const isExpert = _isExpertSessionActive();
   let renderedGroupCount = 0;
   allMuscles.forEach(muscle => {
     const list = pool
@@ -717,10 +728,11 @@ export function _renderPickerList() {
     empty.className = 'ex-picker-empty';
     empty.style.cssText = 'padding:32px 16px; text-align:center; color:var(--text-secondary); font-size:14px; line-height:1.5;';
     const hasFilter = filterBadges.length > 0;
+    const emptyMsg = isExpert ? '이 헬스장에 등록된 종목이 없어요' : '등록된 종목이 없어요';
     empty.innerHTML = hasFilter
       ? `<div style="margin-bottom:12px;">조건에 맞는 종목이 없어요</div>
          <button type="button" class="tds-btn tonal sm" onclick="window._wtResetAllPickerFilters()">필터 초기화</button>`
-      : `<div>이 헬스장에 등록된 종목이 없어요</div>`;
+      : `<div>${emptyMsg}</div>`;
     container.appendChild(empty);
   }
 }

@@ -55,6 +55,9 @@ let _stepperSeeded = false;
 // true일 때만 상단 프로 카드(스테퍼) 렌더. 탭 재진입 시 resetExpertView()로 false 복귀.
 let _expertViewShown = false;
 export function resetExpertView() { _expertViewShown = false; }
+// 외부 모듈(exercises.js picker 등)이 현재 세션 뷰를 확인할 때 사용.
+// preset.enabled=true 여도 '일반 모드 뷰' 중이면 picker는 일반 풀을 쓰도록 분기.
+export function isExpertViewShown() { return _expertViewShown; }
 
 function _resetOnboardingState() {
   _obState.phase = 'wizard';
