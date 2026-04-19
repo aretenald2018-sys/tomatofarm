@@ -2703,12 +2703,93 @@ export function insightsSetShareMode(mode) {
 }
 
 // ── AI 공유 (클립보드 복사 + 앱/웹 열기) ──
-// 버튼 클릭 시 최근 스냅샷을 클립보드에 복사하고 AI 웹/앱 홈으로 이동.
-// 딥링크는 각 AI의 공식 웹 도메인 — 대부분의 경우 OS가 설치된 앱으로 자동 리다이렉트.
+// 버튼 클릭 시 최근 스냅샷을 클립보드에 복사하고 설치된 AI 앱(또는 웹)으로 이동.
 // 2026-04-20: mode 파라미터 추가 ('summary' | 'detail') — Codex 지적 #5.
 //   summary: 기존 요약 — 주간 상위 부위/PR, 오늘 총계, 최근 3일 식단.
 //   detail : 주간은 요약, 오늘 세션은 raw (종목별 세트 로그 + JSON 블록).
 //            AI 프롬프트 끝에 "로그를 그대로 근거로 피드백" 고정 지시 포함.
+// 2026-04-20 (2): 플랫폼별 딥링크 분기 — 유저 지적("새 웹이 뜨고 앱으로 안 감") 반영.
+//   Android: intent:// URI 로 명시적 package 지정 + S.browser_fallback_url → 미설치 시 웹 폴백.
+//   iOS: 커스텀 스킴 시도 후 800ms 타임아웃으로 Universal Link 폴백 (앱 열리면 탭 백그라운드).
+//   Desktop: 기존처럼 window.open 으로 새 탭.
+//
+// 패키지/스킴은 각 앱의 공식 스토어 기준:
+//   ChatGPT  Android `com.openai.chatgpt` · iOS `chatgpt://` · Universal https://chatgpt.com/
+//   Claude   Android `com.anthropic.claude` · iOS `claude://` · Universal https://claude.ai/new
+//   Gemini   Android `com.google.android.apps.bard` · iOS `googlegemini://` · Universal https://gemini.google.com/app
+const _AI_APP_LINKS = {
+  chatgpt: {
+    androidPackage: 'com.openai.chatgpt',
+    androidHost: 'chatgpt.com', androidPath: '/',
+    iosScheme: 'chatgpt://',
+    web: 'https://chatgpt.com/',
+  },
+  claude: {
+    androidPackage: 'com.anthropic.claude',
+    androidHost: 'claude.ai', androidPath: '/new',
+    iosScheme: 'claude://',
+    web: 'https://claude.ai/new',
+  },
+  gemini: {
+    androidPackage: 'com.google.android.apps.bard',
+    androidHost: 'gemini.google.com', androidPath: '/app',
+    iosScheme: 'googlegemini://',
+    web: 'https://gemini.google.com/app',
+  },
+};
+
+function _detectPlatform() {
+  const ua = (navigator.userAgent || '').toLowerCase();
+  // iPadOS 13+ 는 데스크톱 UA를 쓸 수 있으므로 touch 판정 병행.
+  if (/iphone|ipad|ipod/.test(ua) || (/macintosh/.test(ua) && navigator.maxTouchPoints > 1)) return 'ios';
+  if (/android/.test(ua)) return 'android';
+  return 'desktop';
+}
+
+function _openAiLink(provider) {
+  const info = _AI_APP_LINKS[provider];
+  if (!info) return;
+  const platform = _detectPlatform();
+
+  if (platform === 'android') {
+    // intent://host/path#Intent;package=...;scheme=https;S.browser_fallback_url=...;end
+    // 미설치 시 브라우저가 S.browser_fallback_url 로 자동 이동.
+    const fallback = encodeURIComponent(info.web);
+    const intentUrl = `intent://${info.androidHost}${info.androidPath}`
+      + `#Intent;scheme=https;package=${info.androidPackage};`
+      + `S.browser_fallback_url=${fallback};end`;
+    try { window.location.href = intentUrl; return; } catch {}
+    try { window.open(info.web, '_blank'); } catch {}
+    return;
+  }
+
+  if (platform === 'ios') {
+    // 커스텀 스킴 시도 → 앱 있으면 페이지가 백그라운드로 전환됨. 800ms 후에도 포그라운드면 웹으로 폴백.
+    const t0 = Date.now();
+    let fell = false;
+    const fallback = () => {
+      if (fell) return; fell = true;
+      // 포커스/가시성 체크 — 앱이 열렸다면 document.hidden 이 true.
+      if (document.hidden) return;
+      // 너무 빠른 복귀(<200ms)는 스킴이 즉시 실패한 경우 → Universal Link 로 폴백.
+      if (Date.now() - t0 < 1500) {
+        try { window.location.href = info.web; } catch { window.open(info.web, '_blank'); }
+      }
+    };
+    const onVis = () => { if (document.hidden) fell = true; };
+    document.addEventListener('visibilitychange', onVis, { once: true });
+    try { window.location.href = info.iosScheme; } catch {}
+    setTimeout(() => {
+      document.removeEventListener('visibilitychange', onVis);
+      fallback();
+    }, 900);
+    return;
+  }
+
+  // Desktop — 기존 동작 유지 (새 탭).
+  try { window.open(info.web, '_blank'); } catch {}
+}
+
 export async function insightsShareToAI(provider, mode = 'summary') {
   const snapshot = _lastInsightSnapshot;
   let text;
@@ -2720,12 +2801,6 @@ export async function insightsShareToAI(provider, mode = 'summary') {
     // 레거시 경로 호환 — 과거 _lastInsightSnapshot 이 문자열이었던 시점 대비.
     text = (typeof snapshot === 'string' && snapshot) || '인사이트 데이터 없음';
   }
-  const urls = {
-    gemini:  'https://gemini.google.com/app',
-    chatgpt: 'https://chat.openai.com/',
-    claude:  'https://claude.ai/new',
-  };
-  const url = urls[provider] || urls.claude;
   try {
     // 안드로이드/iOS 모두 navigator.clipboard 지원. 실패 시 legacy textarea fallback.
     if (navigator.clipboard?.writeText) {
@@ -2743,8 +2818,7 @@ export async function insightsShareToAI(provider, mode = 'summary') {
     console.warn('[insights-share] clipboard fail:', e?.message || e);
     _toast('복사 실패 — 브라우저 권한을 확인해주세요', 'error');
   }
-  // 새 탭에서 열기 (PWA/Capacitor 환경 모두에서 OS 기본 브라우저/앱 연결).
-  try { window.open(url, '_blank'); } catch {}
+  _openAiLink(provider);
 }
 
 function _fmtDuration(seconds) {
