@@ -2746,43 +2746,65 @@ function _detectPlatform() {
   return 'desktop';
 }
 
+function _isStandalonePwa() {
+  return window.matchMedia?.('(display-mode: standalone)').matches
+    || window.navigator.standalone === true;
+}
+
+// 같은 탭에서 앵커 클릭을 시뮬레이션 — window.location.href 보다
+// Android App Links / iOS Universal Links 트리거 확률이 높다 (사용자 제스처 유지).
+function _navigateTopLevel(url) {
+  try {
+    const a = document.createElement('a');
+    a.href = url;
+    a.target = '_self';
+    a.rel = 'noopener';
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    return true;
+  } catch { return false; }
+}
+
 function _openAiLink(provider) {
   const info = _AI_APP_LINKS[provider];
   if (!info) return;
   const platform = _detectPlatform();
 
   if (platform === 'android') {
-    // intent://host/path#Intent;package=...;scheme=https;S.browser_fallback_url=...;end
-    // 미설치 시 브라우저가 S.browser_fallback_url 로 자동 이동.
+    // 2026-04-20 (v2): intent:// 가 PWA standalone 에서 차단되거나 ChatGPT 앱이
+    //   intent filter 매칭을 못하는 경우 웹 폴백으로 빠지는 이슈 확인. 해결책:
+    //   (1) PWA standalone 이면 Universal Link(웹 URL) 을 <a target=_self> 클릭으로 이동
+    //       → Android App Link 시스템이 설치된 앱을 자동 호출 (Chrome 뿐 아니라 PWA WebView 도).
+    //   (2) 일반 브라우저면 action+category 명시한 intent URI 로 더 확정적 앱 호출.
+    //   전제: 유저 기기에서 ChatGPT/Claude/Gemini 앱의 "지원되는 링크 열기" 설정이
+    //         해당 앱으로 되어 있어야 App Link 가 발동함 (안드로이드 12+ 디폴트 ON).
+    if (_isStandalonePwa()) {
+      if (_navigateTopLevel(info.web)) return;
+      try { window.location.href = info.web; return; } catch {}
+      try { window.open(info.web, '_blank'); } catch {}
+      return;
+    }
     const fallback = encodeURIComponent(info.web);
     const intentUrl = `intent://${info.androidHost}${info.androidPath}`
-      + `#Intent;scheme=https;package=${info.androidPackage};`
+      + `#Intent;action=android.intent.action.VIEW;`
+      + `category=android.intent.category.BROWSABLE;`
+      + `scheme=https;package=${info.androidPackage};`
       + `S.browser_fallback_url=${fallback};end`;
+    if (_navigateTopLevel(intentUrl)) return;
     try { window.location.href = intentUrl; return; } catch {}
     try { window.open(info.web, '_blank'); } catch {}
     return;
   }
 
   if (platform === 'ios') {
-    // 커스텀 스킴 시도 → 앱 있으면 페이지가 백그라운드로 전환됨. 800ms 후에도 포그라운드면 웹으로 폴백.
-    const t0 = Date.now();
-    let fell = false;
-    const fallback = () => {
-      if (fell) return; fell = true;
-      // 포커스/가시성 체크 — 앱이 열렸다면 document.hidden 이 true.
-      if (document.hidden) return;
-      // 너무 빠른 복귀(<200ms)는 스킴이 즉시 실패한 경우 → Universal Link 로 폴백.
-      if (Date.now() - t0 < 1500) {
-        try { window.location.href = info.web; } catch { window.open(info.web, '_blank'); }
-      }
-    };
-    const onVis = () => { if (document.hidden) fell = true; };
-    document.addEventListener('visibilitychange', onVis, { once: true });
-    try { window.location.href = info.iosScheme; } catch {}
-    setTimeout(() => {
-      document.removeEventListener('visibilitychange', onVis);
-      fallback();
-    }, 900);
+    // 2026-04-20 (v2): iOS 는 Universal Link(웹 URL) 을 <a target=_self> 로 이동시키면
+    //   설치된 앱이 있을 때 OS 가 자동으로 앱 포그라운드로 전환. 커스텀 스킴은 앱마다
+    //   지원 여부가 달라 Universal Link 이 1순위.
+    //   설치 안 된 경우에만 웹(Safari)이 열림 — 이게 사용자 기대와 일치.
+    if (_navigateTopLevel(info.web)) return;
+    try { window.location.href = info.web; } catch { window.open(info.web, '_blank'); }
     return;
   }
 
