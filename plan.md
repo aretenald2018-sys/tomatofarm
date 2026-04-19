@@ -34,7 +34,7 @@
 - [x] API 키 하드코딩 제거 — Anthropic/AlphaVantage 키 localStorage로 이동 (`config.js` getter)
 - [x] 테스트 인프라 초기 세팅 — `tests/calc.expert.test.js` (`node:test` 프레임워크)
 - [ ] Vitest 도입 여부 결정 — 현재는 `node --test tests/` 수동 실행. Vitest로 마이그레이션하거나 현 구조 공식화
-- [ ] calc.js 테스트 확충 — calcDietMetrics, dietDayOk, calcStreaks, calcTomatoCycle, evaluateCycleResult
+- [x] calc.js 테스트 확충 — calcDietMetrics, dietDayOk, calcStreaks, calcTomatoCycle, evaluateCycleResult (calc.cycle.test.js + calc.record.test.js 신설)
 - [ ] data.js 순수 유틸 테스트 — `data/data-date.js`의 dateKey, `data/data-helpers.js` 정렬/분기 키
 - [ ] package.json `scripts.test` 정의 — `node --test tests/**/*.test.js`
 - [ ] Gemini/식품안전처 키 보안 — `config.js` 하드코딩을 localStorage 또는 서버 프록시로 이동

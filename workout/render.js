@@ -9,6 +9,7 @@ import { isFuture, TODAY,
          getDietPlan, calcDietMetrics,
          getBodyCheckins,
          calcExerciseCalorieCredit } from '../data.js';
+import { confirmAction } from '../utils/confirm-modal.js';
 
 // ── 날짜 라벨 ────────────────────────────────────────────────────
 export function _renderDateLabel() {
@@ -317,8 +318,9 @@ export function _renderMealPhotos() {
       thumb.innerHTML = `<img src="${photo}">`;
       thumb.onclick = () => openMealPhotoLightbox(photo);
       let pressTimer;
-      thumb.onpointerdown = () => { pressTimer = setTimeout(() => {
-        if (confirm('사진을 삭제할까요?')) removeMealPhoto(meal);
+      thumb.onpointerdown = () => { pressTimer = setTimeout(async () => {
+        const ok = await confirmAction({ title: '사진 삭제', message: '사진을 삭제할까요?', destructive: true });
+        if (ok) removeMealPhoto(meal);
       }, 600); };
       thumb.onpointerup = () => clearTimeout(pressTimer);
       thumb.onpointerleave = () => clearTimeout(pressTimer);

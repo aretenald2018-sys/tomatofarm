@@ -10,6 +10,7 @@ import {
 import {
   escapeHtml, stageColor, stageLabel, trajectoryArrow, trajectoryLabel, fmtDate, fmtReadDelay,
 } from './admin-utils.js';
+import { confirmAction } from '../utils/confirm-modal.js';
 
 let _outreachTab = 'compose';
 const HISTORY_KEY = '_admin_outreach_history';
@@ -852,7 +853,7 @@ function _render(container, data, options) {
     }
   };
   window._adminOutreachDeleteUser = async (uid, name) => {
-    const ok = window.confirm(`${name} 계정을 삭제할까요?`);
+    const ok = await confirmAction({ title: '계정 삭제', message: `${name} 계정을 삭제할까요?`, destructive: true, longPress: 2000 });
     if (!ok) return;
     try {
       await deleteUserAccount(uid);

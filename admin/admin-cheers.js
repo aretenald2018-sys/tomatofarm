@@ -7,6 +7,7 @@ import {
   getCustomCheers, saveCustomCheer, deleteCustomCheer,
 } from '../data.js';
 import { escapeHtml } from './admin-utils.js';
+import { confirmAction } from '../utils/confirm-modal.js';
 
 const MODULE_LABELS = [
   { key: 'weight',         label: '체중 변화',       desc: '최근 체크인 간 체중 감소/증가 감지' },
@@ -204,7 +205,8 @@ window._adminCheersAddCustom = async () => {
 
 window._adminCheersDelete = async (id) => {
   if (!id) return;
-  if (!confirm('이 수동 축하를 삭제할까요?')) return;
+  const ok = await confirmAction({ title: '수동 축하 삭제', message: '이 수동 축하를 삭제할까요?', destructive: true, longPress: 2000 });
+  if (!ok) return;
   try {
     await deleteCustomCheer(id);
     _customCheers = _customCheers.filter((c) => c.id !== id);

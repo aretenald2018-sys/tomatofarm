@@ -7,6 +7,7 @@ import { getSectionTitle, saveSectionTitle,
          deleteNutritionItem, getNutritionDB } from './data.js';
 import { renderHome, showToast } from './render-home.js';
 import { getDeferredInstallPrompt } from './pwa-fcm.js';
+import { confirmAction } from './utils/confirm-modal.js';
 
 // ── 구역 제목 편집 ────────────────────────────────────────────────
 function editSectionTitle(key) {
@@ -100,7 +101,8 @@ function _renderNutritionDBList() {
 }
 
 async function _quickDeleteNutritionItem(id) {
-  if (!confirm('삭제할까요?')) return;
+  const ok = await confirmAction({ title: '영양 아이템 삭제', message: '삭제할까요?', destructive: true });
+  if (!ok) return;
   await deleteNutritionItem(id);
   _renderNutritionDBList();
 }

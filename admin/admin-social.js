@@ -8,6 +8,7 @@ import {
   adminAddGuildMember, adminRemoveGuildMember,
 } from '../data.js';
 import { dk, daysAgo, fmtDate, nameResolver, CARD_STYLE, SECTION_TITLE } from './admin-utils.js';
+import { confirmAction } from '../utils/confirm-modal.js';
 import { renderSocialStacked } from './admin-charts.js';
 
 function _escapeHtml(value) {
@@ -379,7 +380,8 @@ window._adminSaveGuildEditor = async function(originalGuildIdEncoded) {
 
 window._adminDeleteGuild = async function(guildIdEncoded) {
   const guildId = decodeURIComponent(guildIdEncoded || '');
-  if (!confirm(`${guildId} 길드를 삭제할까요? 멤버 계정에서도 길드 정보가 제거됩니다.`)) return;
+  const ok = await confirmAction({ title: '길드 삭제', message: `${guildId} 길드를 삭제할까요? 멤버 계정에서도 길드 정보가 제거됩니다.`, destructive: true, longPress: 2000 });
+  if (!ok) return;
   await deleteGuild(guildId);
   await _renderGuildAdminPanel();
 };

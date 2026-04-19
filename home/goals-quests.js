@@ -4,7 +4,8 @@
 
 import { TODAY, getMuscles, getCF, dietDayOk,
          getGoals, getQuests, dateKey, getMiniMemoItems,
-         getSectionTitle, getQuestOrder }  from '../data.js';
+         getSectionTitle, getQuestOrder,
+         hasExerciseRecord }  from '../data.js';
 import { getMonday, quarterStart, quarterEnd } from './utils.js';
 
 // ── 미니 메모 (체크리스트) ────────────────────────────────────────
@@ -149,7 +150,7 @@ function questProgress(q, now, todayKey) {
     if (q.auto) {
       const y = now.getFullYear(), m = now.getMonth(), d = now.getDate();
       const hasDone = q.autoType === 'workout'
-        ? (getMuscles(y,m,d).length > 0 || getCF(y,m,d))
+        ? hasExerciseRecord(y,m,d)
         : dietDayOk(y,m,d) === true;
       return { done: hasDone, current: hasDone ? 1 : 0, target: 1 };
     }
@@ -194,10 +195,20 @@ function autoCountInPeriod(autoType, periodType, now) {
   } else if (periodType === 'monthly') {
     const y = now.getFullYear(), m = now.getMonth();
     for (let d = 1; d <= new Date(y, m+1, 0).getDate(); d++) dates.push([y, m, d]);
+  } else if (periodType === 'quarterly') {
+    const qs = quarterStart(now);
+    const qe = quarterEnd(now);
+    const [qsY, qsM, qsD] = qs.split('-').map(Number);
+    const [qeY, qeM, qeD] = qe.split('-').map(Number);
+    const start = new Date(qsY, qsM - 1, qsD);
+    const end   = new Date(qeY, qeM - 1, qeD);
+    for (let cur = new Date(start); cur <= end; cur.setDate(cur.getDate() + 1)) {
+      dates.push([cur.getFullYear(), cur.getMonth(), cur.getDate()]);
+    }
   }
   return dates.filter(([y,m,d]) => {
     return autoType === 'workout'
-      ? (getMuscles(y,m,d).length > 0 || getCF(y,m,d))
+      ? hasExerciseRecord(y,m,d)
       : dietDayOk(y,m,d) === true;
   });
 }

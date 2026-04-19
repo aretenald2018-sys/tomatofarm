@@ -1254,7 +1254,7 @@ window.showLoginView = showLoginView;
 async function createAccountFromSignup() {
   const lastName = document.getElementById('signup-last-name').value.trim();
   const firstName = document.getElementById('signup-first-name').value.trim();
-  if (!lastName || !firstName) { alert('성과 이름을 입력해주세요.'); return; }
+  if (!lastName || !firstName) { window.showToast?.('성과 이름을 입력해주세요', 2500, 'warning'); return; }
 
   const { saveAccount, setCurrentUser, hashPassword, getAccountList } = await import('./data.js');
   const { getAdminId: _gAI, isAdminInstance: _isAI } = await import('./data.js');
@@ -1437,7 +1437,7 @@ document.addEventListener('click', (e) => {
 async function createAccountAndLogin() {
   const lastName = document.getElementById('login-last-name').value.trim();
   const firstName = document.getElementById('login-first-name').value.trim();
-  if (!lastName || !firstName) { alert('성과 이름을 입력해주세요.'); return; }
+  if (!lastName || !firstName) { window.showToast?.('성과 이름을 입력해주세요', 2500, 'warning'); return; }
 
   const { setCurrentUser, getAccountList, verifyPassword } = await import('./data.js');
   const { getAdminId: _gAI, isAdminInstance: _isAI } = await import('./data.js');
@@ -1714,7 +1714,8 @@ window.toggleGuildMembers = toggleGuildMembers;
 
 // 길드장 위임
 async function transferLeadership(guildName, targetId, targetName) {
-  if (!confirm(`${targetName}님에게 길드장을 위임하시겠습니까?\n위임 후에는 되돌릴 수 없습니다.`)) return;
+  const _ok = await (window.confirmAction?.({ title: '길드장 위임', message: `${targetName}님에게 길드장을 위임하시겠습니까?\n위임 후에는 되돌릴 수 없습니다.`, destructive: true, longPress: 2000 }) ?? Promise.resolve(confirm(`${targetName}님에게 길드장을 위임하시겠습니까?`)));
+  if (!_ok) return;
   const { transferGuildLeadership } = await import('./data.js');
   const ok = await transferGuildLeadership(guildName, targetId);
   const { showToast: _st } = await import('./home/utils.js');
@@ -1734,7 +1735,8 @@ window.transferLeadership = transferLeadership;
 
 // 길드원 강퇴
 async function kickMember(guildName, targetId, targetName) {
-  if (!confirm(`정말 ${targetName}님을 강퇴하시겠습니까?`)) return;
+  const _ok2 = await (window.confirmAction?.({ title: '길드원 강퇴', message: `정말 ${targetName}님을 강퇴하시겠습니까?`, destructive: true, longPress: 2000 }) ?? Promise.resolve(confirm(`정말 ${targetName}님을 강퇴하시겠습니까?`)));
+  if (!_ok2) return;
   const { kickGuildMember } = await import('./data.js');
   const ok = await kickGuildMember(guildName, targetId);
   const { showToast: _st } = await import('./home/utils.js');
@@ -1752,7 +1754,8 @@ window.kickMember = kickMember;
 
 // 일반 멤버 자진 탈퇴
 async function leaveGuildFromMembers(guildName) {
-  if (!confirm(`${guildName} 길드에서 탈퇴할까요?`)) return;
+  const _ok3 = await (window.confirmAction?.({ title: '길드 탈퇴', message: `${guildName} 길드에서 탈퇴할까요?`, destructive: true, longPress: 2000 }) ?? Promise.resolve(confirm(`${guildName} 길드에서 탈퇴할까요?`)));
+  if (!_ok3) return;
   const { getCurrentUser, saveAccount, setCurrentUser, updateGuildMemberCount } = await import('./data.js');
   const user = getCurrentUser();
   if (!user) return;
@@ -1784,7 +1787,8 @@ async function leaderLeaveGuild(guildName) {
 
   if (!members.length) {
     // 혼자 남은 길드장 → 그냥 탈퇴
-    if (!confirm(`${guildName}의 마지막 멤버입니다. 탈퇴하면 길드가 비게 됩니다. 탈퇴할까요?`)) return;
+    const _ok4 = await (window.confirmAction?.({ title: '길드 탈퇴', message: `${guildName}의 마지막 멤버입니다. 탈퇴하면 길드가 비게 됩니다. 탈퇴할까요?`, destructive: true, longPress: 2000 }) ?? Promise.resolve(confirm(`${guildName}의 마지막 멤버입니다. 탈퇴하면 길드가 비게 됩니다. 탈퇴할까요?`)));
+    if (!_ok4) return;
     await leaveGuildFromMembers(guildName);
     return;
   }
@@ -1810,7 +1814,8 @@ window.leaderLeaveGuild = leaderLeaveGuild;
 
 // 위임 후 탈퇴
 async function transferAndLeave(guildName, newLeaderId, newLeaderName) {
-  if (!confirm(`${newLeaderName}님에게 길드장을 위임하고 탈퇴할까요?`)) return;
+  const _ok5 = await (window.confirmAction?.({ title: '위임 후 탈퇴', message: `${newLeaderName}님에게 길드장을 위임하고 탈퇴할까요?`, destructive: true, longPress: 2000 }) ?? Promise.resolve(confirm(`${newLeaderName}님에게 길드장을 위임하고 탈퇴할까요?`)));
+  if (!_ok5) return;
   const { transferGuildLeadership } = await import('./data.js');
   const ok = await transferGuildLeadership(guildName, newLeaderId);
   if (!ok) {
@@ -1907,10 +1912,12 @@ async function removeGuildFromModal(name) {
       _st('길드장은 탈퇴 전에 다른 멤버에게 길드장을 위임해주세요.', 3000, 'warning');
       return;
     }
-    if (!confirm(`${name} 길드에서 탈퇴할까요?\n길드 데이터는 유지됩니다.`)) return;
+    const _ok6 = await (window.confirmAction?.({ title: '길드 탈퇴', message: `${name} 길드에서 탈퇴할까요?\n길드 데이터는 유지됩니다.`, destructive: true, longPress: 2000 }) ?? Promise.resolve(confirm(`${name} 길드에서 탈퇴할까요?`)));
+    if (!_ok6) return;
   } else {
     // 승인 대기중 → 가입신청 철회
-    if (!confirm(`${name} 가입신청을 철회할까요?`)) return;
+    const _ok7 = await (window.confirmAction?.({ title: '가입신청 철회', message: `${name} 가입신청을 철회할까요?`, destructive: true, longPress: 2000 }) ?? Promise.resolve(confirm(`${name} 가입신청을 철회할까요?`)));
+    if (!_ok7) return;
 
     // pending은 즉시 Firebase 반영 (저장하기 안 눌러도 적용)
     const { getCurrentUser, saveAccount, setCurrentUser } = await import('./data.js');
@@ -2123,7 +2130,7 @@ async function manageAccountPassword(accountId) {
     // 기존 비밀번호 확인 후 변경/해제
     const oldPw = prompt(`${account.lastName}${account.firstName} — 현재 비밀번호를 입력하세요`);
     if (oldPw === null) return;
-    if (!verifyPassword(account, oldPw)) { alert('비밀번호가 맞지 않아요.'); return; }
+    if (!verifyPassword(account, oldPw)) { window.showToast?.('비밀번호가 맞지 않아요', 2500, 'error'); return; }
 
     const action = confirm('비밀번호를 변경하시겠어요?\n\n확인 = 새 비밀번호 설정\n취소 = 비밀번호 해제');
     if (action) {
@@ -2131,12 +2138,12 @@ async function manageAccountPassword(accountId) {
       if (!newPw) return;
       account.passwordHash = hashPassword(newPw);
       await saveAccount(account);
-      alert('비밀번호가 변경되었어요.');
+      window.showToast?.('비밀번호가 변경되었어요', 2500, 'success');
     } else {
       account.hasPassword = false;
       account.passwordHash = null;
       await saveAccount(account);
-      alert('비밀번호가 해제되었어요.');
+      window.showToast?.('비밀번호가 해제되었어요', 2500, 'success');
     }
   } else {
     // 비밀번호 새로 설정
@@ -2145,7 +2152,7 @@ async function manageAccountPassword(accountId) {
     account.hasPassword = true;
     account.passwordHash = hashPassword(newPw);
     await saveAccount(account);
-    alert('비밀번호가 설정되었어요.');
+    window.showToast?.('비밀번호가 설정되었어요', 2500, 'success');
   }
   // 목록 갱신
   initLoginScreen();
@@ -2193,7 +2200,7 @@ async function submitDietSetup() {
   const w = parseFloat(document.getElementById('ds-weight')?.value);
   const age = parseInt(document.getElementById('ds-age')?.value);
   const tw = parseFloat(document.getElementById('ds-target-weight')?.value);
-  if (!h || !w || !age || !tw) { alert('신장, 체중, 연령, 목표 체중을 입력해주세요.'); return; }
+  if (!h || !w || !age || !tw) { window.showToast?.('신장, 체중, 연령, 목표 체중을 입력해주세요', 2500, 'warning'); return; }
 
   // 체지방률: 미입력 시 BMI 기반 추정 (Deurenberg + 보수적 보정 -2%p)
   let bf = parseFloat(document.getElementById('ds-bodyfat')?.value);
@@ -2323,10 +2330,10 @@ async function sendLetter() {
       message: '개발자에게 편지를 보냈어요 ✉️',
     });
     document.getElementById('dynamic-modal')?.remove();
-    alert('편지를 보냈어요! 감사합니다 💌');
+    window.showToast?.('편지를 보냈어요! 감사합니다', 2500, 'success');
   } catch(e) {
     console.error('[letter]', e);
-    alert('전송 실패: ' + e.message);
+    window.showToast?.('전송 실패: ' + e.message, 3000, 'error');
     btn.textContent = '보내기'; btn.disabled = false;
   }
 }

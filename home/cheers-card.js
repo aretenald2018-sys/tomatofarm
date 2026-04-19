@@ -31,6 +31,7 @@ import {
 } from '../data.js';
 import { CELEBRATION_DETECTORS } from '../calc.js';
 import { resolveNickname, showToast } from './utils.js';
+import { confirmAction } from '../utils/confirm-modal.js';
 
 const CARD_ID = 'card-celebrations';
 const CACHE_PREFIX = '__cheersCache_v4:';
@@ -641,7 +642,8 @@ window.saveSelfCheerFromModal = async () => {
 };
 
 window.clearSelfCheerFromModal = async () => {
-  if (!confirm('오늘 축하 문구를 지울까요?')) return;
+  const ok = await confirmAction({ title: '축하 문구 삭제', message: '오늘 축하 문구를 지울까요?', destructive: true });
+  if (!ok) return;
   try {
     await deleteMySelfCheer();
     showToast('축하 문구 삭제', 1600, 'success');

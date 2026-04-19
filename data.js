@@ -41,6 +41,9 @@ import {
   getVolumeHistoryMulti      as _getVolumeHistoryMulti,
   calcBalanceByPattern       as _calcBalanceByPattern,
   detectPRs                   as _detectPRs,
+  isExerciseDaySuccess as _isExerciseDaySuccess,
+  resolveDietTolerance as _resolveDietTolerance,
+  hasDietRecordData as _hasDietRecordData,
 } from './calc.js';
 
 // 전문가 모드 — Gym / RoutineTemplate CRUD
@@ -165,7 +168,9 @@ export async function loadAll() {
   try {
     if (getCurrentUserRef() && isAdmin()) {
       const migrateKey = `migrated_${getCurrentUserRef().id}`;
-      const migrated = localStorage.getItem(migrateKey) || localStorage.getItem('migrated_김_태우');
+      // localStorage 폴백 제거: 기기 단위 플래그는 멀티 유저 환경에서 오작동 위험.
+      // migrateKey(유저별 키)만 사용. 'migrated_김_태우' 하드코딩 폴백 제거.
+      const migrated = localStorage.getItem(migrateKey);
       if (!migrated) {
         const testSnap = await getDocs(_col('workouts'));
         if (testSnap.empty) {
@@ -244,8 +249,9 @@ export async function loadAll() {
     _settings.visible_tabs   = fbMap.visible_tabs ? _sanitizeTabList(fbMap.visible_tabs) : null;
     _settings.diet_plan = fbMap.diet_plan ?? null;
     if ((isAdmin() || isAdminGuest()) && !_settings.diet_plan) {
-      const restored = localStorage.getItem('diet_restored_admin');
-      if (!restored) {
+      // B3: diet_restored_admin 플래그를 Firestore에서 관리 (localStorage 기기 단위 → 유저별 Firestore)
+      const dietRestored = fbMap.admin_diet_restored;
+      if (!dietRestored) {
         _settings.diet_plan = {
           height: 175, weight: 75, bodyFatPct: 17, age: 32,
           targetWeight: 68, targetBodyFatPct: 8,
@@ -253,7 +259,7 @@ export async function loadAll() {
           refeedKcal: 5000, refeedDays: [0, 6], startDate: null,
         };
         setDoc(_doc('settings', 'diet_plan'), { value: _settings.diet_plan }).catch(e => console.warn('[data] 식단 설정 저장 실패:', e.message));
-        localStorage.setItem('diet_restored_admin', 'done');
+        setDoc(_doc('settings', 'admin_diet_restored'), { value: 'done' }).catch(e => console.warn('[data] admin_diet_restored 저장 실패:', e.message));
       }
     }
     _settings.home_streak_days = fbMap.home_streak_days ?? 6;
@@ -643,6 +649,7 @@ export const saveDietPlan = async (plan) => {
 
 export const calcDietMetrics = _calcDietMetrics;
 export const isDietDaySuccess = _isDietDaySuccess;
+export const resolveDietTolerance = _resolveDietTolerance;
 export const getDayTargetKcal = (plan, y, m, d, dayData) => _getDayTargetKcal(plan, y, m, d, dayData);
 export const calcExerciseCalorieCredit = _calcExerciseCalorieCredit;
 
@@ -721,6 +728,27 @@ export function daysSinceLastCheckin() {
   }
 }
 export const getExercises = (y,m,d) => getDay(y,m,d).exercises || [];
+
+/**
+ * 운동 기록 존재 여부 — canonical 판정.
+ * stretching/running/swimming 포함, isExerciseDaySuccess와 동일 규칙.
+ * @param {number} y @param {number} m (0-indexed) @param {number} d
+ * @returns {boolean}
+ */
+export function hasExerciseRecord(y, m, d) {
+  return _isExerciseDaySuccess(getDay(y, m, d));
+}
+
+/**
+ * 식단 기록 존재 여부 — canonical 판정.
+ * 텍스트 meal / food-chip / kcal-only / skip 플래그 / 사진 포함.
+ * @param {number} y @param {number} m (0-indexed) @param {number} d
+ * @returns {boolean}
+ */
+export function hasDietRecord(y, m, d) {
+  return _hasDietRecordData(getDay(y, m, d));
+}
+
 export function isActiveWorkoutDayData(workoutData) {
   if (!workoutData) return false;
   const w = workoutData;

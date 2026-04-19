@@ -3,9 +3,10 @@
 // ================================================================
 
 import { TODAY, getMuscles, getCF, getDiet, dietDayOk,
-         getExercises, getExList,
+         getExercises, getExList, getDay,
          getDietPlan, calcDietMetrics, getBodyCheckins,
-         getDayTargetKcal, getAllMuscles }  from '../data.js';
+         getDayTargetKcal, getAllMuscles,
+         hasExerciseRecord, hasDietRecord }  from '../data.js';
 
 // ── 다이어트 목표 카드 ────────────────────────────────────────────
 export function renderDietGoalCard() {
@@ -97,39 +98,51 @@ export function renderTodayDiet() {
   const diet = getDiet(y, m, d);
   const ok   = dietDayOk(y, m, d);
 
-  if (!diet.breakfast && !diet.lunch && !diet.dinner) {
+  if (!hasDietRecord(y, m, d)) {
     container.innerHTML = `<div style="font-size:12px;color:var(--muted);padding:4px 0">
       아직 기록이 없어요.
-      <button class="quest-add-btn" onclick="switchTab('workout')" style="margin-left:8px">기록하기</button>
+      <button class="quest-add-btn" onclick="switchTab('diet')" style="margin-left:8px">기록하기</button>
     </div>`;
     return;
   }
 
-  const totalKcal = (diet.bKcal || 0) + (diet.lKcal || 0) + (diet.dKcal || 0);
+  const totalKcal = (diet.bKcal || 0) + (diet.lKcal || 0) + (diet.dKcal || 0) + (diet.sKcal || 0);
   const badge = ok === true
     ? '<span class="diet-badge ok" style="font-size:11px">✓ OK</span>'
     : ok === false
       ? '<span class="diet-badge bad" style="font-size:11px">✗ NG</span>'
       : '';
 
-  const rows = [
-    { label:'☀️', text: diet.breakfast, ok: diet.bOk, kcal: diet.bKcal },
-    { label:'🌤', text: diet.lunch,     ok: diet.lOk, kcal: diet.lKcal },
-    { label:'🌙', text: diet.dinner,    ok: diet.dOk, kcal: diet.dKcal },
-  ].filter(r => r.text);
+  // meal 본문 구성 — 텍스트 우선, 없으면 food-chip 이름 집계, 없으면 skip/kcal/photo 라벨
+  const _mealRow = (label, text, foods, ok, kcal, skip, photo) => {
+    let body = '';
+    if (text) body = text;
+    else if (foods?.length) body = foods.map(f => f?.name).filter(Boolean).slice(0, 3).join(', ');
+    else if (skip) body = '<span style="color:var(--muted);">굶었어요</span>';
+    else if (kcal) body = '<span style="color:var(--muted);">칼로리만 기록</span>';
+    else if (photo) body = '<span style="color:var(--muted);">사진만 기록</span>';
+    if (!body) return '';
+    return `<div style="display:flex;gap:6px;align-items:baseline;font-size:12px;padding:2px 0">
+      <span>${label}</span>
+      <span style="color:var(--text);flex:1">${body}</span>
+      ${kcal ? `<span style="color:var(--muted);font-size:10px">${kcal}kcal</span>` : ''}
+      ${ok === true ? `<span style="color:var(--diet-ok);font-size:10px">✓</span>` : ok === false ? `<span style="color:var(--diet-bad);font-size:10px">✗</span>` : ''}
+    </div>`;
+  };
+
+  const rowsHtml = [
+    _mealRow('☀️', diet.breakfast, diet.bFoods, diet.bOk, diet.bKcal, diet.breakfast_skipped, diet.bPhoto),
+    _mealRow('🌤', diet.lunch,     diet.lFoods, diet.lOk, diet.lKcal, diet.lunch_skipped,     diet.lPhoto),
+    _mealRow('🌙', diet.dinner,    diet.dFoods, diet.dOk, diet.dKcal, diet.dinner_skipped,    diet.dPhoto),
+    _mealRow('🍪', diet.snack,     diet.sFoods, null,     diet.sKcal, false,                  diet.sPhoto),
+  ].join('');
 
   container.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
       <span style="font-size:11px;color:var(--muted)">${totalKcal ? totalKcal.toLocaleString() + ' kcal' : ''}</span>
       ${badge}
     </div>
-    ${rows.map(r => `
-      <div style="display:flex;gap:6px;align-items:baseline;font-size:12px;padding:2px 0">
-        <span>${r.label}</span>
-        <span style="color:var(--text);flex:1">${r.text}</span>
-        ${r.kcal ? `<span style="color:var(--muted);font-size:10px">${r.kcal}kcal</span>` : ''}
-        ${r.ok === true ? `<span style="color:var(--diet-ok);font-size:10px">✓</span>` : r.ok === false ? `<span style="color:var(--diet-bad);font-size:10px">✗</span>` : ''}
-      </div>`).join('')}
+    ${rowsHtml}
   `;
 }
 
@@ -142,7 +155,7 @@ export function renderTodayWorkout() {
   const hasCF     = getCF(y, m, d);
   const muscles   = getMuscles(y, m, d);
 
-  if (!exercises.length && !hasCF) {
+  if (!hasExerciseRecord(y, m, d)) {
     container.innerHTML = `<div style="font-size:12px;color:var(--muted);padding:4px 0">
       아직 기록이 없어요.
       <button class="quest-add-btn" onclick="switchTab('workout')" style="margin-left:8px">기록하기</button>
@@ -170,9 +183,30 @@ export function renderTodayWorkout() {
 
   const more = exercises.length > 4 ? `<div style="font-size:11px;color:var(--muted)">+${exercises.length - 4}개 더</div>` : '';
 
+  // 비텍스트 운동(러닝/수영/스트레칭) 별도 row — hasExerciseRecord가 커버하는 영역 렌더 누락 방지
+  const day = getDay(y, m, d) || {};
+  const actRows = [];
+  if (day.running) {
+    const km  = Number(day.runDistance) || 0;
+    const min = (Number(day.runDurationMin) || 0) + (Number(day.runDurationSec) || 0) / 60;
+    const detail = [km > 0 ? `${km}km` : '', min > 0 ? `${Math.round(min)}분` : ''].filter(Boolean).join(' · ');
+    actRows.push(`<div style="font-size:12px;color:var(--text);padding:1px 0">🏃 러닝${detail ? ` <span style="color:var(--muted);font-size:10px">${detail}</span>` : ''}</div>`);
+  }
+  if (day.swimming) {
+    const km  = Number(day.swimDistance) || 0;
+    const min = (Number(day.swimDurationMin) || 0) + (Number(day.swimDurationSec) || 0) / 60;
+    const detail = [km > 0 ? `${km}km` : '', min > 0 ? `${Math.round(min)}분` : ''].filter(Boolean).join(' · ');
+    actRows.push(`<div style="font-size:12px;color:var(--text);padding:1px 0">🏊 수영${detail ? ` <span style="color:var(--muted);font-size:10px">${detail}</span>` : ''}</div>`);
+  }
+  if (day.stretching) {
+    const dur = Number(day.stretchDuration) || 0;
+    actRows.push(`<div style="font-size:12px;color:var(--text);padding:1px 0">🧘 스트레칭${dur > 0 ? ` <span style="color:var(--muted);font-size:10px">${dur}분</span>` : ''}</div>`);
+  }
+
   container.innerHTML = `
-    <div style="margin-bottom:6px">${muscleDots}</div>
-    ${hasCF ? '<div style="font-size:12px;color:var(--cf);margin-bottom:4px">🔥 클핏 완료</div>' : ''}
+    ${muscleDots ? `<div style="margin-bottom:6px">${muscleDots}</div>` : ''}
+    ${hasCF ? '<div style="font-size:12px;color:var(--cf);margin-bottom:4px">🔥 크로스핏 완료</div>' : ''}
     ${exRows}${more}
+    ${actRows.join('')}
   `;
 }

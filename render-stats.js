@@ -8,7 +8,8 @@ import { MONTHS }                                    from './config.js';
 import { TODAY, getMuscles, getCF, getDiet, dietDayOk,
          daysInMonth, isFuture, getExList, getAllMuscles,
          getVolumeHistory, getCache, calcVolume,
-         getExercises, dateKey, getBodyCheckins }    from './data.js';
+         getExercises, dateKey, getBodyCheckins,
+         hasExerciseRecord }    from './data.js';
 
 let _period             = 30;
 let _selectedExerciseId = null;
@@ -48,8 +49,14 @@ export function exportCSV(period) {
     .filter(([key]) => !since || key >= dateKey(since.getFullYear(), since.getMonth(), since.getDate()))
     .sort(([a],[b]) => a.localeCompare(b))
     .forEach(([key, day]) => {
-      const diet     = day.breakfast||day.lunch||day.dinner ? day : null;
-      const totalKcal= (day.bKcal||0)+(day.lKcal||0)+(day.dKcal||0);
+      // canonical diet 기록 — 텍스트(snack 포함)/food-chip/kcal-only/skip/photo 전부 인정
+      const dietHas = day.breakfast || day.lunch || day.dinner || day.snack ||
+                      day.bFoods?.length || day.lFoods?.length || day.dFoods?.length || day.sFoods?.length ||
+                      (day.bKcal||0) > 0 || (day.lKcal||0) > 0 || (day.dKcal||0) > 0 || (day.sKcal||0) > 0 ||
+                      day.breakfast_skipped || day.lunch_skipped || day.dinner_skipped ||
+                      day.bPhoto || day.lPhoto || day.dPhoto || day.sPhoto;
+      const diet     = dietHas ? day : null;
+      const totalKcal= (day.bKcal||0)+(day.lKcal||0)+(day.dKcal||0)+(day.sKcal||0);
       const dietOk   = diet ? (day.bOk!==false&&day.lOk!==false&&day.dOk!==false?'O':'X') : '';
 
       if (day.exercises?.length) {
@@ -209,7 +216,7 @@ function _renderDietStats(){
   for(let m=0;m<12;m++)for(let d=1;d<=daysInMonth(ny,m);d++){
     const dt=getDiet(ny,m,d),dok=dietDayOk(ny,m,d);
     if(dok===true)okDays++;else if(dok===false)ngDays++;
-    const k=(dt.bKcal||0)+(dt.lKcal||0)+(dt.dKcal||0);
+    const k=(dt.bKcal||0)+(dt.lKcal||0)+(dt.dKcal||0)+(dt.sKcal||0);
     if(k>0){totalKcal+=k;kcalDays++;}
   }
   const avg=kcalDays>0?Math.round(totalKcal/kcalDays):0;
@@ -228,7 +235,7 @@ function _renderMonthlySummary(){
   for(let m=0;m<12;m++){
     let cnt=0;
     for(let d=1;d<=daysInMonth(ny,m);d++)
-      if(getMuscles(ny,m,d).length||getCF(ny,m,d)||dietDayOk(ny,m,d)===true)cnt++;
+      if(hasExerciseRecord(ny,m,d)||dietDayOk(ny,m,d)===true)cnt++;
     const pill=document.createElement('div');pill.className='month-pill'+(m===curM?' active':'');
     pill.innerHTML=`<span class="mp-m">${MONTHS[m]}</span><span class="mp-v">${cnt}</span>`;
     el.appendChild(pill);
@@ -245,11 +252,13 @@ function _renderHeatmap(){
   for(let i=0;i<startDow;i++){const b=document.createElement('div');b.style.aspectRatio='1';el.appendChild(b);}
   for(let m=0;m<12;m++)for(let d=1;d<=daysInMonth(y,m);d++){
     const hasGym=getMuscles(y,m,d).length>0,hasCF=getCF(y,m,d),hasDiet=dietDayOk(y,m,d)===true,fut=isFuture(y,m,d);
+    const hasEx=hasExerciseRecord(y,m,d);
     const cell=document.createElement('div');cell.className='heatmap-cell';
     if(!fut){
       if(hasGym&&hasCF)cell.classList.add('h4');
       else if(hasGym){const cnt=getMuscles(y,m,d).length;cell.classList.add(cnt>=3?'h3':cnt===2?'h2':'h1');}
       else if(hasCF)cell.classList.add('hcf');
+      else if(hasEx)cell.classList.add('hcf'); // stretching/running/swimming도 표시
       else if(hasDiet)cell.classList.add('hdiet');
     }
     el.appendChild(cell);

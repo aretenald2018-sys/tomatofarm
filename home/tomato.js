@@ -9,12 +9,13 @@ import { TODAY, getDiet, getDietPlan, calcDietMetrics, getBodyCheckins,
          getTomatoCycles, dateKey,
          getStreakFreezes, useStreakFreeze,
          getMyFriends, getAccountList, trackEvent,
-         daysSinceLastCheckin }  from '../data.js';
+         daysSinceLastCheckin, hasDietRecord }  from '../data.js';
 import { calcTomatoCycle, evaluateCycleResult, getQuarterKey,
          isDietDaySuccess, isExerciseDaySuccess,
          getDayTargetKcal as calcDayTarget }  from '../calc.js';
 import { checkStreakMilestone } from './hero.js';
 import { showToast, haptic, resolveNickname } from './utils.js';
+import { confirmSimple } from '../utils/confirm-modal.js';
 
 const TOMATO_STAGES = [
   { icon: '🌱', label: '씨앗을 심었어요' },
@@ -39,16 +40,17 @@ export function renderTomatoHero(el) {
   const qCount = state.quarterlyTomatoes[qKey] || 0;
   const totalCount = Math.max(0, state.totalTomatoes + (state.giftedReceived || 0) - (state.giftedSent || 0));
 
-  // 식단 상태 계산
+  // 식단 상태 계산 — canonical hasDietRecord (snack/food-chip/kcal-only/photo/skip 전부 포함)
   const dietStatuses = cycle.days.map((dayKey, i) => {
     const [y, m, d] = dayKey.split('-').map(Number);
     const dayDate = new Date(y, m - 1, d);
     if (dayDate > TODAY) return 'future';
-    const diet = getDiet(y, m - 1, d);
-    const totalKcal = (diet.bKcal || 0) + (diet.lKcal || 0) + (diet.dKcal || 0) + (diet.sKcal || 0);
-    const target = calcDayTarget(plan, y, m - 1, d);
-    if (totalKcal <= 0) return i < cycle.dayIndex ? 'fail' : 'pending';
-    return isDietDaySuccess(totalKcal, target) ? 'success' : 'fail';
+    if (!hasDietRecord(y, m - 1, d)) return i < cycle.dayIndex ? 'fail' : 'pending';
+    const dayData = getDay(y, m - 1, d);
+    const totalKcal = (dayData.bKcal || 0) + (dayData.lKcal || 0) + (dayData.dKcal || 0) + (dayData.sKcal || 0);
+    const target = calcDayTarget(plan, y, m - 1, d, dayData);
+    const tolerance = plan.advancedMode ? (plan.dietTolerance ?? 50) : 50;
+    return isDietDaySuccess(totalKcal, target, tolerance) ? 'success' : 'fail';
   });
 
   // 운동 상태 계산
@@ -99,7 +101,8 @@ export function renderTomatoHero(el) {
     return `<div class="${cls}"></div>`;
   }).join('');
 
-  const kcalOk = todayKcal > 0 && todayKcal <= todayTarget + 50;
+  const _tolerance = plan.advancedMode ? (plan.dietTolerance ?? 50) : 50;
+  const kcalOk = todayKcal > 0 && todayKcal <= todayTarget + _tolerance;
   const kcalIcon = todayKcal <= 0 ? '' : kcalOk ? ' ✓' : ' ✗';
   const kcalCls = todayKcal <= 0 ? '' : kcalOk ? 'tomato-kcal-ok' : 'tomato-kcal-over';
 
@@ -265,7 +268,8 @@ function _showTomatoRuleTooltip(e) {
   requestAnimationFrame(() => modal.classList.add('open'));
 
   modal.querySelector('#tooltip-freeze-btn')?.addEventListener('click', async () => {
-    if (!confirm('토마토 1개를 사용하여 오늘의 스트릭을 보호할까요?')) return;
+    const ok = await confirmSimple('토마토 1개를 사용하여 오늘의 스트릭을 보호할까요?');
+    if (!ok) return;
     const result = await useStreakFreeze('workout');
     if (result.error) { showToast(result.error, 2500, 'error'); return; }
     haptic('success');
@@ -311,17 +315,18 @@ window._closeTomatoRuleGlobal = _closeTomatoRule;
 export function settleTomatoCycleIfNeeded() {
   let startStr = getUnitGoalStart();
 
-  // unit_goal_start가 없거나, 더 오래된 데이터가 있으면 최초 데이터 날짜로 교정
+  // unit_goal_start는 null일 때만 자동 설정. 기존 값은 유저가 수동으로 잡은 의도이므로 역보정 금지.
   const allKeys = getAllDateKeys();
-  if (allKeys.length > 0) {
-    allKeys.sort();
-    const earliest = allKeys[0];
-    if (!startStr || earliest < startStr) {
-      startStr = earliest;
-      saveUnitGoalStart(startStr);
+  if (!startStr) {
+    if (allKeys.length > 0) {
+      allKeys.sort();
+      startStr = allKeys[0];
+    } else {
+      // 데이터도 없으면 오늘을 시작일로 (non-admin 포함 모든 사용자 경로 지원)
+      startStr = dateKey(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
     }
+    saveUnitGoalStart(startStr);
   }
-  if (!startStr) return;
 
   const cycle = calcTomatoCycle(startStr, TODAY);
   if (!cycle.cycleStart) return;
@@ -338,9 +343,12 @@ export function settleTomatoCycleIfNeeded() {
   if (diffDays < 3) return;
 
   const totalCycles = Math.floor(diffDays / 3);
-  // 마이그레이션: 3일 사이클 소급 정산이 안 된 경우 전체 기간 대상
+  // sparse 백필: existingIds에 없는 미정산 사이클만 대상으로 전체 범위 순회.
+  // 과거에는 migrated_v2 이후 최근 10사이클(30일)만 정산했으나,
+  // 이제는 startCycle=0으로 전체 범위를 순회하되 이미 정산된 cycleId는 건너뜀.
+  // 성능 안전장치: 루프 1회 실행당 최대 100사이클 신규 정산.
   const migrated = state.migrated_v2;
-  const startCycle = migrated ? Math.max(0, totalCycles - 10) : 0;
+  const startCycle = 0;
   console.log(`[tomato] settlement: startStr=${startStr}, totalCycles=${totalCycles}, startCycle=${startCycle}, migrated=${!!migrated}`);
 
   // 마이그레이션 시 state 재계산 (v1 잔여값 정리)
@@ -360,6 +368,8 @@ export function settleTomatoCycleIfNeeded() {
     }
   }
   let newlyAwarded = 0;
+  let newlySettled = 0;
+  const MAX_SETTLE_PER_RUN = 100; // 1회 실행당 최대 신규 정산 수 (초기 부하 분산)
 
   for (let ci = startCycle; ci < totalCycles; ci++) {
     const csDate = new Date(start);
@@ -368,6 +378,7 @@ export function settleTomatoCycleIfNeeded() {
     const cycleId = `cycle3_${csKey}`;
 
     if (existingIds.has(cycleId)) continue;
+    if (newlySettled >= MAX_SETTLE_PER_RUN) break;
 
     const dayResults = [];
     for (let di = 0; di < 3; di++) {
@@ -381,7 +392,7 @@ export function settleTomatoCycleIfNeeded() {
       dayResults.push({ date: dateKey(y, m, d), intake: totalKcal, target, dayData });
     }
 
-    const result = evaluateCycleResult(dayResults);
+    const result = evaluateCycleResult(dayResults, plan);
     const ceDate = new Date(csDate);
     ceDate.setDate(ceDate.getDate() + 2);
     const ceKey = `${ceDate.getFullYear()}-${String(ceDate.getMonth()+1).padStart(2,'0')}-${String(ceDate.getDate()).padStart(2,'0')}`;
@@ -405,6 +416,7 @@ export function settleTomatoCycleIfNeeded() {
 
     saveTomatoCycle(cycleResult);
     existingIds.add(cycleId);
+    newlySettled++;
 
     if (result.tomatoesAwarded > 0) {
       state.quarterlyTomatoes[qKey] = (state.quarterlyTomatoes[qKey] || 0) + result.tomatoesAwarded;
@@ -538,15 +550,17 @@ export function renderTomatoBasket() {
   }
 
   let heatmapHtml = '';
+  const _heatmapPlan = getDietPlan();
+  const _heatmapTolerance = _heatmapPlan.advancedMode ? (_heatmapPlan.dietTolerance ?? 50) : 50;
   const startDate = new Date(qStart);
   while (startDate <= qEnd && startDate <= TODAY) {
     const y = startDate.getFullYear(), m = startDate.getMonth(), d = startDate.getDate();
-    const diet = getDiet(y, m, d);
-    const totalKcal = (diet.bKcal || 0) + (diet.lKcal || 0) + (diet.dKcal || 0) + (diet.sKcal || 0);
-    const target = calcDayTarget(getDietPlan(), y, m, d);
+    const dayData = getDay(y, m, d);
+    const totalKcal = (dayData.bKcal || 0) + (dayData.lKcal || 0) + (dayData.dKcal || 0) + (dayData.sKcal || 0);
+    const target = calcDayTarget(_heatmapPlan, y, m, d, dayData);
     let cls = 'tomato-heatmap-cell';
-    if (totalKcal > 0) {
-      cls += isDietDaySuccess(totalKcal, target) ? ' ok' : ' fail';
+    if (hasDietRecord(y, m, d)) {
+      cls += isDietDaySuccess(totalKcal, target, _heatmapTolerance) ? ' ok' : ' fail';
     } else {
       cls += ' empty';
     }

@@ -155,6 +155,33 @@ export function isDietDaySuccess(totalKcal, limitKcal, tolerance = 50) {
 }
 
 /**
+ * 다이어트 플랜에서 tolerance(초과 허용 kcal) 해석
+ * advanced mode가 켜진 경우 plan.dietTolerance를 사용, 그렇지 않으면 50 고정.
+ * @param {object|null} plan - getDietPlan()이 반환하는 플랜 객체
+ * @returns {number}
+ */
+export function resolveDietTolerance(plan) {
+  if (!plan) return 50;
+  return plan.advancedMode ? (plan.dietTolerance ?? 50) : 50;
+}
+
+/**
+ * 식단 기록 존재 여부 (canonical, pure) — 텍스트(snack 포함)/food-chip/kcal-only/skip/photo
+ * data.js hasDietRecord와 calc.js dietDayOk 내부 hasRecord가 이 함수를 공유해야 불일치가 사라짐.
+ * @param {object} w - workout/day 데이터 객체
+ * @returns {boolean}
+ */
+export function hasDietRecordData(w) {
+  if (!w) return false;
+  if (w.breakfast || w.lunch || w.dinner || w.snack) return true;
+  if ((w.bFoods?.length) || (w.lFoods?.length) || (w.dFoods?.length) || (w.sFoods?.length)) return true;
+  if ((w.bKcal || 0) > 0 || (w.lKcal || 0) > 0 || (w.dKcal || 0) > 0 || (w.sKcal || 0) > 0) return true;
+  if (w.breakfast_skipped || w.lunch_skipped || w.dinner_skipped) return true;
+  if (w.bPhoto || w.lPhoto || w.dPhoto || w.sPhoto) return true;
+  return false;
+}
+
+/**
  * 하루 운동 성공 여부
  * 스트릭/토마토 집계 기준: 실제 수행된 세트가 있어야 함.
  *   - 완료 기준: set.done === true  (명시적 완료 체크)
@@ -203,9 +230,8 @@ export function dietDayOk(dayData, plan, y, m, d) {
   const lSkip = !!r.lunch_skipped;
   const dSkip = !!r.dinner_skipped;
 
-  const hasRecord = dt.breakfast || dt.lunch || dt.dinner ||
-                    (dt.bFoods?.length > 0) || (dt.lFoods?.length > 0) ||
-                    (dt.dFoods?.length > 0) || (dt.sFoods?.length > 0);
+  // canonical hasRecord — hasDietRecordData로 일원화 (data.js hasDietRecord와 동일 계약)
+  const hasRecord = hasDietRecordData(r);
 
   if (!hasRecord && !bSkip && !lSkip && !dSkip) return null;
 
@@ -315,11 +341,24 @@ export function calcTomatoCycle(unitGoalStart, today) {
 
 /**
  * 완료된 3일 사이클 결과 평가 (식단 + 운동 듀얼 트랙)
- * @param {Array<{intake:number, target:number, dayData:object}>} dayResults
+ * @param {Array<{date:string, intake:number, target:number, dayData:object}>} dayResults
+ * @param {object|null} [plan] - getDietPlan() 반환값. tolerance 적용에 사용.
  * @returns {{ dietAllSuccess: boolean, exerciseAllSuccess: boolean, tomatoesAwarded: number, dietSuccesses: boolean[], exerciseSuccesses: boolean[] }}
  */
-export function evaluateCycleResult(dayResults) {
-  const dietSuccesses = dayResults.map(d => isDietDaySuccess(d.intake, d.target));
+export function evaluateCycleResult(dayResults, plan) {
+  const tolerance = resolveDietTolerance(plan || null);
+  const dietSuccesses = dayResults.map(d => {
+    const dayData = d.dayData || {};
+    // canonical 판정: food-chip/skip/sKcal 포함 전체 기록 기반
+    const totalKcal = (dayData.bKcal || 0) + (dayData.lKcal || 0) +
+                      (dayData.dKcal || 0) + (dayData.sKcal || 0);
+    const hasRecord = !!(dayData.breakfast || dayData.lunch || dayData.dinner ||
+      (dayData.bFoods?.length) || (dayData.lFoods?.length) ||
+      (dayData.dFoods?.length) || (dayData.sFoods?.length) ||
+      dayData.breakfast_skipped || dayData.lunch_skipped || dayData.dinner_skipped);
+    if (!hasRecord && totalKcal <= 0) return false;
+    return isDietDaySuccess(totalKcal, d.target, tolerance);
+  });
   const exerciseSuccesses = dayResults.map(d => isExerciseDaySuccess(d.dayData || {}));
   const dietAllSuccess = dietSuccesses.every(s => s);
   const exerciseAllSuccess = exerciseSuccesses.every(s => s);

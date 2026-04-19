@@ -19,6 +19,16 @@ function _blockIfFutureDate() {
   return true;
 }
 
+// ── per-meal 기록 유무 판정 헬퍼 ────────────────────────────────
+// 텍스트/food-chip/kcal 중 하나라도 있으면 기록 있음으로 판정
+function _hasMealRecord(textVal, foodsArr, kcalVal, skipFlag) {
+  if (skipFlag) return true;
+  if (textVal && String(textVal).trim()) return true;
+  if (Array.isArray(foodsArr) && foodsArr.length > 0) return true;
+  if ((kcalVal || 0) > 0) return true;
+  return false;
+}
+
 // ── 공통 저장 페이로드 빌더 ──────────────────────────────────────
 // saveWorkoutDay()와 _autoSaveDiet() 양쪽에서 호출하여 필드 누락 방지
 function _buildSavePayload(cleanEx, isDietSuccess) {
@@ -55,7 +65,15 @@ function _buildSavePayload(cleanEx, isDietSuccess) {
     lunch:      S.diet.lunch,
     dinner:     S.diet.dinner,
     snack:      S.diet.snack,
-    bOk:isDietSuccess,   lOk:isDietSuccess,   dOk:isDietSuccess,   sOk:isDietSuccess,
+    // per-meal 성공 판정: 기록 있으면 day-level 성공 여부, skip이면 true, 기록 없으면 null
+    bOk: _hasMealRecord(S.diet.breakfast, S.diet.bFoods, S.diet.bKcal, S.breakfastSkipped)
+           ? (S.breakfastSkipped ? true : isDietSuccess) : null,
+    lOk: _hasMealRecord(S.diet.lunch,     S.diet.lFoods, S.diet.lKcal, S.lunchSkipped)
+           ? (S.lunchSkipped     ? true : isDietSuccess) : null,
+    dOk: _hasMealRecord(S.diet.dinner,    S.diet.dFoods, S.diet.dKcal, S.dinnerSkipped)
+           ? (S.dinnerSkipped    ? true : isDietSuccess) : null,
+    sOk: _hasMealRecord(S.diet.snack,     S.diet.sFoods, S.diet.sKcal, false)
+           ? isDietSuccess : null,
     bKcal:S.diet.bKcal, lKcal:S.diet.lKcal, dKcal:S.diet.dKcal, sKcal:S.diet.sKcal,
     bReason:S.diet.bReason, lReason:S.diet.lReason, dReason:S.diet.dReason, sReason:S.diet.sReason,
     bProtein:S.diet.bProtein, bCarbs:S.diet.bCarbs, bFat:S.diet.bFat,
@@ -183,10 +201,14 @@ export async function _autoSaveDiet() {
   if (_blockIfFutureDate()) return;
   const { y, m, d } = S.date;
 
-  S.diet.breakfast = document.getElementById('wt-meal-breakfast')?.value.trim() || S.diet.breakfast;
-  S.diet.lunch     = document.getElementById('wt-meal-lunch')?.value.trim() || S.diet.lunch;
-  S.diet.dinner    = document.getElementById('wt-meal-dinner')?.value.trim() || S.diet.dinner;
-  S.diet.snack     = document.getElementById('wt-meal-snack')?.value.trim() || S.diet.snack;
+  const bEl = document.getElementById('wt-meal-breakfast');
+  const lEl = document.getElementById('wt-meal-lunch');
+  const dEl = document.getElementById('wt-meal-dinner');
+  const sEl = document.getElementById('wt-meal-snack');
+  if (bEl) S.diet.breakfast = bEl.value.trim();
+  if (lEl) S.diet.lunch     = lEl.value.trim();
+  if (dEl) S.diet.dinner    = dEl.value.trim();
+  if (sEl) S.diet.snack     = sEl.value.trim();
 
   _autoDeriveActivityFlags();
   const cleanEx = _cleanExercises(true);

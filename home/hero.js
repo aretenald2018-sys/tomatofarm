@@ -9,6 +9,7 @@ import { TODAY, calcStreaks, countLocalWeeklyActiveDays,
          getFriendWorkout, dateKey, isAdmin, _isMySocialId, isActiveWorkoutDayData,
          computeGuildStats, getHeroMessage, markHeroMessageRead }  from '../data.js';
 import { setText, showToast, haptic, resolveNickname } from './utils.js';
+import { confirmSimple } from '../utils/confirm-modal.js';
 
 function _currentDateKey() {
   const now = new Date();
@@ -160,7 +161,8 @@ export function renderStreakFreeze() {
 }
 
 window.useStreakFreezeUI = async function() {
-  if (!confirm('토마토 1개를 사용하여 오늘의 스트릭을 보호할까요?')) return;
+  const ok = await confirmSimple('토마토 1개를 사용하여 오늘의 스트릭을 보호할까요?');
+  if (!ok) return;
   const result = await useStreakFreeze('workout');
   if (result.error) { showToast(result.error, 2500, 'error'); return; }
   haptic('success');

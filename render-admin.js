@@ -1,6 +1,7 @@
 import {
   isAdmin, isAdminInstance, getAnalytics, getApiUsage, dateKey, TODAY,
 } from './data.js';
+import { isExerciseDaySuccess } from './calc.js';
 import {
   db, collection, getDocs, query, where, documentId,
 } from './data/data-core.js';
@@ -83,18 +84,23 @@ async function _getRecentWorkouts(userId, dateKeys) {
 
 function _hasActivity(w) {
   if (!w) return false;
-  return !!(w.exercises?.length || w.cf || w.swimming || w.running ||
-    w.bFoods?.length || w.lFoods?.length || w.dFoods?.length || w.sFoods?.length);
+  return !!(_hasExercise(w) || _hasDiet(w) ||
+    w.bPhoto || w.lPhoto || w.dPhoto || w.sPhoto || w.workoutPhoto);
 }
 
 function _hasExercise(w) {
   if (!w) return false;
-  return !!(w.exercises?.length || w.cf || w.swimming || w.running);
+  // canonical: sets 기반 isExerciseDaySuccess → note-only exercise false positive 제거
+  return isExerciseDaySuccess(w);
 }
 
 function _hasDiet(w) {
   if (!w) return false;
-  return !!(w.bFoods?.length || w.lFoods?.length || w.dFoods?.length || w.sFoods?.length);
+  if (w.bFoods?.length || w.lFoods?.length || w.dFoods?.length || w.sFoods?.length) return true;
+  if (w.breakfast || w.lunch || w.dinner || w.snack) return true;
+  if ((w.bKcal || 0) > 0 || (w.lKcal || 0) > 0 || (w.dKcal || 0) > 0 || (w.sKcal || 0) > 0) return true;
+  if (w.breakfast_skipped || w.lunch_skipped || w.dinner_skipped) return true;
+  return false;
 }
 
 async function _fetchBase() {

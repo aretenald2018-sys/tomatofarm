@@ -139,7 +139,7 @@ function _syncNavigationForCurrentRole() {
   const adminMenu = document.getElementById('admin-menu-items');
   const moreBtn = tabNav?.querySelector('.tab-more-btn');
 
-  ['home', 'diet', 'workout', 'stats'].forEach((tabId) => {
+  ['home', 'diet', 'workout', 'stats', 'calendar'].forEach((tabId) => {
     const btn = tabNav?.querySelector(`.tab-btn[data-tab="${tabId}"]`);
     if (btn) btn.style.display = adminOnlyMode ? 'none' : '';
   });

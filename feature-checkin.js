@@ -5,6 +5,7 @@
 import { dateKey, TODAY, saveBodyCheckin, deleteBodyCheckin, getBodyCheckins } from './data.js';
 import { showToast } from './home/utils.js';
 import { openWeightResultModal } from './modals/weight-result-modal.js';
+import { confirmAction } from './utils/confirm-modal.js';
 
 let _checkinId = null;
 let _bodyFatEnabled = false;
@@ -76,7 +77,8 @@ async function saveCheckinFromModal() {
 
 async function deleteCheckinFromModal() {
   if (!_checkinId) return;
-  if (!confirm('체크인 기록을 삭제할까요?')) return;
+  const ok = await confirmAction({ title: '체크인 삭제', message: '체크인 기록을 삭제할까요?', destructive: true, longPress: 2000 });
+  if (!ok) return;
   await deleteBodyCheckin(_checkinId);
   document.getElementById('checkin-modal').classList.remove('open');
   window.renderAll();

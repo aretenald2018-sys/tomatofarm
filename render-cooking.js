@@ -7,6 +7,7 @@ import { saveCooking, deleteCooking, getCookingRecords,
          findDietEntriesByRecipeId, saveDay } from './data.js';
 import { searchCSVFood }                      from './fatsecret-api.js';
 import { searchNutritionDB }                  from './data.js';
+import { confirmAction } from './utils/confirm-modal.js';
 
 const CATEGORIES   = ['한식','양식','일식','중식','기타'];
 const RESULT_LABEL = { success:'✓ 성공', partial:'△ 보통', fail:'✗ 아쉬움' };
@@ -129,7 +130,8 @@ export async function saveCookingFromModal() {
 
 export async function deleteCookingFromModal() {
   if (!_editingId) return;
-  if (!confirm('이 요리 기록을 삭제할까요?')) return;
+  const ok = await confirmAction({ title: '요리 기록 삭제', message: '이 요리 기록을 삭제할까요?', destructive: true });
+  if (!ok) return;
   await deleteCooking(_editingId);
   document.getElementById('cooking-modal').classList.remove('open');
   renderCooking();

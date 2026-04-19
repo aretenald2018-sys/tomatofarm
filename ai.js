@@ -5,7 +5,8 @@
 // ================================================================
 
 import { TODAY, getMemo, getExercises, getDiet, getExList,
-         getMuscles, getCF, dietDayOk }        from './data.js';
+         getMuscles, getCF, dietDayOk,
+         hasExerciseRecord }        from './data.js';
 import { functions }                           from './data/data-core.js';
 import { httpsCallable }                       from "https://www.gstatic.com/firebasejs/11.6.0/firebase-functions.js";
 
@@ -55,14 +56,27 @@ function _cleanJSON(text) {
   return JSON.parse(s);
 }
 
+// ── AI 타임아웃 헬퍼 — 25초 이내 응답 없으면 친화 에러 ─────────────
+async function _withTimeout(promise, ms = 25000) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error('AI_TIMEOUT')), ms);
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // 서버(geminiProxy Cloud Function)가 자체적으로 Groq fallback을 수행.
 // 응답에 provider 필드 포함 ('gemini' or 'groq'). 후속 UI는 이 값으로 판단.
 async function _callGeminiProxy(parts, { maxTokens = 400, responseMimeType } = {}) {
-  const { data } = await _geminiProxy({
+  const { data } = await _withTimeout(_geminiProxy({
     parts,
     maxTokens,
     responseMimeType,
-  });
+  }));
   const text = data?.text;
   if (!text) throw new Error('Gemini 응답을 파싱할 수 없습니다.');
   return { text, provider: data?.provider || 'gemini' };
@@ -115,9 +129,19 @@ export async function getDietRec() {
   const recentMeals = [];
   for (let i = 0; i < 7; i++) {
     const d = new Date(TODAY); d.setDate(d.getDate() - i);
-    const dt = getDiet(d.getFullYear(), d.getMonth(), d.getDate());
-    if (dt.breakfast || dt.lunch || dt.dinner) {
-      recentMeals.push(`${i===0?'오늘':i+'일전'}: 아침(${dt.breakfast||'-'}) 점심(${dt.lunch||'-'}) 저녁(${dt.dinner||'-'})`);
+    const y = d.getFullYear(), mo = d.getMonth(), dd = d.getDate();
+    const dt = getDiet(y, mo, dd);
+    const foodsOrText = (meal, textVal) => {
+      const foods = dt[meal + 'Foods'] || [];
+      if (foods.length) return foods.map(f => f.name).slice(0, 3).join(', ');
+      return textVal || '-';
+    };
+    const hasText = dt.breakfast || dt.lunch || dt.dinner || dt.snack;
+    const hasFoods = (dt.bFoods?.length || 0) + (dt.lFoods?.length || 0) + (dt.dFoods?.length || 0) + (dt.sFoods?.length || 0) > 0;
+    const hasKcal = ((dt.bKcal||0) + (dt.lKcal||0) + (dt.dKcal||0) + (dt.sKcal||0)) > 0;
+    if (hasText || hasFoods || hasKcal) {
+      const snackPart = (dt.snack || (dt.sFoods?.length > 0)) ? ` 간식(${foodsOrText('s', dt.snack)})` : '';
+      recentMeals.push(`${i===0?'오늘':i+'일전'}: 아침(${foodsOrText('b', dt.breakfast)}) 점심(${foodsOrText('l', dt.lunch)}) 저녁(${foodsOrText('d', dt.dinner)})${snackPart}`);
     }
   }
 
@@ -129,7 +153,9 @@ export async function getDietRec() {
   try {
     bubble.textContent = await callGemini(prompt);
   } catch(e) {
-    bubble.textContent = '오류: ' + e.message;
+    bubble.textContent = e.message === 'AI_TIMEOUT'
+      ? '네트워크가 불안정해요. 다시 시도해주세요.'
+      : '응답을 받지 못했어요.';
   } finally {
     bubble.classList.remove('loading');
   }
@@ -163,7 +189,9 @@ export async function getWorkoutRec() {
   try {
     bubble.textContent = await callGemini(prompt);
   } catch(e) {
-    bubble.textContent = '오류: ' + e.message;
+    bubble.textContent = e.message === 'AI_TIMEOUT'
+      ? '네트워크가 불안정해요. 다시 시도해주세요.'
+      : '응답을 받지 못했어요.';
   } finally {
     bubble.classList.remove('loading');
   }
@@ -1142,7 +1170,7 @@ export async function analyzeGoalFeasibility(goal) {
   for (let i=0; i<30; i++) {
     const d = new Date(TODAY); d.setDate(d.getDate()-i);
     const y=d.getFullYear(), m=d.getMonth(), dd=d.getDate();
-    if (getMuscles(y,m,dd).length > 0 || getCF(y,m,dd)) workoutDays++;
+    if (hasExerciseRecord(y,m,dd)) workoutDays++;
     if (dietDayOk(y,m,dd) === true) dietOkDays++;
   }
   const workoutRate = Math.round((workoutDays / 30) * 100);

@@ -8,8 +8,10 @@ import { TODAY, getCurrentUser, getMyFriends, getAccountList,
          toggleLike, getLikes, dateKey, getCheerStatus,
          isAdmin, isAdminGuest, getAdminId, getAdminGuestId,
          recordAction }  from '../data.js';
+import { isExerciseDaySuccess } from '../calc.js';
 import { resolveNickname, showToast, haptic, formatTimeAgo } from './utils.js';
 import { updateHeroSocialProof } from './hero.js';
+import { confirmAction } from '../utils/confirm-modal.js';
 
 const _NEIGHBOR_PAGE_SIZE = 3;
 let _neighborPage = 0;
@@ -176,8 +178,17 @@ export async function renderFriendFeed() {
       const name = nick;
       const w = friendWorkouts[fi];
 
-      const hasToday = !!(w && ((w.muscles||[]).length || w.exercises?.length || w.breakfast || w.lunch || w.dinner || w.bFoods?.length || w.lFoods?.length || w.dFoods?.length));
-      const hasRecent = !hasToday && recentWorkouts[fi].some(rw => rw && ((rw.muscles||[]).length || rw.exercises?.length || rw.breakfast || rw.lunch || rw.dinner));
+      // canonical 판정: isExerciseDaySuccess (sets 기반 → note-only exercise false positive 제거) + 식단 기록
+      const _isActive = (x) => !!(x && (
+        isExerciseDaySuccess(x) || (x.muscles||[]).length > 0 ||
+        x.breakfast || x.lunch || x.dinner || x.snack ||
+        x.bFoods?.length || x.lFoods?.length || x.dFoods?.length || x.sFoods?.length ||
+        (x.bKcal||0) > 0 || (x.lKcal||0) > 0 || (x.dKcal||0) > 0 || (x.sKcal||0) > 0 ||
+        x.breakfast_skipped || x.lunch_skipped || x.dinner_skipped ||
+        x.bPhoto || x.lPhoto || x.dPhoto || x.sPhoto
+      ));
+      const hasToday = _isActive(w);
+      const hasRecent = !hasToday && recentWorkouts[fi].some(_isActive);
       // 비활성 판정: 마지막 접속으로부터 12시간 이상 지나야 inactive
       const lastLogin = acc?.lastLoginAt || 0;
       const hoursSinceLogin = (Date.now() - lastLogin) / (1000 * 60 * 60);
@@ -478,7 +489,20 @@ window.acceptFriendReq = async function(id) {
   if (_renderHomeFn) _renderHomeFn();
 };
 window.rejectFriendReq = async function(id) { await removeFriend(id); showToast('요청을 거절했어요', 2500, 'info'); if (_renderHomeFn) _renderHomeFn(); };
-window.deleteFriend = async function(id) { if(!confirm('이웃을 삭제할까요?')) return; await removeFriend(id); showToast('이웃을 삭제했어요', 2500, 'info'); window.openFriendManager(); };
+window.deleteFriend = async function(id) {
+  const ok = await confirmAction({ title: '이웃 삭제', message: '이웃을 삭제할까요?', destructive: true, longPress: 2000 });
+  if (!ok) return;
+  // 더블탭 가드: 삭제 완료 전 재호출 방지
+  if (window._deleteFriendLock) return;
+  window._deleteFriendLock = true;
+  try {
+    await removeFriend(id);
+    showToast('이웃을 삭제했어요', 2500, 'info');
+    window.openFriendManager();
+  } finally {
+    window._deleteFriendLock = false;
+  }
+};
 
 window.quickAddNeighbor = async function(targetId) {
   const user = getCurrentUser();
