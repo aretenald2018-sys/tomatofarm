@@ -68,6 +68,11 @@ window.wtRecoverTimers = wtRecoverTimers;
 
 // 운동종료 → 확인 모달 → 실제 타이머 정지/저장 + 주간 인사이트(Scene 13) 모달 연결.
 // 실수 방지를 위해 confirm 모달을 먼저 띄우고, 승인 시에만 종료 흐름을 실행.
+// 2026-04-19: wtFinishWorkout 의 저장 Promise를 **반드시 await** 한 뒤 insightsOpen 호출.
+// 배경: 직전까지는 fire-and-forget 이었고, _cache[key]=data 가 동기 경로에서 먼저
+// 갱신되기는 하나, 저장이 완료되기 전에 insights 모달이 렌더되면 '이번 주 · 부위별
+// 자극 균형'/'주요 종목 추세' 가 당일 기록을 누락한 채 계산되는 회귀가 재현됐음
+// (사용자 리포트 2026-04-19 "여전히 반영이 되지 않는 버그"). 저장 완료 후 열도록 변경.
 window.wtEndAndShowInsights = async () => {
   const ok = await confirmAction({
     title: '운동을 종료할까요?',
@@ -76,9 +81,15 @@ window.wtEndAndShowInsights = async () => {
     cancelLabel: '취소',
   });
   if (!ok) return;
-  try { wtFinishWorkout(); } catch (e) { console.warn('[wtEndAndShowInsights.finish]:', e); }
+  // 저장이 끝난 뒤에만 insights 열기 — 당일 기록이 cache/Firestore에 확실히 반영된 상태.
   try {
-    if (typeof window.insightsOpen === 'function') window.insightsOpen();
+    const savePromise = wtFinishWorkout();
+    if (savePromise && typeof savePromise.then === 'function') {
+      await savePromise;
+    }
+  } catch (e) { console.warn('[wtEndAndShowInsights.finish]:', e); }
+  try {
+    if (typeof window.insightsOpen === 'function') await window.insightsOpen();
   } catch (e) { console.warn('[wtEndAndShowInsights.insights]:', e); }
 };
 window.wtRestTimerStart = wtRestTimerStart;

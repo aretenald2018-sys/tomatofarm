@@ -8,9 +8,20 @@ import { showToast, showCenterToast } from '../home/utils.js';
 import { confirmAction }    from '../utils/confirm-modal.js';
 
 // ── 운동 시간 측정 ───────────────────────────────────────────────
+// 타이머는 시작 시점의 날짜(workoutTimerDate)에 귀속됨.
+// 사용자가 다른 날짜를 보는 중에도 타이머는 계속 흐르지만, 표시/저장 경로는
+// "현재 보고 있는 날짜 === 타이머의 날짜"일 때만 live elapsed를 합산함.
+export function _isViewingTimerDate() {
+  const td = S.workoutTimerDate, cd = S.date;
+  if (!td || !cd) return false;
+  return td.y === cd.y && td.m === cd.m && td.d === cd.d;
+}
+
 export function wtStartWorkoutTimer() {
   if (S.workoutStartTime) return;
   S.workoutStartTime = Date.now();
+  // 타이머가 속한 날짜 고정 (현재 보고 있는 날짜가 기준).
+  S.workoutTimerDate = S.date ? { ...S.date } : null;
   S.workoutTimerInterval = setInterval(_renderWorkoutTimer, 1000);
   _renderWorkoutTimer();
   _renderTimerControls();
@@ -18,8 +29,13 @@ export function wtStartWorkoutTimer() {
 
 export function wtPauseWorkoutTimer() {
   if (!S.workoutStartTime) return;
-  S.workoutDuration += Math.floor((Date.now() - S.workoutStartTime) / 1000);
+  // 일시정지는 타이머의 날짜에만 누적해야 함. 다른 날짜를 보고 있으면
+  // S.workoutDuration은 그 날짜의 값이므로 건드리면 안 됨.
+  if (_isViewingTimerDate()) {
+    S.workoutDuration += Math.floor((Date.now() - S.workoutStartTime) / 1000);
+  }
   S.workoutStartTime = null;
+  // workoutTimerDate는 유지 (재개 시 같은 날짜 타이머로 이어지도록)
   if (S.workoutTimerInterval) { clearInterval(S.workoutTimerInterval); S.workoutTimerInterval = null; }
   _renderWorkoutTimer();
   _renderTimerControls();
@@ -41,6 +57,7 @@ export async function wtResetWorkoutTimer() {
   }
   S.workoutDuration = 0;
   S.workoutStartTime = null;
+  S.workoutTimerDate = null;
   if (S.workoutTimerInterval) { clearInterval(S.workoutTimerInterval); S.workoutTimerInterval = null; }
   _renderWorkoutTimer();
   _renderTimerControls();
@@ -50,18 +67,26 @@ export async function wtResetWorkoutTimer() {
 export function _renderWorkoutTimer() {
   const el = document.getElementById('wt-workout-timer');
   if (!el) return;
-  const elapsed = S.workoutStartTime
+  // 현재 보고 있는 날짜가 타이머의 날짜일 때만 live elapsed를 합산.
+  // 다른 날짜를 보고 있으면 그 날짜의 저장된 workoutDuration만 표시.
+  const onTimerDate = _isViewingTimerDate();
+  const elapsed = (S.workoutStartTime && onTimerDate)
     ? Math.floor((Date.now() - S.workoutStartTime) / 1000) + S.workoutDuration
     : S.workoutDuration;
   el.textContent = _fmtTimerCompact(elapsed);
   el.style.display = '';
   const bar = document.getElementById('wt-workout-timer-bar');
-  if (bar) bar.classList.toggle('wt-running', !!S.workoutStartTime);
+  if (bar) bar.classList.toggle('wt-running', !!S.workoutStartTime && onTimerDate);
 }
 
 export function _renderTimerControls() {
-  const isRunning = !!S.workoutStartTime;
-  const hasTime   = S.workoutDuration > 0 || isRunning;
+  // 타이머가 "다른 날짜"에 활성 중일 땐 이 화면의 컨트롤을 모두 숨김.
+  // (타이머는 내부적으로 계속 흐르며, 원래 날짜로 돌아오면 컨트롤 복귀)
+  // 타이머가 정지 상태거나, 현재 보고 있는 날짜 = 타이머 날짜일 때만 컨트롤 노출.
+  const onTimerDate = _isViewingTimerDate();
+  const timerActiveElsewhere = !!S.workoutStartTime && !onTimerDate;
+  const isRunning = !!S.workoutStartTime && onTimerDate;
+  const hasTime   = isRunning || (!timerActiveElsewhere && S.workoutDuration > 0);
   const pauseBtn  = document.getElementById('wt-timer-pause-btn');
   const playBtn   = document.getElementById('wt-timer-play-btn');
   const resetBtn  = document.getElementById('wt-timer-reset-btn');
@@ -103,11 +128,25 @@ export function wtTogglePauseWorkoutTimer() {
   }
 }
 
+// 2026-04-19: 반환값이 saveWorkoutDay의 Promise.
+// 호출자(wtEndAndShowInsights 등)가 저장 완료를 명시적으로 await 해야 할 때 사용.
+// 기존 fire-and-forget 호출부는 `.catch(...)` 만 붙이면 동일하게 동작한다.
+// 배경: "끝내기 직후 인사이트 모달이 당일 기록을 아직 반영 못 하는" 회귀를 방지하려면,
+//      insightsOpen이 cache 읽기 전에 setDoc/_cache 업데이트가 마무리돼야 한다.
+//      _cache[key]=data는 동기 경로에서 이미 갱신되지만, Firebase round-trip까지
+//      기다려야 다른 레이어(getCache 소비자, analytics 등)와의 순서가 명확해진다.
 export function wtFinishWorkout() {
   if (S.workoutStartTime) {
-    S.workoutDuration += Math.floor((Date.now() - S.workoutStartTime) / 1000);
+    // 타이머 날짜와 현재 보고 있는 날짜가 다를 수 있음.
+    // 누적은 타이머의 날짜 document에만 반영되어야 함 — 아래 saveWorkoutDay가
+    // 타이머 날짜 기준으로 저장할 수 있도록 여기서는 workoutDuration만 합산.
+    // (_isViewingTimerDate 시점에서만 S.workoutDuration이 타이머 날짜의 값임)
+    if (_isViewingTimerDate()) {
+      S.workoutDuration += Math.floor((Date.now() - S.workoutStartTime) / 1000);
+    }
     S.workoutStartTime = null;
   }
+  S.workoutTimerDate = null;
   if (S.workoutTimerInterval) { clearInterval(S.workoutTimerInterval); S.workoutTimerInterval = null; }
   _renderWorkoutTimer();
   const pauseBtn = document.getElementById('wt-timer-pause-btn');
@@ -126,7 +165,8 @@ export function wtFinishWorkout() {
   const bar = document.getElementById('wt-workout-timer-bar');
   if (bar) bar.classList.remove('wt-running');
   showCenterToast(`운동 완료! ${_fmtDuration(S.workoutDuration)}`, 2200);
-  saveWorkoutDay().catch(e => console.error('Save error:', e));
+  // 반환값이 saveWorkoutDay의 Promise — 호출자가 await 할 수 있도록.
+  return saveWorkoutDay().catch(e => { console.error('Save error:', e); });
 }
 
 export function wtRecoverTimers() {

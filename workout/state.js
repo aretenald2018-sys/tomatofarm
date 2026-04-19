@@ -32,6 +32,9 @@ export const S = {
   workoutStartTime: null,
   workoutDuration:  0,
   workoutTimerInterval: null,
+  // 타이머가 소속된 날짜 — 시작 시점에 캡처됨. 날짜 네비게이션 시에도 유지되며,
+  // 끝내기/리셋에서만 null로 초기화. (다른 날짜를 보는 중에도 타이머는 계속 흐름)
+  workoutTimerDate: null,              // { y, m, d } | null
   breakfastSkipped: false,
   lunchSkipped: false,
   dinnerSkipped: false,

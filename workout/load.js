@@ -11,7 +11,7 @@ import { _renderDateLabel,
          renderCalorieTracker }
                                      from './render.js';
 import { _renderWorkoutTimer, _renderTimerControls,
-         _fmtDuration, wtRestTimerSkip }
+         _fmtDuration, wtRestTimerSkip, _isViewingTimerDate }
                                      from './timers.js';
 import { _renderRunningForm, _renderCfForm,
          _renderStretchForm, _renderSwimForm }
@@ -75,8 +75,10 @@ export function loadWorkoutDate(y, m, d) {
   };
   S.wineFree   = !!day.wine_free;
   S.workoutDuration = day.workoutDuration || 0;
-  S.workoutStartTime = null;
-  if (S.workoutTimerInterval) { clearInterval(S.workoutTimerInterval); S.workoutTimerInterval = null; }
+  // ⚠️ 스톱워치는 끝내기/리셋 전에는 절대 멈추면 안 됨 (2026-04-19 사용자 리포트).
+  // 과거엔 여기서 workoutStartTime=null + interval clear 했지만, 그러면 날짜 네비게이션
+  // (또는 가끔 동일 날짜 리로드)에도 타이머가 죽어버림. 타이머는 전역 스톱워치이고
+  // 날짜 소속은 workoutTimerDate가 추적. 표시/저장은 _isViewingTimerDate 기준으로 가름.
   wtRestTimerSkip();
   const timerControls = document.querySelector('.wt-timer-controls');
   if (timerControls) timerControls.style.display = '';
@@ -191,8 +193,13 @@ function _restoreFlowState(day) {
     timerBar?.classList.remove('wt-open');
   }
 
+  // 2026-04-19: 타이머 컨트롤 노출 규칙을 workoutTimerDate 기준으로 통일.
+  // 과거엔 "오늘이 아닌 날짜"면 무조건 컨트롤을 숨겼는데, 타이머가 과거 날짜에서
+  // 시작된 상태라면 그 날짜로 돌아가도 멈출 수 없게 되는 문제가 생김.
+  // 규칙: 오늘을 보고 있거나(Start/새 타이머) 타이머의 날짜를 보고 있으면(Pause/Reset) 컨트롤 노출.
   const isToday = S.date && S.date.y === TODAY.getFullYear() && S.date.m === TODAY.getMonth() && S.date.d === TODAY.getDate();
-  if (!isToday && timerBar) {
+  const showControls = isToday || _isViewingTimerDate();
+  if (!showControls && timerBar) {
     const controls = timerBar.querySelector('.wt-timer-controls');
     if (controls) controls.style.display = 'none';
     if (S.workoutDuration > 0) {

@@ -351,6 +351,29 @@ export async function saveDay(key, data) {
 // Exercise CRUD
 // ═══════════════════════════════════════════════════════════════
 
+// muscleIds 파생 — 2026-04-19 리팩토링으로 도입.
+// 한 기구/동작이 활성화시키는 세부 부위(subPattern) 배열.
+// [0] = 주동근 (자극 균형 차트 카운트 기준). 이 함수는 legacy 데이터나
+// muscleIds 누락된 레코드에서 movementId → [subPattern] 단일 원소로 복원하는
+// 용도. 더 풍부한 매핑은 ai.js MOVEMENT_MUSCLES_MAP + deriveMuscleIdsForItem 참고.
+//
+// 계약: muscleIds[] 원소는 반드시 세부부위(subPattern) — chest_upper/back_width/quad/...
+// 대분류(chest/back/lower/...)를 여기에 섞어 넣으면 안 됨. 다운스트림(calc.js
+// calcBalanceByPattern, expert.js _SUBPATTERN_TO_MAJOR/_subPatternLabel)이 subPattern
+// 키로 소비하기 때문에 'chest' 같은 대분류를 밀어넣으면 라벨이 영어로 나오거나
+// 역매핑이 깨져 루틴 필터에서 off-target으로 걸러짐. (2026-04-19 CODEX 지적 수정)
+// 커스텀 종목(movementId 없음)은 파생 불가 → []. 다운스트림이 빈 배열을 직접 처리함.
+function _deriveLegacyMuscleIds(record) {
+  if (Array.isArray(record.muscleIds) && record.muscleIds.length > 0) {
+    return record.muscleIds.filter(Boolean);
+  }
+  if (record.movementId && record.movementId !== 'unknown') {
+    const mv = MOVEMENTS.find(m => m.id === record.movementId);
+    if (mv?.subPattern) return [mv.subPattern];
+  }
+  return [];
+}
+
 export async function saveExercise(ex) {
   // movementId가 있고 category가 없으면 MOVEMENTS에서 equipment_category 자동 주입.
   // 피커의 장비 카테고리 필터가 movementId 없는 커스텀에도 점진적으로 동작하게 됨.
@@ -358,6 +381,20 @@ export async function saveExercise(ex) {
   if (!record.category && record.movementId) {
     const mv = MOVEMENTS.find(m => m.id === record.movementId);
     if (mv?.equipment_category) record.category = mv.equipment_category;
+  }
+  // muscleIds 누락 시 legacy movementId → [subPattern]로 자동 보강.
+  // 외부(parseEquipment 호출부)가 명시적으로 [] 전달해도 기본 복원은 수행.
+  const derivedIds = _deriveLegacyMuscleIds(record);
+  if (derivedIds.length > 0) {
+    // 외부에서 명시적으로 muscleIds를 주었고 비어있지 않으면 그대로 유지.
+    // 그 외의 경우(undefined 또는 빈 배열)엔 derived로 채움.
+    if (!Array.isArray(record.muscleIds) || record.muscleIds.length === 0) {
+      record.muscleIds = derivedIds;
+    } else {
+      record.muscleIds = record.muscleIds.filter(Boolean);
+    }
+  } else {
+    record.muscleIds = [];
   }
   return _fbOp('saveExercise', async () => {
     await setDoc(_doc('exercises', record.id), record);

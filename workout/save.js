@@ -19,6 +19,15 @@ function _blockIfFutureDate() {
   return true;
 }
 
+// 저장 대상 날짜(S.date)가 현재 활성 스톱워치의 귀속 날짜인지 판정.
+// 타이머가 정지 상태(workoutStartTime=null)거나 다른 날짜 것일 때는 false.
+function _isSavingTimerDate() {
+  if (!S.workoutStartTime) return false;
+  const td = S.workoutTimerDate, cd = S.date;
+  if (!td || !cd) return false;
+  return td.y === cd.y && td.m === cd.m && td.d === cd.d;
+}
+
 // ── per-meal 기록 유무 판정 헬퍼 ────────────────────────────────
 // 텍스트/food-chip/kcal 중 하나라도 있으면 기록 있음으로 판정
 function _hasMealRecord(textVal, foodsArr, kcalVal, skipFlag) {
@@ -53,7 +62,9 @@ function _buildSavePayload(cleanEx, isDietSuccess) {
     swimDurationSec: S.swimData.durationSec,
     swimStroke:    S.swimData.stroke,
     swimMemo:      S.swimData.memo,
-    workoutDuration: S.workoutStartTime
+    // 저장 대상 날짜 === 타이머가 속한 날짜일 때만 live elapsed를 합산.
+    // 다른 날짜를 보는 중(타이머는 다른 날짜 것)이면 그 날짜의 S.workoutDuration만 기록.
+    workoutDuration: _isSavingTimerDate()
       ? S.workoutDuration + Math.floor((Date.now() - S.workoutStartTime) / 1000)
       : S.workoutDuration,
     wine_free:  S.wineFree,

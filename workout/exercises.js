@@ -38,9 +38,13 @@ function _syncExpertTopArea() {
   }
 }
 
+// _isExpertUiEnabled — RPE 등 프로모드 전용 UI 표시 여부 판정.
+// 이전에는 preset.enabled만 봐서, 일반모드 뷰에서도 RPE select이 세트 행에 삽입되어
+// flex 레이아웃이 깨지는 이슈가 있었음 (유저: '운동체크 시 RPE 버튼이 생기면서 디자인 망가짐').
+// 이제는 '프로모드 preset 활성 && 프로모드 뷰 표시' 동시 조건만 true.
 function _isExpertUiEnabled() {
   try {
-    return !!isExpertModeEnabled();
+    return !!isExpertModeEnabled() && !!isExpertViewShown();
   } catch {
     return false;
   }

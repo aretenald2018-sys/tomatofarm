@@ -594,6 +594,9 @@ export async function expertOnbOpen() {
       _obState.gymName = gym.name;
       _obState.draftGymId = gym.id;
       // 저장된 기구 로드 → _obState.parsed로 복원 (dbId 유지)
+      // 2026-04-19: muscleIds 배열도 반드시 이월. 리뷰 화면 backfill 로직이 빈 배열을
+      // movementId.subPattern 하나로 채워버리면 "사용자가 고른 2차 부위/우선순위"가
+      // 모두 증발함. 저장된 muscleIds가 있으면 그대로 보존.
       const exList = getGymExList(gym.id);
       _obState.parsed = exList.map(ex => ({
         name: ex.name,
@@ -603,6 +606,7 @@ export async function expertOnbOpen() {
         incKg: ex.incrementKg || 2.5,
         weightUnit: ex.weightUnit || 'kg',
         movementId: ex.movementId,
+        muscleIds: Array.isArray(ex.muscleIds) ? [...ex.muscleIds] : [],
         confidence: 1,
         mappingState: 'mapped',
         dbId: ex.id,
@@ -676,6 +680,9 @@ export function expertOnbOpenForNewGym(existingGymId = null) {
     if (gym) {
       _obState.draftGymId = existingGymId;
       _obState.gymName = gym.name;
+      // 2026-04-19: 저장된 muscleIds를 복원해야 리뷰 화면이 사용자가 편집해둔
+      // 부위 칩(예: 가슴 상부 + 가슴 중부 + 어깨 전면)을 그대로 보여줌. 누락 시
+      // backfill이 movementId.subPattern 하나로 덮어써서 편집값이 사라짐.
       const exList = getGymExList(existingGymId);
       _obState.parsed = exList.map(ex => ({
         name: ex.name,
@@ -685,6 +692,7 @@ export function expertOnbOpenForNewGym(existingGymId = null) {
         incKg: ex.incrementKg || 2.5,
         weightUnit: ex.weightUnit || 'kg',
         movementId: ex.movementId,
+        muscleIds: Array.isArray(ex.muscleIds) ? [...ex.muscleIds] : [],
         confidence: 1,
         mappingState: 'mapped',
         dbId: ex.id,
@@ -1328,22 +1336,25 @@ async function _persistOnboardingDraft() {
     _obState.draftGymId = gymId;
     await saveExpertPreset({ draftGymId: gymId });
   }
-  // 각 parsed 중 dbId 없고 movementId 유효한 것만 신규 저장
+  // 각 parsed 중 dbId 없고 (movementId 유효 OR muscleIds 존재)인 것만 신규 저장
+  // 2026-04-19: muscleIds 배열을 레코드에 함께 저장 — 자극 균형/루틴 필터의 새 기준.
   for (const p of _obState.parsed) {
     if (p.dbId) continue;
-    if (!p.movementId || p.movementId === 'unknown') continue;
-    const mov = MOVEMENTS.find(m => m.id === p.movementId);
-    if (!mov) continue;
+    const hasMovement = p.movementId && p.movementId !== 'unknown';
+    const hasMuscles = Array.isArray(p.muscleIds) && p.muscleIds.length > 0;
+    if (!hasMovement && !hasMuscles) continue;
+    const mov = hasMovement ? MOVEMENTS.find(m => m.id === p.movementId) : null;
     const exId = _generateId();
     await saveExercise({
       id: exId,
-      muscleId: mov.primary,
+      muscleId: mov?.primary || (hasMuscles ? p.muscleIds[0] : null),
+      muscleIds: hasMuscles ? [...p.muscleIds] : undefined, // undefined → data.js가 legacy 파생
       name: p.name,
-      movementId: p.movementId,
+      movementId: p.movementId || 'unknown',
       brand: p.brand || '',
       machineType: p.machineType || '',
       maxWeightKg: p.maxKg || null,
-      incrementKg: p.incKg || mov.stepKg || 2.5,
+      incrementKg: p.incKg || mov?.stepKg || 2.5,
       weightUnit: p.weightUnit || 'kg',
       gymId,
       notes: '',
@@ -1376,65 +1387,69 @@ function _openReviewScreen() {
   const coverage = _calcCoverage(_obState.parsed);
   if (!_obState.editing) _obState.editing = new Set();
 
-  // 후방 호환: 옛 mappingState 없는 데이터(수동 추가 등) → movementId로 추론
+  // 2026-04-19 리팩토링: 기구 → muscleIds(세부 부위) 배열 매핑.
+  // legacy 데이터(parsed 객체가 muscleIds 없는 경우) → movementId 기반으로 즉시 복원.
+  // 이렇게 하면 UI 렌더 시점에 칩 목록이 비어 보이지 않음.
+  for (const p of _obState.parsed) {
+    if (!Array.isArray(p.muscleIds)) p.muscleIds = [];
+    if (p.muscleIds.length === 0 && p.movementId && p.movementId !== 'unknown') {
+      const mv = MOVEMENTS.find(m => m.id === p.movementId);
+      if (mv?.subPattern) p.muscleIds = [mv.subPattern];
+    }
+  }
+
+  // 후방 호환: 옛 mappingState 없는 데이터(수동 추가 등) → muscleIds로 상태 추론
   const stateOf = (p) => {
-    if (p.mappingState) return p.mappingState;
-    if (!p.movementId || p.movementId === 'unknown') return 'ambiguous';
-    return 'mapped';
+    if (Array.isArray(p.muscleIds) && p.muscleIds.length > 0) return 'mapped';
+    if (p.mappingState === 'unsupported') return 'unsupported';
+    return 'ambiguous';
   };
 
   const rows = _obState.parsed.map((p, i) => {
     const state = stateOf(p);
-    const editing = _obState.editing.has(i);
+    const pickerOpen = _obState.editing.has(i);
 
-    let icon, iconClass, rowClass, movementCell;
-    if (state === 'unsupported' && !editing) {
+    let icon, iconClass, rowClass;
+    if (state === 'unsupported') {
       icon = '⊘'; iconClass = 'eq-skip'; rowClass = 'unsupported';
-      movementCell = `
-        <div class="eq-movement-skip" onclick="expertOnbEditMovement(${i})" style="cursor:pointer;" title="동작을 직접 지정">미지원</div>
-      `;
-    } else if (state === 'ambiguous' || editing) {
+    } else if (state === 'ambiguous') {
       icon = '?'; iconClass = 'eq-warn'; rowClass = 'warn';
-      // subPattern으로 그룹핑된 드롭다운 (사용자 추적 관점 — 머신명보다 자극 부위 우선)
-      const cands = (p.candidates || []).filter(c => c?.id);
-      const candIds = new Set(cands.map(c => c.id));
-      const candOpts = cands.map(c => {
-        const m = MOVEMENTS.find(x => x.id === c.id);
-        if (!m) return '';
-        const sel = p.movementId === m.id ? ' selected' : '';
-        return `<option value="${m.id}"${sel}>${_esc(m.nameKo)}</option>`;
-      }).join('');
-      // subPattern으로 나머지 MOVEMENTS 그룹화 (추천 후보는 상단에 별도)
-      const grouped = {};
-      for (const m of MOVEMENTS) {
-        if (candIds.has(m.id)) continue;
-        const sp = m.subPattern || 'other';
-        (grouped[sp] = grouped[sp] || []).push(m);
-      }
-      const groupedOpts = Object.entries(grouped).map(([sp, moves]) => {
-        const spLabel = _subPatternLabel(sp);
-        return `<optgroup label="${_esc(spLabel)}">${moves.map(m =>
-          `<option value="${m.id}"${p.movementId === m.id ? ' selected' : ''}>${_esc(m.nameKo)}</option>`
-        ).join('')}</optgroup>`;
-      }).join('');
-      const placeholder = `<option value="unknown"${(!p.movementId || p.movementId === 'unknown') ? ' selected' : ''}>— 자극 부위 선택 —</option>`;
-      const optionsHtml = candOpts
-        ? `${placeholder}<optgroup label="🎯 추천 후보">${candOpts}</optgroup>${groupedOpts}`
-        : `${placeholder}${groupedOpts}`;
-      movementCell = `<select class="eq-movement-select warn" onchange="expertOnbAssignMovement(${i}, this.value)" autofocus>${optionsHtml}</select>`;
-    } else { // mapped
+    } else {
       icon = '✓'; iconClass = 'eq-check'; rowClass = '';
-      // subPattern을 primary 라벨로, 머신명은 sub로 — 추적/집계 친화
-      const mov = MOVEMENTS.find(m => m.id === p.movementId);
-      const spLabel = mov ? _subPatternLabel(mov.subPattern) : '';
-      const machineLabel = mov ? mov.nameKo : _moveLabel(p.movementId);
-      movementCell = `
-        <div class="eq-movement eq-movement--stacked" onclick="expertOnbEditMovement(${i})" style="cursor:pointer;" title="클릭해서 변경">
-          <div class="eq-movement-main">${_esc(spLabel)}</div>
-          <div class="eq-movement-sub">${_esc(machineLabel)}</div>
-        </div>
-      `;
     }
+
+    // muscleIds 칩 목록 (primary = [0], 나머지 일반 칩)
+    const muscleIds = Array.isArray(p.muscleIds) ? p.muscleIds : [];
+    const chipsHtml = muscleIds.map((sp, idx) => {
+      const cls = idx === 0 ? 'eq-muscle-chip primary' : 'eq-muscle-chip';
+      const title = idx === 0 ? '주동근 (자극 균형 차트 카운트 기준)' : '탭하면 주동근으로 변경 · × 로 제거';
+      return `<button type="button" class="${cls}" title="${title}" onclick="expertOnbMuscleSetPrimary(${i}, '${sp}')">
+        ${_esc(_subPatternLabel(sp))}
+        <span class="chip-x" onclick="event.stopPropagation(); expertOnbMuscleToggle(${i}, '${sp}')" title="제거">×</span>
+      </button>`;
+    }).join('');
+    // "+ 부위" 추가 토글 칩 (picker 열기/닫기)
+    const addChipLabel = pickerOpen ? '닫기' : '+ 부위';
+    const addChip = `<button type="button" class="eq-muscle-chip add" onclick="expertOnbMusclePickerToggle(${i})">${addChipLabel}</button>`;
+
+    // 17개 subPattern 풀 — picker 펼침 시 노출
+    const ALL_SUB_PATTERNS = [
+      'chest_upper','chest_mid','chest_lower',
+      'back_width','back_thickness','posterior',
+      'shoulder_front','shoulder_side','rear_delt','traps',
+      'quad','hamstring','glute','calf',
+      'bicep','tricep','core',
+    ];
+    const pickerHtml = pickerOpen ? `
+      <div class="eq-muscle-picker">
+        ${ALL_SUB_PATTERNS.map(sp => {
+          const on = muscleIds.includes(sp);
+          return `<button type="button" class="eq-muscle-picker-chip${on ? ' on' : ''}"
+            onclick="expertOnbMuscleToggle(${i}, '${sp}')">${_esc(_subPatternLabel(sp))}</button>`;
+        }).join('')}
+        <div class="eq-muscle-picker-hint">첫 번째 부위가 <b style="color:#fa342c;">주동근</b>이에요. 칩을 탭해서 주동근 변경.</div>
+      </div>
+    ` : '';
 
     // Hybrid C: 멀티퍼포스 기구에서 확장된 row는 "출처: 파워랙" 메타 표기.
     const metaParts = [];
@@ -1445,16 +1460,20 @@ function _openReviewScreen() {
     if (p.incKg) metaParts.push(`${p.incKg}kg 증량`);
 
     return `
-      <div class="eq-row ${rowClass}">
-        <div class="${iconClass}">${icon}</div>
-        <div class="eq-body">
-          <div class="eq-name">${_esc(p.name)}</div>
-          <div class="eq-meta">${_esc(metaParts.join(' · '))}</div>
+      <div class="eq-row has-chips ${rowClass}">
+        <div class="eq-chip-head">
+          <div class="${iconClass}">${icon}</div>
+          <div class="eq-body">
+            <div class="eq-name">${_esc(p.name)}</div>
+            <div class="eq-meta">${_esc(metaParts.join(' · '))}</div>
+          </div>
+          <button type="button" class="eq-remove" onclick="expertOnbRemoveItem(${i})" aria-label="이 기구 삭제" title="이 기구 삭제">✕</button>
         </div>
-        ${movementCell}
-        <button type="button" class="eq-remove" onclick="expertOnbRemoveItem(${i})" aria-label="삭제"
-          title="이 항목 삭제"
-          style="background:transparent;border:0;padding:8px;cursor:pointer;color:var(--text-secondary);font-size:18px;line-height:1;">✕</button>
+        <div class="eq-muscle-chips">
+          ${chipsHtml || '<span class="eq-meta" style="font-size:11px;">부위 미지정 — 아래 "+ 부위"로 추가</span>'}
+          ${addChip}
+        </div>
+        ${pickerHtml}
       </div>
     `;
   }).join('');
@@ -1465,12 +1484,12 @@ function _openReviewScreen() {
 
   let subMsg;
   if (counts.ambiguous === 0 && counts.unsupported === 0) {
-    subMsg = `전부 자동 매핑됐어요. 변경하려면 태그를 탭하세요.`;
+    subMsg = `전부 자동 매핑됐어요. 부위를 조정하려면 칩을 탭하세요.`;
   } else {
     const parts = [`자동 매핑 ${counts.mapped}개`];
-    if (counts.ambiguous > 0) parts.push(`확인 필요 ${counts.ambiguous}개`);
+    if (counts.ambiguous > 0) parts.push(`부위 미지정 ${counts.ambiguous}개`);
     if (counts.unsupported > 0) parts.push(`보조장비 ${counts.unsupported}개`);
-    subMsg = parts.join(' · ') + ' — ⚠️ 항목만 동작을 선택해주세요.';
+    subMsg = parts.join(' · ') + ' — ⚠️ 미지정 항목만 "+ 부위"로 추가해주세요.';
   }
 
   // P3-12: 커버리지 수치 대신 "가능한 루틴 유형" 제시
@@ -1485,7 +1504,11 @@ function _openReviewScreen() {
     <div style="margin-top:4px;">${rows || '<div class="hero-sub-in">추가된 기구가 없어요.</div>'}</div>
   `;
 
-  const validCount = _obState.parsed.filter(p => p.movementId && p.movementId !== 'unknown').length;
+  // 2026-04-19: 저장 기준을 muscleIds 유무로 변경 — 부위 하나라도 있으면 저장.
+  const validCount = _obState.parsed.filter(p =>
+    (Array.isArray(p.muscleIds) && p.muscleIds.length > 0) ||
+    (p.movementId && p.movementId !== 'unknown')
+  ).length;
   const excluded = _obState.parsed.length - validCount;
   if (nextBtn) {
     nextBtn.textContent = excluded > 0
@@ -1495,6 +1518,92 @@ function _openReviewScreen() {
     nextBtn.onclick = _commitOnboardingFinish;
   }
   if (ghost) { ghost.style.display = 'block'; ghost.textContent = '← 기구 더 추가'; ghost.onclick = expertOnbBack; }
+}
+
+// ─ 2026-04-19 리팩토링: 기구 리뷰 · muscleIds 칩 에디터 핸들러 ─────
+// 칩을 탭 → 해당 subPattern을 주동근(배열 [0])으로 이동.
+// 동일 subPattern을 이미 주동근이면 토글 OFF (전체 제거).
+export function expertOnbMuscleSetPrimary(idx, subPattern) {
+  const i = Number(idx);
+  if (!Number.isInteger(i) || i < 0 || i >= _obState.parsed.length) return;
+  const p = _obState.parsed[i];
+  if (!Array.isArray(p.muscleIds)) p.muscleIds = [];
+  const curIdx = p.muscleIds.indexOf(subPattern);
+  if (curIdx === 0) {
+    // 이미 주동근이면 제거 (토글 OFF) — double-tap 패턴
+    p.muscleIds.splice(0, 1);
+  } else if (curIdx > 0) {
+    // 이미 있지만 주동근 아닌 경우 → 배열 맨 앞으로 이동
+    p.muscleIds.splice(curIdx, 1);
+    p.muscleIds.unshift(subPattern);
+  } else {
+    // 아예 없으면 주동근으로 추가
+    p.muscleIds.unshift(subPattern);
+  }
+  p.mappingState = p.muscleIds.length > 0 ? 'mapped' : (p.mappingState || 'ambiguous');
+  _persistMuscleIdsToDb(p);
+  _openReviewScreen();
+}
+
+// 칩의 × 또는 picker 그리드 칩 클릭 → subPattern 추가/제거 토글.
+export function expertOnbMuscleToggle(idx, subPattern) {
+  const i = Number(idx);
+  if (!Number.isInteger(i) || i < 0 || i >= _obState.parsed.length) return;
+  const p = _obState.parsed[i];
+  if (!Array.isArray(p.muscleIds)) p.muscleIds = [];
+  const at = p.muscleIds.indexOf(subPattern);
+  if (at >= 0) {
+    p.muscleIds.splice(at, 1);
+  } else {
+    p.muscleIds.push(subPattern);
+    // muscleIds[0]가 없었으면 이 항목이 주동근이 됨 (push했으니 첫 원소)
+  }
+  p.mappingState = p.muscleIds.length > 0 ? 'mapped' : 'ambiguous';
+  _persistMuscleIdsToDb(p);
+  _openReviewScreen();
+}
+
+// "+ 부위" 칩 → picker 그리드 열기/닫기
+export function expertOnbMusclePickerToggle(idx) {
+  const i = Number(idx);
+  if (!Number.isInteger(i) || i < 0 || i >= _obState.parsed.length) return;
+  if (!_obState.editing) _obState.editing = new Set();
+  if (_obState.editing.has(i)) _obState.editing.delete(i);
+  else _obState.editing.add(i);
+  _openReviewScreen();
+}
+
+// 드래프트 저장 상태에서 muscleIds 변경 → 기존 exercise 레코드 업데이트 (또는 신규 저장)
+async function _persistMuscleIdsToDb(p) {
+  try {
+    const gymId = _obState.draftGymId || getExpertPreset().draftGymId;
+    if (!gymId) return;
+    const hasMuscles = Array.isArray(p.muscleIds) && p.muscleIds.length > 0;
+    if (!hasMuscles) {
+      // muscleIds 전부 제거 — DB 레코드 정리
+      if (p.dbId) { await deleteExercise(p.dbId).catch(() => {}); p.dbId = null; }
+      return;
+    }
+    const mov = p.movementId && p.movementId !== 'unknown'
+      ? MOVEMENTS.find(m => m.id === p.movementId) : null;
+    const { _generateId } = await import('../data/data-core.js');
+    const exId = p.dbId || _generateId();
+    await saveExercise({
+      id: exId,
+      muscleId: mov?.primary || p.muscleIds[0],
+      muscleIds: [...p.muscleIds],
+      name: p.name,
+      movementId: p.movementId || 'unknown',
+      brand: p.brand || '',
+      machineType: p.machineType || '',
+      maxWeightKg: p.maxKg || null,
+      incrementKg: p.incKg || mov?.stepKg || 2.5,
+      weightUnit: p.weightUnit || 'kg',
+      gymId,
+      notes: '',
+    });
+    p.dbId = exId;
+  } catch (e) { console.warn('[muscleIds-save] fail:', e?.message || e); }
 }
 
 // 리뷰 화면에서 특정 기구의 동작을 사용자가 수동 지정할 때 호출 (select onchange)
@@ -1528,9 +1637,11 @@ export async function expertOnbAssignMovement(idx, movementId) {
         if (mov) {
           const { _generateId } = await import('../data/data-core.js');
           const exId = p.dbId || _generateId();
+          const hasMuscles = Array.isArray(p.muscleIds) && p.muscleIds.length > 0;
           await saveExercise({
             id: exId,
             muscleId: mov.primary,
+            muscleIds: hasMuscles ? [...p.muscleIds] : undefined,
             name: p.name,
             movementId,
             brand: p.brand || '',
@@ -1606,9 +1717,11 @@ export async function expertOnbRemoveItem(idx) {
             if (mov) {
               const { _generateId } = await import('../data/data-core.js');
               const exId = _generateId();
+              const hasMuscles = Array.isArray(removed.muscleIds) && removed.muscleIds.length > 0;
               await saveExercise({
                 id: exId,
                 muscleId: mov.primary,
+                muscleIds: hasMuscles ? [...removed.muscleIds] : undefined,
                 name: removed.name,
                 movementId: removed.movementId,
                 brand: removed.brand || '',
@@ -1692,20 +1805,30 @@ async function _commitOnboardingFinish() {
   const nextBtn = document.getElementById('expert-onb-next');
   if (nextBtn) { nextBtn.disabled = true; nextBtn.textContent = '저장 중...'; }
   try {
-    const validParsed = _obState.parsed.filter(p => p.movementId && p.movementId !== 'unknown');
+    // "유효한" 기구 = movementId가 매핑됐거나 최소 하나의 muscleIds(세부 부위)가 지정된 것.
+    // 2026-04-19: 과거엔 movementId 매핑만 유효로 간주해 "부위 칩만 선택한 커스텀 기구"를
+    // 완료 시점에 전부 삭제해버렸음(드래프트 저장은 muscleIds-only도 허용). → 리뷰 화면에서
+    // 공들여 칩으로 분류한 레코드가 완료 누르면 사라짐. 이제 둘 중 하나만 있어도 유효.
+    const _isMapped = (p) => {
+      const hasMv = p.movementId && p.movementId !== 'unknown';
+      const hasMuscles = Array.isArray(p.muscleIds) && p.muscleIds.length > 0;
+      return hasMv || hasMuscles;
+    };
+    const validParsed = _obState.parsed.filter(_isMapped);
     const skippedCount = _obState.parsed.length - validParsed.length;
     if (skippedCount > 0) {
-      _toast(`동작 미매핑 ${skippedCount}개는 건너뛰었어요. 나중에 수동 추가하세요.`, 'warning');
+      _toast(`동작/부위 미지정 ${skippedCount}개는 건너뛰었어요. 나중에 수동 추가하세요.`, 'warning');
     }
 
     // Phase 2: 드래프트가 있으면 재사용. 아직 저장 안 된 신규 항목만 추가 저장.
     // _persistOnboardingDraft가 gym 생성/갱신 + dbId 없는 items 저장까지 담당.
     await _persistOnboardingDraft();
 
-    // 미지원(unsupported)으로 남은 dbId 있는 레코드는 DB에서 정리
+    // 미지원(unsupported)으로 남은 dbId 있는 레코드만 DB에서 정리.
+    // movementId도 없고 muscleIds도 비어 있는 "완전 미매핑" 레코드만 삭제.
     for (const p of _obState.parsed) {
       if (!p.dbId) continue;
-      if (!p.movementId || p.movementId === 'unknown') {
+      if (!_isMapped(p)) {
         await deleteExercise(p.dbId).catch(() => {});
         p.dbId = null;
       }
@@ -2104,16 +2227,21 @@ export async function routineSuggestGenerate() {
     //   3) 빈 items 후보 제거
     const validExIds = new Set(gymExercises.map(e => e.id));
     const exById = new Map(gymExercises.map(e => [e.id, e]));
-    const allowedMuscles = new Set(_suggestState.targets); // 오늘 유저가 고른 부위만
+    const allowedMuscles = new Set(_suggestState.targets); // 오늘 유저가 고른 부위(대분류)
     const muscleCheckEnabled = allowedMuscles.size > 0;
+    // 2026-04-19: muscleIds(세부 부위) → 대분류 역매핑으로 교집합 체크.
+    // 기구가 muscleIds[] 중 하나라도 유저 선택 대분류에 속하면 통과.
     for (const c of cands) {
       const invalidIds = [];
       const offMuscles = [];
       c.items = (c.items || []).filter(it => {
         if (!validExIds.has(it.exerciseId)) { invalidIds.push(it.exerciseId); return false; }
         if (muscleCheckEnabled) {
-          const mid = exById.get(it.exerciseId)?.muscleId;
-          if (mid && !allowedMuscles.has(mid)) { offMuscles.push(`${it.exerciseId}(${mid})`); return false; }
+          const ex = exById.get(it.exerciseId);
+          const tags = _exerciseMajorMuscles(ex);
+          if (tags.size === 0) return true; // 태그 없는 커스텀은 통과 (기존 관용적 동작)
+          const hit = [...tags].some(m => allowedMuscles.has(m));
+          if (!hit) { offMuscles.push(`${it.exerciseId}(${[...tags].join('/')})`); return false; }
         }
         return true;
       });
@@ -2328,8 +2456,12 @@ function _scrollToFirstExerciseSet() {
 }
 
 // ════════════════════════════════════════════════════════════════
-// Scene 13 · 주간 인사이트 모달
+// Scene 13 · 인사이트 모달 (이번주 + 오늘 + AI 공유)
+// 2026-04-19: 기존 '이번 주' 단일 뷰를 '이번주 + 오늘' 통합으로 확장.
+// _lastInsightSnapshot에 렌더된 요약 텍스트를 캐시 → AI 공유 버튼에서 재사용.
 // ════════════════════════════════════════════════════════════════
+
+let _lastInsightSnapshot = null;
 
 export async function insightsOpen() {
   _openModal('insights-modal');
@@ -2341,17 +2473,38 @@ export async function insightsOpen() {
 
   const { calcBalanceByPattern: _rawCalcBal } = await import('../calc.js');
   const cache = getCache();
-  // 일반 모드 사용자도 expert preset의 gym 필터 때문에 통계가 왜곡되지 않도록
-  // 프로 모드일 때만 gymId로 필터, 아니면 전체 exList.
-  const gymId = isExpertModeEnabled() ? _resolveCurrentGymId() : null;
-  const exList = gymId ? getGymExList(gymId) : getExList();
+  // 2026-04-19: 인사이트는 항상 전체 exList 기준으로 계산.
+  // 배경: 과거엔 expert mode일 때 _resolveCurrentGymId()로 `getGymExList(gymId)` 만
+  // 사용해 "현재 헬스장" 범위로 좁혔는데, 사용자가 일반 모드 뷰로 잠깐 토글해 다른
+  // gymId(또는 gymId 없음) 종목을 추가한 경우 그 종목의 오늘 세트가 balance-block/
+  // trend-cards 에서 통째로 사라지는 회귀가 확인됨 (사용자 리포트 2026-04-19 "당일
+  // 운동한 부분이 여전히 반영되지 않는다"). 인사이트는 주간 종합 피드백이 목적이므로
+  // gym을 떠나서 전체 종목 라이브러리를 참조해 오늘의 세트를 반드시 포함시킨다.
+  // 참고: picker/루틴 생성은 여전히 _resolveCurrentGymId()로 헬스장 범위를 존중.
+  const exList = getExList();
   const bal = _rawCalcBal(cache, exList, MOVEMENTS, range);
 
-  // 부위별 자극 균형 (상위 8개 subPattern)
+  // 이번 주 ─────────────────────────────────────────────────────
   const entries = Object.entries(bal).sort((a,b) => b[1]-a[1]);
   const maxSets = Math.max(1, ...entries.map(([,v]) => v));
   const prs = _collectThisWeekPRs(exList, range);
   const progressPct = _calcProgressPct(exList);
+
+  // 오늘 ───────────────────────────────────────────────────────
+  // 오늘 운동: 부위별 세트 수, 총 볼륨(kg×reps), 총 운동시간, PR 여부
+  // 오늘 자극 균형: 오늘만의 subPattern 카운트 (calcBalanceByPattern 날짜 1일)
+  // 주의: TODAY는 Date 객체. cache/dateKey 범위/prDate 비교/diet 서머리 모두 YYYY-MM-DD
+  // 문자열 기준이므로 여기서 dateKey로 변환해 사용한다. (2026-04-19: TODAY/dateKey 혼용 버그 수정)
+  const today = dateKey(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
+  const todayRange = { fromKey: today, toKey: today };
+  const todayBal = _rawCalcBal(cache, exList, MOVEMENTS, todayRange);
+  const todayBalEntries = Object.entries(todayBal).sort((a,b) => b[1]-a[1]);
+  const todayMaxSets = Math.max(1, ...todayBalEntries.map(([,v]) => v));
+  const todayStats = _calcTodayStats(cache, exList, today);
+  const todayPRs = _collectTodayPRs(exList, today);
+
+  // 최근 3일 식단 ─────────────────────────────────────────────
+  const recentDiet = _collect3DayDietSummary(cache, today);
 
   content.innerHTML = `
     <div class="ai-insight">
@@ -2364,7 +2517,7 @@ export async function insightsOpen() {
         </div>
       </div>
     </div>
-    <div class="section-label">부위별 자극 균형</div>
+    <div class="section-label">이번 주 · 부위별 자극 균형</div>
     <div class="balance-block">
       ${entries.length ? entries.slice(0, 8).map(([sp, v]) => {
         const pct = Math.round(v / maxSets * 100);
@@ -2379,7 +2532,7 @@ export async function insightsOpen() {
       }).join('') : '<div class="hero-sub-in">이번 주 운동 기록이 없어요.</div>'}
       ${entries.length ? `<div style="font-size:11px; color:#87878e; margin-top:8px; line-height:16px;">💡 <b style="color:#fa342c;">${_weakestLabel(entries)}</b>이(가) 부족해요. 다음 세션 추천에 자동 반영합니다.</div>` : ''}
     </div>
-    <div class="section-label">주요 종목 추세</div>
+    <div class="section-label">이번 주 · 주요 종목 추세</div>
     ${_renderTrendCards(exList)}
     ${prs.length ? `<div class="section-label">이번 주 PR</div>${prs.map(p => `
       <div class="pr-row">
@@ -2391,9 +2544,220 @@ export async function insightsOpen() {
         <span style="font-size:11px; color:#87878e;">${_prettyDate(p.date)}</span>
       </div>
     `).join('')}` : ''}
+
+    <!-- 오늘 섹션 ─────────────────────────────────────────── -->
+    <div class="insights-today-block">
+      <div class="section-label">오늘의 인사이트 · ${_prettyDate(today)}</div>
+      ${todayStats.totalSets > 0 ? `
+        <div class="insights-today-summary">
+          <div class="insights-today-stat">
+            <div class="insights-today-stat-value">${todayStats.totalSets}</div>
+            <div class="insights-today-stat-label">세트</div>
+          </div>
+          <div class="insights-today-stat">
+            <div class="insights-today-stat-value">${todayStats.totalVolume.toLocaleString()}</div>
+            <div class="insights-today-stat-label">볼륨 (kg·회)</div>
+          </div>
+          <div class="insights-today-stat">
+            <div class="insights-today-stat-value">${_fmtDuration(todayStats.duration)}</div>
+            <div class="insights-today-stat-label">운동시간</div>
+          </div>
+        </div>
+      ` : '<div class="insights-today-empty">오늘은 아직 운동 기록이 없어요.</div>'}
+
+      ${todayBalEntries.length ? `
+        <div class="section-label" style="margin-top:14px;">오늘 자극 균형</div>
+        <div class="balance-block">
+          ${todayBalEntries.map(([sp, v]) => {
+            const pct = Math.round(v / todayMaxSets * 100);
+            return `
+              <div class="balance-row">
+                <div class="balance-name">${_subPatternLabel(sp)}</div>
+                <div class="balance-bar"><div class="balance-fill" style="width:${pct}%;"></div></div>
+                <div class="balance-val">${v}세트</div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      ` : ''}
+
+      ${todayPRs.length ? `
+        <div class="section-label" style="margin-top:14px;">오늘 PR</div>
+        ${todayPRs.map(p => `
+          <div class="pr-row">
+            <div class="pr-icon">🏆</div>
+            <div style="flex:1;">
+              <div class="pr-name">${_esc(p.name)}</div>
+              <div class="pr-meta">${p.prKg}kg × ${p.prReps}회 · +${p.diff}kg</div>
+            </div>
+          </div>
+        `).join('')}
+      ` : ''}
+
+      <div class="section-label" style="margin-top:14px;">최근 3일 식단 요약</div>
+      ${recentDiet.length ? `
+        <div class="insights-recent-diet">
+          ${recentDiet.map(d => `
+            <div class="insights-recent-diet-row">
+              <div><span class="insights-recent-diet-date">${_prettyDate(d.dateKey)}</span>
+                ${d.kcal > 0 ? `<span class="insights-recent-diet-kcal">${d.kcal}kcal</span>` : '<span style="color:#87878e;">기록 없음</span>'}
+              </div>
+              ${d.kcal > 0 ? `<span class="insights-recent-diet-macro">P${d.protein}·C${d.carbs}·F${d.fat}</span>` : ''}
+            </div>
+          `).join('')}
+        </div>
+      ` : '<div class="insights-today-empty">최근 식단 기록이 없어요.</div>'}
+    </div>
   `;
+
+  // AI 공유 버튼을 위한 요약 텍스트 스냅샷 저장
+  _lastInsightSnapshot = _buildInsightTextSnapshot({
+    range, weekBalance: entries, weekPRs: prs, progressPct,
+    today, todayStats, todayBalance: todayBalEntries, todayPRs, recentDiet,
+  });
 }
 export function insightsClose() { _closeModal('insights-modal'); }
+
+// ── AI 공유 (클립보드 복사 + 앱/웹 열기) ──
+// 버튼 클릭 시 최근 스냅샷을 클립보드에 복사하고 AI 웹/앱 홈으로 이동.
+// 딥링크는 각 AI의 공식 웹 도메인 — 대부분의 경우 OS가 설치된 앱으로 자동 리다이렉트.
+export async function insightsShareToAI(provider) {
+  const text = _lastInsightSnapshot || _buildInsightTextSnapshot(null);
+  const urls = {
+    gemini:  'https://gemini.google.com/app',
+    chatgpt: 'https://chat.openai.com/',
+    claude:  'https://claude.ai/new',
+  };
+  const url = urls[provider] || urls.claude;
+  try {
+    // 안드로이드/iOS 모두 navigator.clipboard 지원. 실패 시 legacy textarea fallback.
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.focus(); ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+    _toast('인사이트 복사 완료 — AI 앱에 붙여넣으세요', 'success');
+  } catch (e) {
+    console.warn('[insights-share] clipboard fail:', e?.message || e);
+    _toast('복사 실패 — 브라우저 권한을 확인해주세요', 'error');
+  }
+  // 새 탭에서 열기 (PWA/Capacitor 환경 모두에서 OS 기본 브라우저/앱 연결).
+  try { window.open(url, '_blank'); } catch {}
+}
+
+function _fmtDuration(seconds) {
+  const s = Number(seconds) || 0;
+  if (s <= 0) return '—';
+  const m = Math.floor(s / 60);
+  const r = Math.floor(s % 60);
+  if (m >= 60) return `${Math.floor(m/60)}h ${m%60}m`;
+  return r > 0 ? `${m}m ${r}s` : `${m}분`;
+}
+
+function _calcTodayStats(cache, exList, todayKey) {
+  // todayKey는 YYYY-MM-DD 문자열(dateKey 결과). cache는 같은 문자열을 키로 사용.
+  // 과거엔 TODAY(Date)를 직접 키로 썼는데, JS가 toString()으로 변환하면
+  // "Sun Apr 19 2026..."가 되어 cache에 영원히 맞지 않음. → 반드시 dateKey 문자열.
+  const key = todayKey || dateKey(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
+  const day = cache?.[key];
+  const out = { totalSets: 0, totalVolume: 0, duration: 0 };
+  if (!day) return out;
+  out.duration = Number(day.workoutDuration) || 0;
+  for (const entry of (day.exercises || [])) {
+    for (const s of (entry.sets || [])) {
+      if (s.setType === 'warmup') continue;
+      const isWork = (s.done === true) || (s.done !== false && (s.kg || 0) > 0 && (s.reps || 0) > 0);
+      if (!isWork) continue;
+      out.totalSets++;
+      out.totalVolume += (Number(s.kg) || 0) * (Number(s.reps) || 0);
+    }
+  }
+  out.totalVolume = Math.round(out.totalVolume);
+  return out;
+}
+
+function _collectTodayPRs(exList, today) {
+  const out = [];
+  for (const ex of exList) {
+    const pr = _cachedDetectPRs(ex.id);
+    if (pr.prDate === today && pr.progressKg > 0) {
+      out.push({ name: ex.name, prKg: pr.lastKg, prReps: pr.prReps, diff: pr.progressKg });
+    }
+  }
+  return out.slice(0, 5);
+}
+
+function _collect3DayDietSummary(cache, today) {
+  const out = [];
+  // today, today-1, today-2 순서
+  const [y, m, d] = today.split('-').map(Number);
+  const base = new Date(y, m - 1, d);
+  for (let i = 0; i < 3; i++) {
+    const dt = new Date(base); dt.setDate(base.getDate() - i);
+    const key = dateKey(dt.getFullYear(), dt.getMonth(), dt.getDate());
+    const day = cache?.[key];
+    const kcal = (day?.bKcal || 0) + (day?.lKcal || 0) + (day?.dKcal || 0) + (day?.sKcal || 0);
+    const protein = Math.round((day?.bProtein || 0) + (day?.lProtein || 0) + (day?.dProtein || 0) + (day?.sProtein || 0));
+    const carbs = Math.round((day?.bCarbs || 0) + (day?.lCarbs || 0) + (day?.dCarbs || 0) + (day?.sCarbs || 0));
+    const fat = Math.round((day?.bFat || 0) + (day?.lFat || 0) + (day?.dFat || 0) + (day?.sFat || 0));
+    out.push({ dateKey: key, kcal: Math.round(kcal), protein, carbs, fat });
+  }
+  return out;
+}
+
+function _buildInsightTextSnapshot(ctx) {
+  if (!ctx) return '인사이트 데이터 없음';
+  const lines = [];
+  lines.push(`# 🍅 토마토팜 인사이트`);
+  lines.push(`범위: ${_prettyDate(ctx.range.fromKey)} ~ ${_prettyDate(ctx.range.toKey)}`);
+  lines.push('');
+  // 이번주
+  lines.push(`## 이번 주`);
+  lines.push(`- 종목 무게 변화: ${ctx.progressPct >= 0 ? '+' : ''}${ctx.progressPct}%`);
+  if (ctx.weekBalance.length > 0) {
+    lines.push(`- 부위별 세트 (상위 6):`);
+    for (const [sp, v] of ctx.weekBalance.slice(0, 6)) {
+      lines.push(`  · ${_subPatternLabel(sp)} ${v}세트`);
+    }
+  } else {
+    lines.push(`- 운동 기록 없음`);
+  }
+  if (ctx.weekPRs.length > 0) {
+    lines.push(`- 이번 주 PR: ${ctx.weekPRs.map(p => `${p.name} ${p.prKg}kg×${p.prReps}회 (+${p.diff}kg)`).join(', ')}`);
+  }
+  lines.push('');
+  // 오늘
+  lines.push(`## 오늘 (${_prettyDate(ctx.today)})`);
+  if (ctx.todayStats.totalSets > 0) {
+    lines.push(`- 세트 ${ctx.todayStats.totalSets} · 볼륨 ${ctx.todayStats.totalVolume.toLocaleString()}kg·회 · 시간 ${_fmtDuration(ctx.todayStats.duration)}`);
+    if (ctx.todayBalance.length > 0) {
+      lines.push(`- 오늘 자극 부위: ${ctx.todayBalance.map(([sp, v]) => `${_subPatternLabel(sp)} ${v}`).join(', ')}`);
+    }
+    if (ctx.todayPRs.length > 0) {
+      lines.push(`- 오늘 PR: ${ctx.todayPRs.map(p => `${p.name} ${p.prKg}kg×${p.prReps}회 (+${p.diff}kg)`).join(', ')}`);
+    }
+  } else {
+    lines.push(`- 오늘 운동 기록 없음`);
+  }
+  lines.push('');
+  // 최근 3일 식단
+  lines.push(`## 최근 3일 식단`);
+  for (const d of ctx.recentDiet) {
+    if (d.kcal > 0) {
+      lines.push(`- ${_prettyDate(d.dateKey)}: ${d.kcal}kcal · P${d.protein} C${d.carbs} F${d.fat}`);
+    } else {
+      lines.push(`- ${_prettyDate(d.dateKey)}: 기록 없음`);
+    }
+  }
+  lines.push('');
+  lines.push(`---`);
+  lines.push(`이 데이터를 기반으로 오늘/이번 주 운동·식단에 대한 피드백과 내일 개선안을 알려줘.`);
+  return lines.join('\n');
+}
 
 function gymEqClose() {
   _closeModal('gym-equipment-modal');
@@ -2418,6 +2782,43 @@ function _subPatternLabel(sp) {
     traps:'승모', quad:'대퇴사두', hamstring:'햄스트링', glute:'둔근', calf:'종아리',
     bicep:'이두', tricep:'삼두', core:'코어',
   }[sp] || sp);
+}
+
+// 2026-04-19: subPattern(세부 부위) → major muscle part (대분류) 역매핑.
+// 루틴 생성 후 필터링에서 "오늘 선택 부위(대분류)"와 교집합 체크할 때 사용.
+// config.js MUSCLES 대분류와 1:1 정렬되어야 함: chest/back/shoulder/lower/glute/bicep/tricep/abs.
+// 주의: glute는 MUSCLES에서 lower와 분리된 독립 타겟('둔부' 칩). 과거에 lower로 collapse
+// 하면 유저가 '둔부'만 선택했을 때 글루트 기구가 전부 off-target으로 걸러짐. MOVEMENTS.primary
+// 쪽은 이미 'glute'를 독립 값으로 쓰고 있었기 때문에 두 경로가 어긋나 있었음 (2026-04-19 CODEX 지적).
+const _SUBPATTERN_TO_MAJOR = {
+  chest_upper:'chest', chest_mid:'chest', chest_lower:'chest',
+  back_width:'back', back_thickness:'back',
+  posterior:'back',    // 후면사슬(데드리프트/RDL)은 등 두께 + 햄/둔근 혼합 — 등 분류
+  shoulder_front:'shoulder', shoulder_side:'shoulder', rear_delt:'shoulder', traps:'shoulder',
+  quad:'lower', hamstring:'lower', calf:'lower',
+  glute:'glute',       // 독립 타겟 — lower로 collapse 금지
+  bicep:'bicep',
+  tricep:'tricep',
+  core:'abs',
+};
+
+function _exerciseMajorMuscles(ex) {
+  const out = new Set();
+  if (!ex) return out;
+  // 우선순위 1: 레코드의 muscleIds (subPattern 배열) — 리팩토링 후 표준 경로
+  const muscleIds = Array.isArray(ex.muscleIds) ? ex.muscleIds : [];
+  for (const sp of muscleIds) {
+    const major = _SUBPATTERN_TO_MAJOR[sp];
+    if (major) out.add(major);
+  }
+  // 우선순위 2: muscleIds 비어있으면 movementId → MOVEMENTS.primary (대분류)로 폴백
+  if (out.size === 0 && ex.movementId) {
+    const mv = MOVEMENTS.find(m => m.id === ex.movementId);
+    if (mv?.primary) out.add(mv.primary);
+  }
+  // 우선순위 3: 최후 — 레코드의 muscleId(대분류) 그대로 사용
+  if (out.size === 0 && ex.muscleId) out.add(ex.muscleId);
+  return out;
 }
 
 function _weakestLabel(entries) {
@@ -2522,6 +2923,10 @@ window.expertOnbAssignMovement = expertOnbAssignMovement;
 window.expertOnbEditMovement = expertOnbEditMovement;
 window.expertOnbRemoveItem = expertOnbRemoveItem;
 window.expertOnbAddAnotherGym = expertOnbAddAnotherGym;
+// 2026-04-19: muscleIds 칩 에디터 onclick 대응
+window.expertOnbMuscleSetPrimary = expertOnbMuscleSetPrimary;
+window.expertOnbMuscleToggle = expertOnbMuscleToggle;
+window.expertOnbMusclePickerToggle = expertOnbMusclePickerToggle;
 window.openRoutineSuggest = openRoutineSuggest;
 window.openRoutineCandidatesDirect = openRoutineCandidatesDirect;
 window.routineSuggestClose = routineSuggestClose;
@@ -2531,6 +2936,7 @@ window.routineCandidatesRegen = routineCandidatesRegen;
 window.routineCandidatesSelect = routineCandidatesSelect;
 window.insightsOpen = insightsOpen;
 window.insightsClose = insightsClose;
+window.insightsShareToAI = insightsShareToAI;
 window.gymEqClose = gymEqClose;
 window.renderExpertTopArea = renderExpertTopArea;
 window.resetExpertView = resetExpertView;
