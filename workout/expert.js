@@ -2751,14 +2751,15 @@ function _isStandalonePwa() {
     || window.navigator.standalone === true;
 }
 
-// 같은 탭에서 앵커 클릭을 시뮬레이션 — window.location.href 보다
-// Android App Links / iOS Universal Links 트리거 확률이 높다 (사용자 제스처 유지).
-function _navigateTopLevel(url) {
+// 2026-04-20 (v3): PWA scope(/tomatofarm/) 밖으로 이동할 때 target=_self 를 쓰면
+//   Chrome PWA가 scope 내로 도로 가둬서 "앱으로 돌아옴" 현상이 발생. 반드시 _blank
+//   로 외부 브라우저/앱 라우팅을 강제해야 한다.
+function _navigateExternal(url) {
   try {
     const a = document.createElement('a');
     a.href = url;
-    a.target = '_self';
-    a.rel = 'noopener';
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
     a.style.display = 'none';
     document.body.appendChild(a);
     a.click();
@@ -2773,38 +2774,35 @@ function _openAiLink(provider) {
   const platform = _detectPlatform();
 
   if (platform === 'android') {
-    // 2026-04-20 (v2): intent:// 가 PWA standalone 에서 차단되거나 ChatGPT 앱이
-    //   intent filter 매칭을 못하는 경우 웹 폴백으로 빠지는 이슈 확인. 해결책:
-    //   (1) PWA standalone 이면 Universal Link(웹 URL) 을 <a target=_self> 클릭으로 이동
-    //       → Android App Link 시스템이 설치된 앱을 자동 호출 (Chrome 뿐 아니라 PWA WebView 도).
-    //   (2) 일반 브라우저면 action+category 명시한 intent URI 로 더 확정적 앱 호출.
-    //   전제: 유저 기기에서 ChatGPT/Claude/Gemini 앱의 "지원되는 링크 열기" 설정이
-    //         해당 앱으로 되어 있어야 App Link 가 발동함 (안드로이드 12+ 디폴트 ON).
-    if (_isStandalonePwa()) {
-      if (_navigateTopLevel(info.web)) return;
-      try { window.location.href = info.web; return; } catch {}
+    // 2026-04-20 (v3): scope 밖 이동은 target=_blank 로 강제 (Custom Tab/외부 브라우저).
+    //   - ChatGPT/Claude: web URL 을 _blank 로 열면 Android App Link 가 설치된 앱으로 라우팅.
+    //     (앱 설정 "지원되는 링크 열기 = 이 앱에서" 필요)
+    //   - Gemini: web URL 이 App Link 매칭이 약해 앱 호출이 안 되므로, intent 에
+    //     action=MAIN + category=LAUNCHER + package 만 명시해서 앱 자체를 런처로 오픈.
+    //     설치돼 있으면 앱 열림, 미설치 시 fallback URL(웹) 로 이동.
+    if (provider === 'gemini') {
+      const fallback = encodeURIComponent(info.web);
+      const launcherIntent = `intent:#Intent;`
+        + `action=android.intent.action.MAIN;`
+        + `category=android.intent.category.LAUNCHER;`
+        + `package=${info.androidPackage};`
+        + `S.browser_fallback_url=${fallback};end`;
+      if (_navigateExternal(launcherIntent)) return;
       try { window.open(info.web, '_blank'); } catch {}
       return;
     }
-    const fallback = encodeURIComponent(info.web);
-    const intentUrl = `intent://${info.androidHost}${info.androidPath}`
-      + `#Intent;action=android.intent.action.VIEW;`
-      + `category=android.intent.category.BROWSABLE;`
-      + `scheme=https;package=${info.androidPackage};`
-      + `S.browser_fallback_url=${fallback};end`;
-    if (_navigateTopLevel(intentUrl)) return;
-    try { window.location.href = intentUrl; return; } catch {}
+    // ChatGPT / Claude — Universal Link(web URL) 을 외부로 내보내면 App Link 자동 라우팅.
+    // intent 버전도 시도 가능하지만 PWA standalone 에서 불안정하여 web URL 우선.
+    if (_navigateExternal(info.web)) return;
     try { window.open(info.web, '_blank'); } catch {}
     return;
   }
 
   if (platform === 'ios') {
-    // 2026-04-20 (v2): iOS 는 Universal Link(웹 URL) 을 <a target=_self> 로 이동시키면
-    //   설치된 앱이 있을 때 OS 가 자동으로 앱 포그라운드로 전환. 커스텀 스킴은 앱마다
-    //   지원 여부가 달라 Universal Link 이 1순위.
-    //   설치 안 된 경우에만 웹(Safari)이 열림 — 이게 사용자 기대와 일치.
-    if (_navigateTopLevel(info.web)) return;
-    try { window.location.href = info.web; } catch { window.open(info.web, '_blank'); }
+    // iOS 는 Universal Link 을 _blank 로 띄우면 Safari(또는 설치된 앱) 가 열림.
+    // Gemini 는 iOS Universal Link 등록이 약해 Safari 로 이동 — 사용자가 앱 있으면 자동 전환.
+    if (_navigateExternal(info.web)) return;
+    try { window.open(info.web, '_blank'); } catch {}
     return;
   }
 
