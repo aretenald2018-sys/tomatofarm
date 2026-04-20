@@ -26,6 +26,8 @@ const targets = [
   'data',
   'utils',
   'modals',
+  'ai',      // R3a: ai.js → ai/ 7 모듈 분할. barrel 이 ./ai/*.js 로 re-export 하므로 필수.
+  'styles',  // R2: style.css → styles/tokens.css + components.css 분리. index.html 에서 <link> 로드.
   ...readdirSync(root).filter(f => f.startsWith('icon-') && f.endsWith('.png')),
   ...readdirSync(root).filter(f => f.startsWith('screenshot-') && f.endsWith('.png')),
 ];
