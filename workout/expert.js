@@ -506,6 +506,53 @@ function _buildRecentHistory(gymExercises) {
   return history;
 }
 
+// 2026-04-20: 선택 부위별 **독립** 직전/직직전 세션 요약을 AI에 넘기기 위한 빌더.
+//   이전 구현은 targetMuscles 전체를 buildMuscleComparison 에 한 번에 넘겨서, 가슴+이두
+//   같은 복수 부위 날엔 이두-only 세션이 가슴 비교에 섞이는 혼합 버그가 있었다 (리뷰 #1).
+//   이제 각 major 마다 buildMuscleComparison 을 호출해 배열로 반환. AI 프롬프트도 per-major
+//   섹션 으로 포맷해 부위별 비교가 뒤엉키지 않는다.
+//
+// 반환 형식:
+//   [{ major: 'chest', today, previous, imbalance }, { major: 'bicep', ... }]
+//   - 각 major 에 대해 today/previous 데이터가 하나도 없으면 해당 항목 생략.
+//   - 전부 비어있으면 null.
+async function _buildSameMuscleContext(targetMuscles) {
+  if (!Array.isArray(targetMuscles) || targetMuscles.length === 0) return null;
+  try {
+    const { buildMuscleComparison } = await import('../calc.js');
+    const cache = getCache();
+    const exList = getExList();
+    const todayKey = dateKey(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
+    const perMajor = [];
+    for (const major of targetMuscles) {
+      const cmp = buildMuscleComparison(cache, exList, MOVEMENTS, todayKey, [major], 2);
+      if (!cmp.majors?.length || (!cmp.today && cmp.previous.length === 0)) continue;
+      perMajor.push({
+        major,
+        today: cmp.today ? {
+          dateKey: cmp.today.dateKey,
+          workSets: cmp.today.workSets,
+          totalVolume: cmp.today.totalVolume,
+          topKg: cmp.today.topKg,
+          subBalance: cmp.today.subBalance,
+        } : null,
+        previous: cmp.previous.map(p => ({
+          dateKey: p.dateKey,
+          workSets: p.workSets,
+          totalVolume: p.totalVolume,
+          topKg: p.topKg,
+          subBalance: p.subBalance,
+        })),
+        imbalance: cmp.imbalance,
+      });
+    }
+    return perMajor.length > 0 ? perMajor : null;
+  } catch (e) {
+    console.warn('[_buildSameMuscleContext] fail:', e?.message || e);
+    return null;
+  }
+}
+
 export function shouldShowExpertBanner() {
   const p = getExpertPreset();
   if (p.enabled) return false;
@@ -2200,6 +2247,8 @@ export async function routineSuggestGenerate() {
       return;
     }
     const recentHistory = _buildRecentHistory(gymExercises);
+    // 2026-04-20: 선택 부위 직전/직직전 세션 요약 — 추천 AI가 부족한 세부 부위를 보완하도록.
+    const sameMuscleContext = await _buildSameMuscleContext([..._suggestState.targets]);
     const cands = await generateRoutineCandidates({
       preset,
       targetMuscles: [..._suggestState.targets],
@@ -2207,6 +2256,7 @@ export async function routineSuggestGenerate() {
       preferredRpe: _suggestState.preferredRpe,
       gymExercises,
       recentHistory,
+      sameMuscleContext,
       movements: MOVEMENTS,
       // Gemini quota 초과 → Groq로 전환될 때 progress 게이지 subtitle 업데이트
       onProviderSwitch: ({ provider, reason }) => {
@@ -2524,7 +2574,7 @@ export async function insightsOpen(sessionKey) {
   const content = document.getElementById('insights-content');
   if (!content) return;
 
-  const { calcBalanceByPattern: _rawCalcBal } = await import('../calc.js');
+  const { calcBalanceByPattern: _rawCalcBal, buildMuscleComparison, getSessionMajorMuscles } = await import('../calc.js');
   const cache = getCache();
   // 2026-04-19: 인사이트는 항상 전체 exList 기준으로 계산.
   // 배경: 과거엔 expert mode일 때 _resolveCurrentGymId()로 `getGymExList(gymId)` 만
@@ -2556,6 +2606,16 @@ export async function insightsOpen(sessionKey) {
   // PR/trend는 relevance-sorted 리스트 기반 (Codex 지적 #4).
   const todayPRs = _collectTodayPRs(rankedExList, today);
 
+  // 2026-04-20: 오늘 부위별 직전/직직전 비교 — 대분류별로 **독립 블록** 생성.
+  //   이전 구현(majors=null) 은 오늘 한 전체 대분류를 합집합으로 비교해서, 오늘 가슴+이두면
+  //   직전 이두-only 세션이 "같은 부위" 로 매칭돼 topKg 델타가 섞였다(80kg vs 18kg → +62kg).
+  //   각 major 마다 buildMuscleComparison 을 별도 호출하면 이 혼합이 사라진다.
+  const todayDay = cache?.[today];
+  const todayMajors = todayDay ? [...getSessionMajorMuscles(todayDay, exList, MOVEMENTS)] : [];
+  const muscleCmps = todayMajors
+    .map(m => buildMuscleComparison(cache, exList, MOVEMENTS, today, [m], 2))
+    .filter(cmp => cmp.majors?.length && cmp.today);
+
   // 최근 3일 식단 ─────────────────────────────────────────────
   const recentDiet = _collect3DayDietSummary(cache, today);
 
@@ -2563,10 +2623,10 @@ export async function insightsOpen(sessionKey) {
     <div class="ai-insight">
       <div class="ai-insight-icon">🔥</div>
       <div>
-        <div class="ai-insight-title">최근 세션 대비 ${progressPct>=0?'+':''}${progressPct}% 변화</div>
+        <div class="ai-insight-title">직전 세션 대비 최고중량 ${progressPct>=0?'+':''}${progressPct}%</div>
         <div class="ai-insight-body">
-          주요 종목의 직전 세션 대비 무게 변화 평균이에요.<br/>
-          자세히 보려면 탭하세요.
+          각 종목 "마지막 세션 최고중량 − 그 이전 세션 최고중량" 평균이에요.<br/>
+          반복수·RPE·볼륨 변화는 포함되지 않아요.
         </div>
       </div>
     </div>
@@ -2647,6 +2707,8 @@ export async function insightsOpen(sessionKey) {
         `).join('')}
       ` : ''}
 
+      ${muscleCmps.map(_renderMuscleComparisonBlock).join('')}
+
       <div class="section-label" style="margin-top:14px;">최근 3일 식단 요약</div>
       ${recentDiet.length ? `
         <div class="insights-recent-diet">
@@ -2669,17 +2731,141 @@ export async function insightsOpen(sessionKey) {
   // AI 공유 버튼을 위한 스냅샷 저장 (요약 + 상세 2가지 모드)
   // 상세(detail) 모드는 세션 raw 세트 로그를 포함해 AI가 실제 훈련량에 근거한
   // 피드백을 줄 수 있게 함 (Codex 지적 #5 — 요약/상세 분리, raw 세트 로그 포함).
+  // 2026-04-20: muscleCmp(오늘 부위 직전/직직전 비교) 를 두 스냅샷 모두에 포함 →
+  //   외부 AI가 "오늘 부위 이력" 을 근거로 피드백/추천하도록 유도.
   _lastInsightSnapshot = {
     summary: _buildInsightTextSnapshot({
       range, weekBalance: entries, weekPRs: prs, progressPct,
       today, todayStats, todayBalance: todayBalEntries, todayPRs, recentDiet,
+      muscleCmps,
     }),
     detail: _buildInsightDetailSnapshot({
       range, weekBalance: entries, weekPRs: prs, progressPct,
       today, todayStats, todayBalance: todayBalEntries, todayPRs, recentDiet,
-      cache, exList,
+      cache, exList, muscleCmps,
     }),
   };
+}
+
+// 2026-04-20: 오늘 부위(예: 가슴) 직전/직직전 비교 블록.
+//   muscleCmp 는 calc.buildMuscleComparison() 반환 객체.
+//   빈 majors / previous=[] / today=null 인 경우 "데이터 부족" 힌트만.
+function _renderMuscleComparisonBlock(cmp) {
+  if (!cmp || !cmp.majors || cmp.majors.length === 0) return '';
+  const majorLabel = cmp.majors.map(_majorLabel).join(' · ');
+  // 양쪽 모두 데이터 없는 케이스
+  if (!cmp.today) return '';
+
+  // subPattern 막대 비교 행 — 오늘/직전/직직전을 나란히 표시.
+  // 모든 비교 대상 subPattern 합집합으로 고정 순서.
+  const allSubs = new Set();
+  for (const sp of Object.keys(cmp.today.subBalance || {})) allSubs.add(sp);
+  for (const p of cmp.previous) for (const sp of Object.keys(p.subBalance || {})) allSubs.add(sp);
+  const subOrder = [..._preferredSubOrder(cmp.majors)].filter(sp => allSubs.has(sp));
+  // preferred 외에 실제 존재하는 기타 subPattern 보조 추가
+  for (const sp of allSubs) if (!subOrder.includes(sp)) subOrder.push(sp);
+  const maxSets = Math.max(
+    1,
+    ...subOrder.map(sp => cmp.today.subBalance?.[sp] || 0),
+    ...cmp.previous.flatMap(p => subOrder.map(sp => p.subBalance?.[sp] || 0)),
+  );
+
+  const sessionsForRow = [
+    { label: `오늘 ${_prettyDate(cmp.today.dateKey)}`, sum: cmp.today, hi: true },
+    ...cmp.previous.map((p, i) => ({
+      label: `${i === 0 ? '직전' : '직직전'} ${_prettyDate(p.dateKey)}`,
+      sum: p, hi: false,
+    })),
+  ];
+
+  // 요약 카드 (세트/볼륨/topKg + 델타)
+  const metricsHtml = sessionsForRow.map((r, idx) => {
+    const d = cmp.deltas[idx - 1]; // 오늘 행은 delta 없음
+    const deltaLine = (idx === 0 || !d) ? '' : `
+      <div class="muscle-cmp-delta">
+        <span class="${d.workSetsDelta >= 0 ? 'up' : 'down'}">세트 ${d.workSetsDelta >= 0 ? '+' : ''}${d.workSetsDelta}</span>
+        <span class="${d.volumeDelta   >= 0 ? 'up' : 'down'}">볼륨 ${d.volumeDelta   >= 0 ? '+' : ''}${d.volumeDelta.toLocaleString()}</span>
+        <span class="${d.topKgDelta    >= 0 ? 'up' : 'down'}">Top ${d.topKgDelta    >= 0 ? '+' : ''}${d.topKgDelta}kg</span>
+      </div>`;
+    return `
+      <div class="muscle-cmp-col${r.hi ? ' hi' : ''}">
+        <div class="muscle-cmp-col-head">${_esc(r.label)}</div>
+        <div class="muscle-cmp-col-body">
+          <div class="muscle-cmp-metric"><b>${r.sum.workSets}</b>세트</div>
+          <div class="muscle-cmp-metric"><b>${r.sum.totalVolume.toLocaleString()}</b> 볼륨</div>
+          <div class="muscle-cmp-metric">Top <b>${r.sum.topKg}</b>kg</div>
+        </div>
+        ${deltaLine}
+      </div>
+    `;
+  }).join('');
+
+  // subPattern 비교 — 각 subPattern 한 행, 오늘/직전/직직전 세로 미니 바.
+  const subRowsHtml = subOrder.map(sp => {
+    const cells = sessionsForRow.map(r => {
+      const v = r.sum.subBalance?.[sp] || 0;
+      const pct = Math.round(v / maxSets * 100);
+      return `
+        <div class="muscle-cmp-sub-cell${r.hi ? ' hi' : ''}">
+          <div class="muscle-cmp-sub-bar"><div class="muscle-cmp-sub-fill" style="width:${pct}%;"></div></div>
+          <div class="muscle-cmp-sub-val">${v}</div>
+        </div>
+      `;
+    }).join('');
+    return `
+      <div class="muscle-cmp-sub-row">
+        <div class="muscle-cmp-sub-name">${_subPatternLabel(sp)}</div>
+        ${cells}
+      </div>
+    `;
+  }).join('');
+
+  const imbalanceHtml = cmp.imbalance && cmp.imbalance.note
+    ? `<div class="muscle-cmp-note">💡 <b style="color:#fa342c;">${
+        (cmp.imbalance.weakSubPatterns || []).map(_subPatternLabel).join(' · ') || ''
+      }</b> 비중이 최근 3세션 합산 15% 미만이에요. 다음 세션 추천에 자동 반영됩니다.</div>`
+    : '';
+
+  return `
+    <div class="section-label" style="margin-top:14px;">오늘 부위(${_esc(majorLabel)}) · 직전/직직전 비교</div>
+    <div class="muscle-cmp-block">
+      <div class="muscle-cmp-cols">${metricsHtml}</div>
+      ${subOrder.length > 0 ? `
+        <div class="muscle-cmp-sub-wrap">
+          <div class="muscle-cmp-sub-row muscle-cmp-sub-head">
+            <div class="muscle-cmp-sub-name">세부 부위</div>
+            ${sessionsForRow.map(r => `<div class="muscle-cmp-sub-cell head${r.hi ? ' hi' : ''}">${_esc(r.label.split(' ')[0])}</div>`).join('')}
+          </div>
+          ${subRowsHtml}
+        </div>
+      ` : ''}
+      ${imbalanceHtml}
+      ${cmp.previous.length === 0 ? `<div class="muscle-cmp-note" style="color:#87878e;">직전 ${_esc(majorLabel)} 세션 기록이 없어요 — 다음 ${_esc(majorLabel)} 때 비교가 활성화됩니다.</div>` : ''}
+    </div>
+  `;
+}
+
+// 대분류 id → 한국어 라벨. config.MUSCLES 와 일관.
+function _majorLabel(id) {
+  return ({
+    chest:'가슴', back:'등', shoulder:'어깨', lower:'하체', glute:'둔부',
+    bicep:'이두', tricep:'삼두', abs:'복부',
+  }[id] || id);
+}
+
+// subPattern UI 정렬 순서(상→중→하, 넓이→두께 등). 트레이너 관점 레이아웃.
+function _preferredSubOrder(majors) {
+  const out = [];
+  const m = new Set(majors);
+  if (m.has('chest'))    out.push('chest_upper','chest_mid','chest_lower');
+  if (m.has('back'))     out.push('back_width','back_thickness','posterior','rear_delt');
+  if (m.has('shoulder')) out.push('shoulder_front','shoulder_side','rear_delt','traps');
+  if (m.has('lower'))    out.push('quad','hamstring','calf');
+  if (m.has('glute'))    out.push('glute');
+  if (m.has('bicep'))    out.push('bicep');
+  if (m.has('tricep'))   out.push('tricep');
+  if (m.has('abs'))      out.push('core');
+  return out;
 }
 export function insightsClose() { _closeModal('insights-modal'); }
 
@@ -2935,6 +3121,33 @@ function _buildInsightTextSnapshot(ctx) {
   } else {
     lines.push(`- 오늘 운동 기록 없음`);
   }
+  // 오늘 부위별 직전/직직전 비교 — 2026-04-20.
+  //   각 대분류(가슴/등/이두 등)를 독립 블록으로 나열. 과거엔 합집합이라 다른 부위가 섞였음.
+  const cmps = Array.isArray(ctx.muscleCmps) ? ctx.muscleCmps : [];
+  for (const cmp of cmps) {
+    if (!cmp || !cmp.majors?.length || !cmp.today) continue;
+    const label = cmp.majors.map(_majorLabel).join(' · ');
+    lines.push('');
+    lines.push(`## 오늘 부위(${label}) · 직전/직직전 비교`);
+    const subs = Object.entries(cmp.today.subBalance || {}).sort((a,b)=>b[1]-a[1]);
+    if (subs.length > 0) {
+      lines.push(`- 오늘 세부: ${subs.map(([sp,v]) => `${_subPatternLabel(sp)} ${v}`).join(' / ')}`);
+    }
+    for (let i = 0; i < cmp.previous.length; i++) {
+      const p = cmp.previous[i];
+      const psubs = Object.entries(p.subBalance || {}).sort((a,b)=>b[1]-a[1]);
+      const head = i === 0 ? '직전' : '직직전';
+      lines.push(`- ${head} (${_prettyDate(p.dateKey)}): ${p.workSets}세트 · 볼륨 ${p.totalVolume.toLocaleString()} · Top ${p.topKg}kg` +
+        (psubs.length ? ` — ${psubs.map(([sp,v]) => `${_subPatternLabel(sp)} ${v}`).join('/')}` : ''));
+    }
+    if (cmp.deltas.length > 0) {
+      const d = cmp.deltas[0];
+      lines.push(`- 직전 대비 세트 ${d.workSetsDelta>=0?'+':''}${d.workSetsDelta}, 볼륨 ${d.volumeDelta>=0?'+':''}${d.volumeDelta.toLocaleString()}, Top ${d.topKgDelta>=0?'+':''}${d.topKgDelta}kg`);
+    }
+    if (cmp.imbalance?.weakSubPatterns?.length) {
+      lines.push(`- ⚠ 약한 세부: ${cmp.imbalance.weakSubPatterns.map(_subPatternLabel).join(' · ')} — 다음 세션에서 보완 추천`);
+    }
+  }
   lines.push('');
   // 최근 3일 식단
   lines.push(`## 최근 3일 식단`);
@@ -3041,6 +3254,8 @@ function _buildInsightDetailSnapshot(ctx) {
     });
 
     // JSON 블록 — AI가 정확한 숫자로 읽을 수 있도록.
+    // 2026-04-20: sameMuscleHistory — 오늘 부위 직전/직직전 raw 세션(세트 로그 포함).
+    //   AI 가 부위 단위로 훈련 변화를 스스로 읽어내도록 원천 데이터 그대로 임베드.
     lines.push('');
     lines.push(`### 세션 JSON`);
     lines.push('```json');
@@ -3053,6 +3268,10 @@ function _buildInsightDetailSnapshot(ctx) {
       totalVolume: ctx.todayStats.totalVolume,
       routineMeta: day?.routineMeta || null,
       exercises: structuredEntries,
+      // 부위별 직전/직직전 이력 — 대분류마다 독립된 객체(섞이지 않도록).
+      sameMuscleHistory: (Array.isArray(ctx.muscleCmps) ? ctx.muscleCmps : [])
+        .map(_buildSameMuscleHistoryJson)
+        .filter(Boolean),
     }, null, 2));
     lines.push('```');
   }
@@ -3062,6 +3281,30 @@ function _buildInsightDetailSnapshot(ctx) {
     lines.push(`### 오늘 PR`);
     for (const p of ctx.todayPRs) {
       lines.push(`- ${p.name} ${p.prKg}kg × ${p.prReps}회 (+${p.diff}kg)`);
+    }
+  }
+
+  // ── 같은 부위 직전/직직전 raw 로그 (2026-04-20) ────────
+  //   detail 모드 전용. 부위별로 독립 블록을 나열해 AI 가 한 부위에 해당하는 세션만 비교하도록.
+  const cmpsArr = Array.isArray(ctx.muscleCmps) ? ctx.muscleCmps : [];
+  for (const cmp of cmpsArr) {
+    if (!cmp || !cmp.majors?.length || !cmp.previous?.length) continue;
+    const label = cmp.majors.map(_majorLabel).join(' · ');
+    lines.push('');
+    lines.push(`### 같은 부위(${label}) 직전/직직전 세션`);
+    cmp.previous.forEach((p, i) => {
+      const head = i === 0 ? '직전' : '직직전';
+      lines.push(`${head} (${_prettyDate(p.dateKey)}): ${p.workSets}세트 · 볼륨 ${p.totalVolume.toLocaleString()} · Top ${p.topKg}kg`);
+      for (const ex of (p.exercises || [])) {
+        lines.push(`  - ${ex.name} [${ex.subPattern || '-'}]`);
+        for (const s of (ex.sets || [])) {
+          const rpe = s.rpe != null ? ` RPE ${s.rpe}` : '';
+          lines.push(`     · Set ${s.setNo}: ${s.kg}kg × ${s.reps}회${rpe}`);
+        }
+      }
+    });
+    if (cmp.imbalance?.weakSubPatterns?.length) {
+      lines.push(`⚠ ${label} 최근 3세션 합산 기준 약한 세부: ${cmp.imbalance.weakSubPatterns.map(_subPatternLabel).join(' · ')}`);
     }
   }
 
@@ -3081,8 +3324,44 @@ function _buildInsightDetailSnapshot(ctx) {
   lines.push(`---`);
   lines.push(`위 종목명/세트 로그를 다시 추상화하지 말고, 적힌 숫자를 근거로`);
   lines.push(`(1) 오늘 세션에 대한 피드백, (2) 이번 주 자극 균형 관점의 보완점,`);
-  lines.push(`(3) 다음 세션 증량/세트 조정안을 종목 단위로 구체적으로 제안해줘.`);
+  lines.push(`(3) 오늘 부위의 "직전/직직전 세션" 대비 변화(세트/볼륨/Top kg, subPattern 분포)를 비교하고,`);
+  lines.push(`(4) 트레이너 관점에서 상부/중부/하부 등 세부 부위 균형이 어떤지 평가해서,`);
+  lines.push(`(5) 다음 같은 부위 세션에 대한 증량/세트/세부 부위 보완 추천을 종목 단위로 구체적으로 제안해줘.`);
   return lines.join('\n');
+}
+
+// 2026-04-20: 외부 AI 연동용 같은부위 이력 JSON (직전/직직전).
+//   buildMuscleComparison 반환 객체에서 JSON 직렬화에 필요한 필드만 선별.
+function _buildSameMuscleHistoryJson(muscleCmp) {
+  if (!muscleCmp || !muscleCmp.majors?.length || !muscleCmp.previous?.length) return null;
+  return {
+    majors: muscleCmp.majors,
+    today: muscleCmp.today ? {
+      dateKey: muscleCmp.today.dateKey,
+      workSets: muscleCmp.today.workSets,
+      totalVolume: muscleCmp.today.totalVolume,
+      topKg: muscleCmp.today.topKg,
+      subBalance: muscleCmp.today.subBalance,
+    } : null,
+    previous: muscleCmp.previous.map(p => ({
+      dateKey: p.dateKey,
+      workSets: p.workSets,
+      totalVolume: p.totalVolume,
+      topKg: p.topKg,
+      subBalance: p.subBalance,
+      exercises: (p.exercises || []).map(e => ({
+        exerciseId: e.exerciseId,
+        name: e.name,
+        subPattern: e.subPattern,
+        workSets: e.workSets,
+        topKg: e.topKg,
+        volume: e.volume,
+        sets: e.sets,
+      })),
+    })),
+    deltas: muscleCmp.deltas,
+    imbalance: muscleCmp.imbalance,
+  };
 }
 
 function gymEqClose() {
@@ -3166,6 +3445,14 @@ function _collectThisWeekPRs(exList, range) {
   return out.slice(0, 5);
 }
 
+// 2026-04-20: 정직한 스펙 — 성장 KPI 아님.
+//   "각 종목의 마지막 세션 최고중량 − 그 이전 세션 최고중량" / lastKg 의 단순 평균.
+//   한계:
+//     - 기간 제한 없음 (몇 달 전 세션도 비교 대상이 될 수 있음).
+//     - 반복수/RPE/볼륨/가동범위 미반영 — 같은 무게로 reps 가 늘어도 잡히지 않음.
+//     - 주간 중간에 PR 을 찍고 가볍게 친 세션이 "직전" 이면 음수로 보일 수 있음.
+//   UI 문구는 "직전 세션 대비 최고중량 변화 평균" 으로 정직화. 진짜 성장 KPI (e1RM,
+//   rep-match PR, volume) 는 별도 이슈로 추가 예정.
 function _calcProgressPct(exList) {
   let prog = 0, count = 0;
   for (const ex of exList) {

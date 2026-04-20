@@ -349,7 +349,8 @@ function _initDietInputButtons() {
     if (meal) window._nutritionSearchMeal = meal;
 
     if (action === 'addFood') {
-      openNutritionItemEditor(null);
+      // 2026-04-20: bare 호출은 nutrition-item-modal 의 window 노출에 의존. 명시적으로.
+      window.openNutritionItemEditor?.(null);
     } else if (action === 'photoUpload') {
       openNutritionPhotoUpload();
     }

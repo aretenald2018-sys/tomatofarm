@@ -6,8 +6,7 @@ import { S }                           from './state.js';
 import { saveWorkoutDay }              from './save.js';
 import { _buildSparkline }            from './render.js';
 import { wtStartWorkoutTimer,
-         wtRestTimerStart,
-         wtRestTimerSkip }             from './timers.js';
+         wtRestTimerStart }            from './timers.js';
 import { showToast }                   from '../home/utils.js';
 import { getExList, getGymExList, getLastSession, detectPRs,
          dateKey, saveExercise,
@@ -98,6 +97,15 @@ export function wtRemoveSet(entryIdx, si) {
   });
 }
 
+// 2026-04-20: 세트 기록(kg/reps 입력, ✓ 체크)이 생기면 운동 타이머 자동 시작.
+//   타이머가 아직 시작 안 됐고 누적 duration 도 없으면만 자동시작. 유저가 명시적으로 reset 해
+//   둔 세션(duration>0 에서 reset 후 다시 기록)은 수동 play 로 이어가도록 건드리지 않는다.
+function _ensureWorkoutTimerStarted() {
+  if (!S.workoutStartTime && (S.workoutDuration || 0) === 0) {
+    try { wtStartWorkoutTimer(); } catch (e) { console.warn('[autoStartTimer] fail:', e?.message || e); }
+  }
+}
+
 export function wtUpdateSet(entryIdx, si, field, val) {
   // RPE 빈 값은 null로 저장 — 0과 구분해 _computeExpertRec의 prevRpeKnown 판정을 명확히.
   let parsed;
@@ -107,6 +115,8 @@ export function wtUpdateSet(entryIdx, si, field, val) {
   S.exercises[entryIdx].sets[si][field] = parsed;
   if (field === 'kg' || field === 'reps') {
     S.exercises[entryIdx].sets[si].done = false;
+    // 의미 있는 수치(>0)가 들어왔을 때만 타이머 자동시작. 실수로 0 치고 나가는 건 무시.
+    if ((parsed || 0) > 0) _ensureWorkoutTimerStarted();
   }
   _renderSets(entryIdx);
   saveWorkoutDay().catch(e => console.error('Save error:', e));
@@ -121,6 +131,8 @@ export function wtToggleSetDone(entryIdx, si) {
     if (!wasDone) showToast('저장되었습니다', 1500, 'success');
   }).catch(e => console.error('Save error:', e));
   if (!wasDone) {
+    // 완료 체크 = 실제 운동 진행 중. 타이머 자동시작.
+    _ensureWorkoutTimerStarted();
     const ex = getExList().find(e => e.id === S.exercises[entryIdx].exerciseId);
     const exName = ex?.name || S.exercises[entryIdx].exerciseId;
     const setNum = si + 1;
@@ -519,9 +531,10 @@ function _renderSets(entryIdx) {
 
     row.querySelector('.set-type-select').addEventListener('change', e => wtUpdateSetType(entryIdx, si, e.target.value));
     row.querySelectorAll('.set-input')[0].addEventListener('change', e => wtUpdateSet(entryIdx, si, 'kg',   e.target.value));
-    row.querySelectorAll('.set-input')[0].addEventListener('focus', () => { if (S.restTimer.running) wtRestTimerSkip(); });
+    // 2026-04-20: kg/reps 입력 focus 시 rest 타이머 skip 호출 제거.
+    //   기존: 입력칸 탭 = 휴식 증발 → 숫자 수정하려고 포커스만 줘도 꺼짐.
+    //   유저 요구 "타이머는 항상 떠있어야 함" 에 따라 휴식 자동 종료 트리거 제거.
     row.querySelectorAll('.set-input')[1].addEventListener('change', e => wtUpdateSet(entryIdx, si, 'reps', e.target.value));
-    row.querySelectorAll('.set-input')[1].addEventListener('focus', () => { if (S.restTimer.running) wtRestTimerSkip(); });
     row.querySelector('.set-done-btn').addEventListener('click', () => wtToggleSetDone(entryIdx, si));
     row.querySelector('.set-remove-btn').addEventListener('click', () => wtRemoveSet(entryIdx, si));
     const rpeSel = row.querySelector('.set-rpe-select');

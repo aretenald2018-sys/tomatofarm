@@ -684,6 +684,294 @@ export function detectPRs(cache, exerciseId) {
 }
 
 // ================================================================
+// Muscle-comparison helpers (인사이트 모달 / 루틴 추천용)
+//   "오늘 가슴이면 직전 가슴·직직전 가슴과 subPattern 균형까지 비교한다"
+//   - getSessionMajorMuscles: 하루치 세션의 대분류 부위 집합
+//   - summarizeMuscleSession: 지정 대분류로 필터링한 세트/볼륨/subBalance
+//   - findRecentSameMuscleSessions: beforeKey 이전에서 같은 대분류 세션 N개
+//   - buildMuscleComparison: 오늘 + 직전 N개 메트릭 + 델타 + 불균형 경고
+// ================================================================
+
+/**
+ * subPattern(세부 부위) → major muscle(대분류) 역매핑.
+ * MUSCLES/MOVEMENTS와 1:1 정렬. glute는 lower와 분리된 독립 타겟 (workout 탭 칩 기준).
+ * 과거엔 expert.js 내부 상수였으나 calc 레이어에서도 필요해 승격.
+ */
+export const SUBPATTERN_TO_MAJOR = {
+  chest_upper: 'chest', chest_mid: 'chest', chest_lower: 'chest',
+  back_width: 'back', back_thickness: 'back',
+  posterior: 'back',           // 후면사슬(데드/RDL) — 등 두께+햄/둔근 혼합, 등으로 분류
+  shoulder_front: 'shoulder', shoulder_side: 'shoulder',
+  rear_delt: 'shoulder', traps: 'shoulder',
+  quad: 'lower', hamstring: 'lower', calf: 'lower',
+  glute: 'glute',              // 독립 타겟
+  bicep: 'bicep',
+  tricep: 'tricep',
+  core: 'abs',
+};
+
+function _isWorkSet(s) {
+  if (!s) return false;
+  if (s.setType === 'warmup') return false;
+  if (s.done === true) return true;
+  if (s.done === false) return false;
+  return (s.kg || 0) > 0 && (s.reps || 0) > 0;
+}
+
+/**
+ * entry(운동 1건)의 subPattern 결정.
+ * 우선순위: ex.muscleIds[0] > entry.muscleIds[0] > movement.subPattern.
+ * calcBalanceByPattern과 동일 규칙.
+ */
+function _resolveSubPattern(entry, ex, movById) {
+  const muscleIds = (ex && Array.isArray(ex.muscleIds) && ex.muscleIds.length)
+    ? ex.muscleIds
+    : (Array.isArray(entry?.muscleIds) ? entry.muscleIds : []);
+  if (muscleIds.length > 0) return muscleIds[0];
+  const movementId = ex?.movementId || entry?.movementId || null;
+  if (movementId && movById) {
+    const mov = movById.get(movementId);
+    if (mov?.subPattern) return mov.subPattern;
+  }
+  return null;
+}
+
+/**
+ * entry의 **세션 major** — 주동근(primary) 1개만 반환.
+ * 2026-04-20 재설계: 이전 구현은 muscleIds 전체를 역매핑해 "벤치 = 가슴+어깨+삼두 세션"
+ *   처럼 보조근까지 부위로 인정했다. 이건 MOVEMENT_MUSCLES_MAP 주석("배열[0]=주동근,
+ *   배열[1..]=협응/보조근") 및 calcBalanceByPattern(muscleIds[0] 기준) 과 모순되며, 리뷰
+ *   지적 #2/#3 의 혼합 버그 원인이었다. 이제 주동근만 반영 — 보조근은 세션 major 에서 제외.
+ *
+ * 우선순위: muscleIds[0] → movement.primary → entry.muscleId(major 또는 subPattern) → null.
+ * 반환: major 문자열(chest/back/shoulder/lower/glute/bicep/tricep/abs) 또는 null.
+ */
+function _resolvePrimaryMajor(entry, ex, movById) {
+  const muscleIds = (ex && Array.isArray(ex.muscleIds) && ex.muscleIds.length)
+    ? ex.muscleIds
+    : (Array.isArray(entry?.muscleIds) ? entry.muscleIds : []);
+  if (muscleIds.length > 0) {
+    const sp = muscleIds[0];
+    const major = SUBPATTERN_TO_MAJOR[sp];
+    if (major) return major;
+    // muscleIds[0] 가 이미 major(subPattern 아닌 경우 — 레거시 저장 경로) 면 그대로 반환.
+    return sp || null;
+  }
+  const movementId = ex?.movementId || entry?.movementId || null;
+  if (movementId && movById) {
+    const mov = movById.get(movementId);
+    if (mov?.primary) return mov.primary;
+    if (mov?.subPattern && SUBPATTERN_TO_MAJOR[mov.subPattern]) return SUBPATTERN_TO_MAJOR[mov.subPattern];
+  }
+  // 최후: entry.muscleId — major 일 수도, subPattern 일 수도 있음.
+  const leg = entry?.muscleId;
+  if (leg) return SUBPATTERN_TO_MAJOR[leg] || leg;
+  return null;
+}
+
+/**
+ * 세션(하루) day 도큐먼트에서 "작업세트 1회 이상"한 대분류 부위 집합.
+ *   2026-04-20: 주동근(primary) 기준만. 벤치를 한 날은 {'chest'} (shoulder/tricep 제외).
+ *   보조근까지 포함하면 세션 major 가 과대평가되어 루틴 추천/이력 비교가 오염됨.
+ * exercises 배열이 비어있거나 모두 워밍업이면 빈 Set.
+ * @returns {Set<string>} 예) {'chest'} 또는 {'back','bicep'}
+ */
+export function getSessionMajorMuscles(day, exList, movements) {
+  const out = new Set();
+  if (!day?.exercises?.length) return out;
+  const exByExId = new Map((exList || []).map(e => [e.id, e]));
+  const movById  = new Map((movements || []).map(m => [m.id, m]));
+  for (const entry of day.exercises) {
+    const workSets = (entry.sets || []).filter(_isWorkSet).length;
+    if (workSets === 0) continue;
+    const ex = exByExId.get(entry.exerciseId);
+    const major = _resolvePrimaryMajor(entry, ex, movById);
+    if (major) out.add(major);
+  }
+  return out;
+}
+
+/**
+ * 하루치 세션을 "지정 대분류(majors)에 속한 종목만" 집계.
+ *   - workSets    : 작업세트 합
+ *   - totalVolume : kg*reps 합 (작업세트만)
+ *   - topKg       : 해당 부위 종목들 중 단일 세트 최대 무게
+ *   - subBalance  : { subPattern: workSets } — chest_upper/mid/lower 등
+ *   - exercises   : [{ exerciseId, name, subPattern, workSets, topKg, volume, sets:[{kg,reps,rpe,setType,done}] }]
+ * @param {string[]|Set<string>|null} majors null이면 전체 부위 집계.
+ */
+export function summarizeMuscleSession(day, exList, movements, majors) {
+  const out = { workSets: 0, totalVolume: 0, topKg: 0, subBalance: {}, exercises: [] };
+  if (!day?.exercises?.length) return out;
+  const exByExId = new Map((exList || []).map(e => [e.id, e]));
+  const movById  = new Map((movements || []).map(m => [m.id, m]));
+  const majorSet = majors == null
+    ? null
+    : (majors instanceof Set ? majors : new Set(majors));
+  for (const entry of day.exercises) {
+    const ex = exByExId.get(entry.exerciseId);
+    // 2026-04-20: 주동근 기준만 매칭. 벤치(주동근 chest) 는 majors=['shoulder'] 필터에 안 잡힘.
+    const primary = _resolvePrimaryMajor(entry, ex, movById);
+    if (majorSet && (!primary || !majorSet.has(primary))) continue;
+    const subPattern = _resolveSubPattern(entry, ex, movById);
+    const workSets = (entry.sets || []).filter(_isWorkSet);
+    if (workSets.length === 0) continue;
+    const topKg = workSets.reduce((a, s) => Math.max(a, Number(s.kg) || 0), 0);
+    const volume = workSets.reduce((a, s) => a + (Number(s.kg) || 0) * (Number(s.reps) || 0), 0);
+    out.workSets += workSets.length;
+    out.totalVolume += volume;
+    if (topKg > out.topKg) out.topKg = topKg;
+    if (subPattern) out.subBalance[subPattern] = (out.subBalance[subPattern] || 0) + workSets.length;
+    out.exercises.push({
+      exerciseId: entry.exerciseId,
+      name: ex?.name || entry.name || entry.exerciseId,
+      movementId: ex?.movementId || entry.movementId || null,
+      subPattern,
+      primaryMajor: primary,
+      workSets: workSets.length,
+      topKg,
+      volume: Math.round(volume),
+      sets: workSets.map((s, i) => ({
+        setNo: i + 1,
+        kg: Number(s.kg) || 0,
+        reps: Number(s.reps) || 0,
+        rpe: s.rpe ?? null,
+        setType: s.setType || 'main',
+        done: s.done !== false,
+      })),
+    });
+  }
+  out.totalVolume = Math.round(out.totalVolume);
+  return out;
+}
+
+/**
+ * beforeKey (YYYY-MM-DD) 이전 날짜 중, majors 에 속한 부위를 운동한 세션의 dateKey를
+ * 최신 → 과거 순으로 limit 개 반환. beforeKey 당일은 포함하지 않음.
+ *   majors: string[] 또는 Set<string>. 빈값이면 []를 반환.
+ * 정렬: 문자열 비교 (YYYY-MM-DD 사전순 == 시간순 역순 가능).
+ */
+export function findRecentSameMuscleSessions(cache, exList, movements, beforeKey, majors, limit = 2) {
+  if (!cache || !beforeKey || !/^\d{4}-\d{2}-\d{2}$/.test(beforeKey)) return [];
+  const majorSet = majors instanceof Set ? majors : new Set(majors || []);
+  if (majorSet.size === 0) return [];
+  const exByExId = new Map((exList || []).map(e => [e.id, e]));
+  const movById  = new Map((movements || []).map(m => [m.id, m]));
+  const hits = [];
+  for (const [key, day] of Object.entries(cache)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) continue;
+    if (key >= beforeKey) continue;
+    if (!day?.exercises?.length) continue;
+    // 2026-04-20: 주동근 기준만 매칭. arm_pulldown-only 세션은 majors=['tricep'] 에 매칭되면 안됨.
+    let match = false;
+    for (const entry of day.exercises) {
+      const workSets = (entry.sets || []).filter(_isWorkSet).length;
+      if (workSets === 0) continue;
+      const ex = exByExId.get(entry.exerciseId);
+      const primary = _resolvePrimaryMajor(entry, ex, movById);
+      if (primary && majorSet.has(primary)) { match = true; break; }
+    }
+    if (match) hits.push(key);
+  }
+  hits.sort((a, b) => b.localeCompare(a));     // 최신 first
+  return hits.slice(0, Math.max(1, limit));
+}
+
+/**
+ * 오늘 세션(todayKey)과 "같은 대분류의 직전 세션들" 비교 요약.
+ *   majors: 명시하지 않으면 오늘 세션에서 자동 감지.
+ *   limit : 비교 대상 과거 세션 수 (기본 2 — 직전/직직전).
+ *   반환:
+ *     {
+ *       majors: ['chest'],
+ *       today:    { dateKey, ...metrics },
+ *       previous: [{ dateKey, ...metrics }, ...]   // 최신 → 과거
+ *       deltas:   [{ vs: 'prev', workSetsDelta, volumeDelta, topKgDelta }, ...]
+ *       imbalance: { weakest, strongest, weakSubPatterns:[...], note } | null
+ *     }
+ *   오늘 세션이 없거나 해당 부위 이력이 없으면 majors=[] 또는 previous=[] 로 반환.
+ *   imbalance: 최근 3세션(today+previous) 합산 기준, 전체 대비 15% 미만 subPattern을 weak로.
+ */
+export function buildMuscleComparison(cache, exList, movements, todayKey, majors, limit = 2) {
+  const empty = { majors: [], today: null, previous: [], deltas: [], imbalance: null };
+  if (!cache || !todayKey || !/^\d{4}-\d{2}-\d{2}$/.test(todayKey)) return empty;
+  const day = cache[todayKey];
+  if (!day) return empty;
+  // majors 자동 감지
+  let majorSet;
+  if (majors && (Array.isArray(majors) ? majors.length : majors.size)) {
+    majorSet = majors instanceof Set ? new Set(majors) : new Set(majors);
+  } else {
+    majorSet = getSessionMajorMuscles(day, exList, movements);
+  }
+  if (majorSet.size === 0) return empty;
+
+  const todaySum = summarizeMuscleSession(day, exList, movements, majorSet);
+  const prevKeys = findRecentSameMuscleSessions(cache, exList, movements, todayKey, majorSet, limit);
+  const previous = prevKeys.map(k => ({
+    dateKey: k,
+    ...summarizeMuscleSession(cache[k], exList, movements, majorSet),
+  }));
+
+  const deltas = previous.map((p, i) => ({
+    vs: i === 0 ? 'prev' : (i === 1 ? 'prevPrev' : `prev${i}`),
+    dateKey: p.dateKey,
+    workSetsDelta: todaySum.workSets - p.workSets,
+    volumeDelta: todaySum.totalVolume - p.totalVolume,
+    topKgDelta: +(todaySum.topKg - p.topKg).toFixed(2),
+  }));
+
+  // 불균형 판단: today + previous 합산 subBalance 에서
+  //   (a) 전체 대비 비중 <15% 인 subPattern + (b) 아예 0세트인 subPattern 을 weak 로.
+  //   2026-04-20 수정: 이전에는 `combinedEntries.length >= 2` 인 경우에만 0세트 탐지를
+  //   수행해서 "세션 내내 chest_mid 만" 같은 가장 심한 불균형 케이스를 놓쳤다. possibleSubs
+  //   (이 대분류에 속한 정의된 subPattern 전체) 가 2개 이상이면 분석을 실행한다.
+  const combined = { ...todaySum.subBalance };
+  for (const p of previous) {
+    for (const [sp, v] of Object.entries(p.subBalance || {})) {
+      combined[sp] = (combined[sp] || 0) + v;
+    }
+  }
+  const combinedEntries = Object.entries(combined).sort((a, b) => b[1] - a[1]);
+  const possibleSubs = new Set();
+  for (const [sp, mj] of Object.entries(SUBPATTERN_TO_MAJOR)) {
+    if (majorSet.has(mj)) possibleSubs.add(sp);
+  }
+  let imbalance = null;
+  if (possibleSubs.size >= 2) {
+    const totalSets = combinedEntries.reduce((a, [, v]) => a + v, 0);
+    const weakSet = new Set();
+    // (a) 관측됐지만 비중이 낮은 경우
+    if (totalSets > 0) {
+      for (const [sp, v] of combinedEntries) {
+        if (v / totalSets < 0.15) weakSet.add(sp);
+      }
+    }
+    // (b) possibleSubs 중 한 번도 관측되지 않은 경우 — 가장 명확한 불균형
+    for (const sp of possibleSubs) {
+      if (!(sp in combined)) weakSet.add(sp);
+    }
+    const weak = [...weakSet];
+    const strongest = combinedEntries[0]?.[0] || null;
+    if (weak.length > 0) {
+      imbalance = {
+        weakSubPatterns: weak,
+        strongest,
+        note: `${weak.join(', ')} 비중이 낮음 — 다음 세션에 보완 권장`,
+      };
+    }
+  }
+
+  return {
+    majors: [...majorSet],
+    today: { dateKey: todayKey, ...todaySum },
+    previous,
+    deltas,
+    imbalance,
+  };
+}
+
+// ================================================================
 // Celebration Detectors (home/cheers-card 용 순수 함수들)
 // 입력: 친구 워크아웃 문서들(today/yesterday/weekAgo) + 메타
 // 출력: { type, priority, template, params } 또는 null

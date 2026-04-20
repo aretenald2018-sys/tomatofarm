@@ -9,6 +9,87 @@ import { TODAY, getMemo, getExercises, getDiet, getExList,
          hasExerciseRecord }        from './data.js';
 import { functions }                           from './data/data-core.js';
 import { httpsCallable }                       from "https://www.gstatic.com/firebasejs/11.6.0/firebase-functions.js";
+import { MOVEMENT_MUSCLES_MAP,
+         BROAD_EQUIPMENT_MUSCLES_MAP } from './config.js';
+import { SUBPATTERN_TO_MAJOR } from './calc.js';
+
+// ── muscleIds 파생 헬퍼 ────────────────────────────────────────
+// 2026-04-19: 기구 → 부위(subPattern) 1:N 매핑 리팩토링.
+// 유저 요구: "스미스머신" 단독이면 범용 부위(가슴/등/하체 등) 모두 태깅,
+// "스미스머신 스쿼트"면 하체 부위만, "벤치프레스"면 가슴 중부(주동근)+상부/하부+삼두+어깨전면.
+// AI 프롬프트가 이미 movementId를 narrow vs broad 판정하는 역할을 하므로
+// 여기서는 결과 movementId + 원본 이름을 조합해 muscleIds 배열을 파생.
+// 배열[0] = 주동근 (자극 균형 차트에서 1세트=1부위로 카운트되는 기준).
+function _isBroadEquipmentName(name) {
+  const s = String(name || '').toLowerCase().replace(/\s+/g, '');
+  if (!s) return null;
+  for (const entry of BROAD_EQUIPMENT_MUSCLES_MAP) {
+    for (const p of entry.patterns) {
+      const pp = String(p).toLowerCase().replace(/\s+/g, '');
+      // 입력 이름이 범용 기구명 자체인지 검사 (exact match 또는 매우 짧은 접미사만)
+      // "스미스머신 스쿼트" 같은 조합은 별도 keyword로 걸러져서 specific로 처리.
+      if (s === pp) return entry;
+    }
+  }
+  return null;
+}
+
+function _hasSpecificMovementKeyword(name) {
+  // 기구명에 구체 운동 키워드가 포함되면 broad 매핑을 쓰지 않음.
+  const s = String(name || '').toLowerCase();
+  if (!s) return false;
+  const keywords = [
+    '벤치프레스', '벤치 프레스', 'bench press',
+    '스쿼트', 'squat',
+    '데드리프트', 'deadlift',
+    '로우', 'row',
+    '풀다운', 'pulldown',
+    '풀업', 'pullup', 'pull up',
+    '숄더프레스', '숄더 프레스', 'shoulder press', 'ohp',
+    '레터럴 레이즈', '사레레', 'lateral raise',
+    '프론트 레이즈', 'front raise',
+    '리어 델트', 'rear delt', '페이스풀', 'face pull',
+    '슈러그', 'shrug',
+    '레그프레스', '레그 프레스', 'leg press',
+    '레그 익스텐션', '레그익스텐션', 'leg extension',
+    '레그 컬', '레그컬', 'leg curl',
+    '힙 쓰러스트', '힙쓰러스트', 'hip thrust',
+    '카프', 'calf',
+    '컬', 'curl',
+    '푸쉬다운', 'pushdown', 'push down',
+    '딥스', 'dips',
+    '플라이', 'fly',
+    '크로스오버', 'crossover',
+    '런지', 'lunge',
+    '크런치', 'crunch', '플랭크', 'plank',
+  ];
+  return keywords.some(k => s.includes(k));
+}
+
+// deriveMuscleIds — parsed item (name, movementId) 기반으로 세부 부위 배열 도출.
+//   입력이 범용 기구명("스미스머신" 단독) → BROAD_EQUIPMENT_MUSCLES_MAP 적용 (넓게)
+//   입력에 구체 운동명 포함 ("스미스머신 스쿼트") or 기구명 자체가 specific ("벤치프레스")
+//     → MOVEMENT_MUSCLES_MAP[movementId] 적용 (좁게)
+//   둘 다 실패 → movement.subPattern 단일 원소 (최소 fallback)
+export function deriveMuscleIdsForItem(item, movements) {
+  const name = String(item?.name || '').trim();
+  const movementId = String(item?.movementId || '').trim();
+  // 1) 구체 운동 키워드가 없고, 이름이 범용 기구명과 exact match → broad 매핑 우선.
+  if (!_hasSpecificMovementKeyword(name)) {
+    const broad = _isBroadEquipmentName(name);
+    if (broad) return [...broad.muscleIds];
+  }
+  // 2) movementId 기반 MOVEMENT_MUSCLES_MAP lookup.
+  if (movementId && movementId !== 'unknown' && MOVEMENT_MUSCLES_MAP[movementId]) {
+    return [...MOVEMENT_MUSCLES_MAP[movementId]];
+  }
+  // 3) Fallback: movement.subPattern 단일 원소.
+  if (movementId && movementId !== 'unknown') {
+    const mv = (movements || []).find(m => m.id === movementId);
+    if (mv?.subPattern) return [mv.subPattern];
+  }
+  return [];
+}
 
 const _geminiProxy = httpsCallable(functions, 'geminiProxy');
 const _ocrProxy    = httpsCallable(functions, 'ocrProxy');
@@ -324,15 +405,20 @@ function _normalizeNutritionParse(parsed) {
 
 // ── 영양성분표 이미지 파싱 (Gemini Vision API) ────────────────────
 // 반환: 단일 { detectedFoods, name, nutrition, ... } | 복수 { detectedFoods, multiple:true, items:[>=2] }
+// 2026-04-20 (Codex #1 수정): _callGeminiJSON 은 { data, provider } wrapper 를 돌려주므로
+//   반드시 `{ data }` 로 destructure 한 뒤 _normalizeNutritionParse 에 넘겨야 한다. 이전에는
+//   wrapper 전체가 호출자에게 흘러가 parsed.multiple / parsed.items / parsed.nutrition 체크가
+//   항상 실패 → 이미지 파싱이 사실상 상시 깨져 있었음. 모달의 _populateNutritionForm 에도
+//   undefined 가 흘러가 "버튼은 눌려도 값이 비어 보이는" 증상의 2차 원인이 됐다.
 export async function parseNutritionFromImage(imageBase64, language = 'ko') {
   const rules = _NUTRITION_RULES_KO.replace(/__LANG__/g, language);
   const prompt = `다음 이미지에서 영양정보를 추출하라.\n\n${rules}`;
 
-  const parsed = await _callGeminiJSON([
+  const { data } = await _callGeminiJSON([
     { text: prompt },
     { inlineData: { mimeType: 'image/jpeg', data: imageBase64 } }
   ], 4096);
-  return _normalizeNutritionParse(parsed);
+  return _normalizeNutritionParse(data);
 }
 
 // ── 영양성분 텍스트 파싱 ──────────────────────────────────────────
@@ -348,21 +434,26 @@ export async function parseNutritionFromText(rawText) {
   }
 
   // 2) 정규식 실패 → Gemini fallback
+  // 2026-04-20 (Codex #1 수정): 위와 동일 — _callGeminiJSON 반환을 반드시 { data } 로 unwrap.
   const rules = _NUTRITION_RULES_KO.replace(/__LANG__/g, 'ko');
   const prompt = `다음 텍스트에서 영양정보를 추출하라.\n\n텍스트:\n${rawText}\n\n${rules}`;
 
-  const parsed = await _callGeminiJSON([{ text: prompt }], 4096);
-  return _normalizeNutritionParse(parsed);
+  const { data } = await _callGeminiJSON([{ text: prompt }], 4096);
+  return _normalizeNutritionParse(data);
 }
 
 // ── 다국어 감지 ──────────────────────────────────────────────────
+// 2026-04-20: _callGeminiJSON 반환을 { data } 로 unwrap. wrapper 그대로 반환하면
+//   호출자가 language/confidence 필드 접근 실패 (detectLanguage 는 현재 미사용이지만
+//   방어적으로 수정 — 향후 호출자 추가 시 회귀 방지).
 export async function detectLanguage(text) {
   const prompt = `텍스트의 주요 언어를 감지하세요.
 텍스트: ${text.substring(0, 200)}
 JSON 형식: {"language":"ko","confidence":0.95}
 language는 ko, ja, en, other 중 하나.`;
 
-  return _callGeminiJSON([{ text: prompt }], 100);
+  const { data } = await _callGeminiJSON([{ text: prompt }], 100);
+  return data;
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -932,31 +1023,37 @@ export async function parseEquipmentFromText(rawText, movements) {
   console.log(`[parseEquipmentFromText] 분류 → mapped ${counts.mapped} · ambiguous ${counts.ambiguous} · unsupported ${counts.unsupported} (AI ${aiUsed ? (aiFailed ? '일부 실패' : '사용') : '미사용'})`);
 
   // 최종 스키마로 정규화 (리뷰 화면이 기대하는 필드 맞춤)
-  // Hybrid C: 멀티퍼포스 기구(랙/스미스/벤치 등)는 여러 row로 확장.
-  // ⚠ 패턴 매칭을 분류 결과보다 선행시킴 — "파워랙"이 우연히 한 alias(예: squat)에 걸려
-  //    single mapped로 떨어지면 false precision이 됨. 이름이 멀티퍼포스 패턴에 맞으면
-  //    분류와 무관하게 확장.
+  // 2026-04-19 리팩토링: 기존 _expandMultiPurposeItem이 "스미스머신"/"파워랙" 같은 범용 기구를
+  // 여러 row로 분할했으나, 유저 요구에 따라 한 기구 = 한 row로 유지하고 대신
+  // muscleIds 배열(세부 부위 N개)로 자극 부위를 표현하도록 변경.
+  // 예: "스미스머신" 단독 → muscleIds=[가슴중부/상부/하부, 등두께, 대퇴사두, 햄스트링, 둔근, 어깨전면, 삼두]
+  //     "스미스머신 스쿼트" 또는 "벤치프레스" → MOVEMENT_MUSCLES_MAP[movementId] 기반 좁은 세트
+  //     유저가 UI에서 칩으로 추가/제거/순서변경 가능. muscleIds[0] = 주동근.
   const out = [];
   classified.forEach((x, i) => {
     const c = x.classification;
     const w = aiWeights.get(i) || { maxKg: null, incKg: null };
+    const finalMovementId = c.state === 'unsupported' ? 'unknown' : (c.topId || 'unknown');
     const base = {
       name: x.name,
       brand: x.brand || (x.series || ''),
       machineType: _standardizeMachineType(x.machineType),
       maxKg: w.maxKg,
       incKg: w.incKg,
+      movementId: finalMovementId,
     };
-    // 선행: 이름이 멀티퍼포스 패턴에 맞으면 분류 결과와 무관하게 확장.
-    const expanded = _expandMultiPurposeItem(base, movements, w);
-    if (expanded && expanded.length > 0) { out.push(...expanded); return; }
+    const muscleIds = deriveMuscleIdsForItem(base, movements);
+    // mappingState 재평가: muscleIds가 비면 ambiguous, 아니면 mapped.
+    const hasMuscles = muscleIds.length > 0;
+    const mappingState = hasMuscles ? 'mapped' : c.state;
     out.push({
       ...base,
       weightUnit: 'kg',
-      movementId: c.state === 'unsupported' ? 'unknown' : (c.topId || 'unknown'),
-      mappingState: c.state,
+      muscleIds,
+      mappingState,
       candidates: c.candidates || [],
-      confidence: c.state === 'mapped' ? 0.9 : (c.state === 'ambiguous' ? 0.5 : 0),
+      confidence: hasMuscles ? (c.state === 'mapped' ? 0.9 : 0.7)
+                             : (c.state === 'ambiguous' ? 0.5 : 0),
     });
   });
   return out;
@@ -1003,28 +1100,27 @@ JSON 배열 스키마:
   if (items.length === 0) throw _makeParseError('PARSE_EMPTY', '추출된 기구 없음');
   // 공통 정규화 — 숫자 필드는 유효성 검증 (AI가 문자열/NaN 반환 가능)
   const num = (v) => (v != null && isFinite(+v) && +v > 0) ? +v : null;
-  // Hybrid C: 멀티퍼포스 기구(랙/스미스/벤치)는 여러 동작으로 확장.
+  // 2026-04-19 리팩토링: 멀티퍼포스 확장 중단 → 한 기구 = 한 row + muscleIds[] 부위 배열.
   const out = [];
   for (const x of items) {
     const name = x.name || '';
     if (!name || name.length < 2) continue;
+    const movId = x.movementId || 'unknown';
     const base = {
       name,
       brand: x.brand || '',
       machineType: _standardizeMachineType(x.machineType),
       maxKg: num(x.maxKg),
       incKg: num(x.incKg),
+      movementId: movId,
     };
-    const movId = x.movementId || 'unknown';
-    // 선행: 이름이 멀티퍼포스 패턴에 맞으면 AI movementId와 무관하게 확장.
-    // (AI가 우연히 한 movementId에 매핑했어도, 실제로는 다목적 기구임을 이름이 말해줌.)
-    const expanded = _expandMultiPurposeItem(base, movements, { maxKg: base.maxKg, incKg: base.incKg });
-    if (expanded && expanded.length > 0) { out.push(...expanded); continue; }
+    const muscleIds = deriveMuscleIdsForItem(base, movements);
     out.push({
       ...base,
       weightUnit: 'kg',
-      movementId: movId,
-      confidence: (movId && movId !== 'unknown') ? 0.8 : 0.3,
+      muscleIds,
+      mappingState: muscleIds.length > 0 ? 'mapped' : 'ambiguous',
+      confidence: muscleIds.length > 0 ? 0.8 : 0.3,
     });
   }
   return out;
@@ -1067,14 +1163,48 @@ JSON 스키마:
 //   (a) gymExercises에 존재하고 (b) muscleId가 targetMuscles에 포함돼야 한다.
 //   AI가 "균형 보완" 지시를 과해석해 선택 안 한 부위를 추가하는 버그가 있었음 →
 //   서버사이드 gymExercises 필터 + 프롬프트 강제 규칙 + 호출부 post-validate 3중 방어.
-export async function generateRoutineCandidates({ preset, targetMuscles, sessionMinutes, preferredRpe, gymExercises, recentHistory, movements, onProviderSwitch }) {
+export async function generateRoutineCandidates({ preset, targetMuscles, sessionMinutes, preferredRpe, gymExercises, recentHistory, sameMuscleContext, movements, onProviderSwitch }) {
   const targets = (Array.isArray(targetMuscles) ? targetMuscles : []).filter(Boolean);
   const hasTargets = targets.length > 0;
+
+  // 2026-04-20: gym 기구의 대분류 muscles 집합을 muscleId/muscleIds[]/movementId 3단계로
+  //   결정한다. 이전에는 `targets.includes(e.muscleId)` 만 썼는데, 저장 경로가 movementId
+  //   없이 저장될 때 `muscleId` 필드에 subPattern(예: 'chest_mid') 을 넣는다
+  //   (workout/expert.js:1392 `mov?.primary || p.muscleIds[0]`). 이 경우 이전 필터는
+  //   유효한 기구를 `NO_GYM_FOR_TARGETS` 로 거르거나 프롬프트에서 누락시켰다.
+  const movById = new Map((movements || []).map(m => [m.id, m]));
+  const _gymMajors = (e) => {
+    const out = new Set();
+    if (!e) return out;
+    // 1) muscleIds[] (진실 소스) — subPattern → major 역매핑
+    const subs = Array.isArray(e.muscleIds) ? e.muscleIds : [];
+    for (const sp of subs) {
+      const mj = SUBPATTERN_TO_MAJOR[sp];
+      if (mj) out.add(mj);
+    }
+    // 2) muscleId — major 일 수도 있고 subPattern 일 수도 있다 (저장 경로에 따라)
+    if (e.muscleId) {
+      if (SUBPATTERN_TO_MAJOR[e.muscleId]) out.add(SUBPATTERN_TO_MAJOR[e.muscleId]);
+      else out.add(e.muscleId);                              // major 라고 가정
+    }
+    // 3) movementId → movement.primary / subPattern
+    if (out.size === 0 && e.movementId && e.movementId !== 'unknown') {
+      const mov = movById.get(e.movementId);
+      if (mov?.primary) out.add(mov.primary);
+      if (mov?.subPattern && SUBPATTERN_TO_MAJOR[mov.subPattern]) out.add(SUBPATTERN_TO_MAJOR[mov.subPattern]);
+    }
+    return out;
+  };
 
   // 서버사이드 1차 방어: 타겟 외 기구는 아예 프롬프트에 노출하지 않음.
   // AI가 눈에 보이지 않는 건 고를 수 없다 — "균형 보완" 지시와 무관하게 타 부위 유입 차단.
   const filteredGym = hasTargets
-    ? (gymExercises || []).filter(e => e && targets.includes(e.muscleId))
+    ? (gymExercises || []).filter(e => {
+        const mj = _gymMajors(e);
+        if (mj.size === 0) return false;
+        for (const m of mj) { if (targets.includes(m)) return true; }
+        return false;
+      })
     : (gymExercises || []);
 
   if (hasTargets && filteredGym.length === 0) {
@@ -1083,10 +1213,41 @@ export async function generateRoutineCandidates({ preset, targetMuscles, session
     throw err;
   }
 
-  const gymList = filteredGym.map(e =>
-    `${e.id}:${e.name}(${e.movementId || 'unknown'}, ${e.muscleId}, max ${e.maxWeightKg || '?'}kg, step ${e.incrementKg || 2.5}kg)`
-  ).join('\n');
+  const gymList = filteredGym.map(e => {
+    const majors = [..._gymMajors(e)].join('/') || (e.muscleId || '?');
+    const subs   = Array.isArray(e.muscleIds) && e.muscleIds.length ? ` [${e.muscleIds.join(',')}]` : '';
+    return `${e.id}:${e.name}(${e.movementId || 'unknown'}, ${majors}${subs}, max ${e.maxWeightKg || '?'}kg, step ${e.incrementKg || 2.5}kg)`;
+  }).join('\n');
   const hist = (recentHistory || []).slice(0, 20).map(h => `- ${h.exerciseId} ${h.date}: top ${h.topKg}kg×${h.topReps}`).join('\n') || '기록 없음';
+
+  // 2026-04-20: 선택 부위별 **독립** 직전/직직전 세션 요약 블록.
+  //   기존은 targetMuscles 전체를 한 번에 묶어서 가슴+이두 같은 복수 부위 날엔 이두-only
+  //   세션이 가슴 비교에 섞이는 혼합 버그(리뷰 #1). 이제 sameMuscleContext 는 per-major
+  //   배열이므로 각 부위 섹션을 분리해 AI 가 부위별로 판단하게 한다. imbalance.weakSubPatterns
+  //   가 있으면 그 부위 기구 1개 이상 포함하도록 강제.
+  const sameMuscleBlock = (() => {
+    if (!Array.isArray(sameMuscleContext) || sameMuscleContext.length === 0) return '';
+    const sections = [];
+    for (const ctx of sameMuscleContext) {
+      const { major, today, previous, imbalance } = ctx || {};
+      if (!major) continue;
+      const lines = [`[${major}] 최근 세션 요약:`];
+      if (today) {
+        const subs = Object.entries(today.subBalance || {}).sort((a,b)=>b[1]-a[1]).map(([k,v]) => `${k} ${v}`).join('/');
+        lines.push(`- 오늘(${today.dateKey}): ${today.workSets}세트, 볼륨 ${today.totalVolume}, Top ${today.topKg}kg${subs ? `, 세부 ${subs}` : ''}`);
+      }
+      (previous || []).forEach((p, i) => {
+        const head = i === 0 ? '직전' : '직직전';
+        const subs = Object.entries(p.subBalance || {}).sort((a,b)=>b[1]-a[1]).map(([k,v]) => `${k} ${v}`).join('/');
+        lines.push(`- ${head}(${p.dateKey}): ${p.workSets}세트, 볼륨 ${p.totalVolume}, Top ${p.topKg}kg${subs ? `, 세부 ${subs}` : ''}`);
+      });
+      if (imbalance?.weakSubPatterns?.length) {
+        lines.push(`⚠ 반드시 반영: [${major}] 최근 3세션 합산에서 [${imbalance.weakSubPatterns.join(', ')}] 세부 부위가 부족 — 후보 A에 ${major} 중 해당 세부 부위 기구 1개 이상 포함시킬 것.`);
+      }
+      sections.push(lines.join('\n'));
+    }
+    return sections.length ? sections.join('\n\n') : '';
+  })();
 
   // NOTE: 프롬프트에서 `선호=preset.preferMuscles`를 일부러 뺐다.
   //   과거엔 preset.preferMuscles가 오늘 targets와 불일치할 때 AI가 preset 쪽을
@@ -1111,9 +1272,11 @@ ${gymList || '없음 — 일반 기구 추천'}
 
 최근 14일 기록(참고):
 ${hist}
-
+${sameMuscleBlock ? `\n${sameMuscleBlock}\n` : ''}
 규칙:
 - 후보 A는 "오늘 선택 부위 내에서 균형 보완" (선택 부위의 subPattern을 다양화). candidateTag="A · 균형 보완 ⭐".
+  위 "선택 부위 최근 세션 요약" 의 세부 부위(subPattern) 분포가 편중돼 있으면 A 는 반드시
+  부족한 subPattern 쪽 기구를 1개 이상 포함해 보완한다.
 - 후보 B는 "오늘 선택 부위 내에서 익숙한 패턴" 유지. candidateTag="B · 익숙한 패턴".
 - 각 후보는 items 5~7개, 총 소요 ≈ ${sessionMinutes}분.
 - movementId는 카탈로그(${(movements||[]).map(m=>m.id).slice(0,60).join(',')}).
@@ -1189,7 +1352,11 @@ ${conditionStr}
 JSON 형식: {"feasibility":72,"realisticDate":"2025-09-15","summary":"2~3문장 분석"}
 feasibility: 0-100, realisticDate: YYYY-MM-DD, summary: 간결한 분석`;
 
-  return _callGeminiJSON([{ text: prompt }], 400);
+  // 2026-04-20: wrapper unwrap. 이전 반환은 { data:{feasibility,...}, provider }.
+  //   app-modal-goals.js:62 에서 goal.aiAnalysis 로 저장 → 홈 goal 카드가 feasibility
+  //   읽으면 undefined. "분석해도 결과가 안 보이는" 회귀의 직접 원인.
+  const { data } = await _callGeminiJSON([{ text: prompt }], 400);
+  return data;
 }
 
 // ════════════════════════════════════════════════════════════════

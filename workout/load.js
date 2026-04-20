@@ -79,6 +79,10 @@ export function loadWorkoutDate(y, m, d) {
   // 과거엔 여기서 workoutStartTime=null + interval clear 했지만, 그러면 날짜 네비게이션
   // (또는 가끔 동일 날짜 리로드)에도 타이머가 죽어버림. 타이머는 전역 스톱워치이고
   // 날짜 소속은 workoutTimerDate가 추적. 표시/저장은 _isViewingTimerDate 기준으로 가름.
+  //
+  // 2026-04-20: rest 타이머는 위 `isSameDate` early-return 경로에선 건드리지 않는다.
+  //   여기(=실제 날짜 변경) 만 skip — 이전 날짜의 세트 간 휴식이 새 날짜로 이어지면
+  //   쉬는시간 개념이 깨지므로. 같은 날짜 autoSave/재렌더에서는 rest 유지.
   wtRestTimerSkip();
   const timerControls = document.querySelector('.wt-timer-controls');
   if (timerControls) timerControls.style.display = '';
@@ -180,17 +184,18 @@ function _restoreFlowState(day) {
   }
   if (window._wtSetActiveType) window._wtSetActiveType(active);
 
-  // B-2: 기록이 하나라도 있는 날에만 타이머바/메모/저장 섹션을 자동 오픈.
-  // (빈 날에 섹션을 다 열어두면 "이미 뭘 했나?" 오해. 칩 클릭/기록 추가 시에만 열리게.)
+  // 2026-04-20: 타이머 바는 운동 탭에 있는 동안 **항상** 노출 (유저 요구: "타이머 항상 떠있음").
+  //   과거엔 hasAnyRecord 일 때만 open → 세트 치기 전엔 타이머 UI 가 숨겨져 유저가
+  //   "타이머가 없다" 고 느끼는 교착이 있었다. 이제 상시 노출 + play/pause 도 상시 조작 가능.
+  //   memo/save 섹션은 기존대로 기록 있을 때만 open — 이건 UX 정보 밀도 조절용이라 유지.
   const hasAnyRecord = hasExercises || hasCf || hasStretching || hasSwimming || hasRunning;
-  if (timerBar && hasAnyRecord) timerBar.classList.add('wt-open');
+  if (timerBar) timerBar.classList.add('wt-open');
   if (hasAnyRecord) {
     document.getElementById('wt-memo-section')?.classList.add('wt-open');
     document.getElementById('wt-save-section')?.classList.add('wt-open');
   } else {
     document.getElementById('wt-memo-section')?.classList.remove('wt-open');
     document.getElementById('wt-save-section')?.classList.remove('wt-open');
-    timerBar?.classList.remove('wt-open');
   }
 
   // 2026-04-19: 타이머 컨트롤 노출 규칙을 workoutTimerDate 기준으로 통일.

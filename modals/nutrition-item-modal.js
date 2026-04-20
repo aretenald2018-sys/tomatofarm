@@ -942,4 +942,22 @@ async function _saveMultipleItems(items, saveBtnId) {
 }
 
 // ═════════════════════════════════════════════════════════════
-// Window
+// Window 노출 — 2026-04-20
+// ─────────────────────────────────────────────────────────────
+// MODAL_HTML 의 onclick="analyzeNutritionText()" 등은 bare identifier 를 쓰므로
+// 반드시 `window.*` 에 있어야 작동한다. 없으면 ReferenceError 로 버튼 클릭이 전부
+// 죽는다("버튼 클릭조차 안 됨" 회귀의 직접 원인). 또한 app.js / feature-nutrition.js /
+// render-cooking.js / workout/render.js 가 `openNutritionItemEditor`, `switchNutritionTab`
+// 을 window 경로로 호출한다. 모듈은 modal-manager 가 MODAL_HTML 만 import 해도 이 파일
+// top-level 이 평가되므로 아래 Object.assign 이 로드 시점에 실행된다.
+// ═════════════════════════════════════════════════════════════
+Object.assign(window, {
+  openNutritionItemEditor,      // 외부(app.js, feature-nutrition.js, render-cooking.js, workout/render.js) 진입점
+  closeNutritionItemModal,      // HTML onclick (backdrop, 취소 버튼)
+  switchNutritionTab,           // 외부(workout/render.js) + 내부 자동 탭 전환
+  handleNutritionPhotoSelect,   // HTML <input onchange>
+  clearNutritionPhoto,          // HTML onclick (사진 변경)
+  analyzeNutritionText,         // HTML onclick (분석하기)
+  saveNutritionItemFromModal,   // HTML onclick (저장하기)
+  deleteNutritionItemFromModal, // HTML onclick (삭제)
+});

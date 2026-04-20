@@ -79,26 +79,53 @@ export function _renderWorkoutTimer() {
   if (bar) bar.classList.toggle('wt-running', !!S.workoutStartTime && onTimerDate);
 }
 
+// 2026-04-20: "타이머는 항상 떠있어야 함" (유저 요구).
+//   세트 기록 1개 이상이거나 오늘 운동 탭을 보고 있으면, 아래 규칙으로 컨트롤 상시 노출:
+//     - play : 타이머 멈춰 있을 때. 시작 버튼 겸 재개 버튼.
+//     - pause: 타이머 돌고 있을 때.
+//     - reset: hasTime 일 때만 (0초인데 리셋 UI 는 의미 없음).
+//     - finish(끝내기): 기록이 하나라도 있거나 duration 누적됐으면 노출.
+//   다른 날짜(타이머 날짜 ≠ 보는 날짜)에서는 기존처럼 컨트롤 숨김 — 타이머 날짜로 돌아가야
+//   멈추거나 리셋 가능하도록 명확하게 유지.
+function _hasWorkoutRecord() {
+  const list = Array.isArray(S.exercises) ? S.exercises : [];
+  for (const entry of list) {
+    for (const s of (entry?.sets || [])) {
+      if (s?.setType === 'warmup') continue;
+      if (s?.done === true) return true;
+      if (s?.done === false) continue;
+      if ((s?.kg || 0) > 0 && (s?.reps || 0) > 0) return true;
+    }
+  }
+  return false;
+}
+
 export function _renderTimerControls() {
-  // 타이머가 "다른 날짜"에 활성 중일 땐 이 화면의 컨트롤을 모두 숨김.
-  // (타이머는 내부적으로 계속 흐르며, 원래 날짜로 돌아오면 컨트롤 복귀)
-  // 타이머가 정지 상태거나, 현재 보고 있는 날짜 = 타이머 날짜일 때만 컨트롤 노출.
   const onTimerDate = _isViewingTimerDate();
   const timerActiveElsewhere = !!S.workoutStartTime && !onTimerDate;
   const isRunning = !!S.workoutStartTime && onTimerDate;
   const hasTime   = isRunning || (!timerActiveElsewhere && S.workoutDuration > 0);
+  const hasRecord = _hasWorkoutRecord();
   const pauseBtn  = document.getElementById('wt-timer-pause-btn');
   const playBtn   = document.getElementById('wt-timer-play-btn');
   const resetBtn  = document.getElementById('wt-timer-reset-btn');
   const finBtn    = document.getElementById('wt-finish-workout-btn');
   const resultEl  = document.getElementById('wt-workout-duration-result');
 
-  if (pauseBtn) pauseBtn.style.display = (hasTime && isRunning) ? '' : 'none';
-  if (playBtn)  playBtn.style.display  = (hasTime && !isRunning) ? '' : 'none';
+  // 다른 날짜에서 타이머가 돌고 있으면 여기선 조작 불가 → 전부 숨김(_restoreFlowState가 이 경로 차단).
+  if (timerActiveElsewhere) {
+    [pauseBtn, playBtn, resetBtn, finBtn].forEach(b => { if (b) b.style.display = 'none'; });
+    if (resultEl) resultEl.style.display = 'none';
+    return;
+  }
+
+  // play/pause 는 기록 또는 누적시간 유무와 무관하게 상시 노출(유저 요구: "타이머 항상 떠있음").
+  if (pauseBtn) pauseBtn.style.display = isRunning  ? '' : 'none';
+  if (playBtn)  playBtn.style.display  = !isRunning ? '' : 'none';
+  // reset 은 실제 측정된 시간이 있을 때만(의미 있는 액션 아니면 숨김).
   if (resetBtn) resetBtn.style.display = hasTime ? '' : 'none';
-  // 끝내기 버튼은 "시간이 측정된 상태" 내내 표시되어야 함.
-  // (이전엔 isRunning 기준이라 일시정지 시 사라져서 "끝낼 방법이 없다"는 착각 유발)
-  if (finBtn)   finBtn.style.display   = hasTime ? '' : 'none';
+  // 끝내기: 기록이 하나라도 있거나 duration 누적 → 노출. 타이머 안 돌렸어도 세트 있으면 뜸.
+  if (finBtn)   finBtn.style.display   = (hasTime || hasRecord) ? '' : 'none';
   if (resultEl) resultEl.style.display = 'none';
 }
 
@@ -300,7 +327,13 @@ function _syncRestTimerFromNow() {
     if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
     return;
   }
-  if (S.restTimer.remaining < -600) wtRestTimerSkip();
+  // 2026-04-20: 이전에는 -600초(10분 초과) 시 자동 wtRestTimerSkip() 호출.
+  //   유저 요구 "운동을 쉬든 시간을 오버하든 항상 떠있어야 함" 에 따라 자동 skip 제거.
+  //   rest-expired 클래스만 유지해 오버 상태를 시각적으로 표시하고, 건너뛰기는 유저가 명시적으로.
+  if (S.restTimer.remaining < 0) {
+    const f = _restFillEl(); if (f) f.style.width = '100%';
+    bar.classList.add('rest-expired');
+  }
 }
 
 export function _initRestTimerPresets() { /* no-op — Preset은 Bottom Sheet로 이동 */ }

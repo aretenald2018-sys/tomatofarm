@@ -101,7 +101,10 @@ export const MOVEMENTS = [
   { id:'cable_seated_row',       nameKo:'케이블 시티드 로우',           primary:'back',     subPattern:'back_thickness', pattern:'horizontal_pull', sizeClass:'small', stepKg:2.5, equipment_category:'cable' },
   { id:'deadlift',               nameKo:'데드리프트',                   primary:'back',     subPattern:'posterior',      pattern:'hinge',           sizeClass:'large', stepKg:2.5, equipment_category:'barbell' },
   { id:'rdl',                    nameKo:'루마니안 데드리프트',          primary:'back',     subPattern:'posterior',      pattern:'hinge',           sizeClass:'large', stepKg:2.5, equipment_category:'barbell' },
-  { id:'face_pull',              nameKo:'페이스풀',                     primary:'back',     subPattern:'rear_delt',      pattern:'horizontal_pull', sizeClass:'small', stepKg:2.5, equipment_category:'cable' },
+  // 2026-04-20: face_pull primary 'back' → 'shoulder' (subPattern rear_delt 과 일관).
+  //   기존 'back' 분류는 subPattern(rear_delt → shoulder 역매핑)과 모순되어 루틴 필터/
+  //   부위별 집계가 어긋났다. 트레이너 관점에서도 rear delt 고립이 주 목적.
+  { id:'face_pull',              nameKo:'페이스풀',                     primary:'shoulder', subPattern:'rear_delt',      pattern:'horizontal_pull', sizeClass:'small', stepKg:2.5, equipment_category:'cable' },
 
   // 어깨
   { id:'ohp',                    nameKo:'오버헤드프레스',               primary:'shoulder', subPattern:'shoulder_front', pattern:'vertical_push',   sizeClass:'large', stepKg:2.5, equipment_category:'barbell' },
@@ -155,6 +158,123 @@ export const MOVEMENTS = [
   { id:'hanging_leg_raise',      nameKo:'행잉 레그 레이즈',             primary:'abs',      subPattern:'core',           pattern:'core',            sizeClass:'small', stepKg:0,   equipment_category:'bodyweight' },
   { id:'ab_wheel',               nameKo:'앱 휠',                        primary:'abs',      subPattern:'core',           pattern:'core',            sizeClass:'small', stepKg:0,   equipment_category:'bodyweight' },
   { id:'cable_crunch',           nameKo:'케이블 크런치',                primary:'abs',      subPattern:'core',           pattern:'core',            sizeClass:'small', stepKg:2.5, equipment_category:'cable' },
+];
+
+// ════════════════════════════════════════════════════════════════
+// MOVEMENT_MUSCLES_MAP — 각 동작이 활성화시키는 세부 부위(subPattern) 리스트
+// ────────────────────────────────────────────────────────────────
+// 배열[0] = 주동근 (자극 균형 차트에서 1세트=1부위로 카운트되는 기준)
+// 배열[1..] = 협응/보조근. AI 디폴트 매핑이고 유저가 UI에서 CRUD 가능.
+// 입력이 구체적 운동명("벤치프레스") → 해당 movement.id 키로 이 맵을 lookup.
+// 입력이 범용 기구명("스미스머신") → BROAD_EQUIPMENT_MUSCLES_MAP 사용.
+// subPattern 종류: chest_upper/mid/lower, back_width/thickness/posterior,
+//   shoulder_front/side/rear_delt/traps, quad/hamstring/glute/calf,
+//   bicep/tricep/core
+// ════════════════════════════════════════════════════════════════
+export const MOVEMENT_MUSCLES_MAP = {
+  // ── 가슴
+  barbell_bench:          ['chest_mid', 'chest_upper', 'chest_lower', 'shoulder_front', 'tricep'],
+  incline_barbell_bench:  ['chest_upper', 'chest_mid', 'shoulder_front', 'tricep'],
+  dumbbell_bench:         ['chest_mid', 'chest_upper', 'chest_lower', 'shoulder_front', 'tricep'],
+  incline_smith_bench:    ['chest_upper', 'chest_mid', 'shoulder_front', 'tricep'],
+  incline_dumbbell_bench: ['chest_upper', 'chest_mid', 'shoulder_front', 'tricep'],
+  decline_machine_press:  ['chest_lower', 'chest_mid', 'tricep'],
+  chest_press_machine:    ['chest_mid', 'chest_upper', 'shoulder_front', 'tricep'],
+  chest_fly:              ['chest_mid', 'chest_upper'],
+  cable_crossover:        ['chest_mid', 'chest_lower', 'chest_upper'],
+  dips:                   ['chest_lower', 'tricep', 'shoulder_front'],
+  // ── 등
+  lat_pulldown:       ['back_width', 'bicep', 'rear_delt'],
+  arm_pulldown:       ['back_width', 'tricep'],
+  pullup:             ['back_width', 'bicep', 'back_thickness', 'rear_delt'],
+  assisted_pullup:    ['back_width', 'bicep', 'back_thickness'],
+  barbell_row:        ['back_thickness', 'back_width', 'bicep', 'rear_delt', 'posterior'],
+  smith_row:          ['back_thickness', 'back_width', 'bicep', 'rear_delt'],
+  t_bar_row:          ['back_thickness', 'back_width', 'bicep', 'rear_delt'],
+  seated_row:         ['back_thickness', 'back_width', 'bicep', 'rear_delt'],
+  high_row:           ['back_thickness', 'back_width', 'bicep', 'rear_delt'],
+  dumbbell_row:       ['back_thickness', 'back_width', 'bicep', 'rear_delt'],
+  cable_seated_row:   ['back_thickness', 'back_width', 'bicep', 'rear_delt'],
+  deadlift:           ['posterior', 'hamstring', 'glute', 'back_thickness', 'traps'],
+  rdl:                ['posterior', 'hamstring', 'glute', 'back_thickness'],
+  face_pull:          ['rear_delt', 'traps', 'back_thickness'],
+  // ── 어깨
+  ohp:                    ['shoulder_front', 'shoulder_side', 'tricep', 'traps'],
+  smith_shoulder_press:   ['shoulder_front', 'shoulder_side', 'tricep'],
+  dumbbell_shoulder_press:['shoulder_front', 'shoulder_side', 'tricep'],
+  machine_shoulder_press: ['shoulder_front', 'shoulder_side', 'tricep'],
+  lateral_raise:          ['shoulder_side'],
+  cable_lateral_raise:    ['shoulder_side'],
+  front_raise:            ['shoulder_front'],
+  rear_delt_fly:          ['rear_delt'],
+  upright_row:            ['shoulder_side', 'traps'],
+  shrug:                  ['traps'],
+  // ── 하체
+  back_squat:            ['quad', 'glute', 'hamstring', 'calf'],
+  front_squat:           ['quad', 'glute', 'hamstring'],
+  smith_squat:           ['quad', 'glute', 'hamstring', 'calf'],
+  hack_squat:            ['quad', 'glute', 'hamstring'],
+  squat_machine:         ['quad', 'glute', 'hamstring'],
+  leg_press:             ['quad', 'glute', 'hamstring', 'calf'],
+  leg_extension:         ['quad'],
+  leg_curl:              ['hamstring'],
+  hip_thrust:            ['glute', 'hamstring'],
+  glute_bridge:          ['glute', 'hamstring'],
+  cable_kickback:        ['glute'],
+  glute_machine:         ['glute'],
+  abduction_machine:     ['glute'],
+  adduction_machine:     ['quad', 'glute'],
+  lunge:                 ['quad', 'glute', 'hamstring', 'calf'],
+  bulgarian_split_squat: ['quad', 'glute', 'hamstring'],
+  calf_raise:            ['calf'],
+  // ── 이두
+  barbell_curl:          ['bicep'],
+  dumbbell_curl:         ['bicep'],
+  hammer_curl:           ['bicep'],
+  cable_curl:            ['bicep'],
+  preacher_curl:         ['bicep'],
+  incline_dumbbell_curl: ['bicep'],
+  // ── 삼두
+  cable_tricep_pushdown: ['tricep'],
+  cable_rope_pushdown:   ['tricep'],
+  overhead_tricep_ext:   ['tricep'],
+  skull_crusher:         ['tricep'],
+  close_grip_bench:      ['tricep', 'chest_mid', 'shoulder_front'],
+  tricep_dips:           ['tricep', 'chest_lower', 'shoulder_front'],
+  // ── 복부
+  plank:             ['core'],
+  hanging_leg_raise: ['core'],
+  ab_wheel:          ['core'],
+  cable_crunch:      ['core'],
+};
+
+// ════════════════════════════════════════════════════════════════
+// BROAD_EQUIPMENT_MUSCLES_MAP — 범용 기구명(특정 운동 키워드 없음)일 때 사용.
+// ────────────────────────────────────────────────────────────────
+// 매칭: 기구명을 정규화(소문자 + 공백 제거)해 key에 대응되는 패턴을 포함하는지 검사.
+// 포함되면 해당 배열을 muscleIds 디폴트로 사용. 유저가 UI에서 좁히거나 넓힐 수 있음.
+// ════════════════════════════════════════════════════════════════
+export const BROAD_EQUIPMENT_MUSCLES_MAP = [
+  {
+    patterns: ['스미스머신', '스미스 머신', 'smith machine', 'smithmachine'],
+    muscleIds: ['chest_mid', 'chest_upper', 'chest_lower', 'shoulder_front', 'tricep',
+                'back_thickness', 'quad', 'glute', 'hamstring'],
+  },
+  {
+    patterns: ['파워랙', 'power rack', 'powerrack', '스쿼트랙', 'squat rack'],
+    muscleIds: ['chest_mid', 'chest_upper', 'shoulder_front', 'tricep',
+                'back_thickness', 'back_width', 'posterior', 'quad', 'glute', 'hamstring', 'traps'],
+  },
+  {
+    patterns: ['덤벨랙', '덤벨 랙', 'dumbbell rack', '덤벨세트', '덤벨 세트'],
+    muscleIds: ['chest_mid', 'chest_upper', 'shoulder_front', 'shoulder_side',
+                'bicep', 'tricep', 'back_thickness', 'back_width', 'rear_delt'],
+  },
+  {
+    patterns: ['케이블머신', '케이블 머신', 'cable machine', '케이블크로스오버', '케이블 크로스오버'],
+    muscleIds: ['chest_mid', 'chest_lower', 'back_width', 'back_thickness',
+                'shoulder_side', 'rear_delt', 'bicep', 'tricep', 'core'],
+  },
 ];
 
 // MOVEMENTS 에 필요한 pattern 전체 (커버리지 시각화용)

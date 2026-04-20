@@ -224,22 +224,44 @@ export async function renderNutritionSearchResults() {
 }
 
 // ── 직접 추가 ────────────────────────────────────────────────────
+// 2026-04-20: servingSize 우선순위를 canonical base/servings 기준으로 명시.
+//   이전엔 `savedItem.servingSize || parseFloat(unit 정규식) || 100` 체인만 있어서
+//   레거시/OCR 경로로 unit 만 문자열로 들어온 아이템이 100g 로 잘못 덮어쓰이는 2차 원인.
+//   serializeForStorage 를 거친 저장은 servingSize 를 항상 세팅하지만, 구 버전 저장이나
+//   외부 import 경로에 대한 방어.
 export function openNutritionDirectAdd() {
   window._onNutritionItemSaved = (savedItem) => {
     window._onNutritionItemSaved = null;
     if (!savedItem) return;
+    const baseGrams = savedItem.base && Number(savedItem.base.grams) > 0
+      ? Number(savedItem.base.grams) : null;
+    const servingGrams = Array.isArray(savedItem.servings) && savedItem.servings.length > 0
+      ? (Number(savedItem.servings[0]?.baseGrams) || null) : null;
+    const servingSize = Number(savedItem.servingSize)
+      || baseGrams
+      || servingGrams
+      || parseFloat(savedItem.unit?.match(/[\d.]+/)?.[0] || 100);
     const item = {
       id: savedItem.id,
       name: savedItem.name,
-      servingSize: savedItem.servingSize || parseFloat(savedItem.unit?.match(/[\d.]+/)?.[0] || 100),
-      unit: savedItem.unit || '100g',
+      servingSize,
+      unit: savedItem.unit || savedItem.base?.label || '100g',
       nutrition: savedItem.nutrition || { kcal: 0, protein: 0, carbs: 0, fat: 0 },
+      // canonical 보존 — weight-modal 이 _toCanonical 로 읽어 단위 드롭다운 생성 가능.
+      base: savedItem.base,
+      servings: savedItem.servings,
+      defaultServingId: savedItem.defaultServingId,
     };
     if (window.openNutritionWeightModal) {
       window.openNutritionWeightModal(item);
     }
   };
-  openNutritionItemEditor(null);
+  // window 경로 명시 — nutrition-item-modal.js 의 window 노출(2026-04-20 수정)에 의존.
+  if (typeof window.openNutritionItemEditor === 'function') {
+    window.openNutritionItemEditor(null);
+  } else {
+    console.error('[openNutritionDirectAdd] openNutritionItemEditor 미등록 — modal-manager 가 nutrition-item-modal 을 로드했는지 확인');
+  }
 }
 
 // ── 즐겨찾기 제거 ─────────────────────────────────────────────────
