@@ -20,6 +20,7 @@ import { showTutorialIfNeeded } from './feature-tutorial.js';
 import { initFCM, showPWAInstallBanner, updateInstallBtn } from './pwa-fcm.js';
 import { initTabDrag, initSwipeNavigation, applyTabOrder, applyVisibleTabs } from './navigation.js';
 import { initUxPolish } from './utils/ux-polish.js';
+import { initActionRouter } from './utils/action-router.js';
 import './utils/confirm-modal.js'; // window.confirmAction / confirmSimple 등록
 import './utils/form-guard.js';    // window.createFormGuard / registerFormGuard 등록
 import './utils/format.js';        // window.fmtKcal / fmtDate 등 로케일 포맷
@@ -84,6 +85,10 @@ import {
 // ── 모달 및 CSV 초기화 ───────────────────────────────────────────
 async function initializeApp() {
   await loadAndInjectModals();
+
+  // 전역 data-action 이벤트 위임 라우터 (R0 인프라)
+  // 기존 onclick 과 공존. 새 UI는 registerAction 으로 등록 → window.* 점진 제거.
+  try { initActionRouter(); } catch (e) { console.warn('[app] action router init 실패:', e); }
 
   // Phase D/E UX 폴리시 (오프라인 배너 / 포커스 트랩 / aria-label)
   try { initUxPolish(); } catch (e) { console.warn('[app] UX polish init 실패:', e); }

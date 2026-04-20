@@ -11,6 +11,7 @@
 3. **배포는 유저의 명시적 지시가 있을 때만** — 평소에는 push/배포 자동 실행 금지. 단, 유저가 명시적으로 "배포해", "푸시해", "배포까지 해" 등으로 지시한 경우에는 항상 `tomatofarm` 리모트에 push 가능. localhost 확인은 유저가 완료했다고 간주.
 4. **순수 로직은 calc.js** — BMR, 칼로리, 스트릭, 토마토 사이클 계산 등 사이드이펙트 없는 함수만. DOM 접근·Firebase 호출 금지.
 5. **SW 캐시 버전 범프** — `sw.js`의 `STATIC_ASSETS`에 등록된 파일을 수정했으면 `CACHE_VERSION`을 반드시 범프 + `sw.js` 함께 커밋.
+6. **소스 트루스는 루트** — `www/`는 `scripts/copy-www.js` 의 Capacitor 빌드 산출물이다. **`www/` 직접 수정 금지**. 수정은 항상 루트 파일(`index.html`, `app.js`, `style.css`, `workout/*.js` 등)에만. `bash scripts/dev-start.sh` 는 루트를 서빙함.
 
 ## 🖥️ Dev Server (MANDATORY)
 
@@ -66,21 +67,24 @@
                     admin-onboarding.js, utils.js
   modals/    29개 — *-modal.js 템플릿(HTML 문자열 export). modal-manager.js의 MODALS 배열에 등록
   admin/     13개 — 관리자 탭 서브모듈 (admin-users, admin-charts, admin-export, admin-segmentation 등)
-  utils/     8개  — dom.js($, setText, openModal), format.js, haptics.js, form-guard.js,
-                    nutrition-text-parser.js, ux-polish.js, confirm-modal.js, index.js
+  utils/     9개  — dom.js($, setText, openModal), format.js, haptics.js, form-guard.js,
+                    nutrition-text-parser.js, ux-polish.js, confirm-modal.js, index.js,
+                    action-router.js(전역 data-action 이벤트 위임)
   tests/     1개  — calc.expert.test.js (node:test 기반, Vitest 미도입)
   scripts/        — dev-start.sh, copy-www.js, verify-cheers.mjs
   api/, functions/, tools/, android/, public/, www/, mockups/, docs/
 ```
-**삭제된 탭:** calendar, finance, wine, movie, dev (경량화 2026-04). `render-*.js` 없음. Firestore 컬렉션(`wines`, `stocks`, `movies`)은 데이터 보존.
+**삭제된 탭:** finance, wine, movie, dev (경량화 2026-04). `render-*.js` 없음. Firestore 컬렉션(`wines`, `stocks`, `movies`)은 데이터 보존.
+**부활된 탭:** calendar (2026-04-17 재도입, `render-calendar.js` + `calc.js calcDayScore`). 하단 탭바에 노출, 통계는 더보기 메뉴로.
 
 ## 🎯 등록된 탭 (app.js `switchTab()`)
 1. `home` — 즉시 로드 (renderHome)
 2. `workout` — 즉시 로드 (loadWorkoutDate + wtRecoverTimers + renderExpertTopArea)
 3. `diet` — 즉시 로드 (loadWorkoutDate와 공유. workouts 컬렉션 한 도큐먼트에 식단 포함)
-4. `stats` — 레이지 (`_lazyRenderStats`)
-5. `cooking` — 레이지 (`_lazyRenderCooking`)
-6. `admin` — 레이지, admin 유저면 다른 탭을 admin으로 강제
+4. `calendar` — 레이지 (`_lazyRenderCalendar`) — 하단 탭바에 노출
+5. `stats` — 레이지 (`_lazyRenderStats`) — 더보기 메뉴
+6. `cooking` — 레이지 (`_lazyRenderCooking`)
+7. `admin` — 레이지, admin 유저면 다른 탭을 admin으로 강제
 
 ## 📋 레시피: 운동 종류 추가 (예: swimming, running)
 
