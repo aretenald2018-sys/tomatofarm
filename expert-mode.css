@@ -1039,21 +1039,23 @@
   margin-bottom: 8px;
   padding: 0 4px;
 }
+/* 2026-04-21: Gemini/ChatGPT/Claude + 복사 버튼 4개 — 4열 균등 그리드. */
 .ai-share-row {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
 }
 .ai-share-btn {
   display: flex; flex-direction: column; align-items: center;
   gap: 3px;
-  padding: 10px 6px;
+  padding: 10px 4px;
   background: #fff;
   border: 1px solid #d9d9de;
   border-radius: 12px;
   cursor: pointer;
   transition: all 0.1s ease-in-out;
   font-family: inherit;
+  min-width: 0;  /* 좁은 폭에서 텍스트 overflow 방지 */
 }
 .ai-share-btn:hover, .ai-share-btn:active {
   background: #fdf0f0;

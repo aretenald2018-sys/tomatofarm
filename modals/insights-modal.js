@@ -39,6 +39,10 @@ export const MODAL_HTML = `
           <span class="ai-share-icon">✧</span>
           <span class="ai-share-name">Claude</span>
         </button>
+        <button type="button" class="ai-share-btn" onclick="insightsCopyToClipboard(window.insightsShareMode || 'summary')">
+          <span class="ai-share-icon">📋</span>
+          <span class="ai-share-name">복사</span>
+        </button>
       </div>
     </div>
     <div class="bottom-cta">

@@ -2996,7 +2996,10 @@ function _openAiLink(provider) {
   try { window.open(info.web, '_blank'); } catch {}
 }
 
-export async function insightsShareToAI(provider, mode = 'summary') {
+// 2026-04-21: 클립보드 복사 로직 공통 추출.
+//   기존엔 insightsShareToAI 안에 섞여 있어 "앱 안 열고 복사만" 경로가 불가했음.
+//   이제 insightsCopyToClipboard 버튼이 이 헬퍼만 호출하고 _openAiLink 는 건너뜀.
+async function _copyInsightSnapshotToClipboard(mode, labelPrefix) {
   const snapshot = _lastInsightSnapshot;
   let text;
   if (snapshot && typeof snapshot === 'object' && 'summary' in snapshot) {
@@ -3004,11 +3007,9 @@ export async function insightsShareToAI(provider, mode = 'summary') {
       || snapshot.summary
       || '인사이트 데이터 없음';
   } else {
-    // 레거시 경로 호환 — 과거 _lastInsightSnapshot 이 문자열이었던 시점 대비.
     text = (typeof snapshot === 'string' && snapshot) || '인사이트 데이터 없음';
   }
   try {
-    // 안드로이드/iOS 모두 navigator.clipboard 지원. 실패 시 legacy textarea fallback.
     if (navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(text);
     } else {
@@ -3018,13 +3019,24 @@ export async function insightsShareToAI(provider, mode = 'summary') {
       document.execCommand('copy');
       document.body.removeChild(ta);
     }
-    const label = mode === 'detail' ? '상세 로그' : '요약';
-    _toast(`${label} 복사 완료 — AI 앱에 붙여넣으세요`, 'success');
+    const modeLabel = mode === 'detail' ? '상세 로그' : '요약';
+    _toast(`${modeLabel} ${labelPrefix}`, 'success');
+    return true;
   } catch (e) {
-    console.warn('[insights-share] clipboard fail:', e?.message || e);
+    console.warn('[insights-copy] clipboard fail:', e?.message || e);
     _toast('복사 실패 — 브라우저 권한을 확인해주세요', 'error');
+    return false;
   }
-  _openAiLink(provider);
+}
+
+export async function insightsShareToAI(provider, mode = 'summary') {
+  const ok = await _copyInsightSnapshotToClipboard(mode, '복사 완료 — AI 앱에 붙여넣으세요');
+  if (ok) _openAiLink(provider);
+}
+
+// 2026-04-21: 클립보드 복사 전용 버튼 — AI 앱 열지 않음. 유저가 원하는 곳에 직접 붙여넣기용.
+export async function insightsCopyToClipboard(mode = 'summary') {
+  await _copyInsightSnapshotToClipboard(mode, '복사 완료');
 }
 
 function _fmtDuration(seconds) {
@@ -3550,6 +3562,7 @@ window.routineCandidatesSelect = routineCandidatesSelect;
 window.insightsOpen = insightsOpen;
 window.insightsClose = insightsClose;
 window.insightsShareToAI = insightsShareToAI;
+window.insightsCopyToClipboard = insightsCopyToClipboard;
 window.insightsSetShareMode = insightsSetShareMode;
 // 기본 모드: summary. insightsOpen 호출 시 DOM 세그먼트와 동기화.
 if (typeof window.insightsShareMode !== 'string') window.insightsShareMode = 'summary';
