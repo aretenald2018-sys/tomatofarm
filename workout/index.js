@@ -89,7 +89,7 @@ window.wtEndAndShowInsights = async () => {
   // 2026-04-20: 세션 날짜(sessionKey)를 insightsOpen 에 전달 (Codex 지적 #2).
   //             TODAY 고정값 대신 사용자가 기록한 실제 날짜로 주/오늘 범위 계산.
   //             과거 날짜 편집이나 자정을 넘긴 세션에서도 정확히 반영.
-  const sessionKey = S.date ? dateKey(S.date.y, S.date.m, S.date.d) : null;
+  const sessionKey = S.shared.date ? dateKey(S.shared.date.y, S.shared.date.m, S.shared.date.d) : null;
   try {
     const savePromise = wtFinishWorkout();
     if (savePromise && typeof savePromise.then === 'function') {

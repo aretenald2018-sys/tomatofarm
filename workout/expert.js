@@ -289,8 +289,8 @@ function _hasSelectedRoutine() {
   // routineMeta가 있어야 "루틴 선택됨" — 단순 exercises.length로 판정하면
   // 이전 헬스장에서 들고 있던 운동 배열이 남아있을 때 false-positive.
   try {
-    if (!S.routineMeta) return false;
-    return Array.isArray(S.exercises) && S.exercises.length > 0;
+    if (!S.workout.routineMeta) return false;
+    return Array.isArray(S.workout.exercises) && S.workout.exercises.length > 0;
   } catch { return false; }
 }
 
@@ -1169,7 +1169,7 @@ function _toast(msg, type='info') {
   if (typeof window.showToast === 'function') window.showToast(msg, 2200, type);
 }
 
-// 단일 진실원 — preset과 S.currentGymId를 항상 같이 동기화한다.
+// 단일 진실원 — preset과 S.workout.currentGymId를 항상 같이 동기화한다.
 // stale/deleted gym이면 자동 복구(첫 번째 gym으로 fallback)도 여기서 처리.
 // exercises.js picker 등 외부 모듈도 이 함수만 사용해야 한다.
 export function resolveCurrentGymId() {
@@ -1187,8 +1187,8 @@ export function resolveCurrentGymId() {
   } else {
     resolvedId = gyms.length > 0 ? gyms[0].id : null;
   }
-  // S.currentGymId 동기화 — picker/저장 경로가 같은 값을 보게 함
-  if (S.currentGymId !== resolvedId) S.currentGymId = resolvedId;
+  // S.workout.currentGymId 동기화 — picker/저장 경로가 같은 값을 보게 함
+  if (S.workout.currentGymId !== resolvedId) S.workout.currentGymId = resolvedId;
   return resolvedId;
 }
 // 기존 내부 호출 호환 — 같은 함수
@@ -2439,22 +2439,22 @@ export async function routineCandidatesSelect() {
     });
   } catch (e) { console.warn('[save routine_template] fail:', e?.message || e); }
 
-  // S.exercises에 루틴 items 로드 + 즉시 저장 (P0-1b)
+  // S.workout.exercises에 루틴 items 로드 + 즉시 저장 (P0-1b)
   // done:false 세트는 isExerciseDaySuccess(P0-1a)에서 스트릭 미집계 보장.
   // 저장 후 새로고침/이탈해도 루틴 유지됨.
   try {
     const { S } = await import('./state.js');
     const exById = Object.fromEntries(getExList().map(e => [e.id, e]));
     const preset = getExpertPreset();
-    S.currentGymId = preset.currentGymId || null;
-    S.routineMeta = {
+    S.workout.currentGymId = preset.currentGymId || null;
+    S.workout.routineMeta = {
       source: 'ai',
       candidateKey: cand.candidateKey,
       rationale: cand.rationale || '',
     };
     // template 재사용 경로와 동일하게 orphan(exerciseId가 DB에 없는 항목) 필터링 —
     // stale candidate가 chest-기본 orphan row를 만들던 회귀 방지.
-    S.exercises = (cand.items || [])
+    S.workout.exercises = (cand.items || [])
       .filter(it => exById[it.exerciseId])
       .map(it => {
         const ex = exById[it.exerciseId];
@@ -2476,7 +2476,7 @@ export async function routineCandidatesSelect() {
       const { saveWorkoutDay } = await import('./save.js');
       saveWorkoutDay().catch(e => console.warn('[routine save] fail:', e));
     } catch (e) { console.warn('[routine save import] fail:', e); }
-  } catch (e) { console.warn('[routine->S.exercises] fail:', e?.message || e); }
+  } catch (e) { console.warn('[routine->S.workout.exercises] fail:', e?.message || e); }
 
   _closeModal('routine-candidates-modal');
   _toast('루틴을 불러왔어요 — 첫 세트 무게를 입력하세요', 'success');
@@ -3613,7 +3613,7 @@ window.expertOpenGymSwitcher = async () => {
   const next = gyms[(idx + 1) % gyms.length];
   await saveExpertPreset({ currentGymId: next.id });
   // 현재 세션 state에도 즉시 반영 (저장 시 gymId 불일치 방지)
-  try { const { S } = await import('./state.js'); S.currentGymId = next.id; } catch {}
+  try { const { S } = await import('./state.js'); S.workout.currentGymId = next.id; } catch {}
   _toast(`${next.name}으로 전환했어요`, 'success');
   renderExpertTopArea();
 };
@@ -3624,9 +3624,9 @@ window.openRoutineSuggestWithRecent = async () => {
   try {
     const { S } = await import('./state.js');
     const exById = Object.fromEntries(getExList().map(e => [e.id, e]));
-    S.currentGymId = _resolveCurrentGymId();
-    S.routineMeta = { source: 'template', candidateKey: recent.candidateKey || null, rationale: recent.rationale || '' };
-    S.exercises = recent.items.map(it => {
+    S.workout.currentGymId = _resolveCurrentGymId();
+    S.workout.routineMeta = { source: 'template', candidateKey: recent.candidateKey || null, rationale: recent.rationale || '' };
+    S.workout.exercises = recent.items.map(it => {
       const ex = exById[it.exerciseId];
       return {
         exerciseId: it.exerciseId,
@@ -3753,13 +3753,13 @@ window.wtOpenGymListSheet = () => {
 };
 
 async function _switchToGym(gymId) {
-  if (!gymId || gymId === S.currentGymId) return;
+  if (!gymId || gymId === S.workout.currentGymId) return;
   const gym = getGyms().find(g => g.id === gymId);
   if (!gym) return;
 
   // 진행 중 세션 오염 방지 — 현재 루틴/세트가 있으면 confirm + 초기화
-  const hasActiveSession = !!S.routineMeta
-    || (Array.isArray(S.exercises) && S.exercises.length > 0);
+  const hasActiveSession = !!S.workout.routineMeta
+    || (Array.isArray(S.workout.exercises) && S.workout.exercises.length > 0);
   if (hasActiveSession) {
     const ok = await confirmAction({
       title: `${gym.name}으로 전환할까요?`,
@@ -3773,11 +3773,11 @@ async function _switchToGym(gymId) {
 
   try {
     if (hasActiveSession) {
-      S.exercises = [];
-      S.routineMeta = null;
+      S.workout.exercises = [];
+      S.workout.routineMeta = null;
     }
     await saveExpertPreset({ currentGymId: gymId });
-    S.currentGymId = gymId;
+    S.workout.currentGymId = gymId;
     // 비워진 세션 + 새 gymId로 자동 저장 (save.js _buildSavePayload가 새 gymId로 기록)
     const { saveWorkoutDay } = await import('./save.js');
     saveWorkoutDay().catch(e => console.warn('[switch-save]:', e));
@@ -3839,7 +3839,7 @@ window.wtExcAddNewGym = () => {
       const id = _generateId();
       await saveGym({ id, name, createdAt: Date.now() });
       await saveExpertPreset({ currentGymId: id });
-      S.currentGymId = id;
+      S.workout.currentGymId = id;
       _toast(`${name} 추가 완료! 기구 등록을 시작할게요`, 'success');
       close();
       renderExpertTopArea();

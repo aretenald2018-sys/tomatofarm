@@ -37,21 +37,21 @@ function _clearMealState(meal) {
 // 이중 진실원 제거(codex review).
 
 export function wtToggleWineFree(skipSave = false) {
-  S.wineFree = !S.wineFree;
+  S.workout.wineFree = !S.workout.wineFree;
   _renderWineFreeToggle();
   _persist(skipSave);
 }
 
 export function wtToggleMealSkipped(meal, skipSave = false) {
   if (meal === 'breakfast') {
-    S.breakfastSkipped = !S.breakfastSkipped;
-    if (S.breakfastSkipped) _clearMealState(meal);
+    S.diet.breakfastSkipped = !S.diet.breakfastSkipped;
+    if (S.diet.breakfastSkipped) _clearMealState(meal);
   } else if (meal === 'lunch') {
-    S.lunchSkipped = !S.lunchSkipped;
-    if (S.lunchSkipped) _clearMealState(meal);
+    S.diet.lunchSkipped = !S.diet.lunchSkipped;
+    if (S.diet.lunchSkipped) _clearMealState(meal);
   } else if (meal === 'dinner') {
-    S.dinnerSkipped = !S.dinnerSkipped;
-    if (S.dinnerSkipped) _clearMealState(meal);
+    S.diet.dinnerSkipped = !S.diet.dinnerSkipped;
+    if (S.diet.dinnerSkipped) _clearMealState(meal);
   }
   _renderMealSkippedToggles();
   _renderDietResults();

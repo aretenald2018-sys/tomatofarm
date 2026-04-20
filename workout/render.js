@@ -13,8 +13,8 @@ import { confirmAction } from '../utils/confirm-modal.js';
 
 // ── 날짜 라벨 ────────────────────────────────────────────────────
 export function _renderDateLabel() {
-  if (!S.date) return;
-  const { y, m, d } = S.date;
+  if (!S.shared.date) return;
+  const { y, m, d } = S.shared.date;
   const dow = new Date(y, m, d).getDay();
   const dateText = `${y}년 ${m+1}월 ${d}일 (${DAYS[dow]})`;
   const isFutureDay = isFuture(y, m, d);
@@ -40,17 +40,17 @@ export function _renderGymStatusBtns() { /* noop */ }
 export function _renderCFStatusBtns()  { /* noop */ }
 
 export function _renderStretchingToggle() {
-  document.getElementById('wt-stretching-toggle')?.classList.toggle('on', S.stretching);
+  document.getElementById('wt-stretching-toggle')?.classList.toggle('on', S.workout.stretching);
 }
 
 export function _renderWineFreeToggle() {
-  document.getElementById('wt-wine-free-toggle')?.classList.toggle('on', S.wineFree);
+  document.getElementById('wt-wine-free-toggle')?.classList.toggle('on', S.workout.wineFree);
 }
 
 export function _renderMealSkippedToggles() {
-  document.getElementById('wt-breakfast-skipped')?.classList.toggle('active', S.breakfastSkipped);
-  document.getElementById('wt-lunch-skipped')?.classList.toggle('active', S.lunchSkipped);
-  document.getElementById('wt-dinner-skipped')?.classList.toggle('active', S.dinnerSkipped);
+  document.getElementById('wt-breakfast-skipped')?.classList.toggle('active', S.diet.breakfastSkipped);
+  document.getElementById('wt-lunch-skipped')?.classList.toggle('active', S.diet.lunchSkipped);
+  document.getElementById('wt-dinner-skipped')?.classList.toggle('active', S.diet.dinnerSkipped);
 }
 
 // ── 스파크라인 (볼륨 히스토리) ───────────────────────────────────
@@ -142,16 +142,16 @@ function _renderCalorieTracker() {
   const setupEl = document.getElementById('wt-diet-setup');
   if (setupEl) setupEl.style.display = 'none';
 
-  const dow = S.date ? new Date(S.date.y, S.date.m, S.date.d).getDay() : new Date().getDay();
+  const dow = S.shared.date ? new Date(S.shared.date.y, S.shared.date.m, S.shared.date.d).getDay() : new Date().getDay();
   const isRefeed    = (plan.refeedDays || []).includes(dow);
   const dayTarget   = isRefeed ? metrics.refeed : metrics.deficit;
   const macroTarget = dayTarget;
 
   const dayData = {
-    exercises: S.exercises,
-    cf: S.cf,
-    swimming: S.swimming,
-    running: S.running,
+    exercises: S.workout.exercises,
+    cf: S.workout.cf,
+    swimming: S.workout.swimming,
+    running: S.workout.running,
   };
   const exerciseCredit = calcExerciseCalorieCredit(plan, dayData);
   const adjustedGoalKcal = dayTarget.kcal + exerciseCredit;

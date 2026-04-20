@@ -1,36 +1,38 @@
 // ================================================================
 // workout/save.js — 저장 로직 (saveWorkoutDay + _autoSaveDiet)
 // ================================================================
+// 2026-04-21 리팩토링:
+//   (1) S 상태가 S.workout / S.diet / S.shared 네임스페이스로 분할됨.
+//   (2) 도메인 파생 함수(_computeDietSuccess/_autoDeriveActivityFlags) 는
+//       cross-domain.js 로 이전 — 명시적 입력/출력으로 경계 가시화.
+//   (3) setDoc({merge:true}) + save-schema.js 의 파티션 상수로 운동/식단 저장 경로가
+//       절대 반대편 도메인 필드를 덮지 못하게 차단.
+// ================================================================
 
 import { S }                        from './state.js';
 import { showCenterToast }          from '../home/utils.js';
-import { saveDay, dateKey, isFuture,
-         getDietPlan, getDayTargetKcal,
-         isDietDaySuccess, trackEvent,
-         getExList } from '../data.js';
+import { saveDay, dateKey, isFuture, trackEvent, getExList } from '../data.js';
+import { WORKOUT_PAYLOAD_KEYS, DIET_PAYLOAD_KEYS } from './save-schema.js';
+import { deriveActivityFlagsFromDetails, deriveDietSuccessFromWorkout } from './cross-domain.js';
 
 // 미래 날짜 저장 가드 — 어떤 경로로든 미래 날짜 쓰기 금지 (B-3).
-// - UI disable을 우회하는 onclick/자동저장/스크립트 호출을 한 번 더 차단.
-// - 저장 함수에서 S.date가 미래면 true 반환 → 호출자는 조기 리턴.
 function _blockIfFutureDate() {
-  if (!S.date) return false;
-  if (!isFuture(S.date.y, S.date.m, S.date.d)) return false;
-  // 사용자에게 사유 알림 (토스트 1회면 충분)
+  const date = S.shared.date;
+  if (!date) return false;
+  if (!isFuture(date.y, date.m, date.d)) return false;
   try { window.showToast?.('미래 날짜는 저장할 수 없어요', 1800, 'warning'); } catch {}
   return true;
 }
 
-// 저장 대상 날짜(S.date)가 현재 활성 스톱워치의 귀속 날짜인지 판정.
-// 타이머가 정지 상태(workoutStartTime=null)거나 다른 날짜 것일 때는 false.
+// 저장 대상 날짜가 현재 활성 스톱워치의 귀속 날짜인지 판정.
 function _isSavingTimerDate() {
-  if (!S.workoutStartTime) return false;
-  const td = S.workoutTimerDate, cd = S.date;
+  if (!S.workout.workoutStartTime) return false;
+  const td = S.workout.workoutTimerDate, cd = S.shared.date;
   if (!td || !cd) return false;
   return td.y === cd.y && td.m === cd.m && td.d === cd.d;
 }
 
 // ── per-meal 기록 유무 판정 헬퍼 ────────────────────────────────
-// 텍스트/food-chip/kcal 중 하나라도 있으면 기록 있음으로 판정
 function _hasMealRecord(textVal, foodsArr, kcalVal, skipFlag) {
   if (skipFlag) return true;
   if (textVal && String(textVal).trim()) return true;
@@ -39,98 +41,114 @@ function _hasMealRecord(textVal, foodsArr, kcalVal, skipFlag) {
   return false;
 }
 
-// ── 공통 저장 페이로드 빌더 ──────────────────────────────────────
-// saveWorkoutDay()와 _autoSaveDiet() 양쪽에서 호출하여 필드 누락 방지
-function _buildSavePayload(cleanEx, isDietSuccess) {
+// ── 공통 per-meal 성공 계산 ─────────────────────────────────────
+// bOk/lOk/dOk/sOk 은 dayTarget 이 운동(cardio/CF/swim)에 의존하므로 양 저장 경로에서
+// 동일하게 재계산. 양 payload 에 모두 포함 — 값 동일하므로 merge last-write-wins 무관.
+function _computeMealOk(isDietSuccess) {
+  const diet = S.diet;
   return {
-    exercises:  cleanEx,
-    cf:         S.cf,
-    stretching: S.stretching,
-    swimming:   S.swimming,
-    running:    S.running,
-    runDistance:    S.runData.distance,
-    runDurationMin: S.runData.durationMin,
-    runDurationSec: S.runData.durationSec,
-    runMemo:       S.runData.memo,
-    cfWod:         S.cfData.wod,
-    cfDurationMin: S.cfData.durationMin,
-    cfDurationSec: S.cfData.durationSec,
-    cfMemo:        S.cfData.memo,
-    stretchDuration: S.stretchData.duration,
-    stretchMemo:   S.stretchData.memo,
-    swimDistance:   S.swimData.distance,
-    swimDurationMin: S.swimData.durationMin,
-    swimDurationSec: S.swimData.durationSec,
-    swimStroke:    S.swimData.stroke,
-    swimMemo:      S.swimData.memo,
-    // 저장 대상 날짜 === 타이머가 속한 날짜일 때만 live elapsed를 합산.
-    // 다른 날짜를 보는 중(타이머는 다른 날짜 것)이면 그 날짜의 S.workoutDuration만 기록.
-    workoutDuration: _isSavingTimerDate()
-      ? S.workoutDuration + Math.floor((Date.now() - S.workoutStartTime) / 1000)
-      : S.workoutDuration,
-    wine_free:  S.wineFree,
-    breakfast_skipped: S.breakfastSkipped,
-    lunch_skipped: S.lunchSkipped,
-    dinner_skipped: S.dinnerSkipped,
-    memo:       document.getElementById('wt-workout-memo')?.value.trim() || '',
-    breakfast:  S.diet.breakfast,
-    lunch:      S.diet.lunch,
-    dinner:     S.diet.dinner,
-    snack:      S.diet.snack,
-    // per-meal 성공 판정: 기록 있으면 day-level 성공 여부, skip이면 true, 기록 없으면 null
-    bOk: _hasMealRecord(S.diet.breakfast, S.diet.bFoods, S.diet.bKcal, S.breakfastSkipped)
-           ? (S.breakfastSkipped ? true : isDietSuccess) : null,
-    lOk: _hasMealRecord(S.diet.lunch,     S.diet.lFoods, S.diet.lKcal, S.lunchSkipped)
-           ? (S.lunchSkipped     ? true : isDietSuccess) : null,
-    dOk: _hasMealRecord(S.diet.dinner,    S.diet.dFoods, S.diet.dKcal, S.dinnerSkipped)
-           ? (S.dinnerSkipped    ? true : isDietSuccess) : null,
-    sOk: _hasMealRecord(S.diet.snack,     S.diet.sFoods, S.diet.sKcal, false)
+    bOk: _hasMealRecord(diet.breakfast, diet.bFoods, diet.bKcal, diet.breakfastSkipped)
+           ? (diet.breakfastSkipped ? true : isDietSuccess) : null,
+    lOk: _hasMealRecord(diet.lunch,     diet.lFoods, diet.lKcal, diet.lunchSkipped)
+           ? (diet.lunchSkipped     ? true : isDietSuccess) : null,
+    dOk: _hasMealRecord(diet.dinner,    diet.dFoods, diet.dKcal, diet.dinnerSkipped)
+           ? (diet.dinnerSkipped    ? true : isDietSuccess) : null,
+    sOk: _hasMealRecord(diet.snack,     diet.sFoods, diet.sKcal, false)
            ? isDietSuccess : null,
-    bKcal:S.diet.bKcal, lKcal:S.diet.lKcal, dKcal:S.diet.dKcal, sKcal:S.diet.sKcal,
-    bReason:S.diet.bReason, lReason:S.diet.lReason, dReason:S.diet.dReason, sReason:S.diet.sReason,
-    bProtein:S.diet.bProtein, bCarbs:S.diet.bCarbs, bFat:S.diet.bFat,
-    lProtein:S.diet.lProtein, lCarbs:S.diet.lCarbs, lFat:S.diet.lFat,
-    dProtein:S.diet.dProtein, dCarbs:S.diet.dCarbs, dFat:S.diet.dFat,
-    sProtein:S.diet.sProtein, sCarbs:S.diet.sCarbs, sFat:S.diet.sFat,
-    bFoods:S.diet.bFoods||[], lFoods:S.diet.lFoods||[], dFoods:S.diet.dFoods||[], sFoods:S.diet.sFoods||[],
-    // 사진 데이터 보존 (누락 시 setDoc 전체 덮어쓰기로 사진 삭제됨)
-    bPhoto: window._mealPhotos?.breakfast || null,
-    lPhoto: window._mealPhotos?.lunch || null,
-    dPhoto: window._mealPhotos?.dinner || null,
-    sPhoto: window._mealPhotos?.snack || null,
-    workoutPhoto: window._mealPhotos?.workout || null,
-    // AI 추정 메타 (plateType/confidence/priorApplied/portionApplied/createdAt)
-    // 누락 시 전체 덮어쓰기로 메타 사라짐 → 반드시 포함.
-    bEstimateMeta: S.diet.bEstimateMeta || null,
-    lEstimateMeta: S.diet.lEstimateMeta || null,
-    dEstimateMeta: S.diet.dEstimateMeta || null,
-    sEstimateMeta: S.diet.sEstimateMeta || null,
-    // 전문가 모드
-    gymId: S.currentGymId || null,
-    routineMeta: S.routineMeta || null,
   };
 }
 
-// 각 활동 탭의 입력 데이터 유무로 boolean 플래그 자동 판정.
-// (랜딩 '쉬었어요/건강이슈' 제거 후 — 기록이 있으면 했다는 의미.)
-// 메모도 의도적 기록 신호로 포함 — "30분 조깅"만 메모에 남긴 케이스가 기록 없음으로
-// 처리되던 회귀를 막음. 공백만 있는 경우는 제외.
-function _autoDeriveActivityFlags() {
-  const _m = (v) => !!(v && String(v).trim());
-  S.cf         = !!(S.cfData?.wod || S.cfData?.durationMin || S.cfData?.durationSec || _m(S.cfData?.memo));
-  S.running    = !!(S.runData?.distance || S.runData?.durationMin || S.runData?.durationSec || _m(S.runData?.memo));
-  S.swimming   = !!(S.swimData?.distance || S.swimData?.durationMin || S.swimData?.durationSec || _m(S.swimData?.memo));
-  S.stretching = !!(S.stretchData?.duration || _m(S.stretchData?.memo));
+// 2026-04-20: 빌더 산출 키와 schema 상수 간 드리프트 감지 (dev-only).
+let _schemaDriftChecked = false;
+function _assertSchemaParity(name, payload, expectedKeys) {
+  if (_schemaDriftChecked) return;
+  const actual = new Set(Object.keys(payload));
+  const expected = new Set(expectedKeys);
+  const missing = [...expected].filter(k => !actual.has(k));
+  const extra   = [...actual].filter(k => !expected.has(k));
+  if (missing.length || extra.length) {
+    console.warn(`[save-schema] ${name} 드리프트`, { missing, extra });
+  }
+}
+
+// ── 운동 도메인 페이로드 ─────────────────────────────────────────
+// 식단 필드(breakfast/bFoods/bKcal/bPhoto/EstimateMeta 등)는 전부 제외 → merge 저장이
+// Firestore 의 식단 필드를 건드릴 수 없다.
+function _buildWorkoutPayload(cleanEx, isDietSuccess) {
+  const w = S.workout;
+  return {
+    exercises:  cleanEx,
+    cf:         w.cf,
+    stretching: w.stretching,
+    swimming:   w.swimming,
+    running:    w.running,
+    runDistance:    w.runData.distance,
+    runDurationMin: w.runData.durationMin,
+    runDurationSec: w.runData.durationSec,
+    runMemo:       w.runData.memo,
+    cfWod:         w.cfData.wod,
+    cfDurationMin: w.cfData.durationMin,
+    cfDurationSec: w.cfData.durationSec,
+    cfMemo:        w.cfData.memo,
+    stretchDuration: w.stretchData.duration,
+    stretchMemo:   w.stretchData.memo,
+    swimDistance:   w.swimData.distance,
+    swimDurationMin: w.swimData.durationMin,
+    swimDurationSec: w.swimData.durationSec,
+    swimStroke:    w.swimData.stroke,
+    swimMemo:      w.swimData.memo,
+    workoutDuration: _isSavingTimerDate()
+      ? w.workoutDuration + Math.floor((Date.now() - w.workoutStartTime) / 1000)
+      : w.workoutDuration,
+    wine_free:  w.wineFree,
+    memo:       document.getElementById('wt-workout-memo')?.value.trim() || '',
+    workoutPhoto: window._mealPhotos?.workout || null,
+    gymId: w.currentGymId || null,
+    routineMeta: w.routineMeta || null,
+    ..._computeMealOk(isDietSuccess),
+  };
+}
+
+// ── 식단 도메인 페이로드 ─────────────────────────────────────────
+// 운동 필드 전부 제외 → 식단 자동저장이 운동 데이터를 건드릴 수 없다.
+function _buildDietPayload(isDietSuccess) {
+  const d = S.diet;
+  return {
+    breakfast_skipped: d.breakfastSkipped,
+    lunch_skipped:     d.lunchSkipped,
+    dinner_skipped:    d.dinnerSkipped,
+    breakfast:  d.breakfast,
+    lunch:      d.lunch,
+    dinner:     d.dinner,
+    snack:      d.snack,
+    bKcal:d.bKcal, lKcal:d.lKcal, dKcal:d.dKcal, sKcal:d.sKcal,
+    bReason:d.bReason, lReason:d.lReason, dReason:d.dReason, sReason:d.sReason,
+    bProtein:d.bProtein, bCarbs:d.bCarbs, bFat:d.bFat,
+    lProtein:d.lProtein, lCarbs:d.lCarbs, lFat:d.lFat,
+    dProtein:d.dProtein, dCarbs:d.dCarbs, dFat:d.dFat,
+    sProtein:d.sProtein, sCarbs:d.sCarbs, sFat:d.sFat,
+    bFoods:d.bFoods||[], lFoods:d.lFoods||[], dFoods:d.dFoods||[], sFoods:d.sFoods||[],
+    bPhoto: window._mealPhotos?.breakfast || null,
+    lPhoto: window._mealPhotos?.lunch     || null,
+    dPhoto: window._mealPhotos?.dinner    || null,
+    sPhoto: window._mealPhotos?.snack     || null,
+    bEstimateMeta: d.bEstimateMeta || null,
+    lEstimateMeta: d.lEstimateMeta || null,
+    dEstimateMeta: d.dEstimateMeta || null,
+    sEstimateMeta: d.sEstimateMeta || null,
+    ..._computeMealOk(isDietSuccess),
+  };
 }
 
 // 탭 칩의 기록 힌트(has-record) 즉시 동기화 — 저장/상태 변경 후 호출.
 function _refreshTabDots() {
+  const w = S.workout;
   const flags = {
-    gym: (S.exercises || []).length > 0,
-    cf: !!S.cf,
-    stretch: !!S.stretching,
-    swimming: !!S.swimming,
-    running: !!S.running,
+    gym: (w.exercises || []).length > 0,
+    cf: !!w.cf,
+    stretch: !!w.stretching,
+    swimming: !!w.swimming,
+    running: !!w.running,
   };
   Object.entries(flags).forEach(([t, on]) => {
     document.getElementById('wt-chip-' + t)?.classList.toggle('has-record', !!on);
@@ -138,13 +156,9 @@ function _refreshTabDots() {
 }
 
 function _cleanExercises(includeNotes) {
-  // 2026-04-20: 저장 시점에 exList에서 movementId/muscleIds 를 스냅샷.
-  // 배경: 종목이 이후 exList에서 삭제되거나 muscleIds가 바뀌어도, 그 날짜의
-  //       balance/trend 계산이 원본 종목의 자극 부위를 복원할 수 있어야 함.
-  //       (Codex 지적: calcBalanceByPattern 이 exList 에 없는 exerciseId 를 건너뛰어
-  //        삭제 종목·커스텀 종목이 자극 균형에서 누락되던 회귀.)
+  // 저장 시점에 exList에서 movementId/muscleIds 스냅샷 (삭제된 종목·커스텀 종목 대응).
   const exById = new Map((getExList() || []).map(e => [e.id, e]));
-  return S.exercises
+  return S.workout.exercises
     .map(e => {
       const lib = exById.get(e.exerciseId);
       const movementId = e.movementId || lib?.movementId || null;
@@ -153,66 +167,51 @@ function _cleanExercises(includeNotes) {
         : (Array.isArray(lib?.muscleIds) ? lib.muscleIds : []);
       return {
         ...e,
-        // muscleIds/movementId 스냅샷 (없으면 null/[] — 과거 데이터 호환)
         movementId,
         muscleIds,
-        // done=true 체크된 세트는 kg/reps가 0이어도 보존.
-        // 체중 맨몸/무중량 운동 또는 기록 누락 케이스에서 streak 손실 방지.
         sets: e.sets.filter(s => s && (s.done === true || (s.kg || 0) > 0 || (s.reps || 0) > 0)),
       };
     })
     .filter(e => e.sets.length > 0 || (includeNotes && e.note));
 }
 
-function _computeDietSuccess(cleanEx) {
-  const plan = getDietPlan();
-  const { y, m, d } = S.date;
-  const dayData = {
-    exercises: cleanEx,
-    cf: S.cf,
-    swimming: S.swimming,
-    running: S.running,
-  };
-  const dayTarget = getDayTargetKcal(plan, y, m, d, dayData);
-  const totalKcal = (S.diet.bKcal||0) + (S.diet.lKcal||0) + (S.diet.dKcal||0) + (S.diet.sKcal||0);
-  const tol = plan.advancedMode ? (plan.dietTolerance ?? 50) : 50;
-  return isDietDaySuccess(totalKcal, dayTarget, tol);
-}
-
 // ── 명시적 저장 ──────────────────────────────────────────────────
-// 2026-04-20: Firebase 저장 실패를 호출자에게 전파 (Codex 지적 사항 #1).
-// 기존엔 `_fbOp`이 예외를 삼켜서 실제 저장 실패 + 성공 토스트 + 인사이트 모달이
-// 동시에 뜨는 거짓말 경로가 있었음. 이제:
-//   - saveDay(..., { rethrow: true }) 로 호출 → 실패 시 throw
-//   - 실패 시 error toast + rethrow → wtFinishWorkout/wtEndAndShowInsights 경로에서 catch
-//   - 성공 시 저장 완료 토스트 + sheet:saved 디스패치 (기존 동작 유지)
 export async function saveWorkoutDay() {
-  if (!S.date) return;
+  if (!S.shared.date) return;
   if (_blockIfFutureDate()) return;
-  const { y, m, d } = S.date;
+  const { y, m, d } = S.shared.date;
 
-  S.diet.breakfast = document.getElementById('wt-meal-breakfast')?.value.trim() || '';
-  S.diet.lunch     = document.getElementById('wt-meal-lunch')?.value.trim() || '';
-  S.diet.dinner    = document.getElementById('wt-meal-dinner')?.value.trim() || '';
-  S.diet.snack     = document.getElementById('wt-meal-snack')?.value.trim() || '';
+  // diet text 동기화 (운동 탭의 식단 입력이 열려 있으면 그 값 반영)
+  const diet = S.diet;
+  diet.breakfast = document.getElementById('wt-meal-breakfast')?.value.trim() || '';
+  diet.lunch     = document.getElementById('wt-meal-lunch')?.value.trim() || '';
+  diet.dinner    = document.getElementById('wt-meal-dinner')?.value.trim() || '';
+  diet.snack     = document.getElementById('wt-meal-snack')?.value.trim() || '';
 
-  // 런닝 폼에서 최신값 읽기
-  S.runData.distance    = parseFloat(document.getElementById('wt-run-distance')?.value) || 0;
-  S.runData.durationMin = parseInt(document.getElementById('wt-run-duration-min')?.value) || 0;
-  S.runData.durationSec = parseInt(document.getElementById('wt-run-duration-sec')?.value) || 0;
-  S.runData.memo        = document.getElementById('wt-run-memo')?.value.trim() || '';
+  // 런닝 폼 최신값 동기화
+  const run = S.workout.runData;
+  run.distance    = parseFloat(document.getElementById('wt-run-distance')?.value) || 0;
+  run.durationMin = parseInt(document.getElementById('wt-run-duration-min')?.value) || 0;
+  run.durationSec = parseInt(document.getElementById('wt-run-duration-sec')?.value) || 0;
+  run.memo        = document.getElementById('wt-run-memo')?.value.trim() || '';
 
-  _autoDeriveActivityFlags();
+  // 운동 flag 자동 파생 (세부 입력 → boolean flag)
+  const derived = deriveActivityFlagsFromDetails(S.workout);
+  S.workout.cf = derived.cf;
+  S.workout.running = derived.running;
+  S.workout.swimming = derived.swimming;
+  S.workout.stretching = derived.stretching;
 
   const cleanEx = _cleanExercises(false);
-  const isDietSuccess = _computeDietSuccess(cleanEx);
+  const isDietSuccess = deriveDietSuccessFromWorkout(S.workout, S.diet, S.shared.date, cleanEx);
 
   const btn = document.getElementById('wt-save-btn');
   if (btn) { btn.disabled = true; btn.textContent = '저장 중...'; }
 
-  const payload = _buildSavePayload(cleanEx, isDietSuccess);
+  const payload = _buildWorkoutPayload(cleanEx, isDietSuccess);
+  _assertSchemaParity('workout', payload, WORKOUT_PAYLOAD_KEYS);
   try {
-    await saveDay(dateKey(y, m, d), payload, { rethrow: true });
+    await saveDay(dateKey(y, m, d), payload, { rethrow: true, mode: 'merge' });
   } catch (e) {
     if (btn) { btn.disabled = false; btn.textContent = '저장'; }
     console.error('[workout/save] saveWorkoutDay 실패:', e);
@@ -220,8 +219,8 @@ export async function saveWorkoutDay() {
     throw e;
   }
 
-  // analytics 계측
-  if (cleanEx.length > 0 || S.cf || S.swimming || S.running) {
+  // analytics
+  if (cleanEx.length > 0 || S.workout.cf || S.workout.swimming || S.workout.running) {
     trackEvent('core', 'exercise_logged');
   }
 
@@ -229,43 +228,47 @@ export async function saveWorkoutDay() {
   _refreshTabDots();
   document.dispatchEvent(new CustomEvent('sheet:saved'));
 
-  // 사용자 피드백: TDS Toast (CLAUDE.md 규칙 — CRUD 완료 시 필수)
   window.showToast?.('저장 완료', 2000, 'success');
 }
 
 // ── 식단 자동 저장 ──────────────────────────────────────────────
+// 식단 도메인만 merge 저장. 운동 필드 전부 제외 → 식단 자동저장이 운동을 건드리지 못함.
+// deriveActivityFlagsFromDetails 호출 제거 — 식단 CRUD 는 운동 flag 변경에 관여 금지.
 export async function _autoSaveDiet() {
-  if (!S.date) {
+  if (!S.shared.date) {
     console.warn('[render-workout] 날짜 정보가 없어 저장할 수 없습니다');
     return;
   }
   if (_blockIfFutureDate()) return;
-  const { y, m, d } = S.date;
+  const { y, m, d } = S.shared.date;
 
   const bEl = document.getElementById('wt-meal-breakfast');
   const lEl = document.getElementById('wt-meal-lunch');
   const dEl = document.getElementById('wt-meal-dinner');
   const sEl = document.getElementById('wt-meal-snack');
-  if (bEl) S.diet.breakfast = bEl.value.trim();
-  if (lEl) S.diet.lunch     = lEl.value.trim();
-  if (dEl) S.diet.dinner    = dEl.value.trim();
-  if (sEl) S.diet.snack     = sEl.value.trim();
+  const diet = S.diet;
+  if (bEl) diet.breakfast = bEl.value.trim();
+  if (lEl) diet.lunch     = lEl.value.trim();
+  if (dEl) diet.dinner    = dEl.value.trim();
+  if (sEl) diet.snack     = sEl.value.trim();
 
-  _autoDeriveActivityFlags();
   const cleanEx = _cleanExercises(true);
-  const isDietSuccess = _computeDietSuccess(cleanEx);
+  const isDietSuccess = deriveDietSuccessFromWorkout(S.workout, S.diet, S.shared.date, cleanEx);
 
-  console.log('[render-workout] 식단 자동 저장 시작:', { dateKey: dateKey(y, m, d), foods: { b: S.diet.bFoods?.length || 0, l: S.diet.lFoods?.length || 0, d: S.diet.dFoods?.length || 0 } });
+  console.log('[render-workout] 식단 자동 저장 시작:', {
+    dateKey: dateKey(y, m, d),
+    foods: { b: diet.bFoods?.length || 0, l: diet.lFoods?.length || 0, d: diet.dFoods?.length || 0 },
+  });
 
   try {
-    const payload = _buildSavePayload(cleanEx, isDietSuccess);
-    await saveDay(dateKey(y, m, d), payload, { rethrow: true });
+    const payload = _buildDietPayload(isDietSuccess);
+    _assertSchemaParity('diet', payload, DIET_PAYLOAD_KEYS);
+    await saveDay(dateKey(y, m, d), payload, { rethrow: true, mode: 'merge' });
 
-    // analytics 계측
-    const totalFoods = (S.diet.bFoods?.length || 0) + (S.diet.lFoods?.length || 0)
-      + (S.diet.dFoods?.length || 0) + (S.diet.sFoods?.length || 0);
+    const totalFoods = (diet.bFoods?.length || 0) + (diet.lFoods?.length || 0)
+      + (diet.dFoods?.length || 0) + (diet.sFoods?.length || 0);
     if (totalFoods > 0) {
-      const meals = [S.diet.bFoods, S.diet.lFoods, S.diet.dFoods, S.diet.sFoods]
+      const meals = [diet.bFoods, diet.lFoods, diet.dFoods, diet.sFoods]
         .filter(f => f?.length > 0).length;
       const kcal = (payload.bKcal || 0) + (payload.lKcal || 0) + (payload.dKcal || 0) + (payload.sKcal || 0);
       trackEvent('core', 'diet_logged', { meals, kcal });

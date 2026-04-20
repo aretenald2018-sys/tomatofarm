@@ -16,7 +16,7 @@ function _afterActivityCopy(stateKey, prev, rerender) {
   showToast('직전 기록을 불러왔어요', 3000, 'success', {
     action: '실행 취소',
     onAction: () => {
-      S[stateKey] = prev;
+      S.workout[stateKey] = prev;
       try { rerender(); } catch (e) { console.error('Undo rerender:', e); }
       saveWorkoutDay().catch(e => console.error('Undo save error:', e));
     },
@@ -24,8 +24,8 @@ function _afterActivityCopy(stateKey, prev, rerender) {
 }
 
 function _currentDateKey() {
-  if (!S.date) return null;
-  return dateKey(S.date.y, S.date.m, S.date.d);
+  if (!S.shared.date) return null;
+  return dateKey(S.shared.date.y, S.shared.date.m, S.shared.date.d);
 }
 
 function _fmtShortDate(dk) {
@@ -59,14 +59,14 @@ export function _renderRunningForm() {
   const durM = document.getElementById('wt-run-duration-min');
   const durS = document.getElementById('wt-run-duration-sec');
   const memo = document.getElementById('wt-run-memo');
-  if (dist) dist.value = S.runData.distance || '';
-  if (durM) durM.value = S.runData.durationMin || '';
-  if (durS) durS.value = S.runData.durationSec || '';
-  if (memo) memo.value = S.runData.memo || '';
+  if (dist) dist.value = S.workout.runData.distance || '';
+  if (durM) durM.value = S.workout.runData.durationMin || '';
+  if (durS) durS.value = S.workout.runData.durationSec || '';
+  if (memo) memo.value = S.workout.runData.memo || '';
   _calcRunPace();
   _renderActivityCopyHint('running', (last) => {
-    const prev = JSON.parse(JSON.stringify(S.runData || {}));
-    S.runData = {
+    const prev = JSON.parse(JSON.stringify(S.workout.runData || {}));
+    S.workout.runData = {
       distance: last.distance || 0,
       durationMin: last.durationMin || 0,
       durationSec: last.durationSec || 0,
@@ -80,8 +80,8 @@ export function _renderRunningForm() {
 function _calcRunPace() {
   const el = document.getElementById('wt-run-pace');
   if (!el) return;
-  const totalSec = (S.runData.durationMin || 0) * 60 + (S.runData.durationSec || 0);
-  const dist = S.runData.distance || 0;
+  const totalSec = (S.workout.runData.durationMin || 0) * 60 + (S.workout.runData.durationSec || 0);
+  const dist = S.workout.runData.distance || 0;
   if (dist > 0 && totalSec > 0) {
     const paceTotal = totalSec / dist;
     const paceMin = Math.floor(paceTotal / 60);
@@ -102,10 +102,10 @@ export function _initRunningEvents() {
   const memo = document.getElementById('wt-run-memo');
 
   function onRunChange() {
-    S.runData.distance    = parseFloat(dist?.value) || 0;
-    S.runData.durationMin = parseInt(durM?.value) || 0;
-    S.runData.durationSec = parseInt(durS?.value) || 0;
-    S.runData.memo        = memo?.value.trim() || '';
+    S.workout.runData.distance    = parseFloat(dist?.value) || 0;
+    S.workout.runData.durationMin = parseInt(durM?.value) || 0;
+    S.workout.runData.durationSec = parseInt(durS?.value) || 0;
+    S.workout.runData.memo        = memo?.value.trim() || '';
     _calcRunPace();
     saveWorkoutDay().catch(e => console.error('Save error:', e));
   }
@@ -121,13 +121,13 @@ export function _renderCfForm() {
   const durM = document.getElementById('wt-cf-duration-min');
   const durS = document.getElementById('wt-cf-duration-sec');
   const memo = document.getElementById('wt-cf-memo');
-  if (wod)  wod.value  = S.cfData.wod || '';
-  if (durM) durM.value = S.cfData.durationMin || '';
-  if (durS) durS.value = S.cfData.durationSec || '';
-  if (memo) memo.value = S.cfData.memo || '';
+  if (wod)  wod.value  = S.workout.cfData.wod || '';
+  if (durM) durM.value = S.workout.cfData.durationMin || '';
+  if (durS) durS.value = S.workout.cfData.durationSec || '';
+  if (memo) memo.value = S.workout.cfData.memo || '';
   _renderActivityCopyHint('cf', (last) => {
-    const prev = JSON.parse(JSON.stringify(S.cfData || {}));
-    S.cfData = {
+    const prev = JSON.parse(JSON.stringify(S.workout.cfData || {}));
+    S.workout.cfData = {
       wod: last.wod || '',
       durationMin: last.durationMin || 0,
       durationSec: last.durationSec || 0,
@@ -142,11 +142,11 @@ export function _renderCfForm() {
 export function _renderStretchForm() {
   const dur  = document.getElementById('wt-stretch-duration');
   const memo = document.getElementById('wt-stretch-memo');
-  if (dur)  dur.value  = S.stretchData.duration || '';
-  if (memo) memo.value = S.stretchData.memo || '';
+  if (dur)  dur.value  = S.workout.stretchData.duration || '';
+  if (memo) memo.value = S.workout.stretchData.memo || '';
   _renderActivityCopyHint('stretching', (last) => {
-    const prev = JSON.parse(JSON.stringify(S.stretchData || {}));
-    S.stretchData = {
+    const prev = JSON.parse(JSON.stringify(S.workout.stretchData || {}));
+    S.workout.stretchData = {
       duration: last.duration || 0,
       memo: last.memo || '',
     };
@@ -162,14 +162,14 @@ export function _renderSwimForm() {
   const durS   = document.getElementById('wt-swim-duration-sec');
   const stroke = document.getElementById('wt-swim-stroke');
   const memo   = document.getElementById('wt-swim-memo');
-  if (dist)   dist.value   = S.swimData.distance || '';
-  if (durM)   durM.value   = S.swimData.durationMin || '';
-  if (durS)   durS.value   = S.swimData.durationSec || '';
-  if (stroke) stroke.value = S.swimData.stroke || '';
-  if (memo)   memo.value   = S.swimData.memo || '';
+  if (dist)   dist.value   = S.workout.swimData.distance || '';
+  if (durM)   durM.value   = S.workout.swimData.durationMin || '';
+  if (durS)   durS.value   = S.workout.swimData.durationSec || '';
+  if (stroke) stroke.value = S.workout.swimData.stroke || '';
+  if (memo)   memo.value   = S.workout.swimData.memo || '';
   _renderActivityCopyHint('swimming', (last) => {
-    const prev = JSON.parse(JSON.stringify(S.swimData || {}));
-    S.swimData = {
+    const prev = JSON.parse(JSON.stringify(S.workout.swimData || {}));
+    S.workout.swimData = {
       distance: last.distance || 0,
       durationMin: last.durationMin || 0,
       durationSec: last.durationSec || 0,
@@ -193,10 +193,10 @@ export function _initTypeFormEvents() {
   const cfDurS = document.getElementById('wt-cf-duration-sec');
   const cfMemo = document.getElementById('wt-cf-memo');
   function onCfChange() {
-    S.cfData.wod         = cfWod?.value.trim() || '';
-    S.cfData.durationMin = parseInt(cfDurM?.value) || 0;
-    S.cfData.durationSec = parseInt(cfDurS?.value) || 0;
-    S.cfData.memo        = cfMemo?.value.trim() || '';
+    S.workout.cfData.wod         = cfWod?.value.trim() || '';
+    S.workout.cfData.durationMin = parseInt(cfDurM?.value) || 0;
+    S.workout.cfData.durationSec = parseInt(cfDurS?.value) || 0;
+    S.workout.cfData.memo        = cfMemo?.value.trim() || '';
     saveWorkoutDay().catch(e => console.error('Save error:', e));
   }
   cfWod?.addEventListener('change', onCfChange);
@@ -208,8 +208,8 @@ export function _initTypeFormEvents() {
   const strDur  = document.getElementById('wt-stretch-duration');
   const strMemo = document.getElementById('wt-stretch-memo');
   function onStretchChange() {
-    S.stretchData.duration = parseInt(strDur?.value) || 0;
-    S.stretchData.memo     = strMemo?.value.trim() || '';
+    S.workout.stretchData.duration = parseInt(strDur?.value) || 0;
+    S.workout.stretchData.memo     = strMemo?.value.trim() || '';
     saveWorkoutDay().catch(e => console.error('Save error:', e));
   }
   strDur?.addEventListener('change', onStretchChange);
@@ -222,11 +222,11 @@ export function _initTypeFormEvents() {
   const swimStroke = document.getElementById('wt-swim-stroke');
   const swimMemo   = document.getElementById('wt-swim-memo');
   function onSwimChange() {
-    S.swimData.distance    = parseFloat(swimDist?.value) || 0;
-    S.swimData.durationMin = parseInt(swimDurM?.value) || 0;
-    S.swimData.durationSec = parseInt(swimDurS?.value) || 0;
-    S.swimData.stroke      = swimStroke?.value || '';
-    S.swimData.memo        = swimMemo?.value.trim() || '';
+    S.workout.swimData.distance    = parseFloat(swimDist?.value) || 0;
+    S.workout.swimData.durationMin = parseInt(swimDurM?.value) || 0;
+    S.workout.swimData.durationSec = parseInt(swimDurS?.value) || 0;
+    S.workout.swimData.stroke      = swimStroke?.value || '';
+    S.workout.swimData.memo        = swimMemo?.value.trim() || '';
     saveWorkoutDay().catch(e => console.error('Save error:', e));
   }
   swimDist?.addEventListener('change', onSwimChange);

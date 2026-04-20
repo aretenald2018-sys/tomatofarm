@@ -1,9 +1,9 @@
 // ================================================================
 // workout/load.js — 날짜 로드, 상태 복원
+// 2026-04-21: S.workout / S.diet / S.shared 네임스페이스 마이그레이션 완료.
 // ================================================================
 
-import { S, emptyDiet }              from './state.js';
-import { saveWorkoutDay }            from './save.js';
+import { S }                          from './state.js';
 import { _renderDateLabel,
          _renderStretchingToggle, _renderWineFreeToggle,
          _renderMealSkippedToggles, _renderDietResults,
@@ -22,7 +22,8 @@ import { getDay, isFuture, TODAY, isExpertModeEnabled, getExpertPreset } from '.
 
 // ── 날짜 로드 ────────────────────────────────────────────────────
 export function loadWorkoutDate(y, m, d) {
-  const isSameDate = S.date && S.date.y === y && S.date.m === m && S.date.d === d;
+  const cur = S.shared.date;
+  const isSameDate = cur && cur.y === y && cur.m === m && cur.d === d;
 
   if (isSameDate) {
     _renderDateLabel();
@@ -38,47 +39,51 @@ export function loadWorkoutDate(y, m, d) {
   if (window._wtResetFlowUI) window._wtResetFlowUI();
 
   // 날짜가 실제로 바뀔 때 진행 중인 AI 추정 배너/상태를 모두 정리.
-  // 이전 날짜에서 pending 상태인 결과가 새 날짜의 식단 카드에 붙는 race 방지.
   if (window.aiEstimateClearAll) {
     try { window.aiEstimateClearAll(); } catch (e) { console.warn('[aiEstimateClearAll]', e); }
   }
 
-  S.date      = { y, m, d };
+  S.shared.date = { y, m, d };
   const day  = getDay(y, m, d);
-  S.exercises = JSON.parse(JSON.stringify(day.exercises || []));
-  S.cf         = !!day.cf;
-  S.stretching = !!day.stretching;
-  S.swimming   = !!day.swimming;
-  S.running    = !!day.running;
-  S.runData    = {
+
+  // 운동 도메인 복원
+  const w = S.workout;
+  w.exercises   = JSON.parse(JSON.stringify(day.exercises || []));
+  w.cf          = !!day.cf;
+  w.stretching  = !!day.stretching;
+  w.swimming    = !!day.swimming;
+  w.running     = !!day.running;
+  w.runData     = {
     distance:    day.runDistance || 0,
     durationMin: day.runDurationMin || 0,
     durationSec: day.runDurationSec || 0,
     memo:        day.runMemo || '',
   };
-  S.cfData = {
+  w.cfData = {
     wod:         day.cfWod || '',
     durationMin: day.cfDurationMin || 0,
     durationSec: day.cfDurationSec || 0,
     memo:        day.cfMemo || '',
   };
-  S.stretchData = {
+  w.stretchData = {
     duration:    day.stretchDuration || 0,
     memo:        day.stretchMemo || '',
   };
-  S.swimData = {
+  w.swimData = {
     distance:    day.swimDistance || 0,
     durationMin: day.swimDurationMin || 0,
     durationSec: day.swimDurationSec || 0,
     stroke:      day.swimStroke || '',
     memo:        day.swimMemo || '',
   };
-  S.wineFree   = !!day.wine_free;
-  S.workoutDuration = day.workoutDuration || 0;
-  // ⚠️ 스톱워치는 끝내기/리셋 전에는 절대 멈추면 안 됨 (2026-04-19 사용자 리포트).
-  // 과거엔 여기서 workoutStartTime=null + interval clear 했지만, 그러면 날짜 네비게이션
-  // (또는 가끔 동일 날짜 리로드)에도 타이머가 죽어버림. 타이머는 전역 스톱워치이고
-  // 날짜 소속은 workoutTimerDate가 추적. 표시/저장은 _isViewingTimerDate 기준으로 가름.
+  w.wineFree        = !!day.wine_free;
+  w.workoutDuration = day.workoutDuration || 0;
+  // 전문가 모드 메타데이터 복원 (day에 저장된 값 > preset 기본값)
+  w.routineMeta  = day.routineMeta || null;
+  w.currentGymId = day.gymId || (isExpertModeEnabled() ? (getExpertPreset().currentGymId || null) : null);
+
+  // ⚠️ 스톱워치(S.workout.workoutStartTime/workoutTimerInterval/workoutTimerDate)는
+  // 끝내기/리셋 전에는 절대 멈추면 안 됨. 여기서는 건드리지 않는다.
   //
   // 2026-04-20: rest 타이머는 위 `isSameDate` early-return 경로에선 건드리지 않는다.
   //   여기(=실제 날짜 변경) 만 skip — 이전 날짜의 세트 간 휴식이 새 날짜로 이어지면
@@ -90,14 +95,13 @@ export function loadWorkoutDate(y, m, d) {
   if (timerText) timerText.style.display = '';
   const resultEl = document.getElementById('wt-workout-duration-result');
   if (resultEl) resultEl.style.display = 'none';
-  S.breakfastSkipped = !!day.breakfast_skipped;
-  S.lunchSkipped = !!day.lunch_skipped;
-  S.dinnerSkipped = !!day.dinner_skipped;
-  // 전문가 모드 메타데이터 복원 (day에 저장된 값 > preset 기본값)
-  S.routineMeta  = day.routineMeta || null;
-  S.currentGymId = day.gymId || (isExpertModeEnabled() ? (getExpertPreset().currentGymId || null) : null);
+
+  // 식단 도메인 복원 — skip 플래그까지 diet 내부로 일원화.
   S.diet = {
     breakfast: day.breakfast||'', lunch: day.lunch||'', dinner: day.dinner||'', snack: day.snack||'',
+    breakfastSkipped: !!day.breakfast_skipped,
+    lunchSkipped:     !!day.lunch_skipped,
+    dinnerSkipped:    !!day.dinner_skipped,
     bOk:    day.bOk    ?? null, lOk:    day.lOk    ?? null, dOk:    day.dOk    ?? null, sOk: day.sOk ?? null,
     bKcal:  day.bKcal  || 0,   lKcal:  day.lKcal  || 0,   dKcal:  day.dKcal  || 0,   sKcal: day.sKcal || 0,
     bReason:day.bReason|| '',  lReason:day.lReason|| '',  dReason:day.dReason|| '',  sReason: day.sReason || '',
@@ -121,8 +125,8 @@ export function loadWorkoutDate(y, m, d) {
 
   _renderDateLabel();
   _renderStretchingToggle();
-  document.getElementById('wt-chip-swimming')?.classList.toggle('active', S.swimming);
-  document.getElementById('wt-chip-running')?.classList.toggle('active', S.running);
+  document.getElementById('wt-chip-swimming')?.classList.toggle('active', w.swimming);
+  document.getElementById('wt-chip-running')?.classList.toggle('active', w.running);
   _renderRunningForm();
   _renderCfForm();
   _renderStretchForm();
@@ -166,8 +170,6 @@ function _restoreFlowState(day) {
   const hasSwimming   = !!day.swimming;
   const hasRunning    = !!day.running;
 
-  // 기록이 있는 탭에 점 힌트 + 기본 활성 탭 결정
-  // 우선순위: 헬스 기록 있으면 헬스, 아니면 기록 있는 첫 탭, 모두 없으면 헬스
   const flags = {
     gym: hasExercises, cf: hasCf, stretch: hasStretching,
     swimming: hasSwimming, running: hasRunning,
@@ -184,10 +186,7 @@ function _restoreFlowState(day) {
   }
   if (window._wtSetActiveType) window._wtSetActiveType(active);
 
-  // 2026-04-20: 타이머 바는 운동 탭에 있는 동안 **항상** 노출 (유저 요구: "타이머 항상 떠있음").
-  //   과거엔 hasAnyRecord 일 때만 open → 세트 치기 전엔 타이머 UI 가 숨겨져 유저가
-  //   "타이머가 없다" 고 느끼는 교착이 있었다. 이제 상시 노출 + play/pause 도 상시 조작 가능.
-  //   memo/save 섹션은 기존대로 기록 있을 때만 open — 이건 UX 정보 밀도 조절용이라 유지.
+  // 2026-04-20: 타이머 바는 운동 탭에 있는 동안 **항상** 노출.
   const hasAnyRecord = hasExercises || hasCf || hasStretching || hasSwimming || hasRunning;
   if (timerBar) timerBar.classList.add('wt-open');
   if (hasAnyRecord) {
@@ -198,18 +197,16 @@ function _restoreFlowState(day) {
     document.getElementById('wt-save-section')?.classList.remove('wt-open');
   }
 
-  // 2026-04-19: 타이머 컨트롤 노출 규칙을 workoutTimerDate 기준으로 통일.
-  // 과거엔 "오늘이 아닌 날짜"면 무조건 컨트롤을 숨겼는데, 타이머가 과거 날짜에서
-  // 시작된 상태라면 그 날짜로 돌아가도 멈출 수 없게 되는 문제가 생김.
-  // 규칙: 오늘을 보고 있거나(Start/새 타이머) 타이머의 날짜를 보고 있으면(Pause/Reset) 컨트롤 노출.
-  const isToday = S.date && S.date.y === TODAY.getFullYear() && S.date.m === TODAY.getMonth() && S.date.d === TODAY.getDate();
+  // 2026-04-19: 타이머 컨트롤 노출 규칙 — 오늘 or 타이머 날짜.
+  const date = S.shared.date;
+  const isToday = date && date.y === TODAY.getFullYear() && date.m === TODAY.getMonth() && date.d === TODAY.getDate();
   const showControls = isToday || _isViewingTimerDate();
   if (!showControls && timerBar) {
     const controls = timerBar.querySelector('.wt-timer-controls');
     if (controls) controls.style.display = 'none';
-    if (S.workoutDuration > 0) {
+    if (S.workout.workoutDuration > 0) {
       const resultEl = document.getElementById('wt-workout-duration-result');
-      if (resultEl) { resultEl.textContent = `총 ${_fmtDuration(S.workoutDuration)}`; resultEl.style.display = ''; }
+      if (resultEl) { resultEl.textContent = `총 ${_fmtDuration(S.workout.workoutDuration)}`; resultEl.style.display = ''; }
       const timerText = document.getElementById('wt-workout-timer');
       if (timerText) timerText.style.display = 'none';
     }
@@ -221,22 +218,20 @@ function _restoreFlowState(day) {
 function _setInputsDisabled(disabled) {
   const panel = document.getElementById('tab-workout');
   if (!panel) return;
-  // 날짜 네비/투데이 점프만 살리고, 탭 내부의 모든 input/textarea/select/button을 일괄 비활성.
-  // (과거: act-btn/ex-add-btn 등 특정 클래스 화이트리스트 → 새 버튼 추가 시 가드 누락)
   panel.querySelectorAll('input, textarea, select, button').forEach(el => {
     if (el.classList.contains('wt-date-nav-btn')) return;
     if (el.classList.contains('wt-today-btn')) return;
     el.disabled = disabled;
   });
-  // CSS 단계 가드 — 커스텀 요소(<div onclick>, 칩 등)를 disabled 없이도 차단.
   panel.classList.toggle('wt-readonly', !!disabled);
   const notice = document.getElementById('wt-future-notice');
   if (notice) notice.style.display = disabled ? 'block' : 'none';
 }
 
 export function changeWorkoutDate(delta) {
-  if (!S.date) return;
-  const d = new Date(S.date.y, S.date.m, S.date.d + delta);
+  const date = S.shared.date;
+  if (!date) return;
+  const d = new Date(date.y, date.m, date.d + delta);
   loadWorkoutDate(d.getFullYear(), d.getMonth(), d.getDate());
 }
 

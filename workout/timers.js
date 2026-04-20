@@ -12,31 +12,31 @@ import { confirmAction }    from '../utils/confirm-modal.js';
 // 사용자가 다른 날짜를 보는 중에도 타이머는 계속 흐르지만, 표시/저장 경로는
 // "현재 보고 있는 날짜 === 타이머의 날짜"일 때만 live elapsed를 합산함.
 export function _isViewingTimerDate() {
-  const td = S.workoutTimerDate, cd = S.date;
+  const td = S.workout.workoutTimerDate, cd = S.shared.date;
   if (!td || !cd) return false;
   return td.y === cd.y && td.m === cd.m && td.d === cd.d;
 }
 
 export function wtStartWorkoutTimer() {
-  if (S.workoutStartTime) return;
-  S.workoutStartTime = Date.now();
+  if (S.workout.workoutStartTime) return;
+  S.workout.workoutStartTime = Date.now();
   // 타이머가 속한 날짜 고정 (현재 보고 있는 날짜가 기준).
-  S.workoutTimerDate = S.date ? { ...S.date } : null;
-  S.workoutTimerInterval = setInterval(_renderWorkoutTimer, 1000);
+  S.workout.workoutTimerDate = S.shared.date ? { ...S.shared.date } : null;
+  S.workout.workoutTimerInterval = setInterval(_renderWorkoutTimer, 1000);
   _renderWorkoutTimer();
   _renderTimerControls();
 }
 
 export function wtPauseWorkoutTimer() {
-  if (!S.workoutStartTime) return;
+  if (!S.workout.workoutStartTime) return;
   // 일시정지는 타이머의 날짜에만 누적해야 함. 다른 날짜를 보고 있으면
-  // S.workoutDuration은 그 날짜의 값이므로 건드리면 안 됨.
+  // S.workout.workoutDuration은 그 날짜의 값이므로 건드리면 안 됨.
   if (_isViewingTimerDate()) {
-    S.workoutDuration += Math.floor((Date.now() - S.workoutStartTime) / 1000);
+    S.workout.workoutDuration += Math.floor((Date.now() - S.workout.workoutStartTime) / 1000);
   }
-  S.workoutStartTime = null;
+  S.workout.workoutStartTime = null;
   // workoutTimerDate는 유지 (재개 시 같은 날짜 타이머로 이어지도록)
-  if (S.workoutTimerInterval) { clearInterval(S.workoutTimerInterval); S.workoutTimerInterval = null; }
+  if (S.workout.workoutTimerInterval) { clearInterval(S.workout.workoutTimerInterval); S.workout.workoutTimerInterval = null; }
   _renderWorkoutTimer();
   _renderTimerControls();
   saveWorkoutDay().catch(e => console.error('Save error:', e));
@@ -44,7 +44,7 @@ export function wtPauseWorkoutTimer() {
 
 export async function wtResetWorkoutTimer() {
   // 운동 시간 초기화는 파괴적 액션. 실수 방지 위해 confirm 필수.
-  const hasTime = S.workoutDuration > 0 || !!S.workoutStartTime;
+  const hasTime = S.workout.workoutDuration > 0 || !!S.workout.workoutStartTime;
   if (hasTime) {
     const ok = await confirmAction({
       title: '운동 시간을 초기화할까요?',
@@ -55,10 +55,10 @@ export async function wtResetWorkoutTimer() {
     });
     if (!ok) return;
   }
-  S.workoutDuration = 0;
-  S.workoutStartTime = null;
-  S.workoutTimerDate = null;
-  if (S.workoutTimerInterval) { clearInterval(S.workoutTimerInterval); S.workoutTimerInterval = null; }
+  S.workout.workoutDuration = 0;
+  S.workout.workoutStartTime = null;
+  S.workout.workoutTimerDate = null;
+  if (S.workout.workoutTimerInterval) { clearInterval(S.workout.workoutTimerInterval); S.workout.workoutTimerInterval = null; }
   _renderWorkoutTimer();
   _renderTimerControls();
   saveWorkoutDay().catch(e => console.error('Save error:', e));
@@ -70,13 +70,13 @@ export function _renderWorkoutTimer() {
   // 현재 보고 있는 날짜가 타이머의 날짜일 때만 live elapsed를 합산.
   // 다른 날짜를 보고 있으면 그 날짜의 저장된 workoutDuration만 표시.
   const onTimerDate = _isViewingTimerDate();
-  const elapsed = (S.workoutStartTime && onTimerDate)
-    ? Math.floor((Date.now() - S.workoutStartTime) / 1000) + S.workoutDuration
-    : S.workoutDuration;
+  const elapsed = (S.workout.workoutStartTime && onTimerDate)
+    ? Math.floor((Date.now() - S.workout.workoutStartTime) / 1000) + S.workout.workoutDuration
+    : S.workout.workoutDuration;
   el.textContent = _fmtTimerCompact(elapsed);
   el.style.display = '';
   const bar = document.getElementById('wt-workout-timer-bar');
-  if (bar) bar.classList.toggle('wt-running', !!S.workoutStartTime && onTimerDate);
+  if (bar) bar.classList.toggle('wt-running', !!S.workout.workoutStartTime && onTimerDate);
 }
 
 // 2026-04-20: "타이머는 항상 떠있어야 함" (유저 요구).
@@ -88,7 +88,7 @@ export function _renderWorkoutTimer() {
 //   다른 날짜(타이머 날짜 ≠ 보는 날짜)에서는 기존처럼 컨트롤 숨김 — 타이머 날짜로 돌아가야
 //   멈추거나 리셋 가능하도록 명확하게 유지.
 function _hasWorkoutRecord() {
-  const list = Array.isArray(S.exercises) ? S.exercises : [];
+  const list = Array.isArray(S.workout.exercises) ? S.workout.exercises : [];
   for (const entry of list) {
     for (const s of (entry?.sets || [])) {
       if (s?.setType === 'warmup') continue;
@@ -102,9 +102,9 @@ function _hasWorkoutRecord() {
 
 export function _renderTimerControls() {
   const onTimerDate = _isViewingTimerDate();
-  const timerActiveElsewhere = !!S.workoutStartTime && !onTimerDate;
-  const isRunning = !!S.workoutStartTime && onTimerDate;
-  const hasTime   = isRunning || (!timerActiveElsewhere && S.workoutDuration > 0);
+  const timerActiveElsewhere = !!S.workout.workoutStartTime && !onTimerDate;
+  const isRunning = !!S.workout.workoutStartTime && onTimerDate;
+  const hasTime   = isRunning || (!timerActiveElsewhere && S.workout.workoutDuration > 0);
   const hasRecord = _hasWorkoutRecord();
   const pauseBtn  = document.getElementById('wt-timer-pause-btn');
   const playBtn   = document.getElementById('wt-timer-play-btn');
@@ -148,7 +148,7 @@ function _fmtTimerCompact(sec) {
 }
 
 export function wtTogglePauseWorkoutTimer() {
-  if (S.workoutStartTime) {
+  if (S.workout.workoutStartTime) {
     wtPauseWorkoutTimer();
   } else {
     wtStartWorkoutTimer();
@@ -163,18 +163,18 @@ export function wtTogglePauseWorkoutTimer() {
 //      _cache[key]=data는 동기 경로에서 이미 갱신되지만, Firebase round-trip까지
 //      기다려야 다른 레이어(getCache 소비자, analytics 등)와의 순서가 명확해진다.
 export function wtFinishWorkout() {
-  if (S.workoutStartTime) {
+  if (S.workout.workoutStartTime) {
     // 타이머 날짜와 현재 보고 있는 날짜가 다를 수 있음.
     // 누적은 타이머의 날짜 document에만 반영되어야 함 — 아래 saveWorkoutDay가
     // 타이머 날짜 기준으로 저장할 수 있도록 여기서는 workoutDuration만 합산.
-    // (_isViewingTimerDate 시점에서만 S.workoutDuration이 타이머 날짜의 값임)
+    // (_isViewingTimerDate 시점에서만 S.workout.workoutDuration이 타이머 날짜의 값임)
     if (_isViewingTimerDate()) {
-      S.workoutDuration += Math.floor((Date.now() - S.workoutStartTime) / 1000);
+      S.workout.workoutDuration += Math.floor((Date.now() - S.workout.workoutStartTime) / 1000);
     }
-    S.workoutStartTime = null;
+    S.workout.workoutStartTime = null;
   }
-  S.workoutTimerDate = null;
-  if (S.workoutTimerInterval) { clearInterval(S.workoutTimerInterval); S.workoutTimerInterval = null; }
+  S.workout.workoutTimerDate = null;
+  if (S.workout.workoutTimerInterval) { clearInterval(S.workout.workoutTimerInterval); S.workout.workoutTimerInterval = null; }
   _renderWorkoutTimer();
   const pauseBtn = document.getElementById('wt-timer-pause-btn');
   const resetBtn = document.getElementById('wt-timer-reset-btn');
@@ -186,12 +186,12 @@ export function wtFinishWorkout() {
   if (resetBtn) resetBtn.style.display = 'none';
   if (finBtn)   finBtn.style.display = 'none';
   if (resultEl) {
-    resultEl.textContent = `총 ${_fmtDuration(S.workoutDuration)}`;
+    resultEl.textContent = `총 ${_fmtDuration(S.workout.workoutDuration)}`;
     resultEl.style.display = '';
   }
   const bar = document.getElementById('wt-workout-timer-bar');
   if (bar) bar.classList.remove('wt-running');
-  showCenterToast(`운동 완료! ${_fmtDuration(S.workoutDuration)}`, 2200);
+  showCenterToast(`운동 완료! ${_fmtDuration(S.workout.workoutDuration)}`, 2200);
   // 2026-04-20: 저장 실패가 상위로 전파되도록 .catch 제거 (Codex 지적 #1).
   //   기존엔 여기서 swallow → wtEndAndShowInsights가 인사이트 모달을 성공처럼 오픈.
   //   이제는 saveWorkoutDay가 throw 하면 wtEndAndShowInsights가 catch하여 모달을 막음.
@@ -199,19 +199,19 @@ export function wtFinishWorkout() {
 }
 
 export function wtRecoverTimers() {
-  if (S.workoutStartTime && !S.workoutTimerInterval) {
-    S.workoutTimerInterval = setInterval(_renderWorkoutTimer, 1000);
+  if (S.workout.workoutStartTime && !S.workout.workoutTimerInterval) {
+    S.workout.workoutTimerInterval = setInterval(_renderWorkoutTimer, 1000);
   }
   _renderWorkoutTimer();
   _renderTimerControls();
 
-  if (S.restTimer.running) {
-    if (!S.restTimer.startedAt) {
-      const elapsed = Math.max(0, (S.restTimer.total || 0) - (S.restTimer.remaining || 0));
-      S.restTimer.startedAt = Date.now() - elapsed * 1000;
+  if (S.workout.restTimer.running) {
+    if (!S.workout.restTimer.startedAt) {
+      const elapsed = Math.max(0, (S.workout.restTimer.total || 0) - (S.workout.restTimer.remaining || 0));
+      S.workout.restTimer.startedAt = Date.now() - elapsed * 1000;
     }
-    if (!S.restTimer.interval) {
-      S.restTimer.interval = setInterval(_syncRestTimerFromNow, 1000);
+    if (!S.workout.restTimer.interval) {
+      S.workout.restTimer.interval = setInterval(_syncRestTimerFromNow, 1000);
     }
     _syncRestTimerFromNow();
   }
@@ -255,12 +255,12 @@ export function wtRestTimerStart(seconds, context) {
   const seg = _restSegEl();
   const bar = _restBarEl();
   if (!seg || !bar) return;
-  if (seconds) S.restTimer.total = seconds;
+  if (seconds) S.workout.restTimer.total = seconds;
   const ctxEl = document.getElementById('wt-rest-context');
   if (ctxEl) ctxEl.textContent = context || '';
-  S.restTimer.remaining = S.restTimer.total;
-  S.restTimer.running = true;
-  S.restTimer.startedAt = Date.now();
+  S.workout.restTimer.remaining = S.workout.restTimer.total;
+  S.workout.restTimer.running = true;
+  S.workout.restTimer.startedAt = Date.now();
 
   seg.style.display = '';
   const prog = _restProgEl();
@@ -269,11 +269,11 @@ export function wtRestTimerStart(seconds, context) {
   bar.classList.remove('rest-expired');
   _showRestControls();
 
-  const t = _restTimeEl(); if (t) t.textContent = _formatTime(S.restTimer.remaining);
+  const t = _restTimeEl(); if (t) t.textContent = _formatTime(S.workout.restTimer.remaining);
   const f = _restFillEl(); if (f) f.style.width = '100%';
 
-  if (S.restTimer.interval) clearInterval(S.restTimer.interval);
-  S.restTimer.interval = setInterval(_syncRestTimerFromNow, 1000);
+  if (S.workout.restTimer.interval) clearInterval(S.workout.restTimer.interval);
+  S.workout.restTimer.interval = setInterval(_syncRestTimerFromNow, 1000);
 }
 
 // idle 상태는 새 통합 바에서 사용하지 않음 (세트 체크 시점에만 쉬는시간 등장)
@@ -284,10 +284,10 @@ export function wtRestTimerSkip() {
   const seg = _restSegEl();
   const bar = _restBarEl();
   if (!seg || !bar) return;
-  if (S.restTimer.interval) clearInterval(S.restTimer.interval);
-  S.restTimer.interval = null;
-  S.restTimer.running = false;
-  S.restTimer.startedAt = null;
+  if (S.workout.restTimer.interval) clearInterval(S.workout.restTimer.interval);
+  S.workout.restTimer.interval = null;
+  S.workout.restTimer.running = false;
+  S.workout.restTimer.startedAt = null;
 
   seg.style.display = 'none';
   const prog = _restProgEl();
@@ -297,31 +297,31 @@ export function wtRestTimerSkip() {
 }
 
 export function wtRestTimerAdjust(delta) {
-  if (!S.restTimer.running) return;
-  const elapsed = Math.floor((Date.now() - (S.restTimer.startedAt || Date.now())) / 1000);
-  const currentRemaining = (S.restTimer.total || 0) - elapsed;
-  S.restTimer.remaining = Math.max(0, currentRemaining + delta);
-  S.restTimer.total = Math.max(S.restTimer.total, S.restTimer.remaining);
-  S.restTimer.startedAt = Date.now() - Math.max(0, S.restTimer.total - S.restTimer.remaining) * 1000;
-  const t = _restTimeEl(); if (t) t.textContent = _formatTime(S.restTimer.remaining);
-  const f = _restFillEl(); if (f) f.style.width = `${(S.restTimer.remaining / S.restTimer.total) * 100}%`;
+  if (!S.workout.restTimer.running) return;
+  const elapsed = Math.floor((Date.now() - (S.workout.restTimer.startedAt || Date.now())) / 1000);
+  const currentRemaining = (S.workout.restTimer.total || 0) - elapsed;
+  S.workout.restTimer.remaining = Math.max(0, currentRemaining + delta);
+  S.workout.restTimer.total = Math.max(S.workout.restTimer.total, S.workout.restTimer.remaining);
+  S.workout.restTimer.startedAt = Date.now() - Math.max(0, S.workout.restTimer.total - S.workout.restTimer.remaining) * 1000;
+  const t = _restTimeEl(); if (t) t.textContent = _formatTime(S.workout.restTimer.remaining);
+  const f = _restFillEl(); if (f) f.style.width = `${(S.workout.restTimer.remaining / S.workout.restTimer.total) * 100}%`;
   _restBarEl()?.classList.remove('rest-expired');
 }
 
 function _syncRestTimerFromNow() {
   const bar = _restBarEl();
-  if (!bar || !S.restTimer.running) return;
-  const startedAt = S.restTimer.startedAt || Date.now();
+  if (!bar || !S.workout.restTimer.running) return;
+  const startedAt = S.workout.restTimer.startedAt || Date.now();
   const elapsed = Math.floor((Date.now() - startedAt) / 1000);
-  S.restTimer.remaining = (S.restTimer.total || 0) - elapsed;
+  S.workout.restTimer.remaining = (S.workout.restTimer.total || 0) - elapsed;
 
-  const t = _restTimeEl(); if (t) t.textContent = _formatTime(S.restTimer.remaining);
-  if (S.restTimer.remaining > 0) {
-    const f = _restFillEl(); if (f) f.style.width = `${(S.restTimer.remaining / S.restTimer.total) * 100}%`;
+  const t = _restTimeEl(); if (t) t.textContent = _formatTime(S.workout.restTimer.remaining);
+  if (S.workout.restTimer.remaining > 0) {
+    const f = _restFillEl(); if (f) f.style.width = `${(S.workout.restTimer.remaining / S.workout.restTimer.total) * 100}%`;
     bar.classList.remove('rest-expired');
     return;
   }
-  if (S.restTimer.remaining === 0) {
+  if (S.workout.restTimer.remaining === 0) {
     const f = _restFillEl(); if (f) f.style.width = '100%';
     bar.classList.add('rest-expired');
     if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
@@ -330,7 +330,7 @@ function _syncRestTimerFromNow() {
   // 2026-04-20: 이전에는 -600초(10분 초과) 시 자동 wtRestTimerSkip() 호출.
   //   유저 요구 "운동을 쉬든 시간을 오버하든 항상 떠있어야 함" 에 따라 자동 skip 제거.
   //   rest-expired 클래스만 유지해 오버 상태를 시각적으로 표시하고, 건너뛰기는 유저가 명시적으로.
-  if (S.restTimer.remaining < 0) {
+  if (S.workout.restTimer.remaining < 0) {
     const f = _restFillEl(); if (f) f.style.width = '100%';
     bar.classList.add('rest-expired');
   }
@@ -342,7 +342,7 @@ export function _initRestTimerPresets() { /* no-op — Preset은 Bottom Sheet로
 export function wtOpenRestPresetSheet() {
   document.querySelectorAll('.wt-rest-sheet-back').forEach(el => el.remove());
 
-  const currentTotal = S.restTimer.total || 90;
+  const currentTotal = S.workout.restTimer.total || 90;
   const options = [
     { sec: 30,  label: '0:30' },
     { sec: 60,  label: '1:00' },
@@ -376,10 +376,10 @@ export function wtOpenRestPresetSheet() {
   back.querySelectorAll('.wt-rest-sheet-opt').forEach(btn => {
     btn.addEventListener('click', () => {
       const sec = +btn.dataset.sec;
-      if (S.restTimer.running) {
+      if (S.workout.restTimer.running) {
         wtRestTimerStart(sec);
       } else {
-        S.restTimer.total = sec;
+        S.workout.restTimer.total = sec;
         const t = _restTimeEl(); if (t) t.textContent = _formatTime(sec);
       }
       close();

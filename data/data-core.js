@@ -228,18 +228,39 @@ export function _setSyncStatus(state) {
   txt.textContent = { ok:'동기화됨', syncing:'저장 중...', err:'오프라인 — 로컬 저장 후 자동 재시도' }[state] || state;
 }
 
-// ── Firebase 작업 래퍼 ──────────────────────────────────────────
-export async function _fbOp(label, fn, { sync = true, rethrow = false } = {}) {
-  if (sync) _setSyncStatus('syncing');
+// 2026-04-20: dateKey 별 저장 직렬화 큐 — saveWorkoutDay + _autoSaveDiet 동시 호출 시
+//   last-write-wins 경합을 제거한다. 같은 dateKey 의 _fbOp 호출은 이 체인에 줄을 세워
+//   순차 실행. 다른 dateKey(또는 키 지정 안 한 일반 작업)는 서로 블록하지 않음.
+const _fbQueueByKey = new Map();
+
+async function _runSerialized(dateKey, fn) {
+  const prev = _fbQueueByKey.get(dateKey) || Promise.resolve();
+  const next = prev.catch(() => {}).then(fn);
+  // 완료된 체인은 삭제 — 무한 누적 방지. 실패도 무시(다음 호출은 독립 실행).
+  _fbQueueByKey.set(dateKey, next);
   try {
-    const result = await fn();
-    if (sync) _setSyncStatus('ok');
-    return result;
-  } catch (e) {
-    if (sync) _setSyncStatus('err');
-    console.error(`[data] ${label}:`, e);
-    if (rethrow) throw e;
+    return await next;
+  } finally {
+    if (_fbQueueByKey.get(dateKey) === next) _fbQueueByKey.delete(dateKey);
   }
+}
+
+// ── Firebase 작업 래퍼 ──────────────────────────────────────────
+// opts.dateKey: 지정 시 같은 dateKey 의 write 를 직렬화 (saveDay 전용).
+export async function _fbOp(label, fn, { sync = true, rethrow = false, dateKey = null } = {}) {
+  const exec = async () => {
+    if (sync) _setSyncStatus('syncing');
+    try {
+      const result = await fn();
+      if (sync) _setSyncStatus('ok');
+      return result;
+    } catch (e) {
+      if (sync) _setSyncStatus('err');
+      console.error(`[data] ${label}:`, e);
+      if (rethrow) throw e;
+    }
+  };
+  return dateKey ? _runSerialized(dateKey, exec) : exec();
 }
 
 // ── 설정 저장 헬퍼 ──────────────────────────────────────────────

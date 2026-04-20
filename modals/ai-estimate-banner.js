@@ -31,8 +31,8 @@ function _currentDateKey() {
 async function _exactDateKey() {
   try {
     const { S } = await import('../workout/state.js');
-    if (!S.date) return '';
-    const { y, m, d } = S.date;
+    if (!S.shared.date) return '';
+    const { y, m, d } = S.shared.date;
     return `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
   } catch { return _currentDateKey(); }
 }
