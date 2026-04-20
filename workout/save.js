@@ -165,8 +165,14 @@ function _cleanExercises(includeNotes) {
       const muscleIds  = Array.isArray(e.muscleIds) && e.muscleIds.length
         ? e.muscleIds
         : (Array.isArray(lib?.muscleIds) ? lib.muscleIds : []);
+      // 2026-04-21: 저장 시 name 도 스냅샷. 다른 유저(친구) 가 이 workout 문서를 읽어
+      //   cheers-card / insights 등에 표시할 때 exerciseId 원본이 노출되던 회귀 방지
+      //   (예: "줍스님이 mo3t9kmdbvia7rssnh4을(를) 오늘부터 루틴에 다시 추가했어요").
+      //   커스텀 종목 이름은 작성자 본인의 exList 에만 있으므로 스냅샷이 필수.
+      const name = e.name || lib?.name || null;
       return {
         ...e,
+        name,
         movementId,
         muscleIds,
         sets: e.sets.filter(s => s && (s.done === true || (s.kg || 0) > 0 || (s.reps || 0) > 0)),

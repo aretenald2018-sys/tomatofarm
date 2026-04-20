@@ -125,8 +125,21 @@ function _escapeText(v) {
 // 2순위: id 프리픽스로 근육 부위 한글화 — 기본 MUSCLES + 커스텀 근육군 (과거 종목이
 //        현재 목록에서 삭제/로드 지연된 경우에도 커스텀 근육군 힌트 유지)
 // 3순위: "운동"
+//
+// 2026-04-21: raw-id 감지 regex 확장 — `_generateId()` 는 언더스코어 없는 dense
+//   alphanumeric blob(`mo3t9kmdbvia7rssnh4`) 을 생성하는데, 기존 regex
+//   `/^[a-z0-9]+_[a-z0-9_-]+$/` 는 `_` 필수라서 이걸 놓쳤다 → 그대로 raw id 노출.
+//   친구의 커스텀 종목은 내 exList 에 없으므로 name 해석 불가 → "운동" 으로 대체.
+function _looksLikeRawId(v) {
+  if (!v) return true;
+  const s = String(v);
+  if (/^[a-z0-9]+_[a-z0-9_-]+$/i.test(s)) return true;      // prefix_slug 형식
+  if (/^[a-z0-9]{10,}$/i.test(s)) return true;              // dense alphanumeric blob (_generateId)
+  return false;
+}
+
 function _resolveExerciseName(exerciseId, fallbackName) {
-  const isRawId = !fallbackName || /^[a-z0-9]+_[a-z0-9_-]+$/i.test(String(fallbackName));
+  const isRawId = _looksLikeRawId(fallbackName);
   if (!isRawId && fallbackName) return fallbackName;
   if (exerciseId) {
     try {
