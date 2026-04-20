@@ -240,10 +240,11 @@ function _previewIngredientNutrition() {
   const w = parseFloat(document.getElementById('cooking-ing-weight').value) || 0;
   const ss = _selectedIngredient.servingSize;
   const ratio = w / ss;
+  // 2026-04-21: preview 는 UI 표시 — 매크로 정수 표기.
   const kcal = Math.round(_selectedIngredient.kcal * ratio);
-  const p = Math.round(_selectedIngredient.protein * ratio * 10) / 10;
-  const c = Math.round(_selectedIngredient.carbs * ratio * 10) / 10;
-  const f = Math.round(_selectedIngredient.fat * ratio * 10) / 10;
+  const p = Math.round(_selectedIngredient.protein * ratio);
+  const c = Math.round(_selectedIngredient.carbs * ratio);
+  const f = Math.round(_selectedIngredient.fat * ratio);
   document.getElementById('cooking-ing-preview').textContent =
     `${kcal}kcal | 단${p}g 탄${c}g 지${f}g`;
 }
@@ -342,7 +343,8 @@ function _updateCookingNutrition() {
     carbs: Math.round(totals.carbs / servings * 10) / 10,
     fat: Math.round(totals.fat / servings * 10) / 10,
   };
-  el.innerHTML = `<span style="color:var(--text);font-weight:600">1인분:</span> ${ps.kcal}kcal | 단${ps.protein}g 탄${ps.carbs}g 지${ps.fat}g`;
+  // 2026-04-21: 1인분 표시 — 매크로 정수.
+  el.innerHTML = `<span style="color:var(--text);font-weight:600">1인분:</span> ${ps.kcal}kcal | 단${Math.round(ps.protein)}g 탄${Math.round(ps.carbs)}g 지${Math.round(ps.fat)}g`;
 }
 
 function _calcTotals() {
@@ -410,7 +412,8 @@ async function _retroactiveUpdate(recipe) {
       updatedDay[`${prefix}Carbs`] = Math.round(tc * 10) / 10;
       updatedDay[`${prefix}Fat`] = Math.round(tf * 10) / 10;
       if (foods.length) {
-        updatedDay[`${prefix}Reason`] = `DB: ${Math.round(tk)}kcal (단${Math.round(tp*10)/10}g 탄${Math.round(tc*10)/10}g 지${Math.round(tf*10)/10}g)`;
+        // 2026-04-21: Reason 은 UI 표시 문자열 — 매크로 정수.
+        updatedDay[`${prefix}Reason`] = `DB: ${Math.round(tk)}kcal (단${Math.round(tp)}g 탄${Math.round(tc)}g 지${Math.round(tf)}g)`;
       }
     }
 
@@ -501,8 +504,9 @@ function _buildCard(r) {
   if (r.ingredients?.length) {
     const ps = calcPerServing(r);
     if (ps) {
+      // 2026-04-21: 1인분 표시 — 매크로 정수.
       nutritionHtml = `<div style="font-size:11px;color:var(--muted);margin-top:4px">
-        1인분: ${ps.kcal}kcal | 단${ps.protein}g 탄${ps.carbs}g 지${ps.fat}g
+        1인분: ${ps.kcal}kcal | 단${Math.round(ps.protein)}g 탄${Math.round(ps.carbs)}g 지${Math.round(ps.fat)}g
       </div>`;
     }
   }

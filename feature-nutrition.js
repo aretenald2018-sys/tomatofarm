@@ -76,9 +76,9 @@ function _renderNutritionRow(item, { icon = '🏠', removable = false, isCSV = f
         <div class="nutrition-result-name">${icon} ${item.name}</div>
         <div class="nutrition-result-meta">
           ${item.defaultWeight && item.defaultWeight !== 100 ? `<span style="color:var(--primary);font-weight:600">1인분 ${item.defaultWeight}g · ${Math.round(kcal * item.defaultWeight / 100)}kcal</span>` : `<span>${(!isCSV && item.unit) ? item.unit : '100g'}</span><span>${kcal}kcal</span>`}
-          ${carbs != null ? `<span>탄${carbs}g</span>` : ''}
-          ${protein != null ? `<span>단${protein}g</span>` : ''}
-          ${fat != null ? `<span>지${fat}g</span>` : ''}
+          ${carbs != null ? `<span>탄${Math.round(carbs)}g</span>` : ''}
+          ${protein != null ? `<span>단${Math.round(protein)}g</span>` : ''}
+          ${fat != null ? `<span>지${Math.round(fat)}g</span>` : ''}
         </div>
       </div>
       ${removeBtn}
@@ -328,9 +328,9 @@ function _buildRecipeResultsHtml(q) {
         <div class="nutrition-result-name">🍳 ${r.name} <span style="color:var(--muted);font-size:10px">${r.servings||1}인분</span></div>
         <div class="nutrition-result-meta">
           <span>${ps.kcal}kcal</span>
-          <span>탄${ps.carbs}g</span>
-          <span>단${ps.protein}g</span>
-          <span>지${ps.fat}g</span>
+          <span>탄${Math.round(ps.carbs)}g</span>
+          <span>단${Math.round(ps.protein)}g</span>
+          <span>지${Math.round(ps.fat)}g</span>
         </div>
       </div>`;
   }).join('');

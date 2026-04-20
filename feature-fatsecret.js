@@ -171,7 +171,8 @@ function _updateFsCalcPreview() {
   const ratio = grams / 100;
   const el    = document.getElementById('fs-calc-preview');
   if (el) el.textContent = grams > 0
-    ? `${Math.round(p.kcal*ratio)}kcal / 단${Math.round(p.protein*ratio*10)/10}g / 탄${Math.round(p.carbs*ratio*10)/10}g / 지${Math.round(p.fat*ratio*10)/10}g`
+    // 2026-04-21: preview 는 UI 표시 — 매크로 정수.
+    ? `${Math.round(p.kcal*ratio)}kcal / 단${Math.round(p.protein*ratio)}g / 탄${Math.round(p.carbs*ratio)}g / 지${Math.round(p.fat*ratio)}g`
     : '';
 }
 

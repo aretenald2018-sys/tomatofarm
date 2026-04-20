@@ -2717,7 +2717,7 @@ export async function insightsOpen(sessionKey) {
               <div><span class="insights-recent-diet-date">${_prettyDate(d.dateKey)}</span>
                 ${d.kcal > 0 ? `<span class="insights-recent-diet-kcal">${d.kcal}kcal</span>` : '<span style="color:#87878e;">기록 없음</span>'}
               </div>
-              ${d.kcal > 0 ? `<span class="insights-recent-diet-macro">P${d.protein}·C${d.carbs}·F${d.fat}</span>` : ''}
+              ${d.kcal > 0 ? `<span class="insights-recent-diet-macro">P${Math.round(d.protein)}·C${Math.round(d.carbs)}·F${Math.round(d.fat)}</span>` : ''}
             </div>
           `).join('')}
         </div>

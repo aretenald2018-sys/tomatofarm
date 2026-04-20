@@ -311,7 +311,8 @@ export async function confirmEstimate(meal) {
   S.diet[`${prefix}Carbs`]   = Math.round(foods.reduce((s, f) => s + (f.carbs || 0), 0) * 10) / 10;
   S.diet[`${prefix}Fat`]     = Math.round(foods.reduce((s, f) => s + (f.fat || 0), 0) * 10) / 10;
   S.diet[`${prefix}Ok`]      = true;
-  S.diet[`${prefix}Reason`]  = `AI: ${S.diet[`${prefix}Kcal`]}kcal (단${S.diet[`${prefix}Protein`]}g 탄${S.diet[`${prefix}Carbs`]}g 지${S.diet[`${prefix}Fat`]}g)`;
+  // 2026-04-21: Reason 은 UI 표시 — 저장은 소수 유지하되 표시는 정수.
+  S.diet[`${prefix}Reason`]  = `AI: ${S.diet[`${prefix}Kcal`]}kcal (단${Math.round(S.diet[`${prefix}Protein`])}g 탄${Math.round(S.diet[`${prefix}Carbs`])}g 지${Math.round(S.diet[`${prefix}Fat`])}g)`;
 
   S.diet[`${prefix}EstimateMeta`] = {
     plateType: st.estimate.plateType,
