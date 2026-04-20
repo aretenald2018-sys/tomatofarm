@@ -1,0 +1,220 @@
+/* ══════════════════════════════════════════════════════════════════
+   Toss Design System (TDS) — Complete Stylesheet
+   Rewritten from original with TDS tokens, components & utilities
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── Reset ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ══════════════════════════════════════════════════════════════════
+   Design Tokens
+   ══════════════════════════════════════════════════════════════════ */
+:root {
+  /* Surfaces */
+  --bg: #0a0a0a;
+  --surface: #141414;
+  --surface2: #1c1c1e;
+  --surface3: #2c2c2e;
+
+  /* Borders */
+  --border: #2c2c2e;
+  --border-light: #3a3a3c;
+
+  /* Text — WCAG AA 4.5:1 on --bg 기준 상향 */
+  --text: #f5f5f7;
+  --text-secondary: #b0b0b5;  /* from #a1a1a6 — ~5.5:1 on #1c1c1e */
+  --text-tertiary: #8e8e93;   /* from #636366 — ~4.6:1 on #1c1c1e (WCAG AA) */
+
+  /* Primary — 토마토 레드 A안 */
+  --primary: #fa342c;
+  --primary-bg: rgba(250,52,44,0.12);
+
+  /* Mapped aliases */
+  --muted: var(--text-secondary);
+  --muted2: var(--text-tertiary);
+
+  /* Chart colors */
+  --chart-tick: #5c6478;
+  --chart-grid: #2c3040;
+  --chart-label: #e2e4ea;
+  --chart-tooltip-title: #e2e4ea;
+  --chart-tooltip-body: #a0a6b8;
+  --chart-bg: #1e2028;
+
+  /* Feature colors — TDS 원칙: primary 하나로 통일 */
+  --gym: #fa342c;
+  --gym-dim: rgba(250,52,44,0.10);
+  --cf: #fa342c;
+  --cf-dim: rgba(250,52,44,0.10);
+  --diet-ok: #fa342c;
+  --diet-ok-dim: rgba(250,52,44,0.10);
+  --diet-bad: #921708;
+  --diet-bad-dim: rgba(146,23,8,0.10);
+  --streak: #fa342c;
+  --accent: #fa342c;
+
+  /* Muscle group colors */
+  --chest: #f04452;
+  --shoulder: #a855f7;
+  --back: #06b6d4;
+  --lower: #10b981;
+  --bicep: #f59e0b;
+  --tricep: #ec4899;
+  --abs: #84cc16;
+
+  /* Typography — TDS Mobile font stack */
+  --font-sans: 'Toss Product Sans', 'Tossface', 'SF Pro KR', 'SF Pro Display', 'SF Pro Icons', -apple-system, BlinkMacSystemFont, 'Basier Square', 'Apple SD Gothic Neo', Roboto, 'Noto Sans KR', 'Noto Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+  --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+
+  /* Radius — TDS Mobile scale */
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-full: 9999px;
+
+  /* Transition — TDS Mobile standard: 0.1s ease-in-out */
+  --transition: 0.1s ease-in-out;
+  --transition-slow: 0.3s ease;
+  --transition-progress: 0.5s ease-in-out;
+  --ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
+
+  /* Spacing — 4px grid */
+  --space-0: 0; --space-1: 4px; --space-2: 8px; --space-3: 12px;
+  --space-4: 16px; --space-5: 20px; --space-6: 24px; --space-8: 32px; --space-10: 40px;
+
+  /* Typography — TDS Mobile scale (size / line-height) */
+  --tds-t1-size: 30px; --tds-t1-lh: 40px;
+  --tds-t2-size: 26px; --tds-t2-lh: 36px;
+  --tds-t3-size: 22px; --tds-t3-lh: 32px;
+  --tds-t4-size: 20px; --tds-t4-lh: 29px;
+  --tds-t5-size: 17px; --tds-t5-lh: 25.5px;
+  --tds-t6-size: 15px; --tds-t6-lh: 22.5px;
+  --tds-t7-size: 13px; --tds-t7-lh: 19.5px;
+  --tds-st10-size: 16px; --tds-st10-lh: 24px;
+  --tds-st11-size: 14px; --tds-st11-lh: 21px;
+  --tds-st12-size: 13px; --tds-st12-lh: 19.5px;
+  --tds-st13-size: 11px; --tds-st13-lh: 16.5px;
+  --tds-w-bold: 700; --tds-w-semi: 600; --tds-w-med: 500; --tds-w-reg: 400;
+
+  /* Shadows — TDS Mobile */
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.4);
+  --shadow-lg: 0 8px 24px rgba(0,0,0,0.5);
+  --shadow-segmented: 0 1px 2px 0 rgba(0,0,0,0.09);
+
+  /* ── Seed Design Tokens ── */
+  /* Palette */
+  --seed-gray-100: #f7f8f9; --seed-gray-200: #f3f4f5; --seed-gray-300: #eeeff1;
+  --seed-gray-400: #dcdee3; --seed-gray-500: #d1d3d8; --seed-gray-600: #b0b3ba;
+  --seed-gray-700: #868b94; --seed-gray-800: #555d6d; --seed-gray-900: #2a3038;
+  --seed-gray-1000: #1a1c20;
+  --seed-carrot-100: #fff2ec; --seed-carrot-400: #ffb999; --seed-carrot-600: #ff6600; --seed-carrot-700: #e14d00;
+  --seed-blue-100: #eff6ff; --seed-blue-600: #5e98fe; --seed-blue-700: #217cf9;
+  --seed-red-100: #fdf0f0; --seed-red-600: #fc6a66; --seed-red-700: #fa342c;
+  --seed-green-100: #edfaf6; --seed-green-600: #10ab7d; --seed-green-700: #079171;
+  --seed-yellow-100: #fff7de; --seed-yellow-300: #fbdc65; --seed-yellow-700: #9b7821;
+  --seed-purple-600: #9f84fb; --seed-purple-700: #8969ea;
+
+  /* Semantic */
+  --seed-fg-neutral: var(--seed-gray-1000);
+  --seed-fg-muted: var(--seed-gray-800);
+  --seed-fg-subtle: var(--seed-gray-700);
+  --seed-fg-placeholder: var(--seed-gray-600);
+  --seed-fg-disabled: var(--seed-gray-500);
+  --seed-fg-brand: var(--primary);
+  --seed-fg-critical: var(--seed-red-700);
+  --seed-fg-positive: var(--seed-green-700);
+  --seed-fg-informative: var(--seed-blue-700);
+  --seed-bg-layer: #ffffff;
+  --seed-bg-fill: var(--seed-gray-100);
+  --seed-bg-neutral-weak: var(--seed-gray-200);
+  --seed-bg-brand-weak: var(--primary-bg);
+  --seed-bg-brand-solid: var(--primary);
+  --seed-bg-critical-weak: var(--seed-red-100);
+  --seed-bg-positive-weak: var(--seed-green-100);
+  --seed-bg-informative-weak: var(--seed-blue-100);
+  --seed-stroke-neutral: rgba(0,0,0,0.08);
+  --seed-stroke-weak: var(--seed-gray-400);
+
+  /* TDS Mobile Typography Scale (f11-f42 mapped) */
+  --tds-f11: 11px; --tds-lh11: 16.5px;
+  --tds-f12: 12px; --tds-lh12: 18px;
+  --tds-f13: 13px; --tds-lh13: 19.5px;
+  --tds-f14: 14px; --tds-lh14: 21px;
+  --tds-f15: 15px; --tds-lh15: 22.5px;
+  --tds-f16: 16px; --tds-lh16: 24px;
+  --tds-f17: 17px; --tds-lh17: 25.5px;
+  --tds-f18: 18px; --tds-lh18: 27px;
+  --tds-f19: 19px; --tds-lh19: 28px;
+  --tds-f20: 20px; --tds-lh20: 29px;
+  --tds-f22: 22px; --tds-lh22: 31px;
+  --tds-f24: 24px; --tds-lh24: 33px;
+  --tds-f26: 26px; --tds-lh26: 35px;
+  --tds-f30: 30px; --tds-lh30: 40px;
+
+  /* Seed Typography aliases */
+  --seed-t1: 11px; --seed-t2: 12px; --seed-t3: 13px; --seed-t4: 14px;
+  --seed-t5: 16px; --seed-t6: 18px; --seed-t7: 20px; --seed-t8: 22px;
+
+  /* Spacing (4px grid) */
+  --seed-x1: 4px; --seed-x2: 8px; --seed-x3: 12px; --seed-x4: 16px;
+  --seed-x5: 20px; --seed-x6: 24px; --seed-x8: 32px;
+
+  /* Radius */
+  --seed-r1: 4px; --seed-r2: 8px; --seed-r3: 12px; --seed-r4: 16px;
+  --seed-r5: 20px; --seed-r-full: 9999px;
+
+  /* Shadow */
+  --seed-s1: 0 1px 4px rgba(0,0,0,0.08);
+  --seed-s2: 0 2px 10px rgba(0,0,0,0.1);
+  --seed-s3: 0 4px 16px rgba(0,0,0,0.12);
+
+  /* Motion — TDS Mobile */
+  --seed-d3: 150ms; --seed-d4: 200ms; --seed-d5: 250ms;
+  --seed-ease: cubic-bezier(0.35,0,0.35,1);
+  --seed-ease-enter: cubic-bezier(0,0,0.15,1);
+  --seed-ease-exit: cubic-bezier(0.35,0,1,1);
+}
+
+/* ── Light Mode Tokens ── */
+:root.light {
+  --bg: #f7f8fa;
+  --surface: #ffffff;
+  --surface2: #f2f3f5;
+  --surface3: #e5e8eb;
+
+  --border: #e5e8eb;
+  --border-light: #d1d5db;
+
+  --text: #191f28;
+  --text-secondary: #4e5968;
+  --text-tertiary: #6b7684;  /* from #8b95a1 — ~4.6:1 on #fff (WCAG AA) */
+
+  --primary: #fa342c;
+  --primary-bg: rgba(250,52,44,0.08);
+
+  --gym-dim: rgba(250,52,44,0.08);
+  --cf-dim: rgba(250,52,44,0.08);
+  --diet-ok-dim: rgba(250,52,44,0.08);
+  --diet-bad-dim: rgba(146,23,8,0.08);
+
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.06);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+  --shadow-lg: 0 8px 24px rgba(0,0,0,0.12);
+  --shadow-segmented: 0 1px 2px 0 rgba(0,0,0,0.06);
+
+  /* Chart colors - light */
+  --chart-tick: #6b7280;
+  --chart-grid: #e5e7eb;
+  --chart-label: #374151;
+  --chart-tooltip-title: #111827;
+  --chart-tooltip-body: #4b5563;
+  --chart-bg: #ffffff;
+
+  /* Seed overrides for light */
+  --seed-bg-layer: #ffffff;
+  --seed-stroke-neutral: rgba(0,0,0,0.06);
+}
+
