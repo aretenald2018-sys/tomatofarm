@@ -3,7 +3,7 @@
 
 // 캐시 버전: 타임스탬프 기반 자동 생성 — 파일 수정 시 SW 자동 업데이트
 // (SW 파일 내용이 1바이트라도 바뀌면 브라우저가 새 SW로 인식)
-const CACHE_VERSION = 'tomatofarm-v20260421z8-r2-css-split';
+const CACHE_VERSION = 'tomatofarm-v20260421z9-r4-data-split';
 const RUNTIME_CACHE = 'dashboard3-runtime';
 const STATIC_ASSETS = [
   './',
@@ -90,6 +90,8 @@ const STATIC_ASSETS = [
   './home/admin-onboarding.js',
   // data 리팩토링 모듈
   './data/data-core.js',
+  './data/data-load.js',
+  './data/data-save.js',
   './data/data-auth.js',
   './data/data-account.js',
   './data/data-date.js',
