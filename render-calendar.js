@@ -180,7 +180,7 @@ export function renderCalendar() {
     const weightTxt   = mx.weight != null ? `${mx.weight.toFixed(1)}` : '—';
 
     const stampHtml = (mx.score != null && mx.score >= 90)
-      ? `<img class="cal-stamp" src="./favicon.svg" alt="" aria-hidden="true">`
+      ? `<img class="cal-stamp" src="./public/characters/tomato-happy.svg" alt="" aria-hidden="true">`
       : '';
 
     cells.push(`

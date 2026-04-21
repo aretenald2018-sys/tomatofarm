@@ -1,80 +1,40 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="토마토 키우기">
   <defs>
-    <radialGradient id="bodyGrad" cx="35%" cy="30%" r="65%">
-      <stop offset="0%" stop-color="#fc6a66" stop-opacity="0.45"/>
-      <stop offset="100%" stop-color="#ca1d13" stop-opacity="0.35"/>
+    <radialGradient id="tfBody" cx="38%" cy="28%" r="72%">
+      <stop offset="0%" stop-color="#ff6861"/>
+      <stop offset="58%" stop-color="#ff3835"/>
+      <stop offset="100%" stop-color="#dc2727"/>
     </radialGradient>
+    <radialGradient id="tfShine" cx="30%" cy="25%" r="80%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.92"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="tfLeaf" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7fe48c"/>
+      <stop offset="100%" stop-color="#2f8f4d"/>
+    </linearGradient>
   </defs>
-
-  <!-- ===== 몸체 ===== -->
-  <ellipse cx="256" cy="320" rx="170" ry="165" fill="#fa342c"/>
-  <ellipse cx="256" cy="320" rx="170" ry="165" fill="url(#bodyGrad)"/>
-
-  <!-- 광택 -->
-  <ellipse cx="210" cy="270" rx="55" ry="38" fill="white" opacity="0.16"
-           transform="rotate(-20 210 270)"/>
-
-  <!-- ===== 이파리 (모자처럼 위에 얹힘) ===== -->
-  <g transform="translate(0,-30)">
-  <!-- 왼쪽 아래: 어두운 층 → 본체 → 하이라이트 -->
-  <path d="M256,195 C232,198 190,208 172,200 C165,190 172,178 186,182 C208,188 244,194 256,195Z"
-        fill="#1B5E20"/>
-  <path d="M256,193 C234,196 194,204 178,198 C172,190 178,180 190,183 C210,188 244,192 256,193Z"
-        fill="#2E7D32"/>
-  <path d="M256,191 C238,193 206,200 194,196 C190,192 194,186 202,188 C216,190 244,191 256,191Z"
-        fill="#4CAF50" opacity="0.4"/>
-
-  <!-- 오른쪽 아래 -->
-  <path d="M256,195 C280,198 322,208 340,200 C347,190 340,178 326,182 C304,188 268,194 256,195Z"
-        fill="#1B5E20"/>
-  <path d="M256,193 C278,196 318,204 334,198 C340,190 334,180 322,183 C302,188 268,192 256,193Z"
-        fill="#2E7D32"/>
-  <path d="M256,191 C274,193 306,200 318,196 C322,192 318,186 310,188 C296,190 268,191 256,191Z"
-        fill="#4CAF50" opacity="0.4"/>
-
-  <!-- 왼쪽 위 -->
-  <path d="M256,192 C236,182 205,162 195,145 C198,132 210,128 218,136 C232,150 250,180 256,192Z"
-        fill="#2E7D32"/>
-  <path d="M256,190 C238,181 210,164 202,150 C204,140 214,137 220,143 C232,154 250,178 256,190Z"
-        fill="#43a047"/>
-  <path d="M256,186 C242,178 220,166 214,158 C216,152 222,150 226,154 C234,162 250,178 256,186Z"
-        fill="#66BB6A" opacity="0.5"/>
-
-  <!-- 오른쪽 위 -->
-  <path d="M256,192 C276,182 307,162 317,145 C314,132 302,128 294,136 C280,150 262,180 256,192Z"
-        fill="#2E7D32"/>
-  <path d="M256,190 C274,181 302,164 310,150 C308,140 298,137 292,143 C280,154 262,178 256,190Z"
-        fill="#43a047"/>
-  <path d="M256,186 C270,178 292,166 298,158 C296,152 290,150 286,154 C278,162 262,178 256,186Z"
-        fill="#66BB6A" opacity="0.5"/>
-
-  <!-- 가운데 위 -->
-  <path d="M256,190 C248,172 240,140 246,122 C252,115 260,115 266,122 C272,140 264,172 256,190Z"
-        fill="#2E7D32"/>
-  <path d="M256,188 C250,172 244,144 248,128 C253,122 259,122 264,128 C268,144 262,172 256,188Z"
-        fill="#43a047"/>
-  <path d="M256,184 C252,172 248,150 251,138 C254,134 258,134 261,138 C264,150 260,172 256,184Z"
-        fill="#66BB6A" opacity="0.5"/>
-
-  <!-- 꼭지 줄기 -->
-  <path d="M253,165 Q254,148 258,140 Q262,148 261,165" fill="#2E7D32"/>
+  <ellipse cx="256" cy="456" rx="170" ry="24" fill="#000000" opacity="0.12"/>
+  <path d="M256 120 C164 120 82 190 82 294 C82 392 160 448 256 448 C352 448 430 392 430 294 C430 190 348 120 256 120 Z"
+        fill="url(#tfBody)" stroke="#b81d1d" stroke-width="14" stroke-linejoin="round"/>
+  <path d="M256 78 C246 92 242 111 247 130 C223 107 198 101 170 103 C175 130 193 145 220 152 C194 160 172 179 157 205 C188 211 215 208 236 191 C233 218 240 241 256 259 C272 241 279 218 276 191 C297 208 324 211 355 205 C339 179 317 160 291 152 C318 145 336 130 341 103 C312 101 287 107 264 130 C266 110 264 92 256 78 Z"
+        fill="url(#tfLeaf)" stroke="#32844d" stroke-width="10" stroke-linejoin="round"/>
+  <ellipse cx="170" cy="212" rx="38" ry="22" transform="rotate(-42 170 212)" fill="url(#tfShine)" opacity="0.88"/>
+  <ellipse cx="112" cy="270" rx="17" ry="15" fill="#ffffff" opacity="0.42"/>
+  <g transform="translate(182 286) scale(0.84) translate(-182 -286)">
+    <ellipse cx="182" cy="286" rx="42" ry="49" fill="#a61d1f"/>
+    <circle cx="171" cy="272" r="18" fill="#ffffff"/>
+    <circle cx="199" cy="284" r="9" fill="#ffffff"/>
+    <path d="M162 302 C170 314 186 315 197 305" fill="none" stroke="#e05f61" stroke-width="8" stroke-linecap="round"/>
   </g>
-
-  <!-- ===== 얼굴 ===== -->
-  <ellipse cx="150" cy="350" rx="32" ry="18" fill="#fed4d2" opacity="0.55"/>
-  <ellipse cx="362" cy="350" rx="32" ry="18" fill="#fed4d2" opacity="0.55"/>
-
-  <!-- 왼쪽 눈 -->
-  <circle cx="216" cy="315" r="26" fill="#5A0E04"/>
-  <circle cx="225" cy="305" r="9.5" fill="white"/>
-  <circle cx="220" cy="311" r="4.2" fill="white" opacity="0.4"/>
-
-  <!-- 오른쪽 눈 -->
-  <circle cx="296" cy="315" r="26" fill="#5A0E04"/>
-  <circle cx="305" cy="305" r="9.5" fill="white"/>
-  <circle cx="300" cy="311" r="4.2" fill="white" opacity="0.4"/>
-
-  <!-- 입 -->
-  <path d="M242,358 Q256,376 270,358" stroke="#5A0E04" stroke-width="5"
-        fill="none" stroke-linecap="round"/>
+  <g transform="translate(330 286) scale(0.84) translate(-330 -286)">
+    <ellipse cx="330" cy="286" rx="42" ry="49" fill="#a61d1f"/>
+    <circle cx="319" cy="272" r="18" fill="#ffffff"/>
+    <circle cx="347" cy="284" r="9" fill="#ffffff"/>
+    <path d="M310 302 C318 314 334 315 345 305" fill="none" stroke="#e05f61" stroke-width="8" stroke-linecap="round"/>
+  </g>
+  <ellipse cx="144" cy="352" rx="38" ry="22" fill="#ff9ba1" opacity="0.88"/>
+  <ellipse cx="368" cy="352" rx="38" ry="22" fill="#ff9ba1" opacity="0.88"/>
+  <path d="M220 332 C228 350 243 354 256 339 C269 354 284 350 292 332"
+        fill="none" stroke="#9a1616" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
