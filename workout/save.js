@@ -181,35 +181,61 @@ function _cleanExercises(includeNotes) {
     .filter(e => e.sets.length > 0 || (includeNotes && e.note));
 }
 
-// ── 명시적 저장 ──────────────────────────────────────────────────
-export async function saveWorkoutDay() {
-  if (!S.shared.date) return;
-  if (_blockIfFutureDate()) return;
+// ── 공통 저장 prep ──────────────────────────────────────────────
+// 양 저장 경로(saveWorkoutDay / _autoSaveDiet) 가 동일하게 거치는 단계:
+//   1) 날짜 가드 (없으면 / 미래면 차단)
+//   2) DOM → S.diet 텍스트 동기화 (식단 4끼)
+//   3) [optional] DOM → S.workout.runData 동기화 (런닝 폼) + activity flag 파생
+//      → workout 경로만 수행. 식단 자동저장은 운동 flag 를 건드리지 않는 정책 유지.
+//   4) cleanEx 계산 + isDietSuccess 도메인 파생
+// 반환: { y, m, d, cleanEx, isDietSuccess } 또는 null (가드 차단 시).
+function _prepareSave({ syncWorkoutDetails }) {
+  if (!S.shared.date) return null;
+  if (_blockIfFutureDate()) return null;
   const { y, m, d } = S.shared.date;
 
-  // diet text 동기화 (운동 탭의 식단 입력이 열려 있으면 그 값 반영)
+  // 식단 텍스트 동기화 — 양 경로 공통.
+  // DOM 존재 여부로 분기: 존재하면 (빈 문자열 포함) 덮어쓰기, 없으면 기존값 보존.
+  // 과거 saveWorkoutDay 는 DOM 없을 때 '' 로 클리어했으나 _autoSaveDiet 는 보존했음.
+  // 통합 시 _autoSaveDiet 의 보존 정책을 정답으로 채택 — 사용자가 입력칸을 지운
+  // 경우(DOM present + value '') 에는 양쪽 모두 정확히 클리어 동작.
   const diet = S.diet;
-  diet.breakfast = document.getElementById('wt-meal-breakfast')?.value.trim() || '';
-  diet.lunch     = document.getElementById('wt-meal-lunch')?.value.trim() || '';
-  diet.dinner    = document.getElementById('wt-meal-dinner')?.value.trim() || '';
-  diet.snack     = document.getElementById('wt-meal-snack')?.value.trim() || '';
+  const _syncMeal = (key, elId) => {
+    const el = document.getElementById(elId);
+    if (el) diet[key] = el.value.trim();
+  };
+  _syncMeal('breakfast', 'wt-meal-breakfast');
+  _syncMeal('lunch',     'wt-meal-lunch');
+  _syncMeal('dinner',    'wt-meal-dinner');
+  _syncMeal('snack',     'wt-meal-snack');
 
-  // 런닝 폼 최신값 동기화
-  const run = S.workout.runData;
-  run.distance    = parseFloat(document.getElementById('wt-run-distance')?.value) || 0;
-  run.durationMin = parseInt(document.getElementById('wt-run-duration-min')?.value) || 0;
-  run.durationSec = parseInt(document.getElementById('wt-run-duration-sec')?.value) || 0;
-  run.memo        = document.getElementById('wt-run-memo')?.value.trim() || '';
+  if (syncWorkoutDetails) {
+    // 런닝 폼 최신값 동기화 (운동 명시 저장만)
+    const run = S.workout.runData;
+    run.distance    = parseFloat(document.getElementById('wt-run-distance')?.value) || 0;
+    run.durationMin = parseInt(document.getElementById('wt-run-duration-min')?.value) || 0;
+    run.durationSec = parseInt(document.getElementById('wt-run-duration-sec')?.value) || 0;
+    run.memo        = document.getElementById('wt-run-memo')?.value.trim() || '';
 
-  // 운동 flag 자동 파생 (세부 입력 → boolean flag)
-  const derived = deriveActivityFlagsFromDetails(S.workout);
-  S.workout.cf = derived.cf;
-  S.workout.running = derived.running;
-  S.workout.swimming = derived.swimming;
-  S.workout.stretching = derived.stretching;
+    // 활동 flag 자동 파생 (세부 입력 → boolean flag).
+    // 식단 자동저장은 호출하지 않음 — 식단 CRUD 가 운동 flag 변경에 관여 금지.
+    const derived = deriveActivityFlagsFromDetails(S.workout);
+    S.workout.cf = derived.cf;
+    S.workout.running = derived.running;
+    S.workout.swimming = derived.swimming;
+    S.workout.stretching = derived.stretching;
+  }
 
-  const cleanEx = _cleanExercises(false);
+  const cleanEx = _cleanExercises(!syncWorkoutDetails);  // 식단 경로는 메모만 있는 종목도 보존
   const isDietSuccess = deriveDietSuccessFromWorkout(S.workout, S.diet, S.shared.date, cleanEx);
+  return { y, m, d, cleanEx, isDietSuccess };
+}
+
+// ── 명시적 저장 (운동 도메인) ───────────────────────────────────
+export async function saveWorkoutDay() {
+  const ctx = _prepareSave({ syncWorkoutDetails: true });
+  if (!ctx) return;
+  const { y, m, d, cleanEx, isDietSuccess } = ctx;
 
   const btn = document.getElementById('wt-save-btn');
   if (btn) { btn.disabled = true; btn.textContent = '저장 중...'; }
@@ -237,29 +263,16 @@ export async function saveWorkoutDay() {
   window.showToast?.('저장 완료', 2000, 'success');
 }
 
-// ── 식단 자동 저장 ──────────────────────────────────────────────
-// 식단 도메인만 merge 저장. 운동 필드 전부 제외 → 식단 자동저장이 운동을 건드리지 못함.
-// deriveActivityFlagsFromDetails 호출 제거 — 식단 CRUD 는 운동 flag 변경에 관여 금지.
+// ── 식단 자동 저장 (식단 도메인) ────────────────────────────────
+// 식단 페이로드만 merge 저장 — 운동 필드 전부 제외 → 자동저장이 운동을 건드리지 못함.
 export async function _autoSaveDiet() {
-  if (!S.shared.date) {
-    console.warn('[render-workout] 날짜 정보가 없어 저장할 수 없습니다');
+  const ctx = _prepareSave({ syncWorkoutDetails: false });
+  if (!ctx) {
+    if (!S.shared.date) console.warn('[render-workout] 날짜 정보가 없어 저장할 수 없습니다');
     return;
   }
-  if (_blockIfFutureDate()) return;
-  const { y, m, d } = S.shared.date;
-
-  const bEl = document.getElementById('wt-meal-breakfast');
-  const lEl = document.getElementById('wt-meal-lunch');
-  const dEl = document.getElementById('wt-meal-dinner');
-  const sEl = document.getElementById('wt-meal-snack');
+  const { y, m, d, isDietSuccess } = ctx;
   const diet = S.diet;
-  if (bEl) diet.breakfast = bEl.value.trim();
-  if (lEl) diet.lunch     = lEl.value.trim();
-  if (dEl) diet.dinner    = dEl.value.trim();
-  if (sEl) diet.snack     = sEl.value.trim();
-
-  const cleanEx = _cleanExercises(true);
-  const isDietSuccess = deriveDietSuccessFromWorkout(S.workout, S.diet, S.shared.date, cleanEx);
 
   console.log('[render-workout] 식단 자동 저장 시작:', {
     dateKey: dateKey(y, m, d),
