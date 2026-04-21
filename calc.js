@@ -309,6 +309,32 @@ export function calcStreaks(cache, today, plan, dateKeyFn) {
   return { workout, diet, stretching, wineFree, combined };
 }
 
+/**
+ * Streak(일수) → 히어로 캐릭터 표정 매핑.
+ * 순수 함수. DOM/Firebase 접근 없음.
+ *
+ * 구간:
+ *   0     → 'seed'   (잠든 듯 평온한 눈, 작은 중립 입)
+ *   1-2   → 'smile'  (기본 웃는 얼굴 — 현재 tomato-red.svg 표정과 동일)
+ *   3-6   → 'happy'  (환한 미소 + 볼 홍조)
+ *   7-13  → 'fire'   (신난 눈매 + 활짝 웃는 입)
+ *   14+   → 'legend' (별 눈 + 크게 웃는 입)
+ *
+ * 히어로카드 우측 토마토 캐릭터 표정 결정에 사용. 숫자가 아니거나 NaN이면 'seed'.
+ *
+ * @param {number} streakDays - combined 스트릭 일수 (calcStreaks().combined 권장)
+ * @returns {'seed'|'smile'|'happy'|'fire'|'legend'}
+ */
+export function streakToCharacterMood(streakDays) {
+  const n = Number(streakDays);
+  if (!Number.isFinite(n) || n <= 0) return 'seed';
+  if (n >= 14) return 'legend';
+  if (n >= 7)  return 'fire';
+  if (n >= 3)  return 'happy';
+  if (n >= 1)  return 'smile';
+  return 'seed';
+}
+
 // ── 토마토 키우기 시스템 ──────────────────────────────────────────
 
 /**

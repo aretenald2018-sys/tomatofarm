@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8"/>
+  <title>히어로 캐릭터 표정 프리뷰</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <style>
+    body { margin: 0; font-family: -apple-system, 'Toss Product Sans', sans-serif; background: #fdf0f0; color: #222; padding: 24px; }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    p.sub { color: #666; font-size: 13px; margin: 0 0 24px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; max-width: 1100px; }
+    .card {
+      background: linear-gradient(135deg, #921708 0%, #ca1d13 50%, #fa342c 100%);
+      border-radius: 16px;
+      padding: 20px;
+      display: flex; align-items: center; justify-content: space-between;
+      color: #fff;
+      box-shadow: 0 8px 24px rgba(146,23,8,0.18);
+    }
+    .card .left { flex: 1; }
+    .card .mood-tag { font-size: 11px; letter-spacing: 0.5px; text-transform: uppercase; opacity: 0.75; font-weight: 700; }
+    .card .label { font-size: 14px; font-weight: 600; margin-top: 4px; opacity: 0.92; }
+    .card .count { font-size: 34px; font-weight: 800; margin-top: 2px; text-shadow: 0 2px 8px rgba(0,0,0,0.2); }
+    .card .unit { font-size: 16px; font-weight: 500; opacity: 0.7; margin-left: 2px; }
+    .card .right { flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+    /* character.js가 주는 .tf-hero-character 클래스와 같은 스타일 */
+    .tf-hero-character {
+      display: block; width: 80px; height: 80px;
+      animation: tf-float 2s ease-in-out infinite;
+      transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+      filter: drop-shadow(0 4px 12px rgba(0,0,0,0.3));
+    }
+    .tf-hero-character--seed   { transform: scale(0.94); opacity: 0.92; }
+    .tf-hero-character--smile  { transform: scale(1.00); }
+    .tf-hero-character--happy  { transform: scale(1.04); animation: tf-happy-aura 2.8s ease-in-out infinite, tf-float 2s ease-in-out infinite; }
+    .tf-hero-character--fire   { transform: scale(1.07); animation: tf-fire-aura 2.6s ease-in-out infinite, tf-float 2s ease-in-out infinite; }
+    .tf-hero-character--legend { transform: scale(1.10); animation: tf-legend-sparkle 2.4s ease-in-out infinite, tf-float 2s ease-in-out infinite; }
+    @keyframes tf-float { 0%,100% { transform: translateY(0) scale(var(--s,1)); } 50% { transform: translateY(-6px) scale(var(--s,1)); } }
+    @keyframes tf-happy-aura {
+      0%, 100% { filter: drop-shadow(0 0 8px rgba(255,216,77,0.45)) drop-shadow(0 0 16px rgba(255,224,120,0.28)); }
+      50%      { filter: drop-shadow(0 0 12px rgba(255,216,77,0.65)) drop-shadow(0 0 22px rgba(255,224,120,0.42)); }
+    }
+    @keyframes tf-fire-aura {
+      0%, 100% {
+        filter: drop-shadow(0 0 10px rgba(255,255,255,0.7))
+                drop-shadow(0 0 18px rgba(255,216,77,0.55))
+                drop-shadow(0 0 30px rgba(255,224,120,0.35));
+      }
+      50% {
+        filter: drop-shadow(0 0 16px rgba(255,255,255,0.9))
+                drop-shadow(0 0 26px rgba(255,216,77,0.75))
+                drop-shadow(0 0 40px rgba(255,224,120,0.55));
+      }
+    }
+    @keyframes tf-legend-sparkle {
+      0%, 100% {
+        filter: drop-shadow(0 0 14px rgba(255,255,255,0.85))
+                drop-shadow(0 0 28px rgba(255,255,255,0.55))
+                drop-shadow(0 0 44px rgba(255,240,180,0.35));
+      }
+      50% {
+        filter: drop-shadow(0 0 20px rgba(255,255,255,1))
+                drop-shadow(0 0 38px rgba(255,255,255,0.75))
+                drop-shadow(0 0 58px rgba(255,240,180,0.55));
+      }
+    }
+    .tools { margin: 24px 0; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .tools input[type=range] { width: 260px; }
+    .slider-card {
+      background: #fff; padding: 20px; border-radius: 16px; max-width: 540px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+    }
+    .slider-card h2 { margin: 0 0 12px; font-size: 16px; }
+    .slider-card .live {
+      display: flex; align-items: center; gap: 16px;
+      background: linear-gradient(135deg, #921708 0%, #ca1d13 50%, #fa342c 100%);
+      color: #fff; padding: 18px; border-radius: 12px;
+    }
+    .slider-card .live .meta { flex: 1; }
+    .slider-card .live .num { font-size: 28px; font-weight: 800; }
+    .slider-card .live .tag { font-size: 11px; opacity: 0.8; text-transform: uppercase; letter-spacing: 0.5px; }
+  </style>
+</head>
+<body>
+  <h1>🍅 히어로카드 캐릭터 표정 프리뷰</h1>
+  <p class="sub">combined 스트릭에 따라 5단계로 표정이 바뀝니다. 이 페이지는 <code>home/character.js</code>의 renderCharacterSVG를 직접 호출해 렌더합니다.</p>
+
+  <div class="slider-card">
+    <h2>슬라이더로 실시간 확인</h2>
+    <div class="live">
+      <div class="meta">
+        <div class="tag" id="live-tag">MOOD</div>
+        <div class="num"><span id="live-streak">0</span>일 streak</div>
+      </div>
+      <div id="live-character"></div>
+    </div>
+    <div class="tools" style="margin-top:12px;">
+      <input id="streak-slider" type="range" min="0" max="60" value="0"/>
+      <span id="streak-val" style="font-weight:700;">0</span>일
+    </div>
+  </div>
+
+  <h2 style="margin-top:32px;font-size:16px;">5단계 동시 비교</h2>
+  <div class="grid" id="grid"></div>
+
+  <script type="module">
+    import { renderCharacterSVG } from './home/character.js';
+    import { streakToCharacterMood } from './calc.js';
+
+    // 5단계 동시 비교
+    const MOODS = [
+      { mood: 'seed',   range: '0일',      label: '시작해볼까?' },
+      { mood: 'smile',  range: '1-2일',    label: '리듬 타는 중' },
+      { mood: 'happy',  range: '3-6일',    label: '좋은 흐름이에요' },
+      { mood: 'fire',   range: '7-13일',   label: '일주일 넘었어요!' },
+      { mood: 'legend', range: '14일+',    label: '전설을 쓰는 중' },
+    ];
+    const grid = document.getElementById('grid');
+    MOODS.forEach(({ mood, range, label }) => {
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.innerHTML = `
+        <div class="left">
+          <div class="mood-tag">${mood}</div>
+          <div class="label">${label}</div>
+          <div class="count">${range.replace(/일.*$/,'')}<span class="unit">${range.match(/일.*/)?.[0] || '일'}</span></div>
+        </div>
+        <div class="right">${renderCharacterSVG(mood, { size: 80 })}</div>
+      `;
+      grid.appendChild(card);
+    });
+
+    // 슬라이더 라이브 프리뷰
+    const slider = document.getElementById('streak-slider');
+    const val = document.getElementById('streak-val');
+    const liveStreak = document.getElementById('live-streak');
+    const liveTag = document.getElementById('live-tag');
+    const liveChar = document.getElementById('live-character');
+    function updateLive() {
+      const n = Number(slider.value);
+      const mood = streakToCharacterMood(n);
+      val.textContent = n;
+      liveStreak.textContent = n;
+      liveTag.textContent = mood;
+      liveChar.innerHTML = renderCharacterSVG(mood, { size: 80 });
+    }
+    slider.addEventListener('input', updateLive);
+    updateLive();
+  </script>
+</body>
+</html>
