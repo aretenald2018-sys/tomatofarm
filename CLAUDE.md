@@ -221,6 +221,17 @@ CSS 클래스:
 - [ ] **`git diff --stat`으로 미커밋 파일 확인** — 관련 변경이 남아있지 않은지 체크.
 - [ ] **사진 필드 보존 확인** — `_buildSavePayload()`에 `bPhoto`, `lPhoto`, `dPhoto`, `sPhoto`, `workoutPhoto` 모두 포함되는지.
 
+### 📋 레시피: 파일 위치 이동 (디렉토리 깊이 변화) 시 체크리스트
+
+`workout/expert.js` → `workout/expert/onboarding.js` 같이 파일을 새 디렉토리로 옮기면 깊이 변화 때문에 상대 경로가 깨진다. 정적 import는 IDE/`node --check`가 잡지만 **동적 `await import()` 는 런타임에야 발견됨**. 회귀 사례: R3b 분리 후 "AI 로 정리하기" 5초만에 실패 (`await import('../data/data-core.js')` → 새 위치는 `'../../data/data-core.js'` 였어야).
+
+분리/이동 직후 아래를 grep:
+- [ ] **동적 import 전수**: `grep -nE "await import\(['\"][./]" <new-file>` — 모든 `'./'`/`'../'` 가 새 위치 기준으로 맞는지 확인.
+- [ ] **fetch / new URL / SW register**: `grep -nE "(fetch|new URL|register)\(['\"][./]" <new-file>` — 같은 이유로 회귀 가능.
+- [ ] **문자열 안의 경로**: `grep -nE "['\"]\.\./|['\"]\./" <new-file>` — DOM `<img src='./...'>` 같은 케이스.
+- [ ] **호출부 import 경로**: 다른 파일이 옮겨진 모듈을 import 할 때 경로도 같이 바꿨는지 (`import { X } from './expert.js'` → `from './expert/onboarding.js'`).
+- [ ] **브라우저에서 해당 기능 1회 실행** — `node --check` / `node --test` / `curl 200` 만으로는 동적 경로 검증 불가. 분리/이동 후 사용자 흐름(로그인, 모달 열기, 저장 등)을 한 번 직접 실행하는 게 유일한 신뢰 가능한 검증.
+
 ## 📁 파일 패턴
 - 새 탭 엔트리: `render-*.js` (shim) + 실제 로직은 하위 디렉토리 (예: `workout/`, `home/`, `admin/`)
 - 새 기능 모듈: `feature-*.js` (checkin, diet-plan, fatsecret, misc, nutrition, tutorial)
