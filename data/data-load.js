@@ -41,6 +41,39 @@ function _getWorkoutTwinOwnerId(ownerId) {
   return `${id}(guest)`;
 }
 
+// 운동 도메인 필드 — 트윈 병합 시 owner 에 값이 없으면 twin 값 채우기.
+// 과거: 전체 day 객체 단위로 판정 → owner 에 식단만 있고 운동 없는 날엔 twin 의 운동이
+//       병합 안 돼 스트릭이 계정 로그인 시마다 1↔5 로 흔들렸다 (문정토마토 이슈).
+const _TWIN_WORKOUT_FIELDS = [
+  'exercises', 'cf', 'swimming', 'running', 'stretching',
+  'runDistance', 'runDurationMin', 'runDurationSec', 'runMemo',
+  'swimDistance', 'swimDurationMin', 'swimDurationSec', 'swimStroke', 'swimMemo',
+  'cfWod', 'cfDurationMin', 'cfDurationSec', 'cfMemo',
+  'stretchDuration', 'stretchMemo',
+  'workoutDuration', 'workoutPhoto',
+  'gymId', 'routineMeta',
+];
+
+function _isFieldEmpty(v) {
+  if (v === undefined || v === null) return true;
+  if (Array.isArray(v)) return v.length === 0;
+  if (typeof v === 'string') return v === '';
+  if (typeof v === 'number') return v === 0;
+  if (typeof v === 'boolean') return v === false;
+  if (typeof v === 'object') return Object.keys(v).length === 0;
+  return false;
+}
+
+function _mergeTwinWorkoutFields(existing, incoming) {
+  const merged = { ...existing };
+  for (const field of _TWIN_WORKOUT_FIELDS) {
+    if (_isFieldEmpty(existing[field]) && !_isFieldEmpty(incoming[field])) {
+      merged[field] = incoming[field];
+    }
+  }
+  return merged;
+}
+
 async function _mergeWorkoutTwinCache(ownerId) {
   const twinOwnerId = _getWorkoutTwinOwnerId(ownerId);
   if (!ownerId || !twinOwnerId || twinOwnerId === ownerId) return;
@@ -54,9 +87,8 @@ async function _mergeWorkoutTwinCache(ownerId) {
         _cache[d.id] = incoming;
         return;
       }
-      if (!isActiveWorkoutDayData(existing) && isActiveWorkoutDayData(incoming)) {
-        _cache[d.id] = { ...existing, ...incoming };
-      }
+      // 필드 단위 병합 — owner 가 값을 갖고 있지 않은 운동 필드만 twin 값으로 채움.
+      _cache[d.id] = _mergeTwinWorkoutFields(existing, incoming);
     });
   } catch (e) {
     console.warn('[data] workout twin merge failed:', e.message);

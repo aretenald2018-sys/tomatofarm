@@ -183,25 +183,31 @@ export function hasDietRecordData(w) {
 
 /**
  * 하루 운동 성공 여부
- * 스트릭/토마토 집계 기준: 실제 수행된 세트가 있어야 함.
- *   - 완료 기준: set.done === true  (명시적 완료 체크)
- *              OR (set.kg > 0 && set.reps > 0)  (레거시 데이터 호환)
- *   - AI 루틴 로드만 한 상태(kg:0, reps:10, done:false)는 성공 아님.
- * cf/swimming/running/stretching은 boolean 플래그이므로 true면 기록으로 인정.
+ * 스트릭/토마토 집계 기준:
+ *   - 완료된 세트: set.done === true OR (set.kg > 0 && set.reps > 0) — AI 루틴 로드만(kg=0,reps=10,done=false)은 제외
+ *   - 활동 플래그: cf / swimming / running / stretching === true
+ *   - 활동 상세: runDistance/runDuration, swimDistance/Duration/Stroke, cfDuration/cfWod,
+ *               stretchDuration — 플래그 토글 누락해도 기록이 있으면 인정 (leaderboard와 기준 일치)
  * @param {object} dayData - getDay()로 가져온 해당 날짜 데이터
  * @returns {boolean}
  */
 export function isExerciseDaySuccess(dayData) {
-  const hasCompletedSet = (dayData.exercises || []).some(ex =>
+  if (!dayData) return false;
+  const w = dayData;
+  const hasCompletedSet = (w.exercises || []).some(ex =>
     (ex.sets || []).some(s =>
       s && (s.done === true || ((s.kg || 0) > 0 && (s.reps || 0) > 0))
     )
   );
-  return hasCompletedSet
-      || !!dayData.cf
-      || !!dayData.swimming
-      || !!dayData.running
-      || !!dayData.stretching;
+  if (hasCompletedSet) return true;
+  if (w.cf || w.swimming || w.running || w.stretching) return true;
+  if ((w.runDistance || 0) > 0 || (w.runDurationMin || 0) > 0 || (w.runDurationSec || 0) > 0) return true;
+  if ((w.swimDistance || 0) > 0 || (w.swimDurationMin || 0) > 0 || (w.swimDurationSec || 0) > 0) return true;
+  if ((w.swimStroke || '').toString().trim()) return true;
+  if ((w.cfDurationMin || 0) > 0 || (w.cfDurationSec || 0) > 0) return true;
+  if ((w.cfWod || '').toString().trim()) return true;
+  if ((w.stretchDuration || 0) > 0) return true;
+  return false;
 }
 
 /**
@@ -215,33 +221,17 @@ export function isExerciseDaySuccess(dayData) {
  */
 export function dietDayOk(dayData, plan, y, m, d) {
   const r = dayData || {};
-  const dt = {
-    breakfast: r.breakfast || '', lunch: r.lunch || '', dinner: r.dinner || '',
-    bOk: r.bOk ?? null, lOk: r.lOk ?? null, dOk: r.dOk ?? null,
-    bKcal: r.bKcal || 0, lKcal: r.lKcal || 0, dKcal: r.dKcal || 0, sKcal: r.sKcal || 0,
-    bFoods: r.bFoods || [], lFoods: r.lFoods || [], dFoods: r.dFoods || [], sFoods: r.sFoods || [],
-  };
-
   const limitKcal = getDayTargetKcal(plan, y, m, d, dayData);
-  const totalKcal = (dt.bKcal || 0) + (dt.lKcal || 0) + (dt.dKcal || 0) + (dt.sKcal || 0);
-  const tolerance = plan.advancedMode ? (plan.dietTolerance ?? 50) : 50;
-
-  const bSkip = !!r.breakfast_skipped;
-  const lSkip = !!r.lunch_skipped;
-  const dSkip = !!r.dinner_skipped;
+  const totalKcal = (r.bKcal || 0) + (r.lKcal || 0) + (r.dKcal || 0) + (r.sKcal || 0);
+  const tolerance = resolveDietTolerance(plan);
 
   // canonical hasRecord — hasDietRecordData로 일원화 (data.js hasDietRecord와 동일 계약)
-  const hasRecord = hasDietRecordData(r);
+  if (!hasDietRecordData(r)) return null;
 
-  if (!hasRecord && !bSkip && !lSkip && !dSkip) return null;
-
-  const calorieSuccess = isDietDaySuccess(totalKcal, limitKcal, tolerance);
-
-  const bOk = bSkip || (dt.bOk ?? false);
-  const lOk = lSkip || (dt.lOk ?? false);
-  const dOk = dSkip || (dt.dOk ?? false);
-
-  return bOk && lOk && dOk && calorieSuccess;
+  // 판정 기준 = isDietDaySuccess(kcal 범위) 단일.
+  // 과거엔 bOk && lOk && dOk 체크박스까지 요구해 끼니별 "OK" 토글이 없으면 스트릭이 깨졌음.
+  // evaluateCycleResult(토마토 정산)와 기준 일치 — kcal이 범위 내면 그 날은 성공.
+  return isDietDaySuccess(totalKcal, limitKcal, tolerance);
 }
 
 /**
@@ -254,7 +244,7 @@ export function dietDayOk(dayData, plan, y, m, d) {
  */
 export function calcStreaks(cache, today, plan, dateKeyFn) {
   const MAX_LOOKBACK = 365;
-  let workout = 0, diet = 0, stretching = 0, wineFree = 0;
+  let workout = 0, diet = 0, stretching = 0, wineFree = 0, combined = 0;
 
   const getDay = (y, m, d) => cache[dateKeyFn(y, m, d)] || {};
   const hasWorkout = (y, m, d) => isExerciseDaySuccess(getDay(y, m, d));
@@ -297,7 +287,26 @@ export function calcStreaks(cache, today, plan, dateKeyFn) {
     cur.setDate(cur.getDate() - 1);
   }
 
-  return { workout, diet, stretching, wineFree };
+  // 통합 스트릭 (홈 히어로 기본) — 그 날 성공 = 운동 기록 OR 식단 기록+칼로리 성공.
+  // isExerciseDaySuccess(=운동 기록 존재) OR dietDayOk===true 이면 success.
+  // 둘 다 기록 없는 과거일 → break. 둘 다 기록 없는 오늘 → skip (카운트 X, break X).
+  cur = new Date(today);
+  for (let i = 0; i < MAX_LOOKBACK; i++) {
+    const y = cur.getFullYear(), m = cur.getMonth(), d = cur.getDate();
+    const day = getDay(y, m, d);
+    const exOk = isExerciseDaySuccess(day);
+    const dok = dietDayOk(day, plan, y, m, d);
+    if (exOk || dok === true) {
+      combined++;
+    } else if (dok === false) {
+      break; // 식단 기록 있으나 칼로리 초과 — 운동도 없으면 실패
+    } else if (dok === null && cur < today) {
+      break; // 운동·식단 둘 다 기록 없는 과거일 — 스트릭 끊김
+    }
+    cur.setDate(cur.getDate() - 1);
+  }
+
+  return { workout, diet, stretching, wineFree, combined };
 }
 
 // ── 토마토 키우기 시스템 ──────────────────────────────────────────

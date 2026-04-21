@@ -96,8 +96,8 @@ export function updateHeroSocialProof(activeNames) {
 
   if (!activeNames || !activeNames.length) return;
 
-  const { workout, diet } = calcStreaks();
-  const mainStreak = Math.max(workout, diet);
+  const { workout, diet, combined } = calcStreaks();
+  const mainStreak = combined;
   const streakLabel = workout >= diet ? '운동' : '식단';
   const firstName = activeNames[0];
 

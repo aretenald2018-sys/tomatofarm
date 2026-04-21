@@ -21,7 +21,7 @@ function _pickMessage(hoursSinceLogin, user, notifications, guildRanking) {
     : 0;
   const fromName = notifications.find((item) => item.fromName)?.fromName || notifications.find((item) => item.userName)?.userName || '이웃';
   const streaks = calcStreaks();
-  const mainStreak = Math.max(streaks.workout, streaks.diet);
+  const mainStreak = streaks.combined;
 
   if (daysAway < 3) {
     return `${fromName}님도 최근에 기록했어요. 다시 만나서 반가워요.`;

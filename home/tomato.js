@@ -699,7 +699,8 @@ export function renderTomatoCard() {
   const stageLabels = ['씨앗 심기','새싹 돌보기','수확하기'];
 
   const streaks = calcStreaks();
-  const bestStreak = Math.max(streaks.workout, streaks.diet);
+  // combined = "운동 기록 OR 식단 성공" OR-스트릭. 별도 workout/diet 스트릭보다 보통 길다.
+  const bestStreak = streaks.combined;
   const streakType = streaks.workout >= streaks.diet ? '운동' : '식단';
   const todayDk = dateKey(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
   const todayDiet = getDiet(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
@@ -790,8 +791,8 @@ export function renderTomatoCard() {
       '잘했어요, 오늘의 할 일 끝!',
       '오늘도 한 발짝 나아갔어요!',
     ]);
-    heroCount = `${totalCount}<span class="tf-hero-unit">개</span>`;
-    heroSub = `이번 분기 <b>${qCount}개</b> 수확`;
+    heroCount = `${bestStreak}<span class="tf-hero-unit">일</span>`;
+    heroSub = `🍅 ${totalCount}개 · 이번 분기 <b>${qCount}개</b>`;
     heroEmoji = stages[dayIndex];
   } else if (bestStreak === 0) {
     heroLabel = pickMsg([
@@ -800,8 +801,8 @@ export function renderTomatoCard() {
       isWeekend ? '주말이니까 가볍게 시작해볼까요?' : '한 번이면 돼요, 시작해봐요',
       isMonday ? '새로운 한 주, 새로운 시작!' : '오늘이 바로 그날이에요',
     ]);
-    heroCount = `${totalCount}<span class="tf-hero-unit">개</span>`;
-    heroSub = `이번 분기 <b>${qCount}개</b> 수확`;
+    heroCount = `0<span class="tf-hero-unit">일</span>`;
+    heroSub = `🍅 ${totalCount}개 · 이번 분기 <b>${qCount}개</b>`;
     heroEmoji = stages[dayIndex];
   } else {
     heroLabel = pickMsg([
@@ -809,8 +810,8 @@ export function renderTomatoCard() {
       '작은 기록이 큰 변화를 만들어요',
       '시작이 반이에요!',
     ]);
-    heroCount = `${totalCount}<span class="tf-hero-unit">개</span>`;
-    heroSub = `이번 분기 <b>${qCount}개</b> 수확`;
+    heroCount = `${bestStreak}<span class="tf-hero-unit">일</span>`;
+    heroSub = `🍅 ${totalCount}개 · 이번 분기 <b>${qCount}개</b>`;
     heroEmoji = stages[dayIndex];
   }
 
