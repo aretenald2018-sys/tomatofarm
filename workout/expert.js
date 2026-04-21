@@ -177,6 +177,20 @@ function _setupGymCarousel() {
   let switching = false;
   let lastCenterId = scroll.querySelector('.wt-gym-slide.is-active')?.dataset?.gymId || null;
 
+  // ⚠️ scroll-snap-type: x mandatory + scroll-snap-align: center 조합 때문에
+  // 우리가 `scroll.scrollLeft = target` 으로 초기 스크롤하면 브라우저가 강제로
+  // 가장 가까운 snap point 로 재정렬한다. 이 snap 이 init 의 의도(active gym
+  // 중앙)와 다른 슬라이드를 고를 수 있고, 그 결과 scroll 이벤트 → settleTimer →
+  // _switchToGym(다른 gym) 호출 → "X 으로 전환할까요?" 모달이 사용자 입력 없이
+  // 뜨는 회귀가 있었음 (특히 routine 선택 직후 routineMeta 가 활성화된 시점).
+  // 방어: 실제 사용자 입력(pointerdown/touchstart)이 있은 뒤의 settle 만 switch
+  // 를 트리거. programmatic scroll/snap 은 closest/active 갱신만 하고 switch 스킵.
+  let userInteracted = false;
+  const _markUser = () => { userInteracted = true; };
+  scroll.addEventListener('pointerdown', _markUser, { passive: true });
+  scroll.addEventListener('touchstart', _markUser, { passive: true });
+  scroll.addEventListener('wheel', _markUser, { passive: true });
+
   const updateActive = () => {
     const center = scroll.scrollLeft + scroll.clientWidth / 2;
     let closest = null, closestDist = Infinity;
@@ -192,7 +206,13 @@ function _setupGymCarousel() {
       if (switching) return;
       if (!closest || closest.classList.contains('wt-gym-slide--add')) return;
       const gymId = closest.dataset.gymId;
-      if (!gymId || gymId === lastCenterId) return;
+      if (!gymId) return;
+      // 사용자 입력 없이 발생한 settle (init/snap 결과) 은 lastCenterId 만 갱신.
+      if (!userInteracted) {
+        lastCenterId = gymId;
+        return;
+      }
+      if (gymId === lastCenterId) return;
       lastCenterId = gymId;
       switching = true;
       try { await _switchToGym(gymId); }
