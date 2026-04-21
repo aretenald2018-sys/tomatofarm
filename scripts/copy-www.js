@@ -16,6 +16,7 @@ const targets = [
   'calc.js',
   'navigation.js', 'workout-ui.js', 'pwa-fcm.js',
   'fatsecret-api.js', 'sheet.js',
+  'feature-login.js', 'pwa-register.js',  // R1: index.html 인라인 스크립트 분리 산출물
   'manifest.json', 'sw.js', 'firebase-messaging-sw.js',
   'modal-manager.js',
   ...readdirSync(root).filter(f => f.startsWith('render-') && f.endsWith('.js')),
