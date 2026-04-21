@@ -6,6 +6,41 @@ import { S }                from './state.js';
 import { saveWorkoutDay }   from './save.js';
 import { showToast, showCenterToast } from '../home/utils.js';
 import { confirmAction }    from '../utils/confirm-modal.js';
+import { getActiveTimer, saveActiveTimer, clearActiveTimer, getCurrentUser } from '../data.js';
+
+// running 타이머가 "이 정도 이상 방치되면 freak-out" 가드 (24h). active_timer 의
+// startedAt 이 너무 오래되었다면 OS kill/탭 종료로 정산 못한 유령 세션으로 간주, 복원하지 않음.
+const _MAX_LIVE_TIMER_MS = 24 * 60 * 60 * 1000;
+
+// localStorage 백업(동기/로컬) — Firestore write 가 네트워크 실패했을 때의 안전망.
+//   CLAUDE.md: localStorage 는 기기 단위이므로 유저별 키를 써서 다른 계정으로 로그인 시
+//   유령 타이머가 살아나지 않게 한다.
+const _LS_TIMER_KEY_PREFIX = 'tomatofarm_active_timer_';
+function _lsKey() {
+  try {
+    const u = getCurrentUser();
+    const uid = (u && (u.uid || u.id || u.username)) || '_anon';
+    return _LS_TIMER_KEY_PREFIX + uid;
+  } catch { return _LS_TIMER_KEY_PREFIX + '_anon'; }
+}
+function _lsWriteTimer(state) {
+  try { localStorage.setItem(_lsKey(), JSON.stringify(state)); } catch {}
+}
+function _lsReadTimer() {
+  try {
+    const raw = localStorage.getItem(_lsKey());
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+function _lsClearTimer() {
+  try { localStorage.removeItem(_lsKey()); } catch {}
+}
+function _isValidActiveTimer(t) {
+  return !!t && typeof t.startedAt === 'number' && t.startedAt > 0 &&
+         (Date.now() - t.startedAt) < _MAX_LIVE_TIMER_MS &&
+         t.date && typeof t.date.y === 'number' &&
+         typeof t.date.m === 'number' && typeof t.date.d === 'number';
+}
 
 // ── 운동 시간 측정 ───────────────────────────────────────────────
 // 타이머는 시작 시점의 날짜(workoutTimerDate)에 귀속됨.
@@ -25,6 +60,17 @@ export function wtStartWorkoutTimer() {
   S.workout.workoutTimerInterval = setInterval(_renderWorkoutTimer, 1000);
   _renderWorkoutTimer();
   _renderTimerControls();
+  // 2-layer persistence:
+  //   (1) localStorage (동기, 네트워크 무관) — saveActiveTimer 가 네트워크 실패하더라도
+  //       즉시 리로드 시 여기서 복원 가능. 유저 범주 키로 타 유저 계정 간 유령 방지.
+  //   (2) _settings/active_timer (Firestore) — cross-device, cross-day SoT.
+  //       saveWorkoutDay 를 건들지 않으므로 sheet:saved / 저장 완료 토스트 미발생.
+  const activeState = {
+    startedAt: S.workout.workoutStartTime,
+    date:      S.workout.workoutTimerDate,
+  };
+  _lsWriteTimer(activeState);
+  saveActiveTimer(activeState).catch(e => console.error('[timer start] saveActiveTimer error:', e));
 }
 
 export function wtPauseWorkoutTimer() {
@@ -39,7 +85,16 @@ export function wtPauseWorkoutTimer() {
   if (S.workout.workoutTimerInterval) { clearInterval(S.workout.workoutTimerInterval); S.workout.workoutTimerInterval = null; }
   _renderWorkoutTimer();
   _renderTimerControls();
-  saveWorkoutDay().catch(e => console.error('Save error:', e));
+  // 순서: saveWorkoutDay (누적 duration 영속화) → clearActiveTimer (포인터 해제).
+  //   역순이면 save 실패 시 포인터만 사라져 누적 시간 유실. 이 순서면 save 실패 시
+  //   active_timer 가 살아있어 다음 recovery 가 타이머를 이어감 → 유저가 재시도 가능.
+  //   LS 는 FS 실패에 대한 백업이므로 FS 경로가 완료된 뒤에 정리.
+  saveWorkoutDay()
+    .then(() => {
+      _lsClearTimer();
+      return clearActiveTimer();
+    })
+    .catch(e => console.error('[timer pause] persist chain error:', e));
 }
 
 export async function wtResetWorkoutTimer() {
@@ -61,7 +116,13 @@ export async function wtResetWorkoutTimer() {
   if (S.workout.workoutTimerInterval) { clearInterval(S.workout.workoutTimerInterval); S.workout.workoutTimerInterval = null; }
   _renderWorkoutTimer();
   _renderTimerControls();
-  saveWorkoutDay().catch(e => console.error('Save error:', e));
+  // 순서: saveWorkoutDay → clearActiveTimer (pause 와 동일 이유).
+  saveWorkoutDay()
+    .then(() => {
+      _lsClearTimer();
+      return clearActiveTimer();
+    })
+    .catch(e => console.error('[timer reset] persist chain error:', e));
 }
 
 export function _renderWorkoutTimer() {
@@ -192,13 +253,44 @@ export function wtFinishWorkout() {
   const bar = document.getElementById('wt-workout-timer-bar');
   if (bar) bar.classList.remove('wt-running');
   showCenterToast(`운동 완료! ${_fmtDuration(S.workout.workoutDuration)}`, 2200);
-  // 2026-04-20: 저장 실패가 상위로 전파되도록 .catch 제거 (Codex 지적 #1).
-  //   기존엔 여기서 swallow → wtEndAndShowInsights가 인사이트 모달을 성공처럼 오픈.
-  //   이제는 saveWorkoutDay가 throw 하면 wtEndAndShowInsights가 catch하여 모달을 막음.
-  return saveWorkoutDay();
+  // 순서: saveWorkoutDay (총 duration 영속화) → clearActiveTimer (포인터 해제).
+  //   save 가 throw 하면 반환 Promise 도 reject → wtEndAndShowInsights 가 인사이트 모달 차단.
+  //   active_timer 는 save 성공 뒤에만 정리 — save 실패 시 포인터가 살아있어야 recovery
+  //   경로가 이어받아 유저가 재시도 가능 (2026-04-21 Codex 지적 #2).
+  return saveWorkoutDay().then(() => {
+    _lsClearTimer();
+    clearActiveTimer().catch(e => console.error('[timer finish] clearActiveTimer error:', e));
+  });
 }
 
 export function wtRecoverTimers() {
+  // 2026-04-21 cross-day 복원: 페이지 리로드/앱 재시작 직후 메모리는 초기 상태(null)이다.
+  //   우선 순위: (1) Firestore _settings/active_timer → cross-device 포인터.
+  //             (2) localStorage 백업 → Firestore write 가 네트워크 실패했던 경우 구조.
+  //   둘 다 24h 이내 + date 객체 유효 검증. 하나라도 성공하면 메모리 복원 + 반대편도 동기화.
+  if (!S.workout.workoutStartTime) {
+    const fromFs = getActiveTimer();
+    const fromLs = _lsReadTimer();
+    let restored = null;
+    if (_isValidActiveTimer(fromFs)) restored = fromFs;
+    else if (_isValidActiveTimer(fromLs)) restored = fromLs;
+
+    if (restored) {
+      S.workout.workoutStartTime = restored.startedAt;
+      S.workout.workoutTimerDate = { y: restored.date.y, m: restored.date.m, d: restored.date.d };
+      // Firestore 가 비어있고 localStorage 로 복원한 경우 → Firestore 에 재기록.
+      if (!fromFs && fromLs) {
+        saveActiveTimer(restored).catch(e => console.error('[timer recover→fs] error:', e));
+      }
+      // localStorage 가 비어있고 Firestore 로 복원한 경우 → localStorage 에 재기록.
+      if (fromFs && !fromLs) _lsWriteTimer(restored);
+    } else {
+      // 유령 세션(24h 초과 등) 또는 불완전 포인터 → 양쪽 청소.
+      if (fromLs) _lsClearTimer();
+      if (fromFs) clearActiveTimer().catch(() => {});
+    }
+  }
+
   if (S.workout.workoutStartTime && !S.workout.workoutTimerInterval) {
     S.workout.workoutTimerInterval = setInterval(_renderWorkoutTimer, 1000);
   }

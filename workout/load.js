@@ -84,6 +84,8 @@ export function loadWorkoutDate(y, m, d) {
 
   // ⚠️ 스톱워치(S.workout.workoutStartTime/workoutTimerInterval/workoutTimerDate)는
   // 끝내기/리셋 전에는 절대 멈추면 안 됨. 여기서는 건드리지 않는다.
+  // running 상태의 cross-day 복원은 wtRecoverTimers() 가 _settings/active_timer 를
+  // 통해 수행 — 날짜 네비게이션과 무관하게 동작한다.
   //
   // 2026-04-20: rest 타이머는 위 `isSameDate` early-return 경로에선 건드리지 않는다.
   //   여기(=실제 날짜 변경) 만 skip — 이전 날짜의 세트 간 휴식이 새 날짜로 이어지면

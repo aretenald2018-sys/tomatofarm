@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node tools/api-server.js",
     "dev": "bash scripts/dev-start.sh",
-    "build": "node scripts/copy-www.js",
+    "bump": "node scripts/bump-cache.js",
+    "build": "node scripts/bump-cache.js && node scripts/copy-www.js",
     "cap:sync": "npm run build && npx cap sync android",
     "cap:open": "npx cap open android",
     "crawl": "node tools/crawl-movies.js",

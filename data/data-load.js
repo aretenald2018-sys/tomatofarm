@@ -220,6 +220,7 @@ export async function loadAll() {
     }
     _settings.home_streak_days = fbMap.home_streak_days ?? 6;
     _settings.unit_goal_start  = fbMap.unit_goal_start  ?? null;
+    _settings.active_timer     = fbMap.active_timer     ?? null;
     _settings.cheer_last_seen  = fbMap.cheer_last_seen  ?? 0;
     _settings.tomato_state     = fbMap.tomato_state     ?? { quarterlyTomatoes: {}, totalTomatoes: 0, giftedReceived: 0, giftedSent: 0 };
     _settings.farm_state       = fbMap.farm_state       ?? null;

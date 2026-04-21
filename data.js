@@ -726,6 +726,15 @@ export async function saveCheerLastSeen(ts) {
 export const getTomatoState = () => _settings.tomato_state || { quarterlyTomatoes: {}, totalTomatoes: 0, giftedReceived: 0, giftedSent: 0 };
 export const saveTomatoState = (state) => { _settings.tomato_state = state; return _saveSetting('tomato_state', state); };
 
+// ── 운동 타이머 cross-day SoT ────────────────────────────────────
+// 2026-04-21: day-doc 에 startedAt 을 저장하던 방식은 자정 넘김 케이스에서 실패했다
+// (오늘 doc 에는 startedAt 이 없으므로 복원 불가). _settings/active_timer 에 모으면
+// 몇일자 운동을 보고 있든 동일 포인터로 복원된다.
+// value 스키마: { startedAt: number(epoch ms), date: {y,m,d} } | null
+export const getActiveTimer   = () => _settings.active_timer || null;
+export const saveActiveTimer  = (state) => { _settings.active_timer = state; return _saveSetting('active_timer', state); };
+export const clearActiveTimer = () => { _settings.active_timer = null; return _saveSetting('active_timer', null); };
+
 export const getMilestoneShown = () => _settings.milestone_shown || {};
 export const saveMilestoneShown = (obj) => { _settings.milestone_shown = obj; return _saveSetting('milestone_shown', obj); };
 

@@ -212,6 +212,10 @@ export let _settings = {
   milestone_shown: {},
   streak_freezes: [],
   expert_preset:   { ...DEFAULT_EXPERT_PRESET },
+  // 2026-04-21: 운동 타이머 running 상태의 cross-day SoT.
+  //   { startedAt: number(ms), date: {y,m,d} } | null
+  //   day-doc 대신 여기에 저장함으로써 자정 넘김/다음날 앱 재진입 시에도 복원 가능.
+  active_timer: null,
 };
 export function _resetSettings(v) { Object.assign(_settings, v); }
 

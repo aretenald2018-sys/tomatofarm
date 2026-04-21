@@ -24,14 +24,6 @@ function _blockIfFutureDate() {
   return true;
 }
 
-// 저장 대상 날짜가 현재 활성 스톱워치의 귀속 날짜인지 판정.
-function _isSavingTimerDate() {
-  if (!S.workout.workoutStartTime) return false;
-  const td = S.workout.workoutTimerDate, cd = S.shared.date;
-  if (!td || !cd) return false;
-  return td.y === cd.y && td.m === cd.m && td.d === cd.d;
-}
-
 // ── per-meal 기록 유무 판정 헬퍼 ────────────────────────────────
 function _hasMealRecord(textVal, foodsArr, kcalVal, skipFlag) {
   if (skipFlag) return true;
@@ -76,6 +68,11 @@ function _assertSchemaParity(name, payload, expectedKeys) {
 // Firestore 의 식단 필드를 건드릴 수 없다.
 function _buildWorkoutPayload(cleanEx, isDietSuccess) {
   const w = S.workout;
+  // workoutDuration: "이미 닫힌 세그먼트의 누적 시간"(base) 만 저장. running 중의 live elapsed 는
+  //   여기에 포함하지 않음 — 포함하면 리로드 후 render 가 이 값에 또 (now - startedAt) 을 더해
+  //   이중 카운팅(예: 10초째 저장 → 15초째 재진입 시 25초 표시). Codex 리뷰 2026-04-21 지적.
+  //   base 는 wtPause/wtReset/wtFinish 에서만 갱신됨. 외부 소비자(guild/calendar) 는 running
+  //   중 약간 과소표기를 감수 — pause/finish 시 정확히 반영됨.
   return {
     exercises:  cleanEx,
     cf:         w.cf,
@@ -97,9 +94,7 @@ function _buildWorkoutPayload(cleanEx, isDietSuccess) {
     swimDurationSec: w.swimData.durationSec,
     swimStroke:    w.swimData.stroke,
     swimMemo:      w.swimData.memo,
-    workoutDuration: _isSavingTimerDate()
-      ? w.workoutDuration + Math.floor((Date.now() - w.workoutStartTime) / 1000)
-      : w.workoutDuration,
+    workoutDuration: w.workoutDuration,
     wine_free:  w.wineFree,
     memo:       document.getElementById('wt-workout-memo')?.value.trim() || '',
     workoutPhoto: window._mealPhotos?.workout || null,
