@@ -849,7 +849,7 @@ async function _commitOnboardingStart() {
 // _commitOnboardingStart/Finish 양쪽에서 호출. gym + exercises를 DB에 밀어넣고
 // dbId를 _obState.parsed[i].dbId에 역참조로 기록. 재파싱 시 중복 저장 방지.
 async function _persistOnboardingDraft() {
-  const { _generateId } = await import('../data/data-core.js');
+  const { _generateId } = await import('../../data/data-core.js');
   let gymId = _obState.draftGymId || getExpertPreset().draftGymId || null;
   if (!gymId) gymId = _generateId();
   // gym 저장 (setDoc 덮어쓰기 — 같은 id면 이름만 업데이트)
@@ -1108,7 +1108,7 @@ async function _persistMuscleIdsToDb(p) {
     }
     const mov = p.movementId && p.movementId !== 'unknown'
       ? MOVEMENTS.find(m => m.id === p.movementId) : null;
-    const { _generateId } = await import('../data/data-core.js');
+    const { _generateId } = await import('../../data/data-core.js');
     const exId = p.dbId || _generateId();
     await saveExercise({
       id: exId,
@@ -1157,7 +1157,7 @@ export async function expertOnbAssignMovement(idx, movementId) {
       } else {
         const mov = MOVEMENTS.find(m => m.id === movementId);
         if (mov) {
-          const { _generateId } = await import('../data/data-core.js');
+          const { _generateId } = await import('../../data/data-core.js');
           const exId = p.dbId || _generateId();
           const hasMuscles = Array.isArray(p.muscleIds) && p.muscleIds.length > 0;
           await saveExercise({
@@ -1215,7 +1215,7 @@ export async function expertOnbRemoveItem(idx) {
   if (prevDbId) { try { await deleteExercise(prevDbId); } catch (e) { console.warn('[remove-item] delete fail:', e?.message || e); } }
   _openReviewScreen();
   try {
-    const { showToast } = await import('../home/utils.js');
+    const { showToast } = await import('../../home/utils.js');
     showToast(`'${removed.name}' 제거됨`, 3000, 'success', {
       action: '실행 취소',
       onAction: async () => {
@@ -1237,7 +1237,7 @@ export async function expertOnbRemoveItem(idx) {
           if (gymId && removed.movementId && removed.movementId !== 'unknown') {
             const mov = MOVEMENTS.find(m => m.id === removed.movementId);
             if (mov) {
-              const { _generateId } = await import('../data/data-core.js');
+              const { _generateId } = await import('../../data/data-core.js');
               const exId = _generateId();
               const hasMuscles = Array.isArray(removed.muscleIds) && removed.muscleIds.length > 0;
               await saveExercise({
