@@ -717,8 +717,43 @@
   padding: 10px 0 0; border-top: 1px solid #ededf0;
 }
 .cand-row { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; padding: 3px 0; }
-.cand-name { color: #4c4c54; }
+.cand-name { color: #4c4c54; font-weight: 500; }
 .cand-spec { color: #87878e; font-variant-numeric: tabular-nums; }
+
+/* 2026-04-24: 후보 카드 세트별 전개 — 컴파운드/고립 뱃지 + Set N / reps / RPE 칩 */
+.cand-row-v2 {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 8px 0; border-bottom: 1px solid #f3f3f5;
+}
+.cand-row-v2:last-child { border-bottom: none; }
+.cand-row-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.cand-type-badge {
+  font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 8px;
+  letter-spacing: 0.2px; line-height: 1.4; white-space: nowrap;
+}
+.cand-type-badge.comp { background: #fdf0f0; color: #ca1d13; }
+.cand-type-badge.iso  { background: #eef3ff; color: #3d5cc5; }
+
+.cand-sets {
+  display: flex; flex-wrap: wrap; gap: 4px;
+  padding-left: 2px;
+}
+.cand-set {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; color: #4c4c54;
+  background: #f8f8fa; border: 1px solid #ededf0; border-radius: 8px;
+  padding: 3px 8px; font-variant-numeric: tabular-nums;
+}
+.cand-set-no {
+  font-weight: 700; color: #87878e; font-size: 10px;
+}
+.cand-set-no::before { content: 'Set '; color: #b8b8bf; font-weight: 500; }
+.cand-set-kg { font-weight: 700; color: #ca1d13; font-variant-numeric: tabular-nums; }
+.cand-set-reps { font-weight: 600; color: #191920; }
+.cand-set-rpe { color: #87878e; }
+.cand-set-top { font-size: 10px; margin-left: 1px; }
 .candidate-rationale {
   font-size: 11px; color: #87878e;
   padding: 10px 12px; line-height: 16px;

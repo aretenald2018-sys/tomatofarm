@@ -18,6 +18,12 @@ import {
 } from '../data.js';
 import { MOVEMENTS, MOVEMENT_PATTERNS } from '../config.js';
 import { parseEquipmentFromText, parseEquipmentFromImage } from '../ai.js';
+import {
+  getLastSession as _getLastSessionCalc,
+  estimate1RM as _estimate1RM,
+  rpeRepsToPct as _rpeRepsToPct,
+  targetWeightKg as _targetWeightKg,
+} from '../calc.js';
 import { S } from './state.js';
 import { confirmAction } from '../utils/confirm-modal.js';
 
@@ -472,6 +478,93 @@ function _summarizeExpertInsight() {
 function _cachedDetectPRs(exId) {
   try { return _detectPRsFromData(exId); }
   catch { return { progressKg: 0, lastKg: 0 }; }
+}
+
+// 2026-04-24 (v2): isolation 판별 강화 — Finding 3 회귀 대응.
+//   config.js MOVEMENTS 의 `pattern` 필드는 동작 패턴(push/pull/squat 등) 축이므로
+//   pattern === 'isolation' 체크만으로는 chest_fly/cable_crossover/face_pull 같이
+//   실제 고립인데 pattern 이 push/pull 로 태깅된 종목을 compound 로 오분류함.
+//   → ID suffix 토큰(_fly/_crossover/_pushdown/_curl/_raise/_extension/_ext/_crunch/
+//     _kickback)과 명시 예외(face_pull/upright_row/shrug)를 병행해 잡는다.
+//   dips(pattern:horizontal_push, sizeClass:small) 는 실제 compound(다관절) 이므로
+//   sizeClass 로 뭉치는 대신 suffix 토큰 기반으로 정확도 확보.
+const _ISO_ID_RE = /(_fly|_crossover|_pushdown|_curl|_raise|_extension|_ext|_crunch|_kickback)$|^(shrug|face_pull|upright_row)$/;
+function _isIsolationMovement(movement) {
+  if (!movement) return false;
+  if (movement.pattern === 'isolation') return true;
+  if (_ISO_ID_RE.test(movement.id || '')) return true;
+  return false;
+}
+
+// 2026-04-24 (v3): 추천 세트 무게 추정 + 점진 과부하 캡.
+//   v2 에서 calc.js 의 RTS 역산 체계로 통일했으나, 고반복 프로필(예: 딥스 50×25) 유저에게
+//   저반복 환산(×6)하면 Epley e1RM 이 과대추정되어 +30~45% 같은 비현실적 점프가 발생함.
+//   트레이너 관례: 세션당 점진 과부하 **대근육 2.5~5% / 소근육 1~3%**. 한 세션에 +30% 는 없음.
+//   → 직전 top kg 기준 **세션당 하드 캡** 적용:
+//     · large (barbell/machine 대형): × 1.10
+//     · small (덤벨/케이블/보조): × 1.05
+//     · bodyweight: × 1.05 (가중 증가는 소근육보다 완만)
+//   우선순위: maxWeightKg > 직전 세션 prevRpe 역산 > Epley 폴백. 그 후 캡 적용.
+//   firstExercise=true 이면 세션 메인 lift 로 간주하여 reps 권장 하한(5)까지 허용.
+function _estimateSetKg(ex, rpeTarget, reps) {
+  if (!ex) return 0;
+  const stepKg = Number(ex.incrementKg) || 2.5;
+  const rpe = Math.max(5, Math.min(10, Number(rpeTarget) || 8));
+  const r = Math.max(1, Number(reps) || 10);
+
+  // 직전 top kg (점진 과부하 캡 산출용). 가장 무거운 워킹 세트의 kg.
+  let prevTopKg = 0;
+  let e1rm = Number(ex.maxWeightKg) || 0;
+
+  try {
+    const todayKey = dateKey(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
+    const last = _getLastSessionCalc(getCache(), ex.id, todayKey);
+    const mainSets = (last?.sets || []).filter(s =>
+      s && s.setType !== 'warmup' && (Number(s.kg) || 0) > 0
+    );
+    if (mainSets.length) {
+      // top kg — 캡 산출용. 고반복 프로필 유저는 top 이 평소 수행 무게.
+      const topSet = mainSets.reduce(
+        (a, b) => ((Number(a.kg) || 0) >= (Number(b.kg) || 0) ? a : b)
+      );
+      prevTopKg = Number(topSet.kg) || 0;
+      // e1RM 은 ref 세트(마지막 본세트 or top)로 산출 — RTS 역산 > Epley.
+      if (e1rm <= 0) {
+        const ref = mainSets[mainSets.length - 1];
+        const prevKg = Number(ref.kg) || 0;
+        const prevReps = Number(ref.reps) || 0;
+        const prevRpe = Number(ref.rpe) || 0;
+        if (prevKg > 0) {
+          e1rm = (prevRpe > 0 && prevReps > 0)
+            ? prevKg / _rpeRepsToPct(prevRpe, prevReps)
+            : _estimate1RM(prevKg, prevReps || r);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[_estimateSetKg] last session lookup fail:', e?.message || e);
+  }
+  if (e1rm <= 0) return 0;
+
+  let target = _targetWeightKg(e1rm, rpe, r);
+
+  // ── 세션당 점진 과부하 캡 (직전 top 이 있을 때만) ──
+  if (prevTopKg > 0) {
+    const mov = ex.movementId ? MOVEMENTS.find(m => m.id === ex.movementId) : null;
+    const sizeClass = mov?.sizeClass || 'large';
+    // large(바벨/대형 머신): +10% / small(덤벨/케이블 고립): +5% / bodyweight: +5%
+    const capPct = (sizeClass === 'large') ? 1.10 : 1.05;
+    const cap = prevTopKg * capPct;
+    if (target > cap) {
+      console.log(
+        `[_estimateSetKg] ${ex.id}: RTS ${target.toFixed(1)}kg → 점진 과부하 캡 ${cap.toFixed(1)}kg ` +
+        `(직전 top ${prevTopKg}kg × ${capPct}, size=${sizeClass})`
+      );
+      target = cap;
+    }
+  }
+
+  return Math.round(target / stepKg) * stepKg;
 }
 
 function _buildRecentHistory(gymExercises) {
@@ -930,11 +1023,95 @@ export async function routineSuggestGenerate() {
       });
       if (invalidIds.length) console.warn('[routine-suggest] dropped invalid exerciseIds:', invalidIds);
       if (offMuscles.length) console.warn('[routine-suggest] dropped off-target muscle items:', offMuscles, '(allowed:', [...allowedMuscles], ')');
+      // 2026-04-24 (v2): sets 후처리 — 세트 수 정규화 + 무게 추정.
+      //   (1) AI가 대부분 획일 3세트로 수렴 → movementType 기반 세트 수 강제 보정
+      //       compound 3~4 / isolation 2~3. 부족하면 RPE 점증으로 확장, 초과면 top-RPE
+      //       유지하며 trim.
+      //   (2) 추천 무게(kg)는 AI가 주지 않으므로 클라이언트에서 계산: maxWeightKg × factor.
+      //       factor = 1 - 0.025 * (effReps - 1), effReps = reps + (10 - RPE).
+      //       incrementKg 단위로 라운딩. maxWeightKg 이 없으면 0(유저 입력 필요).
       for (const it of c.items) {
-        if (!it.sets || it.sets.length === 0) it.sets = [{ reps: 10, rpeTarget: 8 }];
-        if (it.sets.length === 1) {
+        const ex = exById.get(it.exerciseId);
+        const movement = ex?.movementId
+          ? MOVEMENTS.find(m => m.id === ex.movementId)
+          : null;
+        const aiType = (typeof it.movementType === 'string' && it.movementType.toLowerCase()) || null;
+        // AI 값이 있어도 휴리스틱과 충돌하면 휴리스틱 쪽을 신뢰(예: AI 가 chest_fly 를 compound 로
+        //   주는 환각 케이스). pattern 이 명확히 isolation 이거나 ID suffix 토큰에 걸리는 종목은
+        //   AI 값을 덮어씀.
+        const heuristicIso = _isIsolationMovement(movement);
+        const isIsolation = heuristicIso || aiType === 'isolation';
+        it.movementType = isIsolation ? 'isolation' : (aiType || 'compound');
+        const [minN, maxN] = isIsolation ? [2, 3] : [3, 4];
+
+        // ── 세트 수 정규화 ──
+        if (!Array.isArray(it.sets) || it.sets.length === 0) {
+          // 빈 fallback: RPE 점증
+          const baseRpe = Number(_suggestState.preferredRpe) || 8;
+          const reps = isIsolation ? 10 : 8;
+          it.sets = Array.from({ length: minN }, (_, i) => ({
+            reps,
+            rpeTarget: Math.min(10, Math.max(5, baseRpe - 1 + i)),
+          }));
+        } else if (it.sets.length === 1) {
+          // 1세트만 응답 → RPE 점증으로 minN 까지 확장
           const base = it.sets[0];
-          it.sets = Array.from({ length: 3 }, () => ({ ...base }));
+          const baseRpe = Number(base.rpeTarget) || 8;
+          it.sets = Array.from({ length: minN }, (_, i) => ({
+            ...base,
+            rpeTarget: Math.min(10, Math.max(5, baseRpe - 1 + i)),
+          }));
+        } else if (it.sets.length < minN) {
+          // 부족 → 마지막 세트 복제 + RPE +1 단조증가
+          while (it.sets.length < minN) {
+            const last = it.sets[it.sets.length - 1];
+            const nextRpe = Math.min(10, (Number(last.rpeTarget) || 8) + 1);
+            it.sets.push({ ...last, rpeTarget: nextRpe });
+          }
+        } else if (it.sets.length > maxN) {
+          // 초과 → top-RPE 세트 우선 보존하며 trim (원래 순서 유지)
+          const indexed = it.sets.map((s, i) => ({ s, i, rpe: Number(s.rpeTarget) || 0 }));
+          const kept = indexed
+            .slice()
+            .sort((a, b) => b.rpe - a.rpe || a.i - b.i)
+            .slice(0, maxN)
+            .sort((a, b) => a.i - b.i)
+            .map(x => x.s);
+          it.sets = kept;
+        }
+
+        // ── 추천 무게 계산 (각 세트의 rpeTarget/reps 기반) ──
+        it.sets = it.sets.map(s => ({
+          ...s,
+          kgSuggested: _estimateSetKg(ex, s.rpeTarget, s.reps),
+        }));
+      }
+
+      // 2026-04-24 (v4): 메인 compound 4세트 강제 — 트레이너 관례 반영.
+      //   "모든 종목 동일 세트 수" 조건은 약함(AI가 4/3/3/3 주면 승격 안 탐).
+      //   세션의 **첫 번째 compound 종목 = 메인 lift** 로 간주하고 무조건 4세트로 확장.
+      //   (이하 compound 는 3세트, isolation 은 2~3세트 유지 → 자연스러운 편차 발생)
+      //   compound 없는 후보(고립 전용)는 skip — AI 처방 존중.
+      if (Array.isArray(c.items) && c.items.length >= 1) {
+        const mainIdx = c.items.findIndex(it => it.movementType === 'compound');
+        if (mainIdx >= 0) {
+          const mainIt = c.items[mainIdx];
+          const mainEx = exById.get(mainIt.exerciseId);
+          while (Array.isArray(mainIt.sets) && mainIt.sets.length < 4) {
+            const last = mainIt.sets[mainIt.sets.length - 1];
+            const nextRpe = Math.min(10, (Number(last.rpeTarget) || 8) + 1);
+            mainIt.sets.push({
+              ...last,
+              rpeTarget: nextRpe,
+              kgSuggested: _estimateSetKg(mainEx, nextRpe, last.reps),
+            });
+          }
+          if (mainIt.sets.length === 4) {
+            console.log(
+              `[routine-suggest] cand ${c.candidateKey}: 메인 compound ` +
+              `${mainEx?.name || mainIt.exerciseId} 4세트 확정`
+            );
+          }
         }
       }
     }
@@ -1021,11 +1198,32 @@ function _renderCandidatesContent() {
       const altClass = c.candidateKey === 'B' ? ' alt' : '';
       const items = (c.items || []).map(it => {
         const ex = exById[it.exerciseId];
-        const firstSet = it.sets?.[0] || {};
-        const setCount = it.sets?.length || 0;
-        const reps = firstSet.reps || '?';
-        const spec = `${setCount} × ${reps} @ RPE ${firstSet.rpeTarget || '-'}`;
-        return `<div class="cand-row"><span class="cand-name">${_esc(ex?.name || it.exerciseId)}</span><span class="cand-spec">${spec}</span></div>`;
+        const sets = Array.isArray(it.sets) ? it.sets : [];
+        const isIsolation = it.movementType === 'isolation';
+        const typeLabel = isIsolation ? '고립' : '컴파운드';
+        const typeCls = isIsolation ? 'iso' : 'comp';
+        // topSet: RPE 최고값. 동일 RPE가 여러 개면 맨 앞 세트 표시(top-set 모델) 또는 맨 뒤(피라미드).
+        // 규칙: 최초 RPE 최고값 하나에만 ⭐ — 피라미드(마지막 최고)/Top-set+backoff(첫 최고) 둘 다 자연스러움.
+        const maxRpe = sets.reduce((m, s) => Math.max(m, Number(s.rpeTarget) || 0), 0);
+        const topIdx = sets.findIndex(s => (Number(s.rpeTarget) || 0) === maxRpe && maxRpe > 0);
+        const setsHtml = sets.map((s, i) => {
+          const reps = s.reps != null ? `${s.reps}회` : '?회';
+          const rpe  = s.rpeTarget != null ? `RPE ${s.rpeTarget}` : 'RPE -';
+          const kg   = Number(s.kgSuggested) > 0
+            ? `<span class="cand-set-kg">${s.kgSuggested}kg</span>`
+            : '';
+          const top  = (i === topIdx && sets.length > 1) ? ' <span class="cand-set-top">⭐</span>' : '';
+          return `<div class="cand-set"><span class="cand-set-no">${i + 1}</span>${kg}<span class="cand-set-reps">${reps}</span><span class="cand-set-rpe">${rpe}</span>${top}</div>`;
+        }).join('');
+        return `
+          <div class="cand-row-v2">
+            <div class="cand-row-head">
+              <span class="cand-name">${_esc(ex?.name || it.exerciseId)}</span>
+              <span class="cand-type-badge ${typeCls}">${typeLabel} · ${sets.length}세트</span>
+            </div>
+            <div class="cand-sets">${setsHtml}</div>
+          </div>
+        `;
       }).join('');
       return `
         <div class="candidate${isSel?' selected':''}" data-cand="${c.candidateKey}">
@@ -1095,8 +1293,11 @@ export async function routineCandidatesSelect() {
           exerciseId: it.exerciseId,
           muscleId: ex?.muscleId || 'chest',
           name: ex?.name || it.exerciseId,
+          // 2026-04-24: kg=0 하드코딩 제거. 후처리에서 계산된 kgSuggested 를 써 입력 칸을
+          //   미리 채움(유저는 체감/컨디션에 맞게 수정 가능). kgSuggested 없으면 0 유지.
           sets: (it.sets || []).map(s => ({
-            kg: 0, reps: s.reps || 10,
+            kg: Number(s.kgSuggested) > 0 ? Number(s.kgSuggested) : 0,
+            reps: s.reps || 10,
             rpeTarget: s.rpeTarget || null,
             setType: null, done: false,
           })),
@@ -1368,9 +1569,7 @@ export async function insightsOpen(sessionKey) {
   //   외부 AI가 "오늘 부위 이력" 을 근거로 피드백/추천하도록 유도.
   _lastInsightSnapshot = {
     summary: _buildInsightTextSnapshot({
-      range, weekBalance: entries, weekPRs: prs, progressPct,
-      today, todayStats, todayBalance: todayBalEntries, todayPRs, recentDiet,
-      muscleCmps,
+      today, todayStats, cache, exList,
     }),
     detail: _buildInsightDetailSnapshot({
       range, weekBalance: entries, weekPRs: prs, progressPct,
@@ -1517,7 +1716,7 @@ export function insightsSetShareMode(mode) {
   if (hint) {
     hint.textContent = next === 'detail'
       ? '오늘 세션 세트 로그 + JSON 포함 — AI가 숫자 기준으로 피드백합니다.'
-      : '주간 상위 부위 · PR · 최근 식단을 짧게 요약합니다.';
+      : '오늘 운동한 종목/세트/kg×회/볼륨만 — 주간·직전 비교·식단·AI 지시 없음.';
   }
 }
 
@@ -1732,80 +1931,54 @@ function _collect3DayDietSummary(cache, today) {
   return out;
 }
 
+// 2026-04-24: 요약 모드 재정의 — "그날 운동한 것만".
+//   주간 요약/PR, 직전·직직전 비교, 식단, AI 프롬프트 전부 제거.
+//   유저가 클립보드로 복사해 자유롭게 붙여넣기 위한 최소 raw 로그.
 function _buildInsightTextSnapshot(ctx) {
   if (!ctx) return '인사이트 데이터 없음';
+  const { today, todayStats, cache, exList } = ctx;
+  const day = cache?.[today];
+  const exById = new Map((exList || []).map(e => [e.id, e]));
+  const entries = day?.exercises || [];
   const lines = [];
-  lines.push(`# 🍅 토마토팜 인사이트`);
-  lines.push(`범위: ${_prettyDate(ctx.range.fromKey)} ~ ${_prettyDate(ctx.range.toKey)}`);
+
+  lines.push(`## 오늘 세션 (${_prettyDate(today)})`);
+  if (todayStats?.duration > 0) {
+    lines.push(`운동 시간: ${_fmtDuration(todayStats.duration)}`);
+  }
+  const totalSets = todayStats?.totalSets || 0;
+  const totalVolume = todayStats?.totalVolume || 0;
+  lines.push(`총 세트: ${totalSets}  ·  총 볼륨: ${totalVolume.toLocaleString()} kg·회`);
   lines.push('');
-  // 이번주
-  lines.push(`## 이번 주`);
-  lines.push(`- 종목 무게 변화: ${ctx.progressPct >= 0 ? '+' : ''}${ctx.progressPct}%`);
-  if (ctx.weekBalance.length > 0) {
-    lines.push(`- 부위별 세트 (상위 6):`);
-    for (const [sp, v] of ctx.weekBalance.slice(0, 6)) {
-      lines.push(`  · ${_subPatternLabel(sp)} ${v}세트`);
-    }
-  } else {
-    lines.push(`- 운동 기록 없음`);
+
+  if (entries.length === 0 || totalSets === 0) {
+    lines.push(`_오늘 운동 기록 없음_`);
+    return lines.join('\n');
   }
-  if (ctx.weekPRs.length > 0) {
-    lines.push(`- 이번 주 PR: ${ctx.weekPRs.map(p => `${p.name} ${p.prKg}kg×${p.prReps}회 (+${p.diff}kg)`).join(', ')}`);
-  }
-  lines.push('');
-  // 오늘
-  lines.push(`## 오늘 (${_prettyDate(ctx.today)})`);
-  if (ctx.todayStats.totalSets > 0) {
-    lines.push(`- 세트 ${ctx.todayStats.totalSets} · 볼륨 ${ctx.todayStats.totalVolume.toLocaleString()}kg·회 · 시간 ${_fmtDuration(ctx.todayStats.duration)}`);
-    if (ctx.todayBalance.length > 0) {
-      lines.push(`- 오늘 자극 부위: ${ctx.todayBalance.map(([sp, v]) => `${_subPatternLabel(sp)} ${v}`).join(', ')}`);
+
+  entries.forEach((entry, idx) => {
+    const lib = exById.get(entry.exerciseId);
+    const name = lib?.name || entry.name || entry.exerciseId;
+    const sets = (entry.sets || []).map((s, i) => ({
+      setNo: i + 1,
+      setType: s.setType || 'main',
+      done: s.done === true,
+      kg: Number(s.kg) || 0,
+      reps: Number(s.reps) || 0,
+    }));
+    lines.push(`${idx + 1}. ${name}`);
+    sets.forEach(s => {
+      const typeLabel = s.setType !== 'main' ? ` [${s.setType}]` : '';
+      const check = s.done ? '✓' : '·';
+      lines.push(`   ${check} Set ${s.setNo}${typeLabel} ${s.kg}kg × ${s.reps}회`);
+    });
+    const workSets = sets.filter(s => s.setType !== 'warmup' && (s.done || (s.kg > 0 && s.reps > 0)));
+    if (workSets.length > 0) {
+      const vol = workSets.reduce((acc, s) => acc + s.kg * s.reps, 0);
+      lines.push(`   volume ${Math.round(vol).toLocaleString()}`);
     }
-    if (ctx.todayPRs.length > 0) {
-      lines.push(`- 오늘 PR: ${ctx.todayPRs.map(p => `${p.name} ${p.prKg}kg×${p.prReps}회 (+${p.diff}kg)`).join(', ')}`);
-    }
-  } else {
-    lines.push(`- 오늘 운동 기록 없음`);
-  }
-  // 오늘 부위별 직전/직직전 비교 — 2026-04-20.
-  //   각 대분류(가슴/등/이두 등)를 독립 블록으로 나열. 과거엔 합집합이라 다른 부위가 섞였음.
-  const cmps = Array.isArray(ctx.muscleCmps) ? ctx.muscleCmps : [];
-  for (const cmp of cmps) {
-    if (!cmp || !cmp.majors?.length || !cmp.today) continue;
-    const label = cmp.majors.map(_majorLabel).join(' · ');
-    lines.push('');
-    lines.push(`## 오늘 부위(${label}) · 직전/직직전 비교`);
-    const subs = Object.entries(cmp.today.subBalance || {}).sort((a,b)=>b[1]-a[1]);
-    if (subs.length > 0) {
-      lines.push(`- 오늘 세부: ${subs.map(([sp,v]) => `${_subPatternLabel(sp)} ${v}`).join(' / ')}`);
-    }
-    for (let i = 0; i < cmp.previous.length; i++) {
-      const p = cmp.previous[i];
-      const psubs = Object.entries(p.subBalance || {}).sort((a,b)=>b[1]-a[1]);
-      const head = i === 0 ? '직전' : '직직전';
-      lines.push(`- ${head} (${_prettyDate(p.dateKey)}): ${p.workSets}세트 · 볼륨 ${p.totalVolume.toLocaleString()} · Top ${p.topKg}kg` +
-        (psubs.length ? ` — ${psubs.map(([sp,v]) => `${_subPatternLabel(sp)} ${v}`).join('/')}` : ''));
-    }
-    if (cmp.deltas.length > 0) {
-      const d = cmp.deltas[0];
-      lines.push(`- 직전 대비 세트 ${d.workSetsDelta>=0?'+':''}${d.workSetsDelta}, 볼륨 ${d.volumeDelta>=0?'+':''}${d.volumeDelta.toLocaleString()}, Top ${d.topKgDelta>=0?'+':''}${d.topKgDelta}kg`);
-    }
-    if (cmp.imbalance?.weakSubPatterns?.length) {
-      lines.push(`- ⚠ 약한 세부: ${cmp.imbalance.weakSubPatterns.map(_subPatternLabel).join(' · ')} — 다음 세션에서 보완 추천`);
-    }
-  }
-  lines.push('');
-  // 최근 3일 식단
-  lines.push(`## 최근 3일 식단`);
-  for (const d of ctx.recentDiet) {
-    if (d.kcal > 0) {
-      lines.push(`- ${_prettyDate(d.dateKey)}: ${d.kcal}kcal · P${d.protein} C${d.carbs} F${d.fat}`);
-    } else {
-      lines.push(`- ${_prettyDate(d.dateKey)}: 기록 없음`);
-    }
-  }
-  lines.push('');
-  lines.push(`---`);
-  lines.push(`이 데이터를 기반으로 오늘/이번 주 운동·식단에 대한 피드백과 내일 개선안을 알려줘.`);
+  });
+
   return lines.join('\n');
 }
 
@@ -2251,6 +2424,18 @@ window.__expertAddEquipment = async (name, movementId, maxKg, incKg) => {
   renderExpertTopArea();
   return exId;
 };
+// 1회성 마이그레이션 — 종목 gymId 재배치 (workout/expert/migrate-gym-v1.js)
+// 사용: await window.__migrateGymV1('dry-run') → 표 확인 → await window.__migrateGymV1('apply')
+// 원복: await window.__migrationRollback()
+window.__migrateGymV1 = async (mode = 'dry-run', opts = {}) => {
+  const m = await import('./expert/migrate-gym-v1.js');
+  return m.run(mode, opts);
+};
+// 중복 gym 정리 전용 (CRUD 의 D) — apply 없이 동일 이름 gym 병합 + 빈 gym 삭제
+window.__migrationCleanupGyms = async (targetName = null) => {
+  const m = await import('./expert/migrate-gym-v1.js');
+  return m.cleanup(targetName);
+};
 window.expertOpenGymSwitcher = async () => {
   const gyms = getGyms();
   if (gyms.length <= 1) { _toast('헬스장이 1곳이에요. 설정에서 추가할 수 있어요.', 'info'); return; }
@@ -2278,9 +2463,17 @@ window.openRoutineSuggestWithRecent = async () => {
         exerciseId: it.exerciseId,
         muscleId: ex?.muscleId || 'chest',
         name: ex?.name || it.exerciseId,
-        sets: (it.sets || [{ reps: 10, rpeTarget: 8 }]).map(s => ({
-          kg: 0, reps: s.reps || 10, rpeTarget: s.rpeTarget || null, setType: null, done: false,
-        })),
+        // 2026-04-24: template 재사용 시에도 현재 maxWeightKg 기준으로 추천 무게 재계산.
+        //   저장 시점의 kg 을 답습하지 않고, 로드 시점 기준 RPE-reps → %1RM 공식으로 재산출.
+        sets: (it.sets || [{ reps: 10, rpeTarget: 8 }]).map(s => {
+          const kg = _estimateSetKg(ex, s.rpeTarget, s.reps);
+          return {
+            kg: kg > 0 ? kg : (Number(s.kg) || 0),
+            reps: s.reps || 10,
+            rpeTarget: s.rpeTarget || null,
+            setType: null, done: false,
+          };
+        }),
       };
     }).filter(e => exById[e.exerciseId]);
     const { _renderExerciseList } = await import('./exercises.js');
