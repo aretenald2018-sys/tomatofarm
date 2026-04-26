@@ -31,6 +31,8 @@ const MODALS = [
   { id: 'routine-suggest-modal',  path: './modals/routine-suggest-modal.js',  export: 'MODAL_HTML' },
   { id: 'routine-candidates-modal',path: './modals/routine-candidates-modal.js',export: 'MODAL_HTML' },
   { id: 'insights-modal',         path: './modals/insights-modal.js',         export: 'MODAL_HTML' },
+  // 맥스 모드 미니 온보딩 (3 scene)
+  { id: 'max-onboarding-modal',   path: './modals/max-onboarding-modal.js',   export: 'MODAL_HTML' },
   { id: 'calendar-day-modal',     path: './modals/calendar-day-modal.js',     export: 'MODAL_HTML' },
   { id: 'custom-muscles-modal',   path: './modals/custom-muscles-modal.js',   export: 'MODAL_HTML' },
 ];

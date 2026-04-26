@@ -8,7 +8,7 @@ import { _buildSparkline }            from './render.js';
 import { wtStartWorkoutTimer,
          wtRestTimerStart }            from './timers.js';
 import { showToast }                   from '../home/utils.js';
-import { getExList, getGymExList, getLastSession, detectPRs,
+import { getExList, getGymExList, getLastSession, detectPRs, getCache,
          dateKey, saveExercise,
          deleteExercise, getMuscleParts,
          saveCustomMuscle,
@@ -106,6 +106,126 @@ function _ensureWorkoutTimerStarted() {
   }
 }
 
+function _exerciseSubPattern(entry, ex) {
+  if (entry?.maxWeakPart) return entry.maxWeakPart;
+  const muscleIds = Array.isArray(entry?.muscleIds) && entry.muscleIds.length
+    ? entry.muscleIds
+    : (Array.isArray(ex?.muscleIds) ? ex.muscleIds : []);
+  if (muscleIds[0]) return muscleIds[0];
+  const movId = entry?.movementId || ex?.movementId || null;
+  return MOVEMENTS.find(m => m.id === movId)?.subPattern || null;
+}
+
+function _maybeShowMaxSetCoach(entryIdx, si) {
+  let preset;
+  try { preset = getExpertPreset(); } catch { return; }
+  if (preset?.mode !== 'max') return;
+  const entry = S.workout.exercises[entryIdx];
+  const set = entry?.sets?.[si];
+  if (!entry || !set || set.setType === 'warmup') return;
+  const kg = Number(set.kg) || 0;
+  const reps = Number(set.reps) || 0;
+  if (kg <= 0 || reps <= 0) return;
+  const meta = S.workout.maxMeta || {};
+  const sessionType = meta.sessionType === 'heavy_volume' ? 'heavy_volume' : 'high_volume';
+  const ex = getExList().find(e => e.id === entry.exerciseId);
+  const prescription = _resolveMaxPrescription(entry, ex);
+  const sp = _exerciseSubPattern(entry, ex);
+  const isWeak = Array.isArray(meta.selectedWeakParts) && sp && meta.selectedWeakParts.includes(sp);
+  const key = `${dateKey(S.shared.date.y, S.shared.date.m, S.shared.date.d)}:${entry.exerciseId}:${si}:${kg}:${reps}`;
+  window.__maxCoachShown = window.__maxCoachShown || new Set();
+  if (window.__maxCoachShown.has(key)) return;
+  window.__maxCoachShown.add(key);
+  const repsHigh = Number(prescription?.repsHigh) || (sessionType === 'heavy_volume' ? 10 : 18);
+  const repsLow = Number(prescription?.repsLow) || (sessionType === 'heavy_volume' ? 6 : 12);
+  if (reps >= repsHigh + 3) {
+    showToast(`맥스 코치: ${reps}회 가능하면 다음 세트 +${_stepForExercise(ex)}kg 검토`, 3200, 'info');
+  } else if (sessionType === 'high_volume' && reps >= repsHigh) {
+    showToast('맥스 코치: 고볼륨 Day 적합. 같은 중량으로 1-2세트 더 쌓아도 좋아요.', 3200, 'info');
+  } else if (reps < Math.max(1, repsLow - 2)) {
+    showToast('맥스 코치: 목표 반복 하한보다 낮습니다. 오늘은 무게를 유지하고 반복 품질을 맞추세요.', 3200, 'info');
+  } else if (isWeak && reps >= 10) {
+    showToast('약점 코치: 선택한 약점 부위 유효 세트로 집계됩니다.', 2400, 'success');
+  }
+}
+
+function _stepForExercise(ex) {
+  const mov = MOVEMENTS.find(m => m.id === ex?.movementId);
+  return mov?.stepKg || ex?.incrementKg || 2.5;
+}
+
+function _roundToStep(kg, step) {
+  const s = Number(step) > 0 ? Number(step) : 2.5;
+  const k = Number(kg) || 0;
+  return Math.round(k / s) * s;
+}
+
+function _localMaxPrescription({ movement, exerciseId, sessionType, weakTarget } = {}) {
+  if (!movement?.id) return null;
+  const isHeavy = sessionType === 'heavy_volume';
+  const isCore = movement.subPattern === 'core' || movement.primary === 'abs';
+  const isLarge = movement.sizeClass === 'large';
+  const targetSets = weakTarget ? 5 : 4;
+  const repsLow = isCore ? 10 : (isHeavy ? (isLarge ? 6 : 8) : (isLarge ? 8 : 12));
+  const repsHigh = isCore ? 15 : (isHeavy ? (isLarge ? 10 : 12) : (isLarge ? 12 : 18));
+  const targetRpe = isHeavy ? 9 : 8;
+  const targetReps = isHeavy ? repsLow : repsHigh;
+  const step = Number(movement.stepKg) > 0 ? Number(movement.stepKg) : 2.5;
+  const todayKey = dateKey(S.shared.date.y, S.shared.date.m, S.shared.date.d);
+  const last = exerciseId ? getLastSession(exerciseId, todayKey) : null;
+  const bestSet = (last?.sets || [])
+    .filter(s => s && s.setType !== 'warmup' && (s.done === true || ((s.kg || 0) > 0 && (s.reps || 0) > 0)))
+    .map(s => ({ ...s, e1rm: estimate1RM(s.kg, s.reps) }))
+    .sort((a, b) => b.e1rm - a.e1rm)[0] || null;
+  const pct = Math.max(0.55, Math.min(0.86, 1 - targetReps * 0.025 - (targetRpe >= 9 ? 0 : 0.03)));
+  let startKg = bestSet ? _roundToStep(estimate1RM(bestSet.kg, bestSet.reps) * pct, step) : 0;
+  let action = isHeavy ? 'load' : (weakTarget || !isLarge ? 'volume' : 'hold');
+  let reason = '과거 기록 기반으로 오늘 목표 세트와 반복을 제안합니다.';
+  if (bestSet && (Number(bestSet.reps) || 0) >= repsHigh + 3) {
+    action = 'load';
+    startKg = startKg > 0 ? _roundToStep(startKg + step, step) : startKg;
+    reason = `상한보다 ${(Number(bestSet.reps) || 0) - repsHigh}회 더 가능해 증량 후보입니다.`;
+  } else if (bestSet && !isHeavy && (Number(bestSet.reps) || 0) >= repsHigh) {
+    action = 'volume';
+    reason = '고볼륨 Day에서는 같은 무게로 유효 세트 누적을 우선합니다.';
+  }
+  const actionLabel = action === 'load' ? '증량' : (action === 'volume' ? '볼륨' : '유지');
+  return {
+    label: `${targetSets}세트 x ${repsLow}-${repsHigh}회 · RPE ${targetRpe}`,
+    targetSets, repsLow, repsHigh, targetRpe, startKg, action, actionLabel, reason,
+  };
+}
+
+function _resolveMaxPrescription(entry, ex) {
+  if (entry?.maxPrescription) return entry.maxPrescription;
+  let preset;
+  try { preset = getExpertPreset(); } catch { return null; }
+  if (preset?.mode !== 'max') return null;
+  const movement = MOVEMENTS.find(m => m.id === (entry?.movementId || ex?.movementId));
+  if (!movement) return null;
+  const meta = S.workout.maxMeta || {};
+  return _localMaxPrescription({
+    movement,
+    exerciseId: entry?.exerciseId || ex?.id || null,
+    sessionType: meta.sessionType === 'heavy_volume' ? 'heavy_volume' : 'high_volume',
+    weakTarget: !!entry?.maxWeakPart,
+  });
+}
+
+function _buildMaxPrescriptionBlock(entry, ex) {
+  const prescription = _resolveMaxPrescription(entry, ex);
+  if (!prescription) return '';
+  const kg = Number(prescription.startKg) > 0 ? ` · 시작 ${prescription.startKg}kg` : '';
+  const action = prescription.actionLabel || (prescription.action === 'load' ? '증량' : prescription.action === 'volume' ? '볼륨' : '유지');
+  const reason = prescription.reason || '과거 기록 기반으로 오늘 목표 세트와 반복을 제안합니다.';
+  return `
+    <div class="ex-max-prescription">
+      <div class="ex-max-prescription-main">맥스 처방 · ${prescription.label}${kg}</div>
+      <div class="ex-max-prescription-sub"><span>${action}</span>${reason}</div>
+    </div>
+  `;
+}
+
 export function wtUpdateSet(entryIdx, si, field, val) {
   // RPE 빈 값은 null로 저장 — 0과 구분해 _computeExpertRec의 prevRpeKnown 판정을 명확히.
   let parsed;
@@ -133,6 +253,7 @@ export function wtToggleSetDone(entryIdx, si) {
   if (!wasDone) {
     // 완료 체크 = 실제 운동 진행 중. 타이머 자동시작.
     _ensureWorkoutTimerStarted();
+    _maybeShowMaxSetCoach(entryIdx, si);
     const ex = getExList().find(e => e.id === S.workout.exercises[entryIdx].exerciseId);
     const exName = ex?.name || S.workout.exercises[entryIdx].exerciseId;
     const setNum = si + 1;
@@ -436,6 +557,7 @@ export function _renderExerciseList() {
          </div>`
       : '';
     const sparkline = _buildSparkline(entry.exerciseId, mc?.color);
+    const maxPrescriptionHtml = _buildMaxPrescriptionBlock(entry, ex);
 
     // Scene 12 — 프로 모드 전용 UI (e1RM 기반 실제 추천 무게 로직)
     // chips/footer는 prior 우선, 없으면 오늘 entry의 완료 본세트로 폴백.
@@ -459,6 +581,7 @@ export function _renderExerciseList() {
         <button class="ex-remove-btn" data-idx="${idx}">✕</button>
       </div>
       ${lastHint}
+      ${maxPrescriptionHtml}
       <div class="ex-sets" id="wt-sets-${idx}"></div>
       <button class="ex-add-set-btn" data-idx="${idx}">+ 세트 추가</button>
       ${expertHtml}`;

@@ -620,12 +620,25 @@ export const detectPRs = (exerciseId) => _detectPRs(_cache, exerciseId);
 export const calcBalanceByPattern = (movements, weekRange) => _calcBalanceByPattern(_cache, _exList, movements, weekRange);
 
 // ── Expert Preset 접근자 ───────────────────────────────────────
-export const getExpertPreset = () => ({ ...DEFAULT_EXPERT_PRESET, ..._settings.expert_preset });
+// 2026-04-25: mode lazy migration 추가. 기존 enabled=true 유저는 mode='pro'로 derive.
+//   Firestore 영속화는 다음 saveExpertPreset 호출 시 자동 반영. 그 전까지는 in-memory 보정.
+export const getExpertPreset = () => {
+  const merged = { ...DEFAULT_EXPERT_PRESET, ..._settings.expert_preset };
+  if (merged.enabled && (!merged.mode || merged.mode === 'normal')) {
+    merged.mode = 'pro';
+  }
+  return merged;
+};
 export async function saveExpertPreset(patch) {
   const merged = { ...getExpertPreset(), ...patch, updatedAt: Date.now() };
+  // mode <-> enabled 동기화: mode='normal'은 enabled=false, 그 외는 enabled=true.
+  if (merged.mode === 'normal') merged.enabled = false;
+  else if (merged.mode === 'pro' || merged.mode === 'max') merged.enabled = true;
   return _saveSetting('expert_preset', merged);
 }
 export const isExpertModeEnabled = () => !!_settings.expert_preset?.enabled;
+// 2026-04-25: 'normal' | 'pro' | 'max' 모드 discriminator.
+export const getExpertMode = () => getExpertPreset().mode || 'normal';
 
 export function calcStreaks() {
   return _calcStreaks(_cache, TODAY, getDietPlan(), dateKey);

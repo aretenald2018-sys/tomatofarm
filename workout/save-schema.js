@@ -18,7 +18,7 @@ export const WORKOUT_PAYLOAD_KEYS = Object.freeze([
   'stretchDuration', 'stretchMemo',
   'swimDistance', 'swimDurationMin', 'swimDurationSec', 'swimStroke', 'swimMemo',
   'workoutDuration', 'wine_free', 'memo', 'workoutPhoto',
-  'gymId', 'routineMeta',
+  'gymId', 'routineMeta', 'maxMeta',
   // 공유 — 운동 변경이 dayTarget 을 바꾸므로 운동 경로도 bOk/lOk 재계산.
   'bOk', 'lOk', 'dOk', 'sOk',
 ]);

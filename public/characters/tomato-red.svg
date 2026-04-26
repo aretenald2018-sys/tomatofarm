@@ -32,19 +32,19 @@
   />
 
   <path
-    d="M256 70
-       C241 85 237 107 244 128
-       C218 98 191 88 159 90
-       C164 124 184 146 214 154
-       C182 162 157 182 140 211
-       C176 217 205 213 229 194
-       C224 229 231 257 251 278
-       C271 256 281 228 277 192
-       C303 211 334 216 372 211
-       C354 180 327 162 294 154
-       C324 146 346 123 353 89
-       C320 88 292 97 268 128
-       C269 102 265 83 256 70 Z"
+    d="M256 78
+       C246 92 242 111 247 130
+       C223 107 198 101 170 103
+       C175 130 193 145 220 152
+       C194 160 172 179 157 205
+       C188 211 215 208 236 191
+       C233 218 240 241 256 259
+       C272 241 279 218 276 191
+       C297 208 324 211 355 205
+       C339 179 317 160 291 152
+       C318 145 336 130 341 103
+       C312 101 287 107 264 130
+       C266 110 264 92 256 78 Z"
     fill="url(#leaf)"
     stroke="#32844d"
     stroke-width="10"
@@ -54,14 +54,18 @@
   <ellipse cx="170" cy="212" rx="38" ry="22" transform="rotate(-42 170 212)" fill="url(#shine)" opacity="0.88"/>
   <ellipse cx="112" cy="270" rx="17" ry="15" fill="#ffffff" opacity="0.42"/>
 
+  <g transform="translate(182 286) scale(0.84) translate(-182 -286)">
   <ellipse cx="182" cy="286" rx="42" ry="49" fill="#a61d1f"/>
-  <ellipse cx="330" cy="286" rx="42" ry="49" fill="#a61d1f"/>
   <circle cx="171" cy="272" r="18" fill="#ffffff"/>
-  <circle cx="319" cy="272" r="18" fill="#ffffff"/>
   <circle cx="199" cy="284" r="9" fill="#ffffff"/>
-  <circle cx="347" cy="284" r="9" fill="#ffffff"/>
   <path d="M162 302 C170 314 186 315 197 305" fill="none" stroke="#e05f61" stroke-width="8" stroke-linecap="round"/>
+  </g>
+  <g transform="translate(330 286) scale(0.84) translate(-330 -286)">
+  <ellipse cx="330" cy="286" rx="42" ry="49" fill="#a61d1f"/>
+  <circle cx="319" cy="272" r="18" fill="#ffffff"/>
+  <circle cx="347" cy="284" r="9" fill="#ffffff"/>
   <path d="M310 302 C318 314 334 315 345 305" fill="none" stroke="#e05f61" stroke-width="8" stroke-linecap="round"/>
+  </g>
 
   <ellipse cx="144" cy="352" rx="38" ry="22" fill="#ff9ba1" opacity="0.88"/>
   <ellipse cx="368" cy="352" rx="38" ry="22" fill="#ff9ba1" opacity="0.88"/>
@@ -71,7 +75,7 @@
        C228 350 243 354 256 339
        C269 354 284 350 292 332"
     fill="none"
-    stroke="#632a33"
+    stroke="#9a1616"
     stroke-width="10"
     stroke-linecap="round"
     stroke-linejoin="round"

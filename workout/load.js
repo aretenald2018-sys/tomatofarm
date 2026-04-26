@@ -79,8 +79,16 @@ export function loadWorkoutDate(y, m, d) {
   w.wineFree        = !!day.wine_free;
   w.workoutDuration = day.workoutDuration || 0;
   // 전문가 모드 메타데이터 복원 (day에 저장된 값 > preset 기본값)
+  // 2026-04-25: max 모드는 체육관 비의존 → currentGymId 항상 null 유지.
+  //   day.gymId 가 남아있어도(과거 pro 세션 잔재) max 진입 후엔 무시.
   w.routineMeta  = day.routineMeta || null;
-  w.currentGymId = day.gymId || (isExpertModeEnabled() ? (getExpertPreset().currentGymId || null) : null);
+  w.maxMeta = day.maxMeta ? JSON.parse(JSON.stringify(day.maxMeta)) : null;
+  const _preset = getExpertPreset();
+  if (_preset.mode === 'max') {
+    w.currentGymId = null;
+  } else {
+    w.currentGymId = day.gymId || (isExpertModeEnabled() ? (_preset.currentGymId || null) : null);
+  }
 
   // ⚠️ 스톱워치(S.workout.workoutStartTime/workoutTimerInterval/workoutTimerDate)는
   // 끝내기/리셋 전에는 절대 멈추면 안 됨. 여기서는 건드리지 않는다.

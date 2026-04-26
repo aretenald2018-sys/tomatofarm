@@ -41,7 +41,7 @@ export async function refreshNotifCenter() {
   const list = document.getElementById('notif-center-list');
   if (!list) return;
 
-  if (pending.length === 0 && notifs.length === 0) {
+  if (pending.length === 0 && unread.length === 0) {
     list.innerHTML = '<div class="notif-empty">알림이 없어요</div>';
     return;
   }
@@ -64,10 +64,8 @@ export async function refreshNotifCenter() {
     </div>`;
   }
 
-  let readShown = 0;
   for (const n of notifs) {
-    if (n.read && readShown >= 5) continue;
-    if (n.read) readShown++;
+    if (n.read) continue;
     if (n.type === 'friend_request' && pending.some(p => p.from === n.from)) continue;
     const a = accounts.find(x => x.id === n.from);
     const nm = a ? resolveNickname(a, accounts) : (n.from || '').replace(/_/g, '');
@@ -199,20 +197,25 @@ window.markAllNotifsRead = async function() {
     .map((n) => list?.querySelector(`[data-notif-id="${n.id}"]`))
     .filter(Boolean);
 
+  nodes.forEach((node) => {
+    node.style.height = `${node.offsetHeight}px`;
+    node.style.overflow = 'hidden';
+  });
+
   await Promise.all(nodes.map((node, index) => new Promise((resolve) => {
     setTimeout(() => {
       node.animate([
-        { opacity: 1, transform: 'translateX(0)', height: `${node.offsetHeight}px`, marginBottom: getComputedStyle(node).marginBottom },
-        { opacity: 0, transform: 'translateX(26px)', height: '0px', marginBottom: '0px' },
+        { opacity: 1, transform: 'translateY(0)', height: `${node.offsetHeight}px`, paddingTop: '14px', paddingBottom: '14px' },
+        { opacity: 0, transform: 'translateY(-4px)', height: '0px', paddingTop: '0px', paddingBottom: '0px' },
       ], {
-        duration: 260,
-        easing: 'cubic-bezier(.22,.61,.36,1)',
+        duration: 170,
+        easing: 'ease-out',
         fill: 'forwards',
       }).onfinish = () => {
         node.remove();
         resolve();
       };
-    }, index * 55);
+    }, index * 25);
   })));
 
   await Promise.all(unread.map((n) => markNotificationRead(n.id).catch(() => {})));

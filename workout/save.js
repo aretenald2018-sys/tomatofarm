@@ -14,6 +14,7 @@ import { showCenterToast }          from '../home/utils.js';
 import { saveDay, dateKey, isFuture, trackEvent, getExList } from '../data.js';
 import { WORKOUT_PAYLOAD_KEYS, DIET_PAYLOAD_KEYS } from './save-schema.js';
 import { deriveActivityFlagsFromDetails, deriveDietSuccessFromWorkout } from './cross-domain.js';
+import { MOVEMENTS } from '../config.js';
 
 // 미래 날짜 저장 가드 — 어떤 경로로든 미래 날짜 쓰기 금지 (B-3).
 function _blockIfFutureDate() {
@@ -100,7 +101,62 @@ function _buildWorkoutPayload(cleanEx, isDietSuccess) {
     workoutPhoto: window._mealPhotos?.workout || null,
     gymId: w.currentGymId || null,
     routineMeta: w.routineMeta || null,
+    maxMeta: _buildMaxMeta(cleanEx),
     ..._computeMealOk(isDietSuccess),
+  };
+}
+
+function _resolveEntrySubPattern(entry, exById, movById) {
+  if (entry?.maxWeakPart) return entry.maxWeakPart;
+  const lib = exById.get(entry?.exerciseId);
+  const muscleIds = Array.isArray(entry?.muscleIds) && entry.muscleIds.length
+    ? entry.muscleIds
+    : (Array.isArray(lib?.muscleIds) ? lib.muscleIds : []);
+  if (muscleIds[0]) return muscleIds[0];
+  const movementId = entry?.movementId || lib?.movementId || null;
+  if (movementId) return movById.get(movementId)?.subPattern || null;
+  return null;
+}
+
+function _buildMaxMeta(cleanEx) {
+  const src = S.workout.maxMeta;
+  if (!src || typeof src !== 'object') return null;
+  const selectedWeakParts = Array.isArray(src.selectedWeakParts)
+    ? [...new Set(src.selectedWeakParts.filter(Boolean))]
+    : [];
+  const selectedMajors = Array.isArray(src.selectedMajors)
+    ? [...new Set(src.selectedMajors.filter(Boolean))]
+    : [];
+  const exById = new Map((getExList() || []).map(e => [e.id, e]));
+  const movById = new Map((MOVEMENTS || []).map(m => [m.id, m]));
+  const weakSet = new Set(selectedWeakParts);
+  const summary = { sets: 0, volume: 0, byPart: {} };
+  for (const entry of cleanEx || []) {
+    const sp = _resolveEntrySubPattern(entry, exById, movById);
+    if (!sp || (!weakSet.has(sp) && !entry.maxWeakPart)) continue;
+    const part = entry.maxWeakPart || sp;
+    for (const set of entry.sets || []) {
+      if (!set || set.setType === 'warmup') continue;
+      const done = set.done === true || (set.done !== false && ((set.kg || 0) > 0 || (set.reps || 0) > 0));
+      if (!done) continue;
+      const volume = (Number(set.kg) || 0) * (Number(set.reps) || 0);
+      summary.sets += 1;
+      summary.volume += volume;
+      if (!summary.byPart[part]) summary.byPart[part] = { sets: 0, volume: 0 };
+      summary.byPart[part].sets += 1;
+      summary.byPart[part].volume += volume;
+    }
+  }
+  return {
+    mode: 'max',
+    sessionType: src.sessionType === 'heavy_volume' ? 'heavy_volume' : 'high_volume',
+    selectedMajors,
+    selectedWeakParts,
+    weakBlock: {
+      durationSec: Math.max(0, Math.floor(Number(src.weakBlock?.durationSec) || 0)),
+      activeStartedAt: src.weakBlock?.activeStartedAt || null,
+    },
+    weakSummary: summary,
   };
 }
 

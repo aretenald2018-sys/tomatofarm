@@ -3,7 +3,7 @@
 
 // 캐시 버전: 타임스탬프 기반 자동 생성 — 파일 수정 시 SW 자동 업데이트
 // (SW 파일 내용이 1바이트라도 바뀌면 브라우저가 새 SW로 인식)
-const CACHE_VERSION = 'tomatofarm-v20260424z7-routine-progression-cap';
+const CACHE_VERSION = 'tomatofarm-v20260426z9-test-mode-label';
 const RUNTIME_CACHE = 'dashboard3-runtime';
 const STATIC_ASSETS = [
   './',
@@ -60,6 +60,7 @@ const STATIC_ASSETS = [
   './workout/activity-forms.js',
   './workout/expert/onboarding.js',
   './workout/expert/migrate-gym-v1.js',
+  './workout/expert/max.js',
   './render-cooking.js',
   './render-stats.js',
   './render-admin.js',
@@ -135,6 +136,7 @@ const STATIC_ASSETS = [
   './modals/routine-suggest-modal.js',
   './modals/routine-candidates-modal.js',
   './modals/insights-modal.js',
+  './modals/max-onboarding-modal.js',
   // AI 음식 사진 추정 (2026-04-17 신규)
   './data/korean-food-normalize.js',
   './workout/ai-estimate.js',

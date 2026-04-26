@@ -1221,3 +1221,501 @@
   line-height: 16px;
   margin-top: 8px;
 }
+
+/* ════════════════════════════════════════════════════════════════
+   Max 모드 — 보강 추천 카드 + 미니 위자드 (2026-04-25)
+   TDS Mobile: t6 16/24, t7 13/19.5, st12 12/18, st13 11/16.5
+   transition 0.1s ease-in-out · radius 12/14 · padding 12/16
+   ════════════════════════════════════════════════════════════════ */
+.wt-max-card {
+  /* .wt-exc 기본 컨테이너 재사용 — 추가 여백/색만 정의 */
+}
+.wt-max-body { padding: 8px 16px 16px; }
+.wt-max-empty {
+  text-align: center;
+  padding: 24px 12px;
+}
+.wt-max-empty-icon { font-size: 32px; margin-bottom: 8px; line-height: 1; }
+.wt-max-empty-title {
+  font-size: 16px; line-height: 24px; font-weight: 600;
+  color: #1f1f24;
+  margin-bottom: 4px;
+}
+.wt-max-empty-sub {
+  font-size: 13px; line-height: 19.5px;
+  color: #87878e;
+}
+.wt-max-context {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+  font-size: 12px; line-height: 18px;
+  color: #4c4c54;
+  margin-bottom: 10px;
+}
+.wt-max-context-major {
+  font-weight: 700; color: #1f1f24;
+  font-size: 13px;
+}
+.wt-max-context-sep { color: #c5c5c9; }
+.wt-max-context-prev { color: #87878e; }
+
+.wt-max-group {
+  background: #fdf0f0;
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+.wt-max-group:last-of-type { margin-bottom: 12px; }
+.wt-max-weak-label {
+  font-size: 13px; line-height: 19.5px; font-weight: 600;
+  color: #ca1d13;
+  margin-bottom: 8px;
+}
+.wt-max-chips {
+  display: flex; flex-wrap: wrap; gap: 6px;
+}
+.wt-max-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 7px 10px;
+  background: #ffffff;
+  border: 1px solid #ededf0;
+  border-radius: 10px;
+  font-size: 13px; line-height: 19.5px; font-weight: 500;
+  color: #1f1f24;
+  cursor: pointer;
+  transition: all 0.1s ease-in-out;
+}
+.wt-max-chip:hover, .wt-max-chip:active {
+  background: #fdf0f0;
+  border-color: #fa342c;
+}
+.wt-max-chip.is-preferred {
+  border-color: #fa342c;
+  background: #fff;
+}
+.wt-max-chip-star {
+  color: #fa342c;
+  font-size: 12px;
+  line-height: 1;
+}
+.wt-max-chip-name { font-weight: 600; }
+.wt-max-chip-cat {
+  font-size: 11px; line-height: 16.5px;
+  color: #87878e;
+  font-weight: 500;
+  margin-left: 2px;
+}
+.wt-max-foot {
+  font-size: 11px; line-height: 16.5px;
+  color: #87878e;
+  text-align: center;
+  padding-top: 6px;
+}
+
+.wt-max-control-card { margin-bottom: 10px; }
+.wt-max-major-head {
+  margin-bottom: 8px;
+}
+.wt-max-major-title {
+  font-size: 14px;
+  line-height: 21px;
+  font-weight: 850;
+  color: #1f1f24;
+}
+.wt-max-major-sub {
+  margin-top: 2px;
+  font-size: 11px;
+  line-height: 16px;
+  color: #6f6f76;
+}
+.wt-max-major-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.wt-max-major-chip {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  min-width: 74px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid #ededf0;
+  background: #ffffff;
+  cursor: pointer;
+}
+.wt-max-major-chip span {
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 800;
+  color: #1f1f24;
+}
+.wt-max-major-chip small {
+  font-size: 10px;
+  line-height: 14px;
+  color: #87878e;
+}
+.wt-max-major-chip.is-on {
+  border-color: #0e7490;
+  background: #ecfeff;
+}
+.wt-max-major-chip.is-on span {
+  color: #0e7490;
+}
+.wt-max-session-type {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.wt-max-type-btn {
+  text-align: left;
+  padding: 11px 12px;
+  border: 1px solid #ededf0;
+  border-radius: 14px;
+  background: #fff;
+  color: #1f1f24;
+  font-size: 13px;
+  line-height: 19px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.wt-max-type-btn small {
+  display: block;
+  margin-top: 2px;
+  color: #87878e;
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 500;
+}
+.wt-max-type-btn.is-on {
+  border-color: #fa342c;
+  background: #fdf0f0;
+}
+.wt-max-weak-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.wt-max-weak-title {
+  font-size: 14px;
+  line-height: 21px;
+  font-weight: 800;
+  color: #1f1f24;
+}
+.wt-max-weak-sub {
+  font-size: 11px;
+  line-height: 16px;
+  color: #87878e;
+}
+.wt-max-timer-btn {
+  flex: 0 0 auto;
+  padding: 9px 11px;
+  border: 1px solid #ededf0;
+  border-radius: 999px;
+  background: #fff;
+  color: #4c4c54;
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.wt-max-timer-btn.is-running {
+  background: #1f1f24;
+  border-color: #1f1f24;
+  color: #fff;
+}
+.wt-max-weak-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.wt-max-weak-chip {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 8px 10px;
+  border: 1px solid #ededf0;
+  border-radius: 12px;
+  background: #fff;
+  color: #1f1f24;
+  cursor: pointer;
+}
+.wt-max-weak-chip span {
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 700;
+}
+.wt-max-weak-chip small {
+  font-size: 10px;
+  line-height: 14px;
+  color: #87878e;
+}
+.wt-max-weak-chip.is-on {
+  border-color: #fa342c;
+  background: #fdf0f0;
+}
+.wt-max-section-label {
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 800;
+  color: #4c4c54;
+  margin: 4px 0 8px;
+}
+.wt-max-by-major {
+  display: grid;
+  gap: 12px;
+}
+.wt-max-major-section {
+  padding: 12px;
+  border: 1px solid #ededf0;
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 8px 24px rgba(31, 31, 36, 0.04);
+}
+.wt-max-major-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.wt-max-major-section-head span {
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 900;
+  color: #1f1f24;
+}
+.wt-max-major-section-head small {
+  flex: 0 0 auto;
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 700;
+  color: #87878e;
+}
+.wt-max-source-list {
+  display: grid;
+  gap: 8px;
+}
+.wt-max-source-card {
+  padding: 10px;
+  border: 1px solid rgba(31, 31, 36, 0.06);
+  border-radius: 14px;
+  background: #f9fafb;
+}
+.wt-max-source-card--fixed {
+  background: linear-gradient(135deg, rgba(236, 253, 245, 0.9), rgba(240, 249, 255, 0.9));
+  border-color: rgba(14, 116, 144, 0.14);
+}
+.wt-max-source-card--weak {
+  background: #f7f5ff;
+  border-color: rgba(91, 53, 177, 0.14);
+}
+.wt-max-source-card--balance {
+  background: #fff7ed;
+  border-color: rgba(234, 88, 12, 0.12);
+}
+.wt-max-source-card--starter {
+  background: #f8fafc;
+  border-color: rgba(71, 85, 105, 0.12);
+}
+.wt-max-source-title {
+  margin-bottom: 8px;
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 900;
+  color: #4c4c54;
+}
+.wt-max-source-card--weak .wt-max-source-title { color: #5b35b1; }
+.wt-max-source-card--balance .wt-max-source-title { color: #c2410c; }
+.wt-max-source-card--fixed .wt-max-source-title { color: #0e7490; }
+.wt-max-source-card .wt-max-fixed-list {
+  margin-bottom: 0;
+}
+.wt-max-fixed-list {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 14px;
+}
+.wt-max-fixed-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 11px;
+  border: 1px solid rgba(15, 61, 70, 0.12);
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(236, 253, 245, 0.9), rgba(240, 249, 255, 0.9));
+}
+.wt-max-fixed-name {
+  font-size: 13px;
+  font-weight: 850;
+  color: #12383f;
+}
+.wt-max-fixed-meta,
+.wt-max-fixed-prescription {
+  margin-top: 2px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: #4c6a70;
+}
+.wt-max-fixed-prescription {
+  font-weight: 700;
+  color: #0e7490;
+}
+.wt-max-fixed-add,
+.wt-max-fixed-done {
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 999px;
+  padding: 7px 10px;
+  font-size: 11px;
+  font-weight: 850;
+}
+.wt-max-fixed-add {
+  color: #ffffff;
+  background: #0e7490;
+}
+.wt-max-fixed-done {
+  color: #0f766e;
+  background: rgba(13, 148, 136, 0.12);
+}
+.wt-max-group--coach {
+  background: #f7f5ff;
+}
+.wt-max-group--coach .wt-max-weak-label {
+  color: #5b35b1;
+}
+
+@media (max-width: 420px) {
+  .wt-max-session-type { grid-template-columns: 1fr; }
+  .wt-max-weak-head { flex-direction: column; }
+  .wt-max-timer-btn { width: 100%; justify-content: center; }
+}
+
+/* ── 미니 위자드 (3 scene) — modal-overlay 안에 sheet ─────────── */
+.wt-max-ob-sheet {
+  background: #ffffff;
+  border-radius: 20px 20px 0 0;
+  padding: 0;
+  max-width: 480px;
+  margin: auto auto 0 auto;
+  width: 100%;
+  overflow: hidden;
+}
+.wt-max-ob-topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 20px 8px;
+  border-bottom: 1px solid #f5f5f7;
+}
+.wt-max-ob-topbar-title {
+  font-size: 16px; line-height: 24px; font-weight: 700;
+  color: #1f1f24;
+}
+.wt-max-ob-close {
+  width: 32px; height: 32px;
+  border-radius: 16px;
+  background: transparent;
+  border: none;
+  font-size: 22px; line-height: 1; color: #87878e;
+  cursor: pointer;
+  transition: background 0.1s ease-in-out;
+}
+.wt-max-ob-close:hover { background: #f5f5f7; }
+.wt-max-ob-content { padding: 20px; }
+.wt-max-ob-step { display: flex; flex-direction: column; gap: 14px; }
+.wt-max-ob-title {
+  font-size: 20px; line-height: 29px; font-weight: 700;
+  color: #1f1f24;
+}
+.wt-max-ob-sub {
+  font-size: 13px; line-height: 19.5px;
+  color: #87878e;
+  margin-top: -8px;
+}
+.wt-max-ob-row-label {
+  font-size: 13px; line-height: 19.5px; font-weight: 600;
+  color: #4c4c54;
+  margin-top: 4px;
+}
+.wt-max-ob-opts {
+  display: flex; flex-direction: column; gap: 8px;
+}
+.wt-max-ob-opt {
+  text-align: left;
+  padding: 12px 14px;
+  background: #f5f5f7;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: all 0.1s ease-in-out;
+}
+.wt-max-ob-opt:hover { background: #ededf0; }
+.wt-max-ob-opt.is-on {
+  background: #fdf0f0;
+  border-color: #fa342c;
+}
+.wt-max-ob-opt-label {
+  font-size: 15px; line-height: 22.5px; font-weight: 600;   /* TDS st11 */
+  color: #1f1f24;
+}
+.wt-max-ob-opt-sub {
+  font-size: 12px; line-height: 18px;
+  color: #87878e;
+  margin-top: 2px;
+}
+.wt-max-ob-pills {
+  display: flex; flex-wrap: wrap; gap: 6px;
+}
+.wt-max-ob-pill {
+  padding: 7px 12px;                                          /* TDS SegmentedControl item */
+  background: #f5f5f7;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  font-size: 15px; line-height: 22.5px; font-weight: 600;     /* TDS st11 */
+  color: #4c4c54;
+  cursor: pointer;
+  transition: all 0.1s ease-in-out;
+}
+.wt-max-ob-pill:hover { background: #ededf0; }
+.wt-max-ob-pill.is-on {
+  background: #fa342c;
+  color: #ffffff;
+  border-color: #fa342c;
+}
+.wt-max-ob-foot {
+  display: flex; gap: 8px;
+  margin-top: 10px;
+}
+.wt-max-ob-back, .wt-max-ob-skip {
+  flex: 0 0 auto;
+  padding: 12px 16px;
+  background: #f5f5f7;
+  border: none;
+  border-radius: 12px;
+  font-size: 14px; line-height: 21px; font-weight: 600;
+  color: #4c4c54;
+  cursor: pointer;
+  transition: background 0.1s ease-in-out;
+}
+.wt-max-ob-back:hover, .wt-max-ob-skip:hover { background: #ededf0; }
+.wt-max-ob-next {
+  flex: 1;
+  padding: 12px 16px;
+  background: #fa342c;
+  border: none;
+  border-radius: 12px;
+  font-size: 14px; line-height: 21px; font-weight: 600;
+  color: #ffffff;
+  cursor: pointer;
+  transition: background 0.1s ease-in-out;
+}
+.wt-max-ob-next:hover { background: #ca1d13; }
+.wt-max-ob-next:disabled {
+  background: #c5c5c9;
+  cursor: not-allowed;
+}

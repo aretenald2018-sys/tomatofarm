@@ -186,6 +186,10 @@ export function _setDietPlan(v) { _dietPlan = v; }
 // 전문가 모드 프리셋 기본값 — 최초 로그인 유저에게 영향 없음(enabled:false)
 export const DEFAULT_EXPERT_PRESET = {
   enabled: false,
+  // 2026-04-25: 'normal' | 'pro' | 'max' 3-state 모드 enum.
+  //   enabled 는 mode!=='normal' 와 동치로 derive 가능하지만 호환성 위해 양쪽 유지.
+  //   pro: 체육관·장비 등록 후 추천. max: 직전 같은 부위 세션 약점 subPattern 보강 제안.
+  mode: 'normal',
   snoozedUntil: null,                      // dateKey 형식, 이 날짜 전까지는 배너 숨김
   goal: null,                              // 'hypertrophy'|'cut'|'power'|'beginner'|'rehab'
   daysPerWeek: null,                       // 2~6
@@ -194,7 +198,7 @@ export const DEFAULT_EXPERT_PRESET = {
   avoidMuscles:  [],                       // string[]
   forbiddenMovements: [],                  // movementId[]
   preferredRpe: null,                      // '6-7'|'7-8'|'8-9'
-  currentGymId: null,                      // 마지막으로 선택된 gymId
+  currentGymId: null,                      // 마지막으로 선택된 gymId (pro 전용)
   updatedAt: null,
 };
 

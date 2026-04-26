@@ -31,7 +31,7 @@ test('운동 필드는 S.workout 아래 존재', () => {
     'wineFree',
     'workoutStartTime', 'workoutDuration', 'workoutTimerInterval', 'workoutTimerDate',
     'restTimer',
-    'currentGymId', 'routineMeta',
+    'currentGymId', 'routineMeta', 'maxMeta',
   ];
   for (const k of expected) {
     assert.ok(k in S.workout, `S.workout.${k} 누락 — 네임스페이스 회귀`);
@@ -63,7 +63,7 @@ test('S 루트에 flat shim 존재 금지 (S.exercises, S.cf 등 — 네임스�
     'exercises', 'hiddenExercises', 'cf', 'stretching', 'swimming', 'running',
     'runData', 'cfData', 'stretchData', 'swimData', 'wineFree',
     'workoutStartTime', 'workoutDuration', 'workoutTimerInterval', 'workoutTimerDate',
-    'restTimer', 'currentGymId', 'routineMeta',
+    'restTimer', 'currentGymId', 'routineMeta', 'maxMeta',
     'breakfastSkipped', 'lunchSkipped', 'dinnerSkipped', 'date',
   ];
   // `in` 연산자는 own + 상속 프로퍼티 포함. Object.hasOwn 만 주장.

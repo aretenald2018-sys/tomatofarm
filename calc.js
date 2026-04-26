@@ -1007,6 +1007,306 @@ export function buildMuscleComparison(cache, exList, movements, todayKey, majors
 }
 
 // ================================================================
+// Max-mode Boost Suggester
+//   "직전·직직전 같은 부위 세션을 보고, 부족한 subPattern을 보강하는
+//    바벨/덤벨 위주 종목을 제안한다. 강제 X — 후보 목록만."
+//   입력은 buildMuscleComparison() 결과 + MOVEMENTS 카탈로그 + 사용자
+//   exList(이미 등록된 종목 매핑) + takenExerciseIds(오늘 이미 추가됨).
+// ================================================================
+
+/**
+ * Max 모드 보강 추천. 순수 함수 — DOM/Firebase 접근 X.
+ * @param {Object} args
+ * @param {Object} args.comparison - buildMuscleComparison() 결과
+ * @param {Array}  args.exList     - 사용자 등록 종목 [{id, movementId, name, ...}]
+ * @param {Array}  args.movements  - MOVEMENTS 카탈로그
+ * @param {Array}  [args.preferredCategories=['barbell','dumbbell']] - 가산 카테고리
+ * @param {Array}  [args.takenExerciseIds=[]] - 오늘 이미 추가된 exerciseId 목록
+ * @param {Number} [args.limit=3]  - 전체 반환 동작 수 상한
+ * @returns {Array<{subPattern, subPatternLabel, exercises: Array}>}
+ *   exercises[i]: { movementId, nameKo, equipment_category, sizeClass, primary, isPreferred, exerciseId|null, score }
+ *   subPattern마다 상위 2개씩 골라 카테고리 다양성 확보.
+ */
+export function suggestMaxBoosts({
+  comparison,
+  exList = [],
+  movements = [],
+  preferredCategories = ['barbell', 'dumbbell'],
+  takenExerciseIds = [],
+  limit = 3,
+} = {}) {
+  const weakSubs = comparison?.imbalance?.weakSubPatterns;
+  if (!Array.isArray(weakSubs) || weakSubs.length === 0) return [];
+
+  const preferredSet = new Set(preferredCategories || []);
+  const takenSet = new Set(takenExerciseIds || []);
+
+  // exList 매핑: movementId -> exerciseId (사용자가 이미 등록한 종목 우대)
+  const movToExId = new Map();
+  for (const e of exList) {
+    if (e?.movementId) movToExId.set(e.movementId, e.id);
+  }
+
+  // takenSet -> takenMovIds 역매핑 (오늘 이미 추가된 movementId 추적)
+  const takenMovIds = new Set();
+  for (const e of exList) {
+    if (e?.id && takenSet.has(e.id) && e.movementId) takenMovIds.add(e.movementId);
+  }
+
+  const subLabel = (sp) => ({
+    chest_upper:'가슴 상부', chest_mid:'가슴 중부', chest_lower:'가슴 하부',
+    back_width:'등 넓이', back_thickness:'등 두께', posterior:'후면사슬',
+    shoulder_front:'어깨 전면', shoulder_side:'어깨 측면', rear_delt:'어깨 후면',
+    traps:'승모', quad:'대퇴사두', hamstring:'햄스트링', glute:'둔근', calf:'종아리',
+    bicep:'이두', tricep:'삼두', core:'코어',
+  }[sp] || sp);
+
+  const result = [];
+  let totalPicked = 0;
+
+  for (const sp of weakSubs) {
+    if (totalPicked >= limit) break;
+
+    // 후보: subPattern == sp 인 모든 MOVEMENTS
+    const candidates = movements
+      .filter(m => m.subPattern === sp)
+      .map(m => {
+        let score = 0;
+        const isPreferred = preferredSet.has(m.equipment_category);
+        if (isPreferred) score += 5;                          // 바벨/덤벨 가산
+        if (movToExId.has(m.id)) score += 3;                  // 사용자 등록 종목 +3
+        if (takenMovIds.has(m.id)) score -= 100;              // 오늘 이미 추가됨 → 사실상 제외
+        if (m.sizeClass === 'large') score += 1;              // 복합관절 미세 가산
+        return {
+          movementId: m.id,
+          nameKo: m.nameKo,
+          equipment_category: m.equipment_category,
+          sizeClass: m.sizeClass,
+          primary: m.primary,
+          isPreferred,
+          exerciseId: movToExId.get(m.id) || null,
+          score,
+        };
+      })
+      .filter(c => c.score > -50);  // taken 항목 제외
+
+    if (candidates.length === 0) continue;
+
+    // 정렬: score 내림차순 → 카테고리 다양성 적용
+    candidates.sort((a, b) => b.score - a.score);
+
+    // 카테고리 다양성: 동일 카테고리 2개째부터 -2 패널티
+    const catCount = {};
+    const ranked = candidates.map(c => {
+      const used = catCount[c.equipment_category] || 0;
+      catCount[c.equipment_category] = used + 1;
+      const adjusted = used >= 1 ? c.score - 2 : c.score;
+      return { ...c, score: adjusted };
+    });
+    ranked.sort((a, b) => b.score - a.score);
+
+    // subPattern당 상위 2개
+    const picked = ranked.slice(0, 2);
+    if (picked.length === 0) continue;
+
+    result.push({
+      subPattern: sp,
+      subPatternLabel: subLabel(sp),
+      exercises: picked,
+    });
+    totalPicked += picked.length;
+  }
+
+  // limit 적용 — 마지막 group에서 초과분 잘라냄
+  if (totalPicked > limit) {
+    let acc = 0;
+    for (let i = 0; i < result.length; i++) {
+      const remaining = limit - acc;
+      if (remaining <= 0) { result.length = i; break; }
+      if (result[i].exercises.length > remaining) {
+        result[i].exercises = result[i].exercises.slice(0, remaining);
+      }
+      acc += result[i].exercises.length;
+    }
+  }
+
+  return result;
+}
+
+function _workSetsOnly(sets = []) {
+  return (sets || []).filter(_isWorkSet);
+}
+
+function _setE1RM(set) {
+  const kg = Number(set?.kg) || 0;
+  const reps = Number(set?.reps) || 0;
+  const rpe = Number(set?.rpe) || 0;
+  if (kg <= 0 || reps <= 0) return 0;
+  if (rpe >= 6) {
+    const pct = rpeRepsToPct(rpe, reps);
+    return pct > 0 ? kg / pct : estimate1RM(kg, reps);
+  }
+  return estimate1RM(kg, reps);
+}
+
+function _bestRecentSet(sets = []) {
+  return _workSetsOnly(sets)
+    .map(s => ({ ...s, e1rm: _setE1RM(s) }))
+    .filter(s => s.e1rm > 0)
+    .sort((a, b) => b.e1rm - a.e1rm)[0] || null;
+}
+
+function _defaultMaxPrescription(movement, sessionType = 'high_volume', weakTarget = false) {
+  const isHeavy = sessionType === 'heavy_volume';
+  const isCore = movement?.subPattern === 'core' || movement?.primary === 'abs';
+  const isLarge = movement?.sizeClass === 'large';
+  if (isCore) {
+    return { targetSets: weakTarget ? 5 : 4, repsLow: 10, repsHigh: 15, targetRpe: isHeavy ? 9 : 8, action: weakTarget ? 'volume' : 'hold' };
+  }
+  if (isHeavy) {
+    return isLarge
+      ? { targetSets: weakTarget ? 5 : 4, repsLow: 6, repsHigh: 10, targetRpe: 9, action: 'load' }
+      : { targetSets: weakTarget ? 5 : 4, repsLow: 8, repsHigh: 12, targetRpe: 9, action: 'load' };
+  }
+  return isLarge
+    ? { targetSets: weakTarget ? 5 : 4, repsLow: 8, repsHigh: 12, targetRpe: 8, action: weakTarget ? 'volume' : 'hold' }
+    : { targetSets: weakTarget ? 5 : 4, repsLow: 12, repsHigh: 18, targetRpe: 8, action: 'volume' };
+}
+
+function _movementExerciseIds(exList = [], movementId) {
+  return (exList || []).filter(e => e?.movementId === movementId).map(e => e.id).filter(Boolean);
+}
+
+function _findMovementSessions(cache, exList, movementId, beforeKey = null) {
+  const ids = new Set(_movementExerciseIds(exList, movementId));
+  if (!ids.size) return [];
+  return Object.entries(cache || {})
+    .filter(([key]) => /^\d{4}-\d{2}-\d{2}$/.test(key) && (!beforeKey || key !== beforeKey))
+    .sort(([a], [b]) => b.localeCompare(a))
+    .flatMap(([dateKey, day]) => (day?.exercises || [])
+      .filter(e => ids.has(e.exerciseId))
+      .map(entry => ({ dateKey, entry })));
+}
+
+export function recommendMaxProgressionAction({
+  lastSet,
+  prescription,
+  sessionType = 'high_volume',
+  stepKg = 2.5,
+} = {}) {
+  const reps = Number(lastSet?.reps) || 0;
+  const rpe = Number(lastSet?.rpe) || 0;
+  const repsLow = Number(prescription?.repsLow) || 8;
+  const repsHigh = Number(prescription?.repsHigh) || 12;
+  const safeStep = Number(stepKg) > 0 ? Number(stepKg) : 2.5;
+  if (reps <= 0) {
+    return { action: prescription?.action || 'hold', deltaKg: 0, reason: '이전 유효 세트가 부족해 기본 처방으로 시작합니다.' };
+  }
+  if (reps >= repsHigh + 3 && (!rpe || rpe <= 8)) {
+    return { action: 'load', deltaKg: safeStep, reason: `상한보다 ${reps - repsHigh}회 더 가능해 다음 세트는 증량 후보입니다.` };
+  }
+  if (reps < Math.max(1, repsLow - 2) || rpe >= 9.5) {
+    return { action: 'hold', deltaKg: 0, reason: '목표 반복 하한보다 낮아 오늘은 무게를 고정하고 품질을 맞춥니다.' };
+  }
+  if (sessionType === 'heavy_volume' && reps >= repsHigh) {
+    return { action: 'load', deltaKg: safeStep, reason: '중상볼륨 Day에서 목표 상한을 채워 소폭 증량이 적절합니다.' };
+  }
+  if (sessionType === 'high_volume' && reps >= repsHigh) {
+    return { action: 'volume', deltaKg: 0, reason: '고볼륨 Day에서는 같은 무게로 유효 세트 누적을 우선합니다.' };
+  }
+  return { action: prescription?.action || 'hold', deltaKg: 0, reason: '목표 반복 범위 안이므로 오늘 처방을 그대로 진행합니다.' };
+}
+
+export function buildMaxPrescription({
+  cache = {},
+  exList = [],
+  movement = null,
+  exerciseId = null,
+  todayKey = null,
+  sessionType = 'high_volume',
+  weakTarget = false,
+} = {}) {
+  if (!movement?.id) return null;
+  const base = _defaultMaxPrescription(movement, sessionType, weakTarget);
+  const stepKg = Number(movement.stepKg) > 0 ? Number(movement.stepKg) : 2.5;
+  const sessions = exerciseId
+    ? (() => {
+        const last = getLastSession(cache, exerciseId, todayKey);
+        return last ? [{ dateKey: last.date, entry: { sets: last.sets || [] } }] : [];
+      })()
+    : _findMovementSessions(cache, exList, movement.id, todayKey);
+  const bestSession = sessions.find(s => _bestRecentSet(s.entry?.sets));
+  const lastSet = bestSession ? _bestRecentSet(bestSession.entry?.sets) : null;
+  const targetReps = sessionType === 'heavy_volume' ? base.repsLow : base.repsHigh;
+  const e1rm = lastSet ? _setE1RM(lastSet) : 0;
+  const rawTarget = e1rm > 0 ? targetWeightKg(e1rm, base.targetRpe, targetReps) : 0;
+  const startKg = rawTarget > 0 ? roundToIncrement(rawTarget, stepKg) : 0;
+  const progression = recommendMaxProgressionAction({ lastSet, prescription: base, sessionType, stepKg });
+  const kgForSets = progression.action === 'load' && startKg > 0
+    ? roundToIncrement(startKg + progression.deltaKg, stepKg)
+    : startKg;
+  const repsForSets = sessionType === 'heavy_volume' ? base.repsLow : base.repsHigh;
+  const sets = Array.from({ length: base.targetSets }, () => ({
+    kg: kgForSets || 0,
+    reps: repsForSets,
+    setType: 'main',
+    done: false,
+    rpe: null,
+  }));
+  const actionLabel = progression.action === 'load' ? '증량' : (progression.action === 'volume' ? '볼륨' : '유지');
+  return {
+    label: `${base.targetSets}세트 x ${base.repsLow}-${base.repsHigh}회 · RPE ${base.targetRpe}`,
+    targetSets: base.targetSets,
+    repsLow: base.repsLow,
+    repsHigh: base.repsHigh,
+    targetRpe: base.targetRpe,
+    startKg: kgForSets || 0,
+    action: progression.action,
+    actionLabel,
+    deltaKg: progression.deltaKg,
+    reason: progression.reason,
+    lastDateKey: bestSession?.dateKey || null,
+    lastSet: lastSet ? { kg: Number(lastSet.kg) || 0, reps: Number(lastSet.reps) || 0, rpe: Number(lastSet.rpe) || null } : null,
+    weakTarget: !!weakTarget,
+    sets,
+  };
+}
+
+export function detectMaxFixedMovements({
+  cache = {},
+  exList = [],
+  movements = [],
+  todayKey = null,
+  majors = [],
+  lookbackSessions = 4,
+  minHits = 2,
+} = {}) {
+  const majorSet = majors instanceof Set ? majors : new Set(majors || []);
+  if (!majorSet.size) return [];
+  const keys = findRecentSameMuscleSessions(cache, exList, movements, todayKey, majorSet, lookbackSessions);
+  const movById = new Map((movements || []).map(m => [m.id, m]));
+  const exById = new Map((exList || []).map(e => [e.id, e]));
+  const counts = new Map();
+  for (const key of keys) {
+    const seen = new Set();
+    for (const entry of cache?.[key]?.exercises || []) {
+      const ex = exById.get(entry.exerciseId);
+      const movId = entry.movementId || ex?.movementId;
+      const mov = movById.get(movId);
+      if (!mov || !majorSet.has(mov.primary)) continue;
+      if (_workSetsOnly(entry.sets).length === 0) continue;
+      seen.add(mov.id);
+    }
+    for (const movId of seen) counts.set(movId, (counts.get(movId) || 0) + 1);
+  }
+  return [...counts.entries()]
+    .filter(([, count]) => count >= minHits)
+    .map(([movementId, count]) => ({ ...movById.get(movementId), movementId, count, lookback: keys.length }))
+    .filter(x => x.id)
+    .sort((a, b) => b.count - a.count || (a.nameKo || '').localeCompare(b.nameKo || ''));
+}
+
+// ================================================================
 // Celebration Detectors (home/cheers-card 용 순수 함수들)
 // 입력: 친구 워크아웃 문서들(today/yesterday/weekAgo) + 메타
 // 출력: { type, priority, template, params } 또는 null

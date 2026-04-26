@@ -48,7 +48,7 @@ const WORKOUT_ONLY_SAMPLES = [
   'exercises', 'cf', 'swimming', 'running', 'stretching',
   'runDistance', 'cfWod', 'swimStroke', 'stretchDuration',
   'workoutDuration', 'wine_free', 'memo',
-  'workoutPhoto', 'gymId', 'routineMeta',
+  'workoutPhoto', 'gymId', 'routineMeta', 'maxMeta',
 ];
 for (const key of WORKOUT_ONLY_SAMPLES) {
   test(`운동 필드 [${key}] 는 DIET_PAYLOAD_KEYS 에 **없음** (식단 저장이 파괴 금지)`, () => {

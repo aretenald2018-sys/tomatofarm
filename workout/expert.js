@@ -8,7 +8,7 @@
 // ================================================================
 
 import {
-  getExpertPreset, saveExpertPreset, isExpertModeEnabled,
+  getExpertPreset, saveExpertPreset, isExpertModeEnabled, getExpertMode,
   saveGym, getGyms, saveExercise, deleteExercise, getExList, getGymExList, getCache,
   getRecentRoutineTemplate, getRoutineTemplates,
   detectPRs as _detectPRsFromData,
@@ -41,6 +41,18 @@ import {
 } from './expert/onboarding.js';
 export { resolveCurrentGymId } from './expert/onboarding.js';
 
+// ── 맥스(Max) 모드 — 3-state 세그먼트로 확장 (2026-04-25) ──────────
+import {
+  renderMaxCard,
+  applyMaxSuggestion,
+  openMaxMiniOnboarding,
+  closeMaxMiniOnboarding,
+  toggleMaxWeakPart,
+  setMaxSessionType,
+  toggleMaxWeakBlockTimer,
+  _initMaxOnboardingEvents,
+} from './expert/max.js';
+
 // ── 공용 소규모 헬퍼 (onboarding.js 에도 동일 정의 — 순환 import 회피) ─
 function _esc(s) { return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function _toast(msg, type='info') {
@@ -54,6 +66,8 @@ let _expertViewShown = false;
 export function resetExpertView() { _expertViewShown = false; }
 // 외부 모듈(exercises.js picker 등)이 현재 세션 뷰를 확인할 때 사용.
 export function isExpertViewShown() { return _expertViewShown; }
+// 외부 모듈(workout/expert/max.js)이 위자드 완료 후 카드 노출 토글에 사용.
+export function setExpertViewShown(v) { _expertViewShown = !!v; }
 
 // 메인 stepper Step 2(_suggestState) 가 preset 값으로 최초 초기화됐는지 플래그.
 let _stepperSeeded = false;
@@ -66,25 +80,44 @@ export function renderExpertTopArea() {
   const host = document.getElementById('expert-top-area');
   if (!host) return;
 
-  // preset 비활성 → 최상단 배너 제거, 헬스 종목 헤더 옆 작은 pill만 노출
-  if (!isExpertModeEnabled()) {
-    host.innerHTML = '';
+  // 모드 enum: 'normal' | 'pro' | 'max'
+  const mode = getExpertMode();
+
+  // 모드 'normal' (preset 비활성) → 최상단 세그먼트 + 인라인 pill만 노출
+  if (mode === 'normal') {
     _syncExpertFlowClass(false);
     _syncStep3ReadyClass(false);
     _renderInlineExpertPill();
+    host.innerHTML = `
+      <div class="wt-mode-seg" role="tablist" aria-label="운동 모드">
+        <button type="button" class="wt-mode-seg-btn is-on" role="tab" aria-selected="true">일반 모드</button>
+        <button type="button" class="wt-mode-seg-btn" role="tab" aria-selected="false" onclick="wtExcShowProView()">프로 모드</button>
+        <button type="button" class="wt-mode-seg-btn" role="tab" aria-selected="false" onclick="wtExcShowMaxView()">테스트 모드</button>
+      </div>
+    `;
     return;
   }
   _renderInlineExpertPill();
 
-  // 일반 모드 뷰 (디폴트) — 프로 모드 preset은 유지하되 화면은 일반 헬스 흐름.
-  // 상단 세그먼트로 프로 모드 뷰 전환 가능. preset 자체는 건드리지 않음.
+  // 모드 'max' → 맥스 카드 (체육관·장비 비의존, 약점 subPattern 보강 추천)
+  // 2026-04-25: Max 는 위자드로 명시적 활성화하므로 _expertViewShown 게이트 무시.
+  //   탭 재진입(resetExpertView 호출) 시에도 mode='max' 면 카드 항상 노출.
+  if (mode === 'max') {
+    _syncExpertFlowClass(true);
+    _syncStep3ReadyClass(true);   // 맥스는 stepper 단계 없이 곧바로 헬스 종목 입력 허용
+    renderMaxCard(host);
+    return;
+  }
+
+  // 모드 'pro' — 일반 뷰 (디폴트) → 세그먼트만, 카드는 _expertViewShown=true 시
   if (!_expertViewShown) {
     _syncExpertFlowClass(false);
     _syncStep3ReadyClass(false);
     host.innerHTML = `
       <div class="wt-mode-seg" role="tablist" aria-label="운동 모드">
         <button type="button" class="wt-mode-seg-btn is-on" role="tab" aria-selected="true">일반 모드</button>
-        <button type="button" class="wt-mode-seg-btn" role="tab" aria-selected="false" onclick="wtExcShowExpertView()">프로 모드</button>
+        <button type="button" class="wt-mode-seg-btn" role="tab" aria-selected="false" onclick="wtExcShowProView()">프로 모드</button>
+        <button type="button" class="wt-mode-seg-btn" role="tab" aria-selected="false" onclick="wtExcShowMaxView()">테스트 모드</button>
       </div>
     `;
     return;
@@ -113,12 +146,13 @@ export function renderExpertTopArea() {
 
   const bodyHtml = _renderExpertStepperBody({ currentGym, gymCount, exCount, insight, step1Done, hasRoutine, recent });
 
-  // 통합 TDS SegmentedControl — [일반 모드 | 프로 모드]. 디폴트가 일반 모드라 좌측 배치.
+  // 통합 TDS SegmentedControl — [일반 모드 | 프로 모드 | 맥스 모드]. 2026-04-25: 3-state 확장.
   // 프로 모드에서는 기본적으로 '운동'을 하는 사용자이므로 쉬었어요/건강이슈/운동 세그먼트 제거.
   host.innerHTML = `
     <div class="wt-mode-seg" role="tablist" aria-label="운동 모드">
       <button type="button" class="wt-mode-seg-btn" role="tab" aria-selected="false" onclick="wtExcSwitchToNormalView()">일반 모드</button>
       <button type="button" class="wt-mode-seg-btn is-on" role="tab" aria-selected="true">프로 모드</button>
+      <button type="button" class="wt-mode-seg-btn" role="tab" aria-selected="false" onclick="wtExcShowMaxView()">테스트 모드</button>
     </div>
     <div class="wt-exc" id="wt-expert-card">
       <div class="wt-exc-head">
@@ -2375,15 +2409,69 @@ if (typeof window.insightsShareMode !== 'string') window.insightsShareMode = 'su
 window.gymEqClose = gymEqClose;
 window.renderExpertTopArea = renderExpertTopArea;
 window.resetExpertView = resetExpertView;
-// 일반 모드 뷰 ↔ 프로 모드 뷰 — preset.enabled 건드리지 않고 세션 상태만 토글.
+// 일반 모드 뷰 ↔ 프로 모드 뷰 ↔ 맥스 모드 뷰 — preset.enabled/mode를 토글.
+// 2026-04-25: 3-state 모드(normal|pro|max). 세그먼트 클릭은 모드 자체를 전환하며,
+//   각 모드의 카드 가시 토글(_expertViewShown)도 함께 ON.
 window.wtExcShowExpertView = () => {
+  // 레거시 호환 — 프로 모드 뷰 토글 (preset 변경 없음, 세션 토글만)
   _expertViewShown = true;
   renderExpertTopArea();
 };
-window.wtExcSwitchToNormalView = () => {
-  _expertViewShown = false;
-  renderExpertTopArea();
+// 프로 모드 켜기 (preset.mode='pro' + 카드 노출)
+window.wtExcShowProView = async () => {
+  try {
+    const cur = getExpertPreset();
+    if (cur.mode !== 'pro') {
+      await saveExpertPreset({ mode: 'pro', enabled: true });
+    }
+    _expertViewShown = true;
+    renderExpertTopArea();
+    if (typeof window.renderAll === 'function') window.renderAll();
+  } catch (e) { console.warn('[wtExcShowProView]:', e); }
 };
+// 맥스 모드 켜기 (preset.mode='max' + 미니 위자드 / 이미 max면 카드 노출)
+window.wtExcShowMaxView = async () => {
+  console.log('[max] wtExcShowMaxView called');
+  try {
+    const cur = getExpertPreset();
+    console.log('[max] current preset:', { mode: cur.mode, goal: cur.goal, enabled: cur.enabled });
+    if (cur.mode === 'max') {
+      // 이미 max로 온보딩 완료 → 곧바로 카드 노출
+      _expertViewShown = true;
+      renderExpertTopArea();
+      console.log('[max] already configured — card rendered');
+      return;
+    }
+    // max로 첫 진입 또는 goal 미설정 → 미니 위자드
+    console.log('[max] opening mini onboarding');
+    await openMaxMiniOnboarding();
+    console.log('[max] mini onboarding open returned');
+  } catch (e) {
+    console.error('[wtExcShowMaxView] FAIL:', e);
+    if (typeof window.showToast === 'function') window.showToast('테스트 모드 진입 실패: ' + e.message, 4000, 'error');
+  }
+};
+// 일반 모드로 — preset.mode='normal' 명시 set (gym/preset 데이터는 보존)
+window.wtExcSwitchToNormalView = async () => {
+  try {
+    const cur = getExpertPreset();
+    if (cur.mode !== 'normal') {
+      await saveExpertPreset({ mode: 'normal', enabled: false });
+    }
+    _expertViewShown = false;
+    renderExpertTopArea();
+    if (typeof window.renderAll === 'function') window.renderAll();
+  } catch (e) { console.warn('[wtExcSwitchToNormalView]:', e); }
+};
+// 맥스 모드 위자드 / 추천 칩
+window.openMaxMiniOnboarding = openMaxMiniOnboarding;
+window.closeMaxMiniOnboarding = closeMaxMiniOnboarding;
+window.applyMaxSuggestion = applyMaxSuggestion;
+window.toggleMaxWeakPart = toggleMaxWeakPart;
+window.setMaxSessionType = setMaxSessionType;
+window.toggleMaxWeakBlockTimer = toggleMaxWeakBlockTimer;
+// 모달 바인딩은 openMaxMiniOnboarding 진입 시점에 수행 (modal-manager 가 DOM 주입한 뒤).
+// 과거 setTimeout 즉시 호출은 modal DOM 미주입 상태에서 실행되어 버튼이 dead 였음.
 // 개발자 디버그: 콘솔에서 __expertDebug() 호출
 window.__expertDebug = () => {
   const preset = getExpertPreset();
@@ -2508,7 +2596,7 @@ window.wtExcLeaveExpertMode = async () => {
   });
   if (!ok) return;
   try {
-    await saveExpertPreset({ enabled: false });
+    await saveExpertPreset({ mode: 'normal', enabled: false });
     _toast('일반 모드로 전환했어요', 'success');
     renderExpertTopArea();
     if (typeof window.renderAll === 'function') window.renderAll();
@@ -2522,7 +2610,7 @@ window.wtExcLeaveExpertMode = async () => {
 // 프로 모드는 '기본적으로 운동하는 사용자'를 가정 → 진입과 동시에 status='done' 강제.
 window.wtExcReEnableExpertMode = async () => {
   try {
-    await saveExpertPreset({ enabled: true, snoozedUntil: null });
+    await saveExpertPreset({ mode: 'pro', enabled: true, snoozedUntil: null });
     // 프로 모드는 쉬었어요/건강이슈 UI가 없으므로 자동으로 운동 상태로 세팅
     if (typeof window.wtExcSelectStatus === 'function') {
       window.wtExcSelectStatus('done');

@@ -54,14 +54,18 @@
   <ellipse cx="206" cy="224" rx="30" ry="18" transform="rotate(-40 206 224)" fill="url(#shine)" opacity="0.88"/>
   <ellipse cx="168" cy="274" rx="12" ry="11" fill="#ffffff" opacity="0.42"/>
 
+  <g transform="translate(206 300) scale(0.84) translate(-206 -300)">
   <ellipse cx="206" cy="300" rx="28" ry="33" fill="#af4f31"/>
-  <ellipse cx="306" cy="300" rx="28" ry="33" fill="#af4f31"/>
   <circle cx="198" cy="289" r="12" fill="#ffffff"/>
-  <circle cx="298" cy="289" r="12" fill="#ffffff"/>
   <circle cx="216" cy="298" r="6" fill="#ffffff"/>
-  <circle cx="316" cy="298" r="6" fill="#ffffff"/>
   <path d="M191 312 C196 320 207 321 214 314" fill="none" stroke="#ffb3a5" stroke-width="6" stroke-linecap="round"/>
+  </g>
+  <g transform="translate(306 300) scale(0.84) translate(-306 -300)">
+  <ellipse cx="306" cy="300" rx="28" ry="33" fill="#af4f31"/>
+  <circle cx="298" cy="289" r="12" fill="#ffffff"/>
+  <circle cx="316" cy="298" r="6" fill="#ffffff"/>
   <path d="M291 312 C296 320 307 321 314 314" fill="none" stroke="#ffb3a5" stroke-width="6" stroke-linecap="round"/>
+  </g>
 
   <ellipse cx="178" cy="344" rx="24" ry="14" fill="#ffb19e" opacity="0.88"/>
   <ellipse cx="334" cy="344" rx="24" ry="14" fill="#ffb19e" opacity="0.88"/>
@@ -71,7 +75,7 @@
        C241 344 250 347 256 338
        C262 347 271 344 276 332"
     fill="none"
-    stroke="#7a433e"
+    stroke="#a13d15"
     stroke-width="8"
     stroke-linecap="round"
     stroke-linejoin="round"

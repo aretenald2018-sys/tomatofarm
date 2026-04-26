@@ -40,6 +40,20 @@ async function _lazy(name, path) {
   return _lazyModules[name];
 }
 
+function _withTimeout(promise, ms, label) {
+  let timer = null;
+  const timeout = new Promise(resolve => {
+    timer = setTimeout(() => {
+      console.warn(`[init] ${label} timed out after ${ms}ms; continuing with available local state`);
+      resolve(null);
+    }, ms);
+  });
+  return Promise.race([
+    Promise.resolve(promise).finally(() => { if (timer) clearTimeout(timer); }),
+    timeout,
+  ]);
+}
+
 // ── 탭 스켈레톤 삽입 (레이지 로드 피드백) ──
 function _showTabSkeleton(tabId) {
   const tab = document.getElementById(tabId);
@@ -239,10 +253,13 @@ async function init() {
     }
 
     // 모달 로드 + 데이터 로드 병렬 실행
-    await Promise.all([loadAndInjectModals(), loadAll()]);
+    await Promise.all([
+      _withTimeout(loadAndInjectModals(), 8000, 'modal load'),
+      _withTimeout(loadAll(), 10000, 'data load'),
+    ]);
     // localStorage 캐시를 Firebase 최신으로 동기화
     const { refreshCurrentUserFromDB } = await import('./data.js');
-    await refreshCurrentUserFromDB();
+    await _withTimeout(refreshCurrentUserFromDB(), 6000, 'user refresh');
 
     // AI 음식 프로파일 빌드 (P1: 메모리 전용, _cache 기반 — 네트워크 없음, 비동기 비차단)
     // P2에서 runAIEstimate 파이프라인에 연결될 예정. 지금은 관측/축적 단계.

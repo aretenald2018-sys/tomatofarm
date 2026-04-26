@@ -58,6 +58,7 @@ function emptyWorkout() {
     // 전문가 모드
     currentGymId: null,                  // 오늘 세션의 헬스장
     routineMeta:  null,                  // {source, candidateKey, rationale}
+    maxMeta:      null,                  // max 전용: 세션 타입, 약점 부위, 약점 블록 타이머
   };
 }
 

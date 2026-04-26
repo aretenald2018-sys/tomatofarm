@@ -803,12 +803,18 @@ body {
   border-radius: 0 0 var(--radius-lg) var(--radius-lg);
   border: 1px solid var(--border); border-top: none;
   box-shadow: 0 8px 32px rgba(0,0,0,0.2);
-  transform: translateY(-110%);
+  opacity: 0;
+  transform: translateY(-8px);
   visibility: hidden;
-  transition: transform 0.3s cubic-bezier(0.32,0.72,0,1), visibility 0s 0.3s;
+  transition: opacity 0.16s ease-out, transform 0.16s ease-out, visibility 0s 0.16s;
   -webkit-overflow-scrolling: touch;
 }
-.notif-center.open { transform: translateY(0); visibility: visible; transition: transform 0.3s cubic-bezier(0.32,0.72,0,1), visibility 0s 0s; }
+.notif-center.open {
+  opacity: 1;
+  transform: translateY(0);
+  visibility: visible;
+  transition: opacity 0.18s ease-out, transform 0.18s ease-out, visibility 0s 0s;
+}
 
 .notif-center-backdrop {
   position: fixed; inset: 0; z-index: 499;
@@ -972,4 +978,3 @@ body {
 }
 .more-menu-item:hover { background: var(--surface2); }
 .more-menu-item:active { background: var(--surface3); }
-

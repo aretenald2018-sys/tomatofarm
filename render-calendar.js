@@ -24,6 +24,14 @@ import { openModal, closeModal } from './utils/dom.js';
 let _viewYear  = TODAY.getFullYear();
 let _viewMonth = TODAY.getMonth();
 
+const MAX_WEAK_LABEL = {
+  chest_upper:'가슴 상부', chest_lower:'가슴 하부',
+  back_width:'등 넓이', back_thickness:'등 두께',
+  shoulder_side:'어깨 측면', rear_delt:'어깨 후면',
+  bicep:'이두', tricep:'삼두', core:'복근',
+  hamstring:'햄스트링', glute:'둔근', calf:'종아리',
+};
+
 // ═════════════════════════════════════════════════════════════
 // 체중 시계열 유틸
 // ═════════════════════════════════════════════════════════════
@@ -45,6 +53,28 @@ function _shiftDateKey(key, days) {
   const dt = new Date(y, m - 1, d);
   dt.setDate(dt.getDate() + days);
   return dateKey(dt.getFullYear(), dt.getMonth(), dt.getDate());
+}
+
+function _maxWeakMetrics(day) {
+  const meta = day?.maxMeta;
+  if (!meta || meta.mode !== 'max') return null;
+  const block = meta.weakBlock || {};
+  const activeAdd = block.activeStartedAt ? Math.max(0, Math.floor((Date.now() - block.activeStartedAt) / 1000)) : 0;
+  const durationSec = Math.max(0, Math.floor(Number(block.durationSec) || 0) + activeAdd);
+  const summary = meta.weakSummary || {};
+  const sets = Math.max(0, Number(summary.sets) || 0);
+  const volume = Math.max(0, Math.round(Number(summary.volume) || 0));
+  const selected = Array.isArray(meta.selectedWeakParts) ? meta.selectedWeakParts : [];
+  const bonus = Math.min(5, Math.floor(durationSec / 600) + Math.floor(sets / 4));
+  return {
+    durationSec,
+    durationMin: Math.floor(durationSec / 60),
+    sets,
+    volume,
+    selected,
+    bonus,
+    hasAny: durationSec > 0 || sets > 0 || selected.length > 0,
+  };
 }
 
 // ═════════════════════════════════════════════════════════════
@@ -95,6 +125,16 @@ function _dayMetrics(key, day, plan, metrics, checkins) {
     day, targetKcal, macroTarget, burnedKcal: burned.total,
     weightDeltaKg, weightDirSign,
   });
+  const maxWeak = _maxWeakMetrics(day);
+  const baseScore = scoreResult.score;
+  const score = baseScore != null
+    ? Math.min(100, baseScore + (maxWeak?.bonus || 0))
+    : baseScore;
+  const band =
+    score == null ? scoreResult.band :
+    score >= 95 ? 'great' :
+    score >= 90 ? 'good' :
+    score >= 80 ? 'soso' : 'bad';
 
   return {
     key, day,
@@ -102,9 +142,10 @@ function _dayMetrics(key, day, plan, metrics, checkins) {
     weight,
     targetKcal, macroTarget,
     weightDeltaKg, weightDirSign,
-    score: scoreResult.score,
-    band: scoreResult.band,
+    score,
+    band,
     breakdown: scoreResult.breakdown,
+    maxWeak,
   };
 }
 
@@ -178,6 +219,9 @@ export function renderCalendar() {
     const kcalInTxt   = mx.kcalIn     > 0 ? `${mx.kcalIn.toLocaleString()}` : '—';
     const kcalBurnTxt = mx.kcalBurned > 0 ? `${mx.kcalBurned.toLocaleString()}` : '—';
     const weightTxt   = mx.weight != null ? `${mx.weight.toFixed(1)}` : '—';
+    const maxWeakHtml = mx.maxWeak?.hasAny
+      ? `<div class="cal-max-weak-mini">약 ${mx.maxWeak.durationMin}분 · ${mx.maxWeak.sets}세트</div>`
+      : '';
 
     const stampHtml = (mx.score != null && mx.score >= 90)
       ? `<img class="cal-stamp" src="./public/characters/tomato-happy.svg" alt="" aria-hidden="true">`
@@ -195,6 +239,7 @@ export function renderCalendar() {
           <div class="cal-metric"><span class="cal-metric-label">소</span><span class="cal-metric-val">${kcalBurnTxt}</span></div>
           <div class="cal-metric"><span class="cal-metric-label">체</span><span class="cal-metric-val">${weightTxt}</span></div>
         </div>
+        ${maxWeakHtml}
       </div>
     `);
   }
@@ -327,6 +372,13 @@ function _openDay(key) {
   ];
   const loggedMeals = meals.filter(m => m.v > 0 || m.skipped).length;
   const completeDesc = `식사 기록 ${loggedMeals}/4 (${meals.filter(m => m.skipped).length > 0 ? '굶음 포함' : '기록 중심'})`;
+  const maxWeak = mx.maxWeak;
+  const weakNames = maxWeak?.selected?.length
+    ? maxWeak.selected.map(x => MAX_WEAK_LABEL[x] || x).join(' · ')
+    : '선택 없음';
+  const maxWeakDesc = maxWeak?.hasAny
+    ? `약점 ${weakNames} · ${maxWeak.durationMin}분 · ${maxWeak.sets}세트 · ${maxWeak.volume.toLocaleString()}vol · +${maxWeak.bonus}점`
+    : '';
 
   body.innerHTML = `
     <div class="cal-score-card" style="border-color:${scoreColor}22;background:${scoreColor}0d;">
@@ -342,6 +394,13 @@ function _openDay(key) {
       ${row('운동 소모',   bd.workout, workoutDesc)}
       ${row('체중 방향',   bd.weight, weightDesc)}
       ${row('기록 완결',   bd.complete, completeDesc)}
+      ${maxWeak?.hasAny ? `<div class="cal-bd-row cal-bd-row-max">
+        <div class="cal-bd-main">
+          <span class="cal-bd-label">맥스 약점 공략</span>
+          <span class="cal-bd-score">+${maxWeak.bonus}<small>/5</small></span>
+        </div>
+        <div class="cal-bd-desc">${maxWeakDesc}</div>
+      </div>` : ''}
     </div>
   `;
 
