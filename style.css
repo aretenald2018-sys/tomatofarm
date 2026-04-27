@@ -603,6 +603,114 @@
 .diet-analyze-btn:active { transform: scale(0.97); }
 .diet-analyze-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
+.diet-bulk-ai {
+  padding: 10px 14px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.diet-bulk-ai-toggle {
+  display: block;
+  margin: 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 7px 12px;
+  cursor: pointer;
+}
+
+.diet-bulk-ai-panel {
+  margin-top: 10px;
+}
+
+.diet-bulk-ai-chips {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.diet-bulk-ai-chip {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 8px 12px;
+  min-width: 52px;
+  cursor: pointer;
+}
+
+.diet-bulk-ai-chip.active {
+  border-color: var(--primary);
+  background: rgba(250, 52, 44, 0.1);
+  color: var(--primary);
+}
+
+.diet-bulk-ai-chip.active::after {
+  content: attr(data-order);
+  position: absolute;
+  top: -6px;
+  right: -4px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  font-size: 10px;
+  line-height: 16px;
+}
+
+.diet-bulk-ai-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.diet-bulk-ai-upload {
+  border: 0;
+  border-radius: 8px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 9px 12px;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.diet-bulk-ai-upload:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.diet-bulk-ai-hint,
+.diet-bulk-ai-status {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.diet-bulk-ai-status {
+  min-height: 16px;
+  margin-top: 8px;
+  text-align: center;
+}
+
+.diet-bulk-ai-status[data-type="success"] {
+  color: var(--diet-ok);
+}
+
+.diet-bulk-ai-status[data-type="warning"],
+.diet-bulk-ai-status[data-type="error"] {
+  color: var(--diet-bad);
+}
+
 /* ── Diet DB / Food chips ── */
 .diet-db-btn {
   /* TDS Mobile sm — padding 8/14, font 12, r8 */
@@ -2095,6 +2203,15 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
 .meal-side-thumb img {
   width: 100%; height: 100%; object-fit: cover; display: block;
 }
+.meal-side-thumb-delete {
+  position: absolute; top: 4px; right: 4px; z-index: 2;
+  width: 22px; height: 22px; border-radius: 999px;
+  border: none; background: rgba(0,0,0,0.52); color: #fff;
+  font-size: 15px; line-height: 22px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; padding: 0; backdrop-filter: blur(4px);
+}
+.meal-side-thumb-delete:active { background: rgba(0,0,0,0.76); }
 .meal-cam-btn {
   width: 36px; height: 36px; border-radius: 999px; border: none;
   background: var(--surface3, #383838); color: var(--text-tertiary);

@@ -44,6 +44,7 @@ export const FOOD_ALIASES = {
   '닭볶음탕': ['닭도리탕', '닭볶탕'],
   '찜닭':     ['안동찜닭', '간장찜닭'],
   '닭갈비':   ['춘천닭갈비', '철판닭갈비'],
+  '닭가슴살': ['닭가슴살구이', '닭가슴살스테이크', '훈제닭가슴살', '훈제닭', '삶은닭가슴살', 'chicken breast'],
   '삼겹살':   ['오겹살', '대패삼겹살'],
   '돈까스':   ['돈가스', '치즈돈까스', '왕돈까스'],
   '탕수육':   ['탕수'],
@@ -130,6 +131,7 @@ export const KCAL_PER_100G = {
   '닭볶음탕': 150,
   '찜닭':     180,
   '닭갈비':   180,
+  '닭가슴살': 130,
   '삼겹살':   330,
   '돈까스':   260,
   '탕수육':   230,
@@ -227,6 +229,18 @@ export function sanityCheckKcal(canonicalName, kcal, grams) {
 
   const priorKcal = (prior * grams) / 100;
   const ratio = kcal / priorKcal;
+
+  if (canonicalName === '닭가슴살') {
+    if (ratio >= 0.5 && ratio <= 1.8) {
+      return { kcal, corrected: false };
+    }
+    const blended = Math.round(priorKcal * 0.85 + kcal * 0.15);
+    return {
+      kcal: blended,
+      corrected: true,
+      correctionNote: `lean-protein(ratio=${ratio.toFixed(2)}, prior=${Math.round(priorKcal)}) → ${blended}`,
+    };
+  }
 
   // 정상 범위: 그대로 신뢰
   if (ratio >= 0.3 && ratio <= 3.0) {

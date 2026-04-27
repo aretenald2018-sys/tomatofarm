@@ -316,8 +316,12 @@ export function _renderMealPhotos() {
     if (photo) {
       const thumb = document.createElement('div');
       thumb.className = 'meal-side-thumb';
-      thumb.innerHTML = `<img src="${photo}">`;
+      thumb.innerHTML = `<img src="${photo}"><button class="meal-side-thumb-delete" type="button" aria-label="사진 삭제">×</button>`;
       thumb.onclick = () => openMealPhotoLightbox(photo);
+      thumb.querySelector('.meal-side-thumb-delete')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        removeMealPhoto(meal);
+      });
       let pressTimer;
       thumb.onpointerdown = () => { pressTimer = setTimeout(async () => {
         const ok = await confirmAction({ title: '사진 삭제', message: '사진을 삭제할까요?', destructive: true });

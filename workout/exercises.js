@@ -14,8 +14,8 @@ import { getExList, getGymExList, getLastSession, detectPRs, getCache,
          saveCustomMuscle,
          isExpertModeEnabled,
          getExpertPreset }              from '../data.js';
-import { estimate1RM, rpeRepsToPct, targetWeightKg, weightRange } from '../calc.js';
-import { MOVEMENTS, EQUIPMENT_CATEGORIES } from '../config.js';
+import { estimate1RM, rpeRepsToPct, targetWeightKg, weightRange, SUBPATTERN_TO_MAJOR } from '../calc.js';
+import { MOVEMENTS } from '../config.js';
 // resolveCurrentGymId는 expert.js의 단일 진실원 (preset + S.workout.currentGymId 동기화).
 // isExpertViewShown은 세션 뷰 상태 (일반 모드 뷰 ↔ 프로 모드 뷰) 조회용.
 // expert.js는 exercises.js를 static import 하지 않으므로 순환 참조 없음.
@@ -696,12 +696,13 @@ function _getPickerExercisePool() {
   } catch { return getExList(); }
 }
 
-// 장비 카테고리 필터 상태 (null = 전체)
-let _pickerCategoryFilter = null;
-window._wtSetPickerCategoryFilter = (cat) => {
-  _pickerCategoryFilter = (_pickerCategoryFilter === cat) ? null : cat;
+// 부위 필터 상태 (null = 전체)
+let _pickerMuscleFilter = null;
+window._wtSetPickerMuscleFilter = (muscleId) => {
+  _pickerMuscleFilter = (_pickerMuscleFilter === muscleId) ? null : muscleId;
   _renderPickerList();
 };
+window._wtSetPickerCategoryFilter = window._wtSetPickerMuscleFilter;
 
 // C-2: 종목명 검색 상태 (trim + lowercase)
 let _pickerSearchQuery = '';
@@ -721,15 +722,31 @@ window._wtClearPickerSearch = () => {
 };
 // C-4: 모든 필터 일괄 해제 ("필터 초기화" 버튼용)
 window._wtResetAllPickerFilters = () => {
-  _pickerCategoryFilter = null;
+  _pickerMuscleFilter = null;
   window._wtClearPickerSearch();
 };
 
-// Exercise → equipment_category 역조회 (movementId 기반)
-function _exerciseCategory(ex) {
-  if (ex?.category) return ex.category;
+function _normalizeMajorMuscleId(id) {
+  if (!id) return null;
+  return SUBPATTERN_TO_MAJOR[id] || id;
+}
+
+// Exercise → 대분류 부위 역조회 (muscleId / muscleIds[] / movementId 기반)
+function _exerciseMajorIds(ex) {
+  const ids = new Set();
+  const major = _normalizeMajorMuscleId(ex?.muscleId);
+  if (major) ids.add(major);
+  (Array.isArray(ex?.muscleIds) ? ex.muscleIds : []).forEach(id => {
+    const normalized = _normalizeMajorMuscleId(id);
+    if (normalized) ids.add(normalized);
+  });
   const mv = MOVEMENTS.find(m => m.id === ex?.movementId);
-  return mv?.equipment_category || null;
+  if (mv?.primary) ids.add(mv.primary);
+  if (mv?.subPattern) {
+    const normalized = _normalizeMajorMuscleId(mv.subPattern);
+    if (normalized) ids.add(normalized);
+  }
+  return [...ids];
 }
 
 export function _renderPickerList() {
@@ -738,25 +755,25 @@ export function _renderPickerList() {
   container.innerHTML = '';
   const allMuscles = getMuscleParts();
   const rawPool = _getPickerExercisePool();
-  const availableCats = new Set(rawPool.map(_exerciseCategory).filter(Boolean));
+  const availableMuscles = new Set(rawPool.flatMap(_exerciseMajorIds).filter(Boolean));
 
-  // 필터 유효성 체크: 현재 풀에 해당 카테고리 없으면 자동 해제
-  if (_pickerCategoryFilter && !availableCats.has(_pickerCategoryFilter)) {
-    _pickerCategoryFilter = null;
+  // 필터 유효성 체크: 현재 풀에 해당 부위가 없으면 자동 해제
+  if (_pickerMuscleFilter && !availableMuscles.has(_pickerMuscleFilter)) {
+    _pickerMuscleFilter = null;
   }
-  const catFiltered = _pickerCategoryFilter
-    ? rawPool.filter(e => _exerciseCategory(e) === _pickerCategoryFilter)
+  const muscleFiltered = _pickerMuscleFilter
+    ? rawPool.filter(e => _exerciseMajorIds(e).includes(_pickerMuscleFilter))
     : rawPool;
   // C-2: 검색어 적용 (종목명 부분 일치, 대소문자 무시)
   const pool = _pickerSearchQuery
-    ? catFiltered.filter(e => String(e.name || '').toLowerCase().includes(_pickerSearchQuery))
-    : catFiltered;
+    ? muscleFiltered.filter(e => String(e.name || '').toLowerCase().includes(_pickerSearchQuery))
+    : muscleFiltered;
 
   // C-4: 현재 활성 필터 배너 — 무엇이 걸려있는지 명시적으로 보여주고 한 번에 해제.
   const filterBadges = [];
-  if (_pickerCategoryFilter) {
-    const cat = EQUIPMENT_CATEGORIES.find(c => c.id === _pickerCategoryFilter);
-    if (cat) filterBadges.push({ type: 'cat', label: `장비: ${cat.label}` });
+  if (_pickerMuscleFilter) {
+    const muscle = allMuscles.find(m => m.id === _pickerMuscleFilter);
+    if (muscle) filterBadges.push({ type: 'muscle', label: `부위: ${muscle.name}` });
   }
   if (_pickerSearchQuery) filterBadges.push({ type: 'search', label: `검색: "${_pickerSearchQuery}"` });
   if (filterBadges.length > 0) {
@@ -768,16 +785,16 @@ export function _renderPickerList() {
     container.appendChild(banner);
   }
 
-  // 필터 칩 UI — 카테고리 있는 Exercise가 하나라도 있으면 "전체"+해당 카테고리들 표시.
+  // 필터 칩 UI — 부위가 있는 Exercise가 하나라도 있으면 "전체"+해당 부위들 표시.
   // 상단 운동유형 탭(.wt-type-tab)과 클래스 분리 — 같은 DOM에 공존해도 스키마 간섭 없음.
-  if (availableCats.size >= 1) {
+  if (availableMuscles.size >= 1) {
     const chipBar = document.createElement('div');
     chipBar.className = 'ex-picker-filter-bar';
-    const allActive = _pickerCategoryFilter === null;
-    chipBar.innerHTML = `<button type="button" class="ex-picker-filter-chip${allActive?' active':''}" onclick="window._wtSetPickerCategoryFilter(null)">전체</button>` +
-      EQUIPMENT_CATEGORIES
-        .filter(c => availableCats.has(c.id))
-        .map(c => `<button type="button" class="ex-picker-filter-chip${_pickerCategoryFilter===c.id?' active':''}" onclick="window._wtSetPickerCategoryFilter('${c.id}')">${c.label}</button>`)
+    const allActive = _pickerMuscleFilter === null;
+    chipBar.innerHTML = `<button type="button" class="ex-picker-filter-chip${allActive?' active':''}" onclick="window._wtSetPickerMuscleFilter(null)">전체</button>` +
+      allMuscles
+        .filter(m => availableMuscles.has(m.id))
+        .map(m => `<button type="button" class="ex-picker-filter-chip${_pickerMuscleFilter===m.id?' active':''}" onclick="window._wtSetPickerMuscleFilter('${m.id}')">${m.name}</button>`)
         .join('');
     container.appendChild(chipBar);
   }
@@ -789,7 +806,7 @@ export function _renderPickerList() {
   let renderedGroupCount = 0;
   allMuscles.forEach(muscle => {
     const list = pool
-      .filter(e => e.muscleId === muscle.id)
+      .filter(e => _exerciseMajorIds(e).includes(muscle.id))
       .filter(e => !S.workout.hiddenExercises.includes(e.id));
 
     if (list.length === 0) return;
@@ -885,8 +902,8 @@ export async function wtOpenExercisePicker() {
     modal = document.getElementById('ex-picker-modal');
   }
   if (!modal) { console.error('[workout] ex-picker-modal not found'); return; }
-  // 피커 열 때마다 카테고리/검색 필터 초기화 — 다른 gym/풀 전환 후 빈 화면 lock 방지
-  _pickerCategoryFilter = null;
+  // 피커 열 때마다 부위/검색 필터 초기화 — 다른 gym/풀 전환 후 빈 화면 lock 방지
+  _pickerMuscleFilter = null;
   _pickerSearchQuery = '';
   const searchInput = document.getElementById('ex-picker-search');
   if (searchInput) searchInput.value = '';

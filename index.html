@@ -832,6 +832,23 @@
         </div>
 
       </div>
+      <div class="diet-bulk-ai">
+        <button class="diet-bulk-ai-toggle" type="button" onclick="openBulkMealAI()">한번에 올리기</button>
+        <div class="diet-bulk-ai-panel" id="diet-bulk-ai-panel" hidden>
+          <div class="diet-bulk-ai-chips" aria-label="일괄 AI 식단 끼니 선택">
+            <button type="button" class="diet-bulk-ai-chip" data-meal="breakfast" onclick="toggleBulkMealAIChip(this)">아침</button>
+            <button type="button" class="diet-bulk-ai-chip" data-meal="lunch" onclick="toggleBulkMealAIChip(this)">점심</button>
+            <button type="button" class="diet-bulk-ai-chip" data-meal="dinner" onclick="toggleBulkMealAIChip(this)">저녁</button>
+            <button type="button" class="diet-bulk-ai-chip" data-meal="snack" onclick="toggleBulkMealAIChip(this)">간식</button>
+          </div>
+          <div class="diet-bulk-ai-actions">
+            <button type="button" class="diet-bulk-ai-upload" onclick="document.getElementById('bulk-ai-photo-input').click()">사진 선택</button>
+            <span class="diet-bulk-ai-hint" id="diet-bulk-ai-hint">칩을 누른 순서대로 사진을 선택하세요.</span>
+          </div>
+          <div class="diet-bulk-ai-status" id="diet-bulk-ai-status"></div>
+          <input type="file" id="bulk-ai-photo-input" accept="image/*" multiple style="display:none" onchange="runBulkMealAIUpload(this)">
+        </div>
+      </div>
     </div>
   </div>
 </div>

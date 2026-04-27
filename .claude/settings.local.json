@@ -183,7 +183,9 @@
       "Bash(taskkill //F //PID 45552)",
       "Bash(taskkill //F //PID 49044)",
       "Bash(git fetch *)",
-      "Bash(ls -la *.md COMMUNICATION* communication*)"
+      "Bash(ls -la *.md COMMUNICATION* communication*)",
+      "Bash(rm .git/index.lock)",
+      "Bash(git add *)"
     ],
     "defaultMode": "bypassPermissions",
     "skipDangerousModePermissionPrompt": true

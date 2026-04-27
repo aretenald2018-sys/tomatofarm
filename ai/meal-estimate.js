@@ -9,7 +9,7 @@
 
 import { _callGeminiJSON } from './llm-core.js';
 
-const _PLATE_TYPES = ['cafeteria', 'single_dish', 'pasta', 'sushi_set', 'steak', 'dessert', 'unknown'];
+const _PLATE_TYPES = ['cafeteria', 'single_dish', 'pasta', 'sushi_set', 'lean_protein', 'steak', 'dessert', 'unknown'];
 
 export async function classifyMealPhoto(imageBase64) {
   const prompt = `음식 사진을 다음 카테고리 중 하나로 분류해라.
@@ -19,7 +19,8 @@ export async function classifyMealPhoto(imageBase64) {
 - single_dish: 단일 한 그릇 요리 (비빔밥, 덮밥, 국수, 김밥 등)
 - pasta: 파스타/스파게티/리조또
 - sushi_set: 초밥/스시 세트
-- steak: 스테이크/고기구이 메인
+- lean_protein: 닭가슴살/훈제닭/삶은 단백질 단품
+- steak: 소고기/돼지고기 스테이크 또는 고지방 고기구이 메인
 - dessert: 디저트/빵/음료
 - unknown: 분류 불가
 
@@ -45,10 +46,13 @@ confidence는 0~1.`;
 // 타입별 프롬프트 — 구조와 우선순위가 다르므로 분리
 const _ESTIMATE_PROMPTS = {
   cafeteria: `한식 반상 사진에서 각 반찬/국/밥/메인을 분해해 영양정보를 추정하라.
-- 통상 한국 구내식당 반상은 총 800~1200kcal 범위.
+- 다이어트 기록용 보수 추정이다. 보이는 음식 전체가 아니라 실제 1인 섭취 가능량을 추정하라.
+- 통상 한국 구내식당/식판형 반상은 총 550~900kcal 범위로 먼저 가정한다.
 - 각 구성요소(밥, 국, 메인 반찬, 사이드 반찬들)를 개별 아이템으로.
-- 밥은 1공기(200g 전후), 국은 한 대접(250g 전후), 메인은 100~150g 기준.
-- 반찬은 소량(30~50g).`,
+- 밥은 가득 찬 공기가 명확할 때만 200g, 보통은 100~160g.
+- 국/찌개는 건더기를 먹은 양 중심으로 잡고, 국물 전체를 모두 칼로리에 더하지 마라.
+- 반찬은 소량(20~60g). 작은 접시/공용처럼 보이면 전량 섭취로 보지 마라.
+- 총합이 900kcal를 넘으려면 튀김/삼겹살/진한 양념/대량 밥이 명확해야 한다.`,
   single_dish: `단일 한 그릇 요리(비빔밥/덮밥/국수/김밥 등)를 추정하라.
 - 주재료와 부재료를 2~4개 아이템으로 분해.
 - 통상 한 그릇은 500~800kcal 범위.`,
@@ -59,8 +63,14 @@ const _ESTIMATE_PROMPTS = {
 - 피스 수와 종류를 최대한 파악.
 - 초밥 1피스는 40~70kcal (종류별 상이).
 - 세트면 8~16피스 범위.`,
-  steak: `스테이크 메인 요리를 추정하라.
-- 고기 부위와 중량(150g/200g/300g)을 구분.
+  lean_protein: `닭가슴살/훈제닭/삶은 닭/저지방 단백질 단품을 추정하라.
+- 닭가슴살은 스테이크가 아니다. 소고기 스테이크 prior를 적용하지 마라.
+- 닭가슴살은 보통 100g당 110~170kcal 범위, 단백질 20~32g 범위.
+- 소스/오일/치즈가 명확히 보일 때만 별도 칼로리를 더하라.
+- 단품이면 1개 아이템으로 두고, 샐러드/밥이 보일 때만 분해하라.`,
+  steak: `소고기/돼지고기 스테이크 메인 요리를 추정하라.
+- 닭가슴살/훈제닭/삶은 닭은 steak가 아니라 lean_protein으로 분류하라.
+- 소고기/돼지고기 부위와 중량(150g/200g/300g)을 구분.
 - 사이드(감자, 샐러드, 빵)를 개별 아이템으로.`,
   dessert: `디저트/빵/음료를 추정하라.
 - 사이즈(small/medium/large)에 따라 200~600kcal 범위.`,
@@ -111,7 +121,8 @@ export async function estimateInOnePass(imageBase64) {
 - single_dish: 단일 한 그릇 요리 (비빔밥, 덮밥, 국수, 김밥 등)
 - pasta: 파스타/스파게티/리조또
 - sushi_set: 초밥/스시 세트
-- steak: 스테이크/고기구이 메인
+- lean_protein: 닭가슴살/훈제닭/삶은 단백질 단품
+- steak: 소고기/돼지고기 스테이크 또는 고지방 고기구이 메인
 - dessert: 디저트/빵/음료
 - unknown: 분류 불가
 
@@ -124,8 +135,9 @@ ${_ITEM_SCHEMA.replace(
     '{\n  "plateType":"cafeteria",\n  "hasRice":true,\n  "totalKcal"'
   )}
 
-- plateType은 위 7개 중 하나.
+- plateType은 위 8개 중 하나.
 - 먼저 타입을 판정한 뒤, 해당 타입 가이드에 맞춰 detectedItems를 분해.
+- 닭가슴살/훈제닭/삶은 닭은 steak로 분류하지 말고 lean_protein으로 분류.
 - 모든 숫자는 단위 없이 숫자값만.`;
 
   const { data } = await _callGeminiJSON([
@@ -159,8 +171,10 @@ function _shapeEstimate(data, plateType) {
     fat: Number(it.fat) || 0,
   })).filter(it => it.name && it.kcal > 0);
 
+  const finalPlateType = _repairChickenAsLeanProtein(plateType, cleaned);
+
   return {
-    plateType,
+    plateType: finalPlateType,
     totalKcal: Math.round(Number(data.totalKcal) || cleaned.reduce((s, i) => s + i.kcal, 0)),
     totalProtein: Math.round((Number(data.totalProtein) || cleaned.reduce((s, i) => s + i.protein, 0)) * 10) / 10,
     totalCarbs: Math.round((Number(data.totalCarbs) || cleaned.reduce((s, i) => s + i.carbs, 0)) * 10) / 10,
@@ -168,4 +182,12 @@ function _shapeEstimate(data, plateType) {
     confidence: Math.min(1, Math.max(0, Number(data.confidence) || 0.5)),
     detectedItems: cleaned,
   };
+}
+
+function _repairChickenAsLeanProtein(plateType, items) {
+  if (plateType !== 'steak') return plateType;
+  const names = items.map(it => it.name).join(' ');
+  const hasChicken = /닭가슴살|훈제닭|삶은\s*닭|닭\s*가슴|chicken\s*breast/i.test(names);
+  const hasBeefOrPork = /소고기|쇠고기|등심|안심|채끝|립아이|돼지|목살|삼겹|beef|pork/i.test(names);
+  return hasChicken && !hasBeefOrPork ? 'lean_protein' : plateType;
 }
