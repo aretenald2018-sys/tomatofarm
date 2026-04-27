@@ -7,7 +7,7 @@
 //   - 바벨/덤벨 위주 보강 종목을 칩으로 제안 (강제 X — 클릭 시 추가)
 //
 // 외부 의존:
-//   - calc.js : buildMuscleComparison, suggestMaxBoosts, getSessionMajorMuscles
+//   - calc.js : buildMuscleComparison, suggestMaxBoosts
 //   - config.js : MOVEMENTS, MAX_PREFERRED_CATEGORIES
 //   - data.js : getCache, getExList, getExpertPreset, saveExpertPreset, saveExercise,
 //               getMuscleParts, dateKey, TODAY
@@ -17,7 +17,6 @@
 import {
   buildMuscleComparison,
   suggestMaxBoosts,
-  getSessionMajorMuscles,
   SUBPATTERN_TO_MAJOR,
 } from '../../calc.js';
 import { MOVEMENTS, MAX_PREFERRED_CATEGORIES } from '../../config.js';
@@ -92,6 +91,20 @@ function _ensureMaxMeta() {
   return S.workout.maxMeta;
 }
 
+function _normalizeMaxMajor(id) {
+  if (!id) return null;
+  return SUBPATTERN_TO_MAJOR[id] || (id === 'core' ? 'abs' : id);
+}
+
+function _filterWeakPartsByMajors(parts = [], majors = []) {
+  const majorSet = new Set((majors || []).map(_normalizeMaxMajor).filter(Boolean));
+  if (!majorSet.size) return (parts || []).filter(Boolean);
+  return (parts || []).filter(part => {
+    const major = _normalizeMaxMajor(part);
+    return major && majorSet.has(major);
+  });
+}
+
 function _weakElapsed(meta = _ensureMaxMeta()) {
   const base = Math.max(0, Number(meta.weakBlock?.durationSec) || 0);
   const started = Number(meta.weakBlock?.activeStartedAt) || 0;
@@ -133,13 +146,18 @@ function _renderMaxSetup() {
   const selected = new Set(meta.selectedWeakParts);
   const isActive = !!meta.weakBlock.activeStartedAt;
   const sessionType = meta.sessionType === 'heavy_volume' ? 'heavy_volume' : 'high_volume';
+  const weakOptions = _filterWeakPartsByMajors(
+    WEAK_PARTS.map(p => p.id),
+    [...selectedMajors],
+  );
+  const weakOptionSet = new Set(weakOptions);
   const majorChips = MAJOR_PARTS.map(p => `
     <button type="button" class="wt-max-major-chip${selectedMajors.has(p.id) ? ' is-on' : ''}"
             data-action="set-major-part" data-major-part="${_esc(p.id)}">
       <span>${_esc(p.label)}</span><small>${_esc(p.coach)}</small>
     </button>
   `).join('');
-  const weakChips = WEAK_PARTS.map(p => `
+  const weakChips = WEAK_PARTS.filter(p => weakOptionSet.has(p.id)).map(p => `
     <button type="button" class="wt-max-weak-chip${selected.has(p.id) ? ' is-on' : ''}"
             data-action="toggle-weak-part" data-weak-part="${_esc(p.id)}">
       <span>${_esc(p.label)}</span><small>${_esc(p.coach)}</small>
@@ -644,13 +662,15 @@ export function renderMaxCard(host) {
   const todayKey = _todayKey();
   const cache = getCache();
   const exList = getExList();
-  const day = cache[todayKey] || { exercises: S?.workout?.exercises || [] };
-  let majors = _detectMajorsLoose(day, exList, MOVEMENTS);
   const meta = _ensureMaxMeta();
-  const selectedMajors = Array.isArray(meta.selectedMajors) ? meta.selectedMajors.filter(Boolean) : [];
-  if (majors.size === 0 && selectedMajors.length) majors = new Set(selectedMajors);
-  // 비교 빌드용으로는 작업세트 기준 majors 도 계산 (빈 세트만 있으면 비교 불가).
-  const workMajors = getSessionMajorMuscles(day, exList, MOVEMENTS);
+  const selectedMajors = Array.isArray(meta.selectedMajors)
+    ? meta.selectedMajors.map(_normalizeMaxMajor).filter(Boolean)
+    : [];
+  const day = cache[todayKey] || { exercises: S?.workout?.exercises || [] };
+  const detectedMajors = _detectMajorsLoose(day, exList, MOVEMENTS);
+  const majors = selectedMajors.length ? new Set(selectedMajors) : detectedMajors;
+  const weakPartsForToday = _filterWeakPartsByMajors(meta.selectedWeakParts, [...majors]);
+  const comparisonCache = cache[todayKey] ? cache : { ...cache, [todayKey]: day };
 
   // empty: 종목 자체가 없음 (looser도 비어있음)
   if (majors.size === 0) {
@@ -675,7 +695,7 @@ export function renderMaxCard(host) {
   }
 
   // 2) 비교 빌드
-  const comparison = buildMuscleComparison(cache, exList, MOVEMENTS, todayKey, majors, 2);
+  const comparison = buildMuscleComparison(comparisonCache, exList, MOVEMENTS, todayKey, majors, 2);
 
   // empty: 같은 부위 이력 없음
   if (!comparison.previous?.length) {
@@ -712,10 +732,10 @@ export function renderMaxCard(host) {
   // empty: 균형 잡혀있음
   if (!comparison.imbalance) {
     const takenIds = (S?.workout?.exercises || []).map(e => e.exerciseId).filter(Boolean);
-    const weakCoachGroups = _suggestWeakTargetBoosts(meta.selectedWeakParts, takenIds);
+    const weakCoachGroups = _suggestWeakTargetBoosts(weakPartsForToday, takenIds);
     const starterGroups = _suggestMajorStarters([...majors], takenIds);
     const fixedMovements = detectMaxFixedMovements({
-      cache,
+      cache: comparisonCache,
       exList,
       movements: MOVEMENTS,
       todayKey,
@@ -755,7 +775,7 @@ export function renderMaxCard(host) {
 
   // 3) 정상 경로: suggestMaxBoosts 호출
   const takenIds = (S?.workout?.exercises || []).map(e => e.exerciseId).filter(Boolean);
-  const weakCoachGroups = _suggestWeakTargetBoosts(meta.selectedWeakParts, takenIds);
+  const weakCoachGroups = _suggestWeakTargetBoosts(weakPartsForToday, takenIds);
   const groups = suggestMaxBoosts({
     comparison,
     exList,
@@ -765,7 +785,7 @@ export function renderMaxCard(host) {
     limit: 4,
   });
   const fixedMovements = detectMaxFixedMovements({
-    cache,
+    cache: comparisonCache,
     exList,
     movements: MOVEMENTS,
     todayKey,
@@ -996,6 +1016,9 @@ export function setMaxMajorPart(partId) {
   if (set.has(partId)) set.delete(partId);
   else set.add(partId);
   meta.selectedMajors = [...set];
+  if (meta.selectedMajors.length) {
+    meta.selectedWeakParts = _filterWeakPartsByMajors(meta.selectedWeakParts, meta.selectedMajors);
+  }
   _saveMaxMetaSoon();
   if (typeof window.renderExpertTopArea === 'function') window.renderExpertTopArea();
 }
