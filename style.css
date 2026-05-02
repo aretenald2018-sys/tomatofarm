@@ -514,6 +514,7 @@
   padding: 3px 2px; outline: none; flex-shrink: 0; appearance: none; text-align: center;
 }
 .set-type-select.warmup { border-color: var(--primary); color: var(--primary); }
+.set-type-select.drop { border-color: #f97316; color: #c2410c; }
 .set-type-select.main { border-color: var(--gym); color: var(--gym); }
 .set-rpe-select {
   width: 56px; background: var(--surface3); border: 1px solid var(--border);
@@ -2628,6 +2629,7 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
   color: var(--seed-fg-muted);
 }
 #tab-workout .set-type-select.warmup { border-color: var(--seed-blue-600); color: var(--seed-fg-informative); background: var(--seed-bg-informative-weak); }
+#tab-workout .set-type-select.drop { border-color: #f97316; color: #c2410c; background: #fff7ed; }
 #tab-workout .set-type-select.main { border-color: var(--primary); color: var(--seed-fg-brand); background: var(--seed-bg-brand-weak); }
 #tab-workout .set-done-btn {
   width: 24px; height: 24px; border-radius: var(--seed-r1);
