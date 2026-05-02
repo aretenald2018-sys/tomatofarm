@@ -12,4 +12,6 @@
 - Treat `setDoc` as a full overwrite. Preserve all existing fields, especially photo fields such as `bPhoto`, `lPhoto`, `dPhoto`, `sPhoto`, and `workoutPhoto`.
 - Deployment is allowed only when the user explicitly instructs it (e.g. "배포해", "푸시해", "deploy", "push it", "배포까지 해"). Without an explicit instruction, do not push or deploy automatically. When explicitly instructed, push to the `tomatofarm` remote — local verification is assumed to be completed by the user.
 - Keep the project in vanilla JavaScript. Do not introduce frameworks, bundlers, or build tooling.
+- Modal/Button Event Rule: If a modal sheet or inner container uses `event.stopPropagation()`, do not rely on delegated click handlers from the overlay/backdrop for buttons, tabs, or actions inside it. Bind handlers inside the sheet/body or use explicit direct handlers, then verify every new button/tab in the browser.
+- Lazy Module Button Rule: Do not add new always-visible `onclick="moduleFunction()"` buttons that depend on functions from lazy-loaded modules. Bind the button inside the module's render/init function, or expose a stable global before the HTML can be clicked. Verify each new tab/segmented button by clicking it in the browser.
 - Final verification must include changed files, the local URL or flow to test, and the exact server command.

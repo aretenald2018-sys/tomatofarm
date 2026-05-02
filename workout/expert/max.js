@@ -10,7 +10,7 @@
 //   - calc.js : buildMuscleComparison, suggestMaxBoosts
 //   - config.js : MOVEMENTS, MAX_PREFERRED_CATEGORIES
 //   - data.js : getCache, getExList, getExpertPreset, saveExpertPreset, saveExercise,
-//               getMuscleParts, dateKey, TODAY
+//               deleteExercise, getMuscleParts, dateKey, TODAY, saveDay
 //   - state.js : S (현재 운동 상태)
 // ================================================================
 
@@ -21,11 +21,13 @@ import {
 } from '../../calc.js';
 import { MOVEMENTS, MAX_PREFERRED_CATEGORIES } from '../../config.js';
 import {
-  getCache, getExList, getExpertPreset, saveExpertPreset, saveExercise,
+  getCache, getExList, getExpertPreset, saveExpertPreset, saveExercise, deleteExercise,
   getMuscleParts, dateKey, TODAY,
   getGyms, saveGym,
+  saveDay,
 } from '../../data.js';
 import { S } from '../state.js';
+import { confirmAction } from '../../utils/confirm-modal.js';
 import {
   createDefaultMaxCycle,
   renderMaxCycleDashboard,
@@ -120,16 +122,21 @@ const MAX_DEFAULT_TARGET_SETS = {
 };
 
 const WEAK_PARTS = [
+  { id:'chest_all', label:'가슴 전체', coach:'가슴 전반' },
   { id:'chest_upper', label:'가슴 상부', coach:'상부 볼륨' },
+  { id:'chest_mid', label:'가슴 중부', coach:'중부 기준' },
   { id:'chest_lower', label:'가슴 하부', coach:'하부 라인' },
+  { id:'back_all', label:'등 전체', coach:'등 전반' },
   { id:'back_width', label:'등 넓이', coach:'광배/풀다운' },
   { id:'back_thickness', label:'등 두께', coach:'로우/수축' },
+  { id:'shoulder_front', label:'어깨 전면', coach:'프레스 전면' },
   { id:'shoulder_side', label:'어깨 측면', coach:'측면 볼륨' },
   { id:'rear_delt', label:'어깨 후면', coach:'후면 안정' },
   { id:'bicep', label:'이두', coach:'컬 볼륨' },
   { id:'tricep', label:'삼두', coach:'프레스 보조' },
   { id:'core', label:'복근/코어', coach:'중량 코어' },
-  { id:'hamstring', label:'햄스트링', coach:'힌지 보강' },
+  { id:'quad', label:'대퇴사두', coach:'스쿼트/익스텐션' },
+  { id:'hamstring', label:'대퇴이두', coach:'컬/힌지 보강' },
   { id:'glute', label:'둔근', coach:'힙 파워' },
   { id:'calf', label:'종아리', coach:'하퇴 볼륨' },
 ];
@@ -147,6 +154,11 @@ const MAJOR_PARTS = [
 ];
 const MAJOR_LABEL = Object.fromEntries(MAJOR_PARTS.map(p => [p.id, p.label]));
 let _weakTimerInterval = null;
+
+function _targetRirLabel(targetRpe) {
+  const rir = Math.max(0, Math.min(9, 10 - (Number(targetRpe) || 8)));
+  return Number.isInteger(rir) ? `RIR ${rir}` : `RIR ${rir.toFixed(1)}`;
+}
 
 function _ensureMaxMeta() {
   if (!S.workout.maxMeta || typeof S.workout.maxMeta !== 'object') {
@@ -170,6 +182,8 @@ function _ensureMaxMeta() {
 
 function _normalizeMaxMajor(id) {
   if (!id) return null;
+  if (id === 'chest_all') return 'chest';
+  if (id === 'back_all') return 'back';
   return SUBPATTERN_TO_MAJOR[id] || (id === 'core' ? 'abs' : id);
 }
 
@@ -498,7 +512,9 @@ function _benchmarkPrescription(prescription, movement, { weakTarget = false } =
   });
   const benchmark = snapshot?.benchmarks?.find(b => b.movementId === movement.id);
   if (!benchmark) return null;
-  const track = snapshot.track === 'H' ? 'H' : 'M';
+  const track = benchmark.activeTrack === 'H' || benchmark.activeTrack === 'M'
+    ? benchmark.activeTrack
+    : (snapshot.track === 'H' ? 'H' : 'M');
   const planned = benchmark.plannedByTrack?.[track] || benchmark.planned;
   const trackSpec = benchmark.tracks?.[track] || {};
   const kg = _todayOverrideKg(cycle, benchmark, track, todayKey) || Number(planned?.plannedKg) || Number(prescription?.startKg) || 0;
@@ -512,7 +528,7 @@ function _benchmarkPrescription(prescription, movement, { weakTarget = false } =
   const latest = benchmark.latest ? `${benchmark.latest.kg}kg x ${benchmark.latest.reps}회` : '실측 없음';
   return {
     ...prescription,
-    label: `W${snapshot.weekIndex} ${trackLabel} · ${targetSets}세트 x ${repsLow}-${repsHigh}회`,
+    label: `W${snapshot.weekIndex} ${trackLabel} · ${targetSets}세트 x ${repsLow}-${repsHigh}회 · ${_targetRirLabel(track === 'H' ? 9 : 8)}`,
     targetSets,
     repsLow,
     repsHigh,
@@ -547,7 +563,7 @@ function _applyPrescriptionOverride(prescription, override = null) {
   const rpe = override.targetRpe === '' || override.targetRpe == null ? null : Math.max(1, Math.min(10, Number(override.targetRpe) || Number(prescription.targetRpe) || 8));
   return {
     ...prescription,
-    label: `조정 · ${targetSets}세트 x ${reps}회${rpe ? ` · RPE ${rpe}` : ''}`,
+    label: `조정 · ${targetSets}세트 x ${reps}회${rpe ? ` · ${_targetRirLabel(rpe)}` : ''}`,
     targetSets,
     repsLow: reps,
     repsHigh: reps,
@@ -563,7 +579,7 @@ function _applyPrescriptionOverride(prescription, override = null) {
     },
     evidence: [
       ...(prescription.evidence || []),
-      { label: '조정값', value: `${kg}kg x ${reps}회 x ${targetSets}세트${rpe ? ` · RPE ${rpe}` : ''}` },
+      { label: '조정값', value: `${kg}kg x ${reps}회 x ${targetSets}세트${rpe ? ` · ${_targetRirLabel(rpe)}` : ''}` },
     ],
     sets: Array.from({ length: targetSets }, () => ({ kg, reps, setType: 'main', done: false, rpe })),
   };
@@ -658,7 +674,7 @@ function buildMaxPrescription({
       transparency = {
         type: 'rep_rpe_conversion',
         label: `지난 ${Number(bestSet.kg)}kg보다 낮아 보이는 이유`,
-        detail: `${targetReps}회·RPE ${targetRpe} 목표로 e1RM을 환산해 시작 무게를 낮췄어요.`,
+        detail: `${targetReps}회·${_targetRirLabel(targetRpe)} 목표로 e1RM을 환산해 시작 무게를 낮췄어요.`,
       };
     } else if (deltaKg > 0) {
       transparency = {
@@ -672,7 +688,7 @@ function buildMaxPrescription({
   }
   const actionLabel = action === 'load' ? '증량' : (action === 'volume' ? '볼륨' : '유지');
   return {
-    label: `${targetSets}세트 x ${repsLow}-${repsHigh}회 · RPE ${targetRpe}`,
+    label: `${targetSets}세트 x ${repsLow}-${repsHigh}회 · ${_targetRirLabel(targetRpe)}`,
     targetSets, repsLow, repsHigh, targetRpe,
     startKg, action, actionLabel, deltaKg, reason, transparency, evidence, lastDateKey,
     lastSet: bestSet ? { kg: Number(bestSet.kg) || 0, reps: Number(bestSet.reps) || 0, rpe: Number(bestSet.rpe) || null } : null,
@@ -894,7 +910,7 @@ function _ensureMaxAdjustModal() {
           <label><span>무게</span><input id="max-rec-adjust-kg" type="number" min="0" max="500" step="0.5"></label>
           <label><span>횟수</span><input id="max-rec-adjust-reps" type="number" min="1" max="50" step="1"></label>
           <label><span>세트</span><input id="max-rec-adjust-sets" type="number" min="1" max="10" step="1"></label>
-          <label><span>RPE</span><input id="max-rec-adjust-rpe" type="number" min="1" max="10" step="0.5"></label>
+          <label><span>목표 RIR</span><input id="max-rec-adjust-rpe" type="number" min="0" max="9" step="0.5"></label>
         </div>
         <div class="wt-max-adjust-note" id="max-rec-adjust-note"></div>
         <div class="wt-max-adjust-actions">
@@ -918,7 +934,7 @@ export function openMaxRecAdjustModal(movementId, weakPart = null, recMeta = {})
   document.getElementById('max-rec-adjust-kg').value = Number(prescription?.startKg) || 0;
   document.getElementById('max-rec-adjust-reps').value = Number(prescription?.repsHigh) || 10;
   document.getElementById('max-rec-adjust-sets').value = Number(prescription?.targetSets) || 4;
-  document.getElementById('max-rec-adjust-rpe').value = prescription?.targetRpe ?? '';
+  document.getElementById('max-rec-adjust-rpe').value = prescription?.targetRpe ? Math.max(0, 10 - Number(prescription.targetRpe)) : '';
   document.getElementById('max-rec-adjust-note').textContent = prescription?.transparency?.detail || '추가 버튼은 추천값 그대로, 조정은 이 값으로 세션에 넣습니다.';
   el.classList.add('open');
 }
@@ -934,7 +950,11 @@ export async function applyMaxAdjustedRecommendation() {
     startKg: Number(document.getElementById('max-rec-adjust-kg')?.value) || 0,
     reps: Number(document.getElementById('max-rec-adjust-reps')?.value) || 10,
     targetSets: Number(document.getElementById('max-rec-adjust-sets')?.value) || 4,
-    targetRpe: document.getElementById('max-rec-adjust-rpe')?.value || null,
+    targetRpe: (() => {
+      const rir = document.getElementById('max-rec-adjust-rpe')?.value;
+      if (rir === '' || rir == null) return null;
+      return Math.max(1, Math.min(10, 10 - Number(rir)));
+    })(),
   };
   closeMaxRecAdjustModal();
   await applyMaxSuggestion(_maxAdjustDraft.movementId, _maxAdjustDraft.weakPart, {
@@ -1079,6 +1099,35 @@ function _renderFixedCardsForMajor(fixedMovements, takenIds, meta) {
   }).join('');
 }
 
+function _curateBalanceGroups(groups = []) {
+  const byMajor = new Map();
+  for (const g of groups || []) {
+    const major = _normalizeMaxMajor(SUBPATTERN_TO_MAJOR[g.subPattern] || g.subPattern);
+    if (!major) continue;
+    if (!byMajor.has(major)) byMajor.set(major, []);
+    byMajor.get(major).push(g);
+  }
+  return [...byMajor.entries()].map(([major, list]) => {
+    if (list.length === 1) return list[0];
+    const seen = new Set();
+    const exercises = [];
+    for (const g of list) {
+      for (const ex of g.exercises || []) {
+        const key = ex.movementId || ex.nameKo;
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        exercises.push(ex);
+      }
+    }
+    return {
+      subPattern: `${major}_all`,
+      subPatternLabel: `${MAJOR_LABEL[major] || major} 전반`,
+      mergedSubPatterns: list.map(g => g.subPattern),
+      exercises: exercises.slice(0, 4),
+    };
+  }).filter(g => (g.exercises || []).length);
+}
+
 function _addMajorBucket(buckets, major, item) {
   if (!major) return;
   if (!buckets.has(major)) buckets.set(major, []);
@@ -1119,7 +1168,7 @@ function _renderMajorRecommendationBoard({
     if (selectedMajorSet.size && !selectedMajorSet.has(_normalizeMaxMajor(major))) continue;
     _addMajorBucket(buckets, major, { type: 'weak', title: `약점 전담 · ${g.subPatternLabel}`, group: g });
   }
-  for (const g of balanceGroups || []) {
+  for (const g of _curateBalanceGroups(balanceGroups)) {
     const major = SUBPATTERN_TO_MAJOR[g.subPattern] || g.subPattern;
     if (selectedMajorSet.size && !selectedMajorSet.has(_normalizeMaxMajor(major))) continue;
     _addMajorBucket(buckets, major, { type: 'balance', title: `균형보강 · ${g.subPatternLabel}`, group: g });
@@ -1704,6 +1753,12 @@ function _bindMaxHost(host) {
         setMaxCycleTrack(trackBtn.getAttribute('data-track')).catch(err => console.warn('[setMaxCycleTrack]:', err));
         return;
       }
+      const rowTrackBtn = e.target.closest('[data-action="set-max-benchmark-track"]');
+      if (rowTrackBtn) {
+        setMaxBenchmarkTrack(rowTrackBtn.getAttribute('data-benchmark-id'), rowTrackBtn.getAttribute('data-track'))
+          .catch(err => console.warn('[setMaxBenchmarkTrack]:', err));
+        return;
+      }
       const weightAdjustBtn = e.target.closest('[data-action="adjust-max-weight"]');
       if (weightAdjustBtn) {
         adjustMaxBenchmarkWeight(
@@ -2033,6 +2088,25 @@ export async function setMaxCycleTrack(track) {
   if (typeof window.renderExpertTopArea === 'function') window.renderExpertTopArea();
 }
 
+export async function setMaxBenchmarkTrack(benchmarkId, track) {
+  const nextTrack = track === 'H' ? 'H' : 'M';
+  const cycle = _cycleOrDraft();
+  const todayKey = _todayKey();
+  const next = {
+    ...cycle,
+    status: 'active',
+    todayTracks: {
+      ...(cycle.todayTracks || {}),
+      [todayKey]: {
+        ...(cycle.todayTracks?.[todayKey] || {}),
+        [benchmarkId]: nextTrack,
+      },
+    },
+  };
+  await _saveMaxCycleSafe(next);
+  if (typeof window.renderExpertTopArea === 'function') window.renderExpertTopArea();
+}
+
 export async function adjustMaxBenchmarkWeight(benchmarkId, deltaKg) {
   const cycle = _cycleOrDraft();
   const todayKey = _todayKey();
@@ -2044,7 +2118,8 @@ export async function adjustMaxBenchmarkWeight(benchmarkId, deltaKg) {
   });
   const row = (snapshot?.benchmarks || []).find(b => b.id === benchmarkId);
   if (!row) return;
-  const key = `${benchmarkId}:${snapshot.track || 'M'}`;
+  const activeTrack = row.activeTrack || snapshot.track || 'M';
+  const key = `${benchmarkId}:${activeTrack}`;
   const current = Number(cycle.todayOverrides?.[todayKey]?.[key]?.kg)
     || Number(cycle.todayOverrides?.[todayKey]?.[benchmarkId]?.kg)
     || row.planned.plannedKg;
@@ -2060,7 +2135,7 @@ export async function adjustMaxBenchmarkWeight(benchmarkId, deltaKg) {
         ...(cycle.todayOverrides?.[todayKey] || {}),
         [key]: {
           kg: Math.round(nextKg * 10) / 10,
-          track: snapshot.track || 'M',
+          track: activeTrack,
           scope: cycle.todayOverrides?.[todayKey]?.[key]?.scope || 'today',
           updatedAt: Date.now(),
         },
@@ -2089,7 +2164,8 @@ export async function setMaxBenchmarkWeight(benchmarkId, kg) {
   }
   const step = Number(row.planned?.incrementKg) > 0 ? Number(row.planned.incrementKg) : 2.5;
   const nextKg = Math.max(0, Math.round(raw / step) * step);
-  const key = `${benchmarkId}:${snapshot.track || 'M'}`;
+  const activeTrack = row.activeTrack || snapshot.track || 'M';
+  const key = `${benchmarkId}:${activeTrack}`;
   const next = {
     ...cycle,
     status: 'active',
@@ -2099,7 +2175,7 @@ export async function setMaxBenchmarkWeight(benchmarkId, kg) {
         ...(cycle.todayOverrides?.[todayKey] || {}),
         [key]: {
           kg: Math.round(nextKg * 10) / 10,
-          track: snapshot.track || 'M',
+          track: activeTrack,
           scope: cycle.todayOverrides?.[todayKey]?.[key]?.scope || 'today',
           updatedAt: Date.now(),
         },
@@ -2169,6 +2245,11 @@ function _ensureMaxV4Sheet() {
       openMaxEquipmentPoolModal().catch(err => console.warn('[openMaxEquipmentPoolModal]:', err));
       return;
     }
+    const cleanse = e.target.closest('[data-action="open-max-data-cleanse"]');
+    if (cleanse) {
+      openMaxDataCleanseModal();
+      return;
+    }
     const adj = e.target.closest('[data-adjust-sheet]');
     if (adj) {
       adjustMaxBenchmarkWeight(adj.getAttribute('data-benchmark-id'), Number(adj.getAttribute('data-delta')) || 0)
@@ -2200,6 +2281,11 @@ function _ensureMaxV4Sheet() {
     if (deleteEquipment) {
       deleteMaxEquipmentFromPool(deleteEquipment.getAttribute('data-pool-id'))
         .catch(err => console.warn('[deleteMaxEquipmentFromPool]:', err));
+      return;
+    }
+    const saveCleanse = e.target.closest('[data-action="save-max-data-cleanse"]');
+    if (saveCleanse) {
+      saveMaxDataCleanseModal().catch(err => console.warn('[saveMaxDataCleanseModal]:', err));
     }
   });
   sheet.addEventListener('change', (e) => {
@@ -2610,6 +2696,335 @@ export function closeMaxEquipmentPoolModal(event) {
   if (el) el.classList.remove('open');
 }
 
+function _suspectExerciseReason(ex) {
+  const reasons = [];
+  const gymIds = [ex?.gymId, ex?.primaryGymId, ...(Array.isArray(ex?.gymTags) ? ex.gymTags.filter(g => g && g !== '*') : [])].filter(Boolean);
+  if (new Set(gymIds).size > 1) reasons.push('헬스장 섞임');
+  if (!Array.isArray(ex?.muscleIds) || ex.muscleIds.length === 0) reasons.push('세부부위 없음');
+  if (!ex?.maxTrackPreference) reasons.push('트랙 미지정');
+  if (!ex?.movementId) reasons.push('동작 매핑 없음');
+  return reasons.join(' · ') || '검토 가능';
+}
+
+function _cleanseSubOptions(selected = '') {
+  return [`<option value="">미지정</option>`, ...WEAK_PARTS.map(p =>
+    `<option value="${_esc(p.id)}" ${p.id === selected ? 'selected' : ''}>${_esc(p.label)}</option>`
+  )].join('');
+}
+
+function _cleanseExerciseOptions(selected = '') {
+  return getExList().map(ex =>
+    `<option value="${_esc(ex.id)}" ${ex.id === selected ? 'selected' : ''}>${_esc(ex.name || ex.id)}</option>`
+  ).join('');
+}
+
+function _normExerciseName(value = '') {
+  return String(value || '').toLowerCase().replace(/[\s·_\-()[\]{}]/g, '');
+}
+
+function _exerciseHistoryMatcher(exerciseId) {
+  const exList = getExList();
+  const exById = new Map(exList.map(ex => [ex.id, ex]));
+  const target = exById.get(exerciseId);
+  const targetMovementId = target?.movementId || '';
+  const targetMovement = targetMovementId ? MOVEMENTS.find(m => m.id === targetMovementId) : null;
+  const targetNames = new Set([
+    _normExerciseName(target?.name),
+    _normExerciseName(targetMovement?.nameKo),
+  ].filter(Boolean));
+
+  return (entry = {}) => {
+    if (entry.exerciseId === exerciseId) return true;
+    const entryEx = exById.get(entry.exerciseId);
+    const entryMovementId = entry.movementId || entryEx?.movementId || '';
+    if (targetMovementId && entryMovementId === targetMovementId) return true;
+    const entryName = _normExerciseName(entry.name || entryEx?.name);
+    return !!entryName && targetNames.has(entryName);
+  };
+}
+
+function _historyEntriesForExercise(exerciseId) {
+  const matches = _exerciseHistoryMatcher(exerciseId);
+  return Object.entries(getCache() || {})
+    .filter(([key, day]) => /^\d{4}-\d{2}-\d{2}$/.test(key) && Array.isArray(day?.exercises))
+    .sort(([a], [b]) => b.localeCompare(a))
+    .flatMap(([key, day]) => (day.exercises || [])
+      .map((entry, idx) => ({ key, entry, idx }))
+      .filter(item => matches(item.entry)));
+}
+
+function _recordSubPattern(entry, ex) {
+  if (Array.isArray(entry?.muscleIds) && entry.muscleIds[0]) return entry.muscleIds[0];
+  if (Array.isArray(ex?.muscleIds) && ex.muscleIds[0]) return ex.muscleIds[0];
+  const mov = MOVEMENTS.find(m => m.id === (entry?.movementId || ex?.movementId));
+  return mov?.subPattern || '';
+}
+
+function _recordTrack(entry) {
+  const track = entry?.recommendationMeta?.track || entry?.maxPrescription?.benchmarkTrack || entry?.maxTrackPreference || '';
+  return track === 'H' ? 'H' : (track === 'M' ? 'M' : '');
+}
+
+function _renderCleanseExerciseRows(gyms) {
+  return getExList()
+    .slice()
+    .sort((a, b) => _suspectExerciseReason(b).localeCompare(_suspectExerciseReason(a)) || String(a.name || '').localeCompare(String(b.name || '')))
+    .map(ex => {
+      const gymId = ex.gymId || ex.primaryGymId || '';
+      const sub = Array.isArray(ex.muscleIds) && ex.muscleIds[0] ? ex.muscleIds[0] : (MOVEMENTS.find(m => m.id === ex.movementId)?.subPattern || '');
+      const track = ex.maxTrackPreference === 'H' ? 'H' : (ex.maxTrackPreference === 'M' ? 'M' : '');
+      const gymOptions = [`<option value="">공통</option>`, ...gyms.map(g => `<option value="${_esc(g.id)}" ${g.id === gymId ? 'selected' : ''}>${_esc(g.name || '이름 없는 헬스장')}</option>`)].join('');
+      const historyCount = _historyEntriesForExercise(ex.id).length;
+      return `
+        <div class="wt-max-cleanse-row" data-ex-id="${_esc(ex.id)}">
+          <div class="wt-max-cleanse-main">
+            <b>${_esc(ex.name || ex.id)}</b>
+            <small>${_esc(_suspectExerciseReason(ex))} · 기록 ${historyCount}회</small>
+          </div>
+          <label><span>헬스장</span><select data-cleanse-field="gymId">${gymOptions}</select></label>
+          <label><span>세부부위</span><select data-cleanse-field="subPattern">${_cleanseSubOptions(sub)}</select></label>
+          <label><span>기본트랙</span><select data-cleanse-field="track">
+            <option value="" ${track ? '' : 'selected'}>자동</option>
+            <option value="M" ${track === 'M' ? 'selected' : ''}>볼륨</option>
+            <option value="H" ${track === 'H' ? 'selected' : ''}>강도</option>
+          </select></label>
+          <div class="wt-max-cleanse-row-actions">
+            <button type="button" class="wt-max-cleanse-history-btn" onclick="event.stopPropagation(); openMaxExerciseHistoryModal(this.closest('[data-ex-id]')?.getAttribute('data-ex-id'))">기록 수정</button>
+            <button type="button" class="wt-max-cleanse-delete-btn" onclick="event.stopPropagation(); deleteMaxCleanseExercise(this.closest('[data-ex-id]')?.getAttribute('data-ex-id'))">삭제</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+}
+
+function _setTypeLabel(setType = 'main') {
+  if (setType === 'warmup') return '프리';
+  if (setType === 'drop') return '드랍';
+  if (setType === 'backoff') return '백오프';
+  return '본';
+}
+
+function _renderExerciseHistoryRows(exerciseId) {
+  const items = _historyEntriesForExercise(exerciseId).slice(0, 60);
+  if (!items.length) return '<div class="wt-max-cleanse-empty">이 종목의 과거 수행 기록이 없어요.</div>';
+  return items.map(({ key, entry, idx }) => {
+    const sets = Array.isArray(entry.sets) ? entry.sets : [];
+    const setRows = sets.map((set, setIdx) => `
+      <div class="wt-max-history-set" data-history-set-row data-date-key="${_esc(key)}" data-entry-idx="${idx}" data-set-idx="${setIdx}">
+        <div class="wt-max-history-set-no">${setIdx + 1}</div>
+        <div class="wt-max-history-set-type">${_esc(_setTypeLabel(set?.setType))}</div>
+        <label><span>kg</span><input data-history-set-field="kg" type="number" min="0" max="500" step="0.5" value="${Number(set?.kg) || 0}"></label>
+        <label><span>회</span><input data-history-set-field="reps" type="number" min="0" max="100" step="1" value="${Number(set?.reps) || 0}"></label>
+      </div>
+    `).join('');
+    return `
+      <div class="wt-max-history-card">
+        <div class="wt-max-history-card-head">
+          <b>${_esc(key)}</b>
+          <small>${sets.length}세트 · ${_esc(entry.name || '운동 기록')}</small>
+        </div>
+        <div class="wt-max-history-sets">${setRows || '<div class="wt-max-cleanse-empty">세트 기록이 없어요.</div>'}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+function _ensureMaxDataCleanseModal() {
+  let el = document.getElementById('max-data-cleanse-modal');
+  if (el) return el;
+  el = document.createElement('div');
+  el.id = 'max-data-cleanse-modal';
+  el.className = 'modal-overlay wt-max-cleanse-modal';
+  el.innerHTML = `
+    <div class="wt-max-cleanse-sheet" onclick="event.stopPropagation()">
+      <div class="wt-max-cleanse-head">
+        <div>
+          <div class="wt-max-cleanse-title">종목 메타 정리</div>
+          <div class="wt-max-cleanse-sub">헬스장, 세부부위, 기본 트랙을 정리하고 종목별 과거 수행값을 수정합니다.</div>
+        </div>
+        <button type="button" class="wt-max-adjust-close" onclick="closeMaxDataCleanseModal()">×</button>
+      </div>
+      <div id="max-data-cleanse-body"></div>
+      <div class="wt-max-cleanse-actions">
+        <button type="button" class="wt-max-rec-secondary" onclick="closeMaxDataCleanseModal()">닫기</button>
+        <button type="button" class="wt-max-rec-accept" data-action="save-max-data-cleanse" onclick="event.stopPropagation(); saveMaxDataCleanseModal()">저장</button>
+      </div>
+    </div>
+  `;
+  el.addEventListener('click', (e) => {
+    if (e.target === el) closeMaxDataCleanseModal();
+    if (e.target.closest('[data-action="save-max-data-cleanse"]')) {
+      saveMaxDataCleanseModal().catch(err => console.warn('[saveMaxDataCleanseModal.modal]:', err));
+    }
+  });
+  document.body.appendChild(el);
+  return el;
+}
+
+export function openMaxDataCleanseModal() {
+  const el = _ensureMaxDataCleanseModal();
+  renderMaxDataCleanseBody();
+  el.classList.add('open');
+}
+
+export function setMaxDataCleanseTab(mode = 'exercises') {
+  const el = document.getElementById('max-data-cleanse-modal');
+  if (!el) return;
+  renderMaxDataCleanseBody(mode);
+}
+
+function renderMaxDataCleanseBody(mode = 'exercises') {
+  const body = document.getElementById('max-data-cleanse-body');
+  const gyms = getGyms();
+  const rows = _renderCleanseExerciseRows(gyms);
+  if (body) body.innerHTML = rows || '<div class="wt-max-cleanse-empty">검토할 종목이 없어요.</div>';
+}
+
+export function closeMaxDataCleanseModal() {
+  document.getElementById('max-data-cleanse-modal')?.classList.remove('open');
+}
+
+export async function saveMaxDataCleanseModal() {
+  const rows = Array.from(document.querySelectorAll('#max-data-cleanse-body .wt-max-cleanse-row'));
+  for (const row of rows) {
+    const id = row.getAttribute('data-ex-id');
+    const ex = getExList().find(item => item.id === id);
+    if (!ex) continue;
+    const gymId = row.querySelector('[data-cleanse-field="gymId"]')?.value || '';
+    const subPattern = row.querySelector('[data-cleanse-field="subPattern"]')?.value || '';
+    const track = row.querySelector('[data-cleanse-field="track"]')?.value || '';
+    const major = _normalizeMaxMajor(subPattern || ex.muscleId);
+    await saveExercise({
+      ...ex,
+      gymId: gymId || null,
+      primaryGymId: gymId || null,
+      gymTags: gymId ? [gymId] : ['*'],
+      muscleId: major || ex.muscleId,
+      muscleIds: subPattern ? [subPattern] : (Array.isArray(ex.muscleIds) ? ex.muscleIds : []),
+      maxTrackPreference: track || null,
+      dataCleanedAt: Date.now(),
+    });
+  }
+  closeMaxDataCleanseModal();
+  _toast('데이터 클렌징 저장 완료', 'success');
+  if (typeof window.renderExpertTopArea === 'function') window.renderExpertTopArea();
+}
+
+export async function deleteMaxCleanseExercise(exerciseId) {
+  const ex = getExList().find(item => item.id === exerciseId);
+  if (!ex) {
+    _toast('삭제할 종목을 찾지 못했어요', 'error');
+    return;
+  }
+  const affected = _historyEntriesForExercise(exerciseId);
+  const ok = await confirmAction({
+    title: '종목과 기록을 삭제할까요?',
+    message: `"${ex.name || exerciseId}" 종목 자체와 이 종목으로 저장된 과거 운동 기록 ${affected.length}건을 삭제합니다.\n삭제 후에는 추천, 그래프, 벤치마크 근거에서도 빠질 수 있어요.`,
+    confirmLabel: '삭제',
+    cancelLabel: '취소',
+    destructive: true,
+  });
+  if (!ok) return;
+
+  const cache = getCache() || {};
+  const dates = [...new Set(affected.map(item => item.key))];
+  try {
+    for (const key of dates) {
+      const nextExercises = (cache[key]?.exercises || []).filter(entry => entry?.exerciseId !== exerciseId);
+      await saveDay(key, { exercises: nextExercises }, { mode: 'merge', rethrow: true });
+      if (key === _todayKey() && S?.workout) S.workout.exercises = JSON.parse(JSON.stringify(nextExercises));
+    }
+    await deleteExercise(exerciseId);
+    renderMaxDataCleanseBody();
+    closeMaxExerciseHistoryModal();
+    _toast(`종목과 기록 ${affected.length}건을 삭제했어요`, 'success');
+    if (typeof window.renderExpertTopArea === 'function') window.renderExpertTopArea();
+  } catch (err) {
+    console.warn('[deleteMaxCleanseExercise]:', err);
+    _toast('삭제 실패', 'error');
+  }
+}
+
+function _ensureMaxExerciseHistoryModal() {
+  let el = document.getElementById('max-exercise-history-modal');
+  if (el) return el;
+  el = document.createElement('div');
+  el.id = 'max-exercise-history-modal';
+  el.className = 'modal-overlay wt-max-history-modal';
+  el.innerHTML = `
+    <div class="wt-max-cleanse-sheet wt-max-history-sheet" onclick="event.stopPropagation()">
+      <div class="wt-max-cleanse-head">
+        <div>
+          <div class="wt-max-cleanse-title" id="max-ex-history-title">과거 수행값 수정</div>
+          <div class="wt-max-cleanse-sub">이 종목으로 기록된 과거 세트의 무게와 횟수를 고칩니다.</div>
+        </div>
+        <button type="button" class="wt-max-adjust-close" onclick="closeMaxExerciseHistoryModal()">×</button>
+      </div>
+      <div id="max-ex-history-body"></div>
+      <div class="wt-max-cleanse-actions">
+        <button type="button" class="wt-max-rec-secondary" onclick="closeMaxExerciseHistoryModal()">닫기</button>
+        <button type="button" class="wt-max-rec-accept" onclick="event.stopPropagation(); saveMaxExerciseHistoryModal()">저장</button>
+      </div>
+    </div>
+  `;
+  el.addEventListener('click', (e) => {
+    if (e.target === el) closeMaxExerciseHistoryModal();
+  });
+  document.body.appendChild(el);
+  return el;
+}
+
+export function openMaxExerciseHistoryModal(exerciseId) {
+  const ex = getExList().find(item => item.id === exerciseId);
+  const el = _ensureMaxExerciseHistoryModal();
+  el.dataset.exerciseId = exerciseId || '';
+  const title = document.getElementById('max-ex-history-title');
+  const body = document.getElementById('max-ex-history-body');
+  if (title) title.textContent = `${ex?.name || '종목'} 과거 수행값`;
+  if (body) body.innerHTML = _renderExerciseHistoryRows(exerciseId);
+  el.classList.add('open');
+}
+
+export function closeMaxExerciseHistoryModal() {
+  document.getElementById('max-exercise-history-modal')?.classList.remove('open');
+}
+
+export async function saveMaxExerciseHistoryModal() {
+  const rows = Array.from(document.querySelectorAll('#max-ex-history-body [data-history-set-row]'));
+  const cache = getCache() || {};
+  const byDate = new Map();
+  for (const row of rows) {
+    const key = row.getAttribute('data-date-key');
+    const idx = Number(row.getAttribute('data-entry-idx'));
+    const setIdx = Number(row.getAttribute('data-set-idx'));
+    if (!key || !Number.isInteger(idx) || !Number.isInteger(setIdx)) continue;
+    if (!byDate.has(key)) {
+      byDate.set(key, JSON.parse(JSON.stringify(cache[key]?.exercises || [])));
+    }
+    const list = byDate.get(key);
+    const entry = list[idx];
+    if (!entry || !Array.isArray(entry.sets) || !entry.sets[setIdx]) continue;
+    const kgRaw = row.querySelector('[data-history-set-field="kg"]')?.value;
+    const repsRaw = row.querySelector('[data-history-set-field="reps"]')?.value;
+    const kg = Math.max(0, Number(kgRaw) || 0);
+    const reps = Math.max(0, Math.floor(Number(repsRaw) || 0));
+    entry.sets[setIdx] = {
+      ...entry.sets[setIdx],
+      kg,
+      reps,
+      done: entry.sets[setIdx].done === false ? false : true,
+    };
+    entry.historyEditedAt = Date.now();
+  }
+  for (const [key, exercises] of byDate.entries()) {
+    await saveDay(key, { exercises }, { mode: 'merge', rethrow: true });
+    if (key === _todayKey() && S?.workout) S.workout.exercises = JSON.parse(JSON.stringify(exercises));
+  }
+  closeMaxExerciseHistoryModal();
+  _toast('과거 수행값 저장 완료', 'success');
+  if (typeof window.renderExpertTopArea === 'function') window.renderExpertTopArea();
+}
+
 // ── 추천 칩 클릭 → 오늘 세션에 종목 추가 ────────────────────────
 export async function applyMaxSuggestion(movementId, weakPart = null, recMeta = {}) {
   const mov = MOVEMENTS.find(m => m.id === movementId);
@@ -2673,13 +3088,17 @@ export async function applyMaxSuggestion(movementId, weakPart = null, recMeta = 
     exList: getExList(),
     todayKey: _todayKey(),
   }) : null;
+  const exMeta = getExList().find(e => e.id === exId) || null;
+  const preferredSessionType = exMeta?.maxTrackPreference === 'H'
+    ? 'heavy_volume'
+    : (exMeta?.maxTrackPreference === 'M' ? 'high_volume' : meta.sessionType);
   let prescription = _applyFrameworkPrescription(buildMaxPrescription({
     cache: getCache(),
     exList: getExList(),
     movement: mov,
     exerciseId: exId,
     todayKey: _todayKey(),
-    sessionType: meta.sessionType,
+    sessionType: preferredSessionType,
     weakTarget: !!weakPart,
   }), mov, { weakTarget: !!weakPart });
   prescription = _applyPrescriptionOverride(prescription, recMeta.override);

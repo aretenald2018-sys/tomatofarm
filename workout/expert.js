@@ -59,12 +59,21 @@ import {
   settleMaxCycle,
   openMaxEquipmentPoolModal,
   closeMaxEquipmentPoolModal,
+  openMaxDataCleanseModal,
+  closeMaxDataCleanseModal,
+  saveMaxDataCleanseModal,
+  setMaxDataCleanseTab,
+  openMaxExerciseHistoryModal,
+  closeMaxExerciseHistoryModal,
+  saveMaxExerciseHistoryModal,
+  deleteMaxCleanseExercise,
   closeMaxV4Sheet,
   openMaxCycleBoardSheet,
   openMaxPlanEditorSheet,
   saveMaxPlanEditorSheet,
   openMaxAdjustSheet,
   setMaxCycleTrack,
+  setMaxBenchmarkTrack,
   adjustMaxBenchmarkWeight,
   setMaxBenchmarkWeight,
   _initMaxOnboardingEvents,
@@ -159,6 +168,7 @@ export function renderExpertTopArea() {
   // 모드 'normal' (preset 비활성) → 최상단 세그먼트 + 인라인 pill만 노출
   if (mode === 'normal') {
     _syncExpertFlowClass(false);
+    _syncWorkoutModeClass('normal');
     _syncStep3ReadyClass(false);
     _renderInlineExpertPill();
     host.innerHTML = _renderWorkoutModeEntry('normal');
@@ -171,6 +181,7 @@ export function renderExpertTopArea() {
   //   탭 재진입(resetExpertView 호출) 시에도 mode='max' 면 카드 항상 노출.
   if (mode === 'max') {
     _syncExpertFlowClass(true);
+    _syncWorkoutModeClass('max');
     _syncStep3ReadyClass(true);   // 맥스는 stepper 단계 없이 곧바로 헬스 종목 입력 허용
     renderMaxCard(host);
     return;
@@ -179,6 +190,7 @@ export function renderExpertTopArea() {
   // 모드 'pro' — 일반 뷰 (디폴트) → 세그먼트만, 카드는 _expertViewShown=true 시
   if (!_expertViewShown) {
     _syncExpertFlowClass(false);
+    _syncWorkoutModeClass('pro');
     _syncStep3ReadyClass(false);
     host.innerHTML = _renderWorkoutModeEntry(mode);
     return;
@@ -186,6 +198,7 @@ export function renderExpertTopArea() {
 
   // 프로 모드 뷰 — 스테퍼 카드 노출
   _syncExpertFlowClass(true);
+  _syncWorkoutModeClass('pro');
 
   // 랜딩 '쉬었어요/건강이슈' 제거 후 — 상태는 항상 'done'으로 간주.
   const status = 'done';
@@ -361,9 +374,35 @@ function _syncExpertFlowClass(on) {
   if (badge) badge.classList.toggle('is-expert', !!on);
 }
 
+function _syncWorkoutModeClass(mode) {
+  const flow = document.getElementById('wt-flow');
+  if (!flow) return;
+  flow.classList.toggle('wt-mode-normal', mode === 'normal');
+  flow.classList.toggle('wt-mode-pro', mode === 'pro');
+  flow.classList.toggle('wt-mode-max', mode === 'max');
+}
+
 function _syncStep3ReadyClass(on) {
   const flow = document.getElementById('wt-flow');
   if (flow) flow.classList.toggle('wt-step3-ready', !!on);
+}
+
+async function _persistWorkoutBeforeModeSwitch() {
+  try {
+    const mod = await import('./save.js');
+    if (typeof mod.saveWorkoutDay === 'function') await mod.saveWorkoutDay();
+  } catch (err) {
+    console.warn('[modeSwitch.saveWorkoutDay]:', err);
+  }
+}
+
+async function _rerenderWorkoutAfterModeSwitch() {
+  try {
+    const mod = await import('./exercises.js');
+    if (typeof mod._renderExerciseList === 'function') mod._renderExerciseList();
+  } catch (err) {
+    console.warn('[modeSwitch.renderExercises]:', err);
+  }
 }
 
 function _safeGetRecentRoutine() {
@@ -762,27 +801,7 @@ export function renderExpertBanner() {
 function _renderInlineExpertPill() {
   const host = document.getElementById('expert-inline-pill');
   if (!host) return;
-  if (isExpertModeEnabled()) { host.innerHTML = ''; return; }
-  // 스누즈 중이면 숨김 (사용자가 '나중에'를 눌러 스누즈한 경우 존중)
-  if (!shouldShowExpertBanner()) { host.innerHTML = ''; return; }
-  const preset = getExpertPreset();
-  // 복귀 사용자 판별: 이전에 완료한 기록이 있으면 (currentGymId 또는 저장된 gym)
-  const isReturning = !!preset.currentGymId || getGyms().length > 0;
-  if (isReturning) {
-    host.innerHTML = `
-      <button type="button" class="expert-pill expert-pill--returning" onclick="wtExcReEnableExpertMode()">
-        <span class="expert-pill-ico">⚡</span>
-        <span class="expert-pill-label">프로 모드 켜기</span>
-      </button>
-    `;
-  } else {
-    host.innerHTML = `
-      <button type="button" class="expert-pill" onclick="expertOnbOpen()">
-        <span class="expert-pill-ico">✨</span>
-        <span class="expert-pill-label">프로 모드 켜기</span>
-      </button>
-    `;
-  }
+  host.innerHTML = '';
 }
 
 // ── Modal 컨트롤 ─────────────────────────────────────────────────
@@ -2575,19 +2594,21 @@ window.wtExcShowExpertView = () => {
 // 프로 모드 켜기 (preset.mode='pro' + 카드 노출)
 window.wtExcShowProView = async () => {
   try {
+    await _persistWorkoutBeforeModeSwitch();
     const cur = getExpertPreset();
     if (cur.mode !== 'pro') {
       await saveExpertPreset({ mode: 'pro', enabled: true });
     }
     _expertViewShown = true;
     renderExpertTopArea();
-    if (typeof window.renderAll === 'function') window.renderAll();
+    await _rerenderWorkoutAfterModeSwitch();
   } catch (e) { console.warn('[wtExcShowProView]:', e); }
 };
 // 맥스 모드 켜기 (preset.mode='max' + 미니 위자드 / 이미 max면 카드 노출)
 window.wtExcShowMaxView = async () => {
   console.log('[max] wtExcShowMaxView called');
   try {
+    await _persistWorkoutBeforeModeSwitch();
     const cur = getExpertPreset();
     console.log('[max] current preset:', { mode: cur.mode, goal: cur.goal, enabled: cur.enabled });
     if (cur.mode === 'max') {
@@ -2609,13 +2630,14 @@ window.wtExcShowMaxView = async () => {
 // 일반 모드로 — preset.mode='normal' 명시 set (gym/preset 데이터는 보존)
 window.wtExcSwitchToNormalView = async () => {
   try {
+    await _persistWorkoutBeforeModeSwitch();
     const cur = getExpertPreset();
     if (cur.mode !== 'normal') {
       await saveExpertPreset({ mode: 'normal', enabled: false });
     }
     _expertViewShown = false;
     renderExpertTopArea();
-    if (typeof window.renderAll === 'function') window.renderAll();
+    await _rerenderWorkoutAfterModeSwitch();
   } catch (e) { console.warn('[wtExcSwitchToNormalView]:', e); }
 };
 // 맥스 모드 위자드 / 추천 칩
@@ -2634,12 +2656,21 @@ window.startMaxCycle = startMaxCycle;
 window.settleMaxCycle = settleMaxCycle;
 window.openMaxEquipmentPoolModal = openMaxEquipmentPoolModal;
 window.closeMaxEquipmentPoolModal = closeMaxEquipmentPoolModal;
+window.openMaxDataCleanseModal = openMaxDataCleanseModal;
+window.closeMaxDataCleanseModal = closeMaxDataCleanseModal;
+window.saveMaxDataCleanseModal = saveMaxDataCleanseModal;
+window.setMaxDataCleanseTab = setMaxDataCleanseTab;
+window.openMaxExerciseHistoryModal = openMaxExerciseHistoryModal;
+window.closeMaxExerciseHistoryModal = closeMaxExerciseHistoryModal;
+window.saveMaxExerciseHistoryModal = saveMaxExerciseHistoryModal;
+window.deleteMaxCleanseExercise = deleteMaxCleanseExercise;
 window.closeMaxV4Sheet = closeMaxV4Sheet;
 window.openMaxCycleBoardSheet = openMaxCycleBoardSheet;
 window.openMaxPlanEditorSheet = openMaxPlanEditorSheet;
 window.saveMaxPlanEditorSheet = saveMaxPlanEditorSheet;
 window.openMaxAdjustSheet = openMaxAdjustSheet;
 window.setMaxCycleTrack = setMaxCycleTrack;
+window.setMaxBenchmarkTrack = setMaxBenchmarkTrack;
 window.adjustMaxBenchmarkWeight = adjustMaxBenchmarkWeight;
 window.setMaxBenchmarkWeight = setMaxBenchmarkWeight;
 // 모달 바인딩은 openMaxMiniOnboarding 진입 시점에 수행 (modal-manager 가 DOM 주입한 뒤).

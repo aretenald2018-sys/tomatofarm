@@ -18,10 +18,6 @@ let _wtActiveType = 'gym';
 
 const _WT_TYPE_SECTIONS = {
   gym: 'wt-gym-section',
-  cf: 'wt-cf-section',
-  stretch: 'wt-stretch-section',
-  swimming: 'wt-swimming-section',
-  running: 'wt-running-section',
 };
 
 function _applyActive(type) {

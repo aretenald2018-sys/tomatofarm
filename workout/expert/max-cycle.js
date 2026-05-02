@@ -226,9 +226,13 @@ function buildMaxCycleSnapshot({ cycle = null, cache = {}, exList = [], todayKey
   const weekIndex = _weekIndex(cycle, todayKey);
   const weeks = Math.max(1, Number(cycle.weeks) || 6);
   const track = cycle.todayTrack === 'M' || cycle.todayTrack === 'H' ? cycle.todayTrack : (weekIndex % 2 === 0 ? 'H' : 'M');
+  const todayTracks = todayKey && cycle.todayTracks?.[todayKey] ? cycle.todayTracks[todayKey] : {};
   const normalized = normalizeMaxCycleTracks(cycle);
   const benchmarks = normalized.benchmarks.map(b => {
-    const planned = predictBenchmarkProgression(b, normalized, todayKey, track);
+    const activeTrack = todayTracks?.[b.id] === 'H' || todayTracks?.[b.id] === 'M'
+      ? todayTracks[b.id]
+      : (b.defaultTrack === 'H' || b.defaultTrack === 'M' ? b.defaultTrack : track);
+    const planned = predictBenchmarkProgression(b, normalized, todayKey, activeTrack);
     const plannedByTrack = {
       M: predictBenchmarkProgression(b, normalized, todayKey, 'M'),
       H: predictBenchmarkProgression(b, normalized, todayKey, 'H'),
@@ -239,7 +243,7 @@ function buildMaxCycleSnapshot({ cycle = null, cache = {}, exList = [], todayKey
     const actualPct = latest && planned.targetKg > planned.startKg
       ? Math.max(0, Math.min(100, Math.round(((latest.kg - planned.startKg) / (planned.targetKg - planned.startKg)) * 100)))
       : null;
-    return { ...b, planned, plannedByTrack, actuals, latest, delta, actualPct, onPlan: delta === null ? null : delta >= 0 };
+    return { ...b, activeTrack, planned, plannedByTrack, actuals, latest, delta, actualPct, onPlan: delta === null ? null : delta >= 0 };
   });
   const actualProgressVals = benchmarks
     .map(b => b.actualPct)
@@ -341,7 +345,7 @@ export function buildRenderedMaxCycleSnapshot({ cycle, cache, exList, todayKey }
 }
 
 function _renderV4Lift(benchmark, snapshot, cycle, index = 0) {
-  const track = snapshot.track || 'M';
+  const track = benchmark.activeTrack || snapshot.track || 'M';
   const reps = `${benchmark.planned.startReps || (track === 'H' ? 8 : 12)}-${benchmark.planned.targetReps || (track === 'H' ? 6 : 12)}`;
   const latest = benchmark.latest;
   const displayKg = _displayKg(cycle, snapshot.todayKey, benchmark, track);
@@ -350,7 +354,7 @@ function _renderV4Lift(benchmark, snapshot, cycle, index = 0) {
   const actualPct = benchmark.actualPct === null || benchmark.actualPct === undefined ? null : Math.max(0, Math.min(100, Number(benchmark.actualPct) || 0));
   const paceClass = benchmark.onPlan === null ? 'is-empty' : (benchmark.onPlan ? 'is-on' : 'is-behind');
   const paceText = benchmark.onPlan === null ? '실측 없음' : (benchmark.onPlan ? '목표 페이스' : `${benchmark.delta}kg 뒤`);
-  const expanded = index === 0 || changed || benchmark.onPlan === false;
+  const expanded = changed || benchmark.onPlan === false;
   return `
     <article class="wt-v4-lift${changed ? ' is-changed' : ''}${expanded ? ' is-expanded' : ''}" data-benchmark-id="${_esc(benchmark.id)}">
       <div class="wt-v4-lift-top">
@@ -359,6 +363,11 @@ function _renderV4Lift(benchmark, snapshot, cycle, index = 0) {
           <div class="wt-v4-lift-name">${_esc(benchmark.label)} <em>${track === 'H' ? '강도' : '볼륨'}</em></div>
         </div>
         <button type="button" class="wt-v4-expand" data-action="toggle-max-lift" aria-label="상세 보기">${expanded ? '접기' : '상세'}</button>
+      </div>
+      <div class="wt-v4-row-track${track === 'H' ? ' is-h' : ''}" role="tablist" aria-label="${_esc(benchmark.label)} 트랙">
+        <i></i>
+        <button type="button" class="${track === 'M' ? 'on' : ''}" data-action="set-max-benchmark-track" data-benchmark-id="${_esc(benchmark.id)}" data-track="M">볼륨</button>
+        <button type="button" class="${track === 'H' ? 'on' : ''}" data-action="set-max-benchmark-track" data-benchmark-id="${_esc(benchmark.id)}" data-track="H">강도</button>
       </div>
       <div class="wt-v4-lift-main">
         <div class="wt-v4-weight-wrap">
@@ -487,7 +496,7 @@ export function renderMaxCycleDashboard({ cycle, cache, exList, todayKey, isDraf
       <div class="wt-v4-cta">
         <button type="button" class="wt-v4-ghost" data-action="clear-max-major">오늘 부위 변경</button>
         <button type="button" class="wt-v4-primary" data-action="${isDraft || snapshot.status === 'draft' ? 'start-max-cycle' : 'start-max-session'}">
-          ${isDraft || snapshot.status === 'draft' ? '6주 성장판 시작' : '운동 시작'}
+          ${isDraft || snapshot.status === 'draft' ? '6주 성장판 시작' : '종목 추가(선택)'}
         </button>
       </div>
     </section>
@@ -590,6 +599,7 @@ export function renderMaxPlanEditor({ cycle, gyms = [], currentGymId = null, mov
         </div>
         <p>현재: ${_esc(gym?.name || '헬스장 미선택')}</p>
         <button type="button" data-action="open-equipment-pool" onclick="event.stopPropagation(); openMaxEquipmentPoolModal()">헬스장 / 기구 관리</button>
+        <button type="button" data-action="open-max-data-cleanse" onclick="event.stopPropagation(); openMaxDataCleanseModal()">데이터 클렌징</button>
       </section>
       <details class="wt-v4-advanced">
         <summary>고급 설정 <span>⌄</span></summary>

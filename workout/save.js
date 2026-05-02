@@ -100,6 +100,7 @@ function _buildWorkoutPayload(cleanEx, isDietSuccess) {
     memo:       document.getElementById('wt-workout-memo')?.value.trim() || '',
     workoutPhoto: window._mealPhotos?.workout || null,
     gymId: w.currentGymId || null,
+    pickerGymFilter: w.pickerGymFilter || null,
     routineMeta: w.routineMeta || null,
     maxMeta: _buildMaxMeta(cleanEx),
     ..._computeMealOk(isDietSuccess),

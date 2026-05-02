@@ -411,10 +411,6 @@
       <div class="wt-type-section" id="wt-type-section">
         <div class="wt-type-tabs" id="wt-type-tabs-bar">
           <button class="wt-type-tab active" id="wt-chip-gym" onclick="wtSwitchType('gym')">🏋️ 헬스</button>
-          <button class="wt-type-tab" id="wt-chip-cf" onclick="wtSwitchType('cf')">🔥 크로스핏</button>
-          <button class="wt-type-tab" id="wt-chip-stretch" onclick="wtSwitchType('stretch')">🧘 스트레칭</button>
-          <button class="wt-type-tab" id="wt-chip-swimming" onclick="wtSwitchType('swimming')">🏊 수영</button>
-          <button class="wt-type-tab" id="wt-chip-running" onclick="wtSwitchType('running')">🏃 런닝</button>
         </div>
       </div>
 
@@ -483,129 +479,6 @@
           </div>
         </div>
         <div id="wt-exercise-list" style="margin-top:8px;"></div>
-      </div>
-
-      <!-- 크로스핏 상세 -->
-      <div class="wt-detail-section" id="wt-cf-section">
-        <div class="ex-list-header">
-          <span class="sheet-section-label" style="margin-bottom:0">🔥 크로스핏</span>
-        </div>
-        <div id="wt-cf-last-copy" class="wt-activity-copy-row" style="display:none"></div>
-        <div class="wt-cf-form">
-          <div class="wt-running-row">
-            <label class="wt-running-label">WOD명</label>
-            <input type="text" id="wt-cf-wod" class="wt-running-input wt-running-input--full" placeholder="예: Fran, Murph, 자유WOD...">
-          </div>
-          <div class="wt-running-row">
-            <label class="wt-running-label">시간</label>
-            <div class="wt-running-input-wrap">
-              <input type="number" id="wt-cf-duration-min" class="wt-running-input wt-running-input--sm" min="0" placeholder="0">
-              <span class="wt-running-unit">분</span>
-              <input type="number" id="wt-cf-duration-sec" class="wt-running-input wt-running-input--sm" min="0" max="59" placeholder="0">
-              <span class="wt-running-unit">초</span>
-            </div>
-          </div>
-          <div class="wt-running-row">
-            <label class="wt-running-label">메모</label>
-            <input type="text" id="wt-cf-memo" class="wt-running-input wt-running-input--full" placeholder="예: Rx'd, 스케일링 내용...">
-          </div>
-        </div>
-      </div>
-
-      <!-- 스트레칭 상세 -->
-      <div class="wt-detail-section" id="wt-stretch-section">
-        <div class="ex-list-header">
-          <span class="sheet-section-label" style="margin-bottom:0">🧘 스트레칭</span>
-        </div>
-        <div id="wt-stretching-last-copy" class="wt-activity-copy-row" style="display:none"></div>
-        <div class="wt-stretch-form">
-          <div class="wt-running-row">
-            <label class="wt-running-label">시간</label>
-            <div class="wt-running-input-wrap">
-              <input type="number" id="wt-stretch-duration" class="wt-running-input wt-running-input--sm" min="0" placeholder="0">
-              <span class="wt-running-unit">분</span>
-            </div>
-          </div>
-          <div class="wt-running-row">
-            <label class="wt-running-label">메모</label>
-            <input type="text" id="wt-stretch-memo" class="wt-running-input wt-running-input--full" placeholder="예: 전신 스트레칭, 폼롤러...">
-          </div>
-        </div>
-      </div>
-
-      <!-- 수영 상세 -->
-      <div class="wt-detail-section" id="wt-swimming-section">
-        <div class="ex-list-header">
-          <span class="sheet-section-label" style="margin-bottom:0">🏊 수영</span>
-        </div>
-        <div id="wt-swimming-last-copy" class="wt-activity-copy-row" style="display:none"></div>
-        <div class="wt-swimming-form">
-          <div class="wt-running-row">
-            <label class="wt-running-label">거리</label>
-            <div class="wt-running-input-wrap">
-              <input type="number" id="wt-swim-distance" class="wt-running-input" step="50" min="0" placeholder="0">
-              <span class="wt-running-unit">m</span>
-            </div>
-          </div>
-          <div class="wt-running-row">
-            <label class="wt-running-label">시간</label>
-            <div class="wt-running-input-wrap">
-              <input type="number" id="wt-swim-duration-min" class="wt-running-input wt-running-input--sm" min="0" placeholder="0">
-              <span class="wt-running-unit">분</span>
-              <input type="number" id="wt-swim-duration-sec" class="wt-running-input wt-running-input--sm" min="0" max="59" placeholder="0">
-              <span class="wt-running-unit">초</span>
-            </div>
-          </div>
-          <div class="wt-running-row">
-            <label class="wt-running-label">영법</label>
-            <select id="wt-swim-stroke" class="wt-running-input" style="width:auto">
-              <option value="">선택</option>
-              <option value="freestyle">자유형</option>
-              <option value="backstroke">배영</option>
-              <option value="breaststroke">평영</option>
-              <option value="butterfly">접영</option>
-              <option value="mixed">혼합</option>
-            </select>
-          </div>
-          <div class="wt-running-row">
-            <label class="wt-running-label">메모</label>
-            <input type="text" id="wt-swim-memo" class="wt-running-input wt-running-input--full" placeholder="예: 인터벌 훈련, 킥 연습...">
-          </div>
-        </div>
-      </div>
-
-      <!-- 런닝 상세 -->
-      <div class="wt-detail-section" id="wt-running-section">
-        <div class="ex-list-header">
-          <span class="sheet-section-label" style="margin-bottom:0">🏃 런닝 기록</span>
-        </div>
-        <div id="wt-running-last-copy" class="wt-activity-copy-row" style="display:none"></div>
-        <div class="wt-running-form">
-          <div class="wt-running-row">
-            <label class="wt-running-label">거리</label>
-            <div class="wt-running-input-wrap">
-              <input type="number" id="wt-run-distance" class="wt-running-input" step="0.1" min="0" placeholder="0.0">
-              <span class="wt-running-unit">km</span>
-            </div>
-          </div>
-          <div class="wt-running-row">
-            <label class="wt-running-label">시간</label>
-            <div class="wt-running-input-wrap">
-              <input type="number" id="wt-run-duration-min" class="wt-running-input wt-running-input--sm" min="0" placeholder="0">
-              <span class="wt-running-unit">분</span>
-              <input type="number" id="wt-run-duration-sec" class="wt-running-input wt-running-input--sm" min="0" max="59" placeholder="0">
-              <span class="wt-running-unit">초</span>
-            </div>
-          </div>
-          <div class="wt-running-row">
-            <label class="wt-running-label">평균 페이스</label>
-            <div class="wt-running-pace" id="wt-run-pace">--'--"</div>
-          </div>
-          <div class="wt-running-row">
-            <label class="wt-running-label">메모</label>
-            <input type="text" id="wt-run-memo" class="wt-running-input wt-running-input--full" placeholder="예: 한강 10km, 인터벌 훈련...">
-          </div>
-        </div>
       </div>
 
       <!-- 메모 + 인증사진 -->
@@ -869,6 +742,11 @@
 
 <div id="tab-stats" class="tab-panel">
 <div class="stats-section">
+<div class="stats-view-tabs">
+<button class="stats-view-btn active" data-stats-view="overall" type="button">전체통계</button>
+<button class="stats-view-btn" data-stats-view="deep" type="button">심층통계</button>
+</div>
+<div id="stats-overall-panel" class="stats-view-panel active">
 <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
 <button class="export-btn" onclick="openExportModal()">📊 CSV 내보내기</button>
 </div>
@@ -912,6 +790,10 @@
 
 다이어트 목표 카드에서 체크인 해보세요!
 </div>
+</div>
+</div>
+<div id="stats-deep-panel" class="stats-view-panel">
+<div id="deep-stats-report"></div>
 </div>
 </div>
 </div>

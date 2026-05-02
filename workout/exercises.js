@@ -248,16 +248,17 @@ function _buildMaxExerciseCardMeta(entry, ex, mc, idx) {
   const kg = Number(prescription?.startKg) || Number(entry?.sets?.[0]?.kg) || 0;
   const reps = Number(prescription?.repsHigh) || Number(entry?.sets?.[0]?.reps) || 0;
   const sets = Number(prescription?.targetSets) || (entry?.sets?.length || 0);
-  const track = entry?.recommendationMeta?.track === 'H' ? '강도' : '볼륨';
+  const trackCode = entry?.recommendationMeta?.track === 'H' || entry?.maxPrescription?.benchmarkTrack === 'H' ? 'H' : 'M';
+  const track = trackCode === 'H' ? '강도' : '볼륨';
   const week = entry?.recommendationMeta?.cycleWeek ? `W${entry.recommendationMeta.cycleWeek}` : '오늘';
   const source = entry?.gymTagAtTime === '*' ? '공통 기구' : '선택 헬스장';
   const isBenchmark = !!prescription?.benchmarkId || !!entry?.recommendationMeta?.cycleId;
-  const title = isBenchmark ? `${week} ${track} 트랙` : (prescription?.actionLabel || '추천 처방');
+  const title = `${week} ${track} 트랙`;
   const subtitle = prescription?.transparency?.detail || prescription?.reason || '최근 수행 기록과 오늘 선택한 부위를 기준으로 세트를 준비했어요.';
   const pace = prescription?.deltaKg == null
     ? '계획'
     : (Number(prescription.deltaKg) >= 0 ? '정상' : '조정');
-  return { prescription, kg, reps, sets, track, week, source, isBenchmark, title, subtitle, pace };
+  return { prescription, kg, reps, sets, trackCode, track, week, source, isBenchmark, title, subtitle, pace };
 }
 
 function _buildMaxExerciseCardHeader(entry, ex, mc, idx, sparkline) {
@@ -265,8 +266,9 @@ function _buildMaxExerciseCardHeader(entry, ex, mc, idx, sparkline) {
   const kgText = meta.kg > 0 ? `${meta.kg}kg` : '무게 입력';
   const repsText = meta.reps > 0 ? `${meta.reps}회` : '반복 입력';
   const setText = meta.sets > 0 ? `${meta.sets}세트` : '세트';
+  const planMeta = `${meta.title} · ${setText}`;
   return `
-    <div class="ex-max-v2-head">
+    <div class="ex-max-v2-head" data-action="toggle-max-entry-track" data-idx="${idx}" role="button" tabindex="0" aria-label="운동 트랙 전환">
       <div class="ex-max-v2-title-row">
         <div>
           <div class="ex-max-v2-source"><i style="background:${mc?.color || 'var(--primary)'}"></i>${meta.isBenchmark ? '벤치마크' : '추천 종목'} · ${meta.source}</div>
@@ -278,14 +280,11 @@ function _buildMaxExerciseCardHeader(entry, ex, mc, idx, sparkline) {
         <div>
           <div class="ex-max-v2-kicker">오늘 성공 기준</div>
           <div class="ex-max-v2-main">${kgText} × ${repsText}</div>
-          <div class="ex-max-v2-sub">${meta.title} · ${setText}</div>
+          <div class="ex-max-v2-sub">${planMeta} · 탭해서 트랙 전환</div>
         </div>
-        <div class="ex-max-v2-pace"><b>${meta.pace}</b><span>계획 대비</span></div>
+        <div class="ex-max-v2-pace ${meta.trackCode === 'H' ? 'is-heavy' : 'is-volume'}"><b>${meta.track}</b><span>현재 트랙</span></div>
       </div>
-      <div class="ex-max-v2-insights">
-        <div class="ex-max-v2-insight"><b>${meta.track} 처방</b><span>${meta.subtitle}</span></div>
-        <div class="ex-max-v2-insight ex-max-v2-chart">${sparkline || '<span>기록 2회부터 추세 표시</span>'}</div>
-      </div>
+      ${sparkline ? `<div class="ex-max-v2-trend">${sparkline}</div>` : ''}
     </div>
   `;
 }
@@ -300,6 +299,42 @@ function _nextMaxSetType(type) {
   if (type === 'warmup') return 'main';
   if (type === 'main' || !type) return 'drop';
   return 'warmup';
+}
+
+export function wtToggleMaxEntryTrack(entryIdx) {
+  const entry = S.workout.exercises[entryIdx];
+  if (!entry) return;
+  const current = entry.recommendationMeta?.track === 'H' || entry.maxPrescription?.benchmarkTrack === 'H' ? 'H' : 'M';
+  const next = current === 'H' ? 'M' : 'H';
+  entry.recommendationMeta = {
+    ...(entry.recommendationMeta || {}),
+    track: next,
+    userTrackOverride: true,
+    trackChangedAt: Date.now(),
+  };
+  if (entry.maxPrescription) {
+    entry.maxPrescription = {
+      ...entry.maxPrescription,
+      benchmarkTrack: next,
+      label: String(entry.maxPrescription.label || '').replace(/(볼륨|강도)\s*트랙/g, `${next === 'H' ? '강도' : '볼륨'} 트랙`),
+    };
+  }
+  _renderExerciseList();
+  saveWorkoutDay().catch(e => console.error('Save max entry track:', e));
+}
+
+function _rpeToRir(rpe) {
+  const n = Number(rpe);
+  if (!Number.isFinite(n) || n <= 0) return '';
+  const rir = Math.max(0, Math.min(9, 10 - n));
+  return Number.isInteger(rir) ? String(rir) : rir.toFixed(1);
+}
+
+function _rirToRpe(rir) {
+  if (rir === '' || rir == null) return null;
+  const n = Number(rir);
+  if (!Number.isFinite(n)) return null;
+  return Math.max(1, Math.min(10, 10 - n));
 }
 
 export function wtUpdateSet(entryIdx, si, field, val) {
@@ -318,12 +353,25 @@ export function wtUpdateSet(entryIdx, si, field, val) {
   saveWorkoutDay().catch(e => console.error('Save error:', e));
 }
 
+export function wtUpdateSetRir(entryIdx, si, val) {
+  wtUpdateSet(entryIdx, si, 'rpe', _rirToRpe(val));
+}
+
 export function wtToggleSetDone(entryIdx, si) {
   const wasDone = S.workout.exercises[entryIdx].sets[si].done;
   S.workout.exercises[entryIdx].sets[si].done = !wasDone;
-  _renderSets(entryIdx);
+  let shouldCollapseNow = false;
+  if (!wasDone && _isMaxWorkoutMode()) {
+    const sets = S.workout.exercises[entryIdx].sets || [];
+    if (sets.length > 0 && sets.every(s => s.done !== false)) {
+      S.workout.exercises[entryIdx].uiCollapsed = true;
+      shouldCollapseNow = true;
+    }
+  }
+  if (shouldCollapseNow) _renderExerciseList();
+  else _renderSets(entryIdx);
   saveWorkoutDay().then(() => {
-    _renderExerciseList();
+    if (!shouldCollapseNow) _renderExerciseList();
     if (!wasDone) showToast('저장되었습니다', 1500, 'success');
   }).catch(e => console.error('Save error:', e));
   if (!wasDone) {
@@ -635,6 +683,8 @@ export function _renderExerciseList() {
       : '';
     const sparkline = _buildSparkline(entry.exerciseId, mc?.color);
     const maxPrescriptionHtml = isMaxMode ? '' : _buildMaxPrescriptionBlock(entry, ex);
+    const maxAllDone = isMaxMode && (entry.sets || []).length > 0 && (entry.sets || []).every(s => s.done !== false);
+    const maxCollapsed = !!entry.uiCollapsed && maxAllDone;
 
     // Scene 12 — 프로 모드 전용 UI (e1RM 기반 실제 추천 무게 로직)
     // chips/footer는 prior 우선, 없으면 오늘 entry의 완료 본세트로 폴백.
@@ -648,14 +698,16 @@ export function _renderExerciseList() {
     }
 
     const block = document.createElement('div');
-    block.className = 'ex-block' + (isExpert ? ' ex-block--expert' : '') + (isMaxMode ? ' ex-block--max-v2' : '');
+    block.className = 'ex-block' + (isExpert ? ' ex-block--expert' : '') + (isMaxMode ? ' ex-block--max-v2' : '') + (maxAllDone ? ' is-complete' : '') + (maxCollapsed ? ' is-collapsed' : '');
     if (isMaxMode) {
       block.innerHTML = `
         ${_buildMaxExerciseCardHeader(entry, ex, mc, idx, sparkline)}
         <div class="ex-sets ex-max-v2-sets" id="wt-sets-${idx}"></div>
         <div class="ex-max-v2-actions">
-          <button class="ex-add-set-btn ex-max-v2-secondary" data-idx="${idx}">세트 추가</button>
-          <button class="ex-max-v2-primary" data-idx="${idx}">다음 세트 완료</button>
+          ${maxCollapsed
+            ? `<button class="ex-max-v2-secondary ex-max-v2-expand-card" data-idx="${idx}">세트 다시 보기</button>`
+            : `<button class="ex-add-set-btn ex-max-v2-secondary" data-idx="${idx}">세트 추가</button>`}
+          <button class="ex-max-v2-primary${maxAllDone ? ' is-done' : ''}" data-idx="${idx}">${maxAllDone ? '운동 완료' : '다음 세트 완료'}</button>
         </div>
         ${expertHtml}`;
     } else {
@@ -675,16 +727,42 @@ export function _renderExerciseList() {
     }
 
     block.querySelector('.ex-remove-btn').addEventListener('click', () => wtRemoveExerciseEntry(idx));
-    block.querySelector('.ex-add-set-btn').addEventListener('click', () => wtAddSet(idx));
+    block.querySelector('.ex-add-set-btn')?.addEventListener('click', () => wtAddSet(idx));
+    const maxHead = block.querySelector('[data-action="toggle-max-entry-track"]');
+    maxHead?.addEventListener('click', (e) => {
+      if (e.target.closest('.ex-remove-btn')) return;
+      wtToggleMaxEntryTrack(idx);
+    });
+    maxHead?.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      wtToggleMaxEntryTrack(idx);
+    });
+    block.querySelector('.ex-max-v2-expand-card')?.addEventListener('click', () => {
+      S.workout.exercises[idx].uiCollapsed = false;
+      _renderExerciseList();
+    });
     const completeBtn = block.querySelector('.ex-max-v2-primary');
     if (completeBtn) completeBtn.addEventListener('click', () => {
+      if ((S.workout.exercises[idx]?.sets || []).length && (S.workout.exercises[idx]?.sets || []).every(s => s.done !== false)) {
+        S.workout.exercises[idx].uiCollapsed = true;
+        _renderExerciseList();
+        return;
+      }
       const target = (S.workout.exercises[idx]?.sets || []).findIndex(s => s.done === false);
       if (target >= 0 && S.workout.exercises[idx]?.sets?.[target]) {
+        const openSets = (S.workout.exercises[idx]?.sets || []).filter(s => s.done === false).length;
         wtToggleSetDone(idx, target);
+        if (openSets === 1) {
+          S.workout.exercises[idx].uiCollapsed = true;
+          _renderExerciseList();
+        }
         return;
       }
       const exName = ex?.name || entry?.name || entry.exerciseId;
-      showToast(`${exName} 종료. 다음 종목으로 넘어가도 좋아요`, 2600, 'success');
+      S.workout.exercises[idx].uiCollapsed = true;
+      _renderExerciseList();
+      showToast(`${exName} 종료. 다음 종목으로 넘어가도 좋아요`, 2200, 'success');
     });
     const copyBtn = block.querySelector('.ex-copy-btn');
     if (copyBtn && last) {
@@ -717,6 +795,10 @@ function _renderSets(entryIdx) {
 
   const isExpert = _isExpertUiEnabled();
   const isMaxMode = _isMaxWorkoutMode();
+  if (isMaxMode && S.workout.exercises[entryIdx]?.uiCollapsed && sets.length > 0 && sets.every(s => s.done !== false)) {
+    el.innerHTML = '<div class="ex-max-v2-collapsed-note">모든 세트 완료 · 카드가 접혔어요</div>';
+    return;
+  }
   sets.forEach((set, si) => {
     const isWarmup = set.setType === 'warmup';
     const isDrop = set.setType === 'drop';
@@ -740,7 +822,7 @@ function _renderSets(entryIdx) {
       <button type="button" class="ex-max-v2-type-btn ${isWarmup ? 'warmup' : (isDrop ? 'drop' : 'main')}" title="세트 타입">${_maxSetTypeLabel(set.setType)}</button>
       <label class="ex-max-v2-field"><span>KG</span><input class="set-input" type="number" placeholder="kg" min="0" step="0.5" value="${set.kg||''}"></label>
       <label class="ex-max-v2-field"><span>REP</span><input class="set-input" type="number" placeholder="회" min="1" step="1" value="${set.reps||''}"></label>
-      <label class="ex-max-v2-field"><span>RPE</span><input class="set-rpe-input" type="number" placeholder="-" min="1" max="10" step="0.5" value="${set.rpe ?? ''}"></label>
+      <label class="ex-max-v2-field"><span>RIR</span><input class="set-rir-input" type="number" placeholder="-" min="0" max="9" step="0.5" value="${_rpeToRir(set.rpe)}"></label>
       <button class="set-done-btn ${isDone?'done':''}" title="완료 체크">✓</button>
       <button class="set-remove-btn" title="세트 삭제">×</button>
       <span class="set-drag-handle" title="드래그하여 순서 변경"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg></span>`
@@ -772,14 +854,17 @@ function _renderSets(entryIdx) {
     row.querySelector('.set-remove-btn').addEventListener('click', () => wtRemoveSet(entryIdx, si));
     const rpeSel = row.querySelector('.set-rpe-select');
     if (rpeSel) rpeSel.addEventListener('change', e => wtUpdateSet(entryIdx, si, 'rpe', e.target.value));
-    const rpeInput = row.querySelector('.set-rpe-input');
-    if (rpeInput) rpeInput.addEventListener('change', e => wtUpdateSet(entryIdx, si, 'rpe', e.target.value));
+    const rirInput = row.querySelector('.set-rir-input');
+    if (rirInput) rirInput.addEventListener('change', e => wtUpdateSetRir(entryIdx, si, e.target.value));
     el.appendChild(row);
   });
 
   if (typeof Sortable !== 'undefined' && sets.length > 1) {
     new Sortable(el, {
       handle: '.set-drag-handle',
+      direction: 'vertical',
+      fallbackTolerance: 6,
+      dragoverBubble: false,
       animation: 150,
       ghostClass: 'set-row-ghost',
       chosenClass: 'set-row-chosen',
@@ -868,6 +953,8 @@ window._wtSetPickerMuscleFilter = (muscleId) => {
 window._wtSetPickerCategoryFilter = window._wtSetPickerMuscleFilter;
 window._wtSetPickerGymFilter = (gymId) => {
   _pickerGymFilter = gymId || null;
+  if (S?.workout) S.workout.pickerGymFilter = _pickerGymFilter;
+  saveWorkoutDay().catch(e => console.warn('[pickerGymFilter.save]:', e));
   _renderPickerList();
 };
 
@@ -1122,9 +1209,11 @@ export async function wtOpenExercisePicker() {
     modal = document.getElementById('ex-picker-modal');
   }
   if (!modal) { console.error('[workout] ex-picker-modal not found'); return; }
-  // 피커 열 때마다 부위/검색 필터 초기화 — 다른 gym/풀 전환 후 빈 화면 lock 방지
+  // 피커 열 때마다 부위/검색은 초기화하되, 헬스장 필터는 그날 세션 동안 유지한다.
   _pickerMuscleFilter = null;
-  _pickerGymFilter = _isExpertSessionActive() ? 'usable' : null;
+  _pickerGymFilter = _isExpertSessionActive()
+    ? (S?.workout?.pickerGymFilter || 'usable')
+    : null;
   _pickerSearchQuery = '';
   const searchInput = document.getElementById('ex-picker-search');
   if (searchInput) searchInput.value = '';

@@ -733,8 +733,8 @@ export function detectPRs(cache, exerciseId) {
  * 과거엔 expert.js 내부 상수였으나 calc 레이어에서도 필요해 승격.
  */
 export const SUBPATTERN_TO_MAJOR = {
-  chest_upper: 'chest', chest_mid: 'chest', chest_lower: 'chest',
-  back_width: 'back', back_thickness: 'back',
+  chest_all: 'chest', chest_upper: 'chest', chest_mid: 'chest', chest_lower: 'chest',
+  back_all: 'back', back_width: 'back', back_thickness: 'back',
   posterior: 'back',           // 후면사슬(데드/RDL) — 등 두께+햄/둔근 혼합, 등으로 분류
   shoulder_front: 'shoulder', shoulder_side: 'shoulder',
   rear_delt: 'shoulder', traps: 'shoulder',
@@ -1054,8 +1054,8 @@ export function suggestMaxBoosts({
   }
 
   const subLabel = (sp) => ({
-    chest_upper:'가슴 상부', chest_mid:'가슴 중부', chest_lower:'가슴 하부',
-    back_width:'등 넓이', back_thickness:'등 두께', posterior:'후면사슬',
+    chest_all:'가슴 전체', chest_upper:'가슴 상부', chest_mid:'가슴 중부', chest_lower:'가슴 하부',
+    back_all:'등 전체', back_width:'등 넓이', back_thickness:'등 두께', posterior:'후면사슬',
     shoulder_front:'어깨 전면', shoulder_side:'어깨 측면', rear_delt:'어깨 후면',
     traps:'승모', quad:'대퇴사두', hamstring:'햄스트링', glute:'둔근', calf:'종아리',
     bicep:'이두', tricep:'삼두', core:'코어',

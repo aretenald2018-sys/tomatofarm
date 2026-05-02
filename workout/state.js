@@ -57,6 +57,7 @@ function emptyWorkout() {
     restTimer:  { interval: null, remaining: 0, total: 90, running: false, startedAt: null },
     // 전문가 모드
     currentGymId: null,                  // 오늘 세션의 헬스장
+    pickerGymFilter: null,               // 오늘 종목 추가 모달의 헬스장 필터 유지
     routineMeta:  null,                  // {source, candidateKey, rationale}
     maxMeta:      null,                  // max 전용: 세션 타입, 약점 부위, 약점 블록 타이머
   };
