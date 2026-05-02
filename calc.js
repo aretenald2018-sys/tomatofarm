@@ -1065,8 +1065,6 @@ export function suggestMaxBoosts({
   let totalPicked = 0;
 
   for (const sp of weakSubs) {
-    if (totalPicked >= limit) break;
-
     // 후보: subPattern == sp 인 모든 MOVEMENTS
     const candidates = movements
       .filter(m => m.subPattern === sp)
@@ -1119,15 +1117,25 @@ export function suggestMaxBoosts({
 
   // limit 적용 — 마지막 group에서 초과분 잘라냄
   if (totalPicked > limit) {
-    let acc = 0;
-    for (let i = 0; i < result.length; i++) {
-      const remaining = limit - acc;
-      if (remaining <= 0) { result.length = i; break; }
-      if (result[i].exercises.length > remaining) {
-        result[i].exercises = result[i].exercises.slice(0, remaining);
-      }
-      acc += result[i].exercises.length;
+    const fair = [];
+    let remaining = Math.max(0, limit);
+    for (const group of result) {
+      if (remaining <= 0) break;
+      fair.push({ ...group, exercises: group.exercises.slice(0, 1) });
+      remaining -= 1;
     }
+    let cursor = 0;
+    while (remaining > 0 && fair.some((g, i) => g.exercises.length < (result[i]?.exercises.length || 0))) {
+      const source = result[cursor];
+      const target = fair[cursor];
+      if (target && source && target.exercises.length < source.exercises.length) {
+        target.exercises.push(source.exercises[target.exercises.length]);
+        remaining -= 1;
+      }
+      cursor = (cursor + 1) % fair.length;
+    }
+    result.length = 0;
+    result.push(...fair.filter(g => g.exercises.length));
   }
 
   return result;
@@ -1251,7 +1259,7 @@ export function buildMaxPrescription({
     reps: repsForSets,
     setType: 'main',
     done: false,
-    rpe: null,
+    rpe: base.targetRpe,
   }));
   const actionLabel = progression.action === 'load' ? '증량' : (progression.action === 'volume' ? '볼륨' : '유지');
   return {
@@ -1304,6 +1312,175 @@ export function detectMaxFixedMovements({
     .map(([movementId, count]) => ({ ...movById.get(movementId), movementId, count, lookback: keys.length }))
     .filter(x => x.id)
     .sort((a, b) => b.count - a.count || (a.nameKo || '').localeCompare(b.nameKo || ''));
+}
+
+// ════════════════════════════════════════════════════════════════
+// 테스트모드 v2 — 6주 듀얼 트랙 성장판 순수 함수
+// ════════════════════════════════════════════════════════════════
+
+function _dateFromKeyForCycle(key) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(key || ''));
+  if (!m) return null;
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+}
+
+function _keyFromDateForCycle(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function _roundCycleKg(kg, step = 2.5) {
+  const k = Number(kg) || 0;
+  const s = Number(step) > 0 ? Number(step) : 2.5;
+  return Math.round((Math.round(k / s) * s) * 10) / 10;
+}
+
+export function getMaxCycleWeekIndex(cycle, todayKey) {
+  const start = _dateFromKeyForCycle(cycle?.startDate);
+  const today = _dateFromKeyForCycle(todayKey);
+  const weeks = Math.max(1, Number(cycle?.weeks) || 6);
+  if (!start || !today) return 1;
+  const diff = Math.floor((today - start) / 604800000);
+  return Math.max(1, Math.min(weeks, diff + 1));
+}
+
+export function getMaxCycleTrack(cycle, todayKey) {
+  const week = getMaxCycleWeekIndex(cycle, todayKey);
+  const forced = cycle?.todayTrack;
+  if (forced === 'M' || forced === 'H') return forced;
+  return week % 2 === 0 ? 'H' : 'M';
+}
+
+export function predictBenchmarkProgression(benchmark, cycle, todayKey) {
+  const weeks = Math.max(1, Number(cycle?.weeks) || 6);
+  const week = getMaxCycleWeekIndex(cycle, todayKey);
+  const startKg = Number(benchmark?.startKg) || 0;
+  const targetKg = Number(benchmark?.targetKg) || startKg;
+  const step = Number(benchmark?.incrementKg) > 0 ? Number(benchmark.incrementKg) : 2.5;
+  const perWeek = weeks > 1 ? (targetKg - startKg) / (weeks - 1) : 0;
+  const plannedKg = _roundCycleKg(startKg + perWeek * (week - 1), step);
+  return {
+    week,
+    weeks,
+    startKg,
+    targetKg: _roundCycleKg(targetKg, step),
+    plannedKg,
+    deltaKg: Math.round((plannedKg - startKg) * 10) / 10,
+    remainingKg: Math.round((targetKg - plannedKg) * 10) / 10,
+    percent: targetKg > startKg ? Math.max(0, Math.min(100, Math.round(((plannedKg - startKg) / (targetKg - startKg)) * 100))) : 100,
+  };
+}
+
+export function buildMaxCycleSchedule(cycle) {
+  const start = _dateFromKeyForCycle(cycle?.startDate);
+  const weeks = Math.max(1, Number(cycle?.weeks) || 6);
+  const benchmarks = Array.isArray(cycle?.benchmarks) ? cycle.benchmarks : [];
+  if (!start || benchmarks.length === 0) return [];
+  const rows = [];
+  for (let w = 1; w <= weeks; w++) {
+    const d = new Date(start);
+    d.setDate(start.getDate() + (w - 1) * 7);
+    const key = _keyFromDateForCycle(d);
+    const rowCycle = { ...cycle, weeks, startDate: cycle.startDate };
+    rows.push({
+      week: w,
+      dateKey: key,
+      track: w % 2 === 0 ? 'H' : 'M',
+      cells: benchmarks.map(b => ({
+        benchmarkId: b.id,
+        movementId: b.movementId,
+        label: b.label,
+        major: b.primaryMajor,
+        track: w % 2 === 0 ? 'H' : 'M',
+        planned: predictBenchmarkProgression(b, rowCycle, key),
+      })),
+    });
+  }
+  return rows;
+}
+
+export function findBenchmarkActuals(cache = {}, exList = [], movementId, todayKey = null) {
+  const ids = new Set((exList || []).filter(e => e?.movementId === movementId).map(e => e.id));
+  const points = [];
+  for (const [date, day] of Object.entries(cache || {})) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    if (todayKey && date > todayKey) continue;
+    for (const entry of day?.exercises || []) {
+      const entryMovementId = entry.movementId || (ids.has(entry.exerciseId) ? movementId : null);
+      if (entryMovementId !== movementId && !ids.has(entry.exerciseId)) continue;
+      let best = null;
+      for (const set of entry.sets || []) {
+        if (set?.setType === 'warmup') continue;
+        if (!set?.done && set?.done !== undefined) continue;
+        const kg = Number(set?.kg) || 0;
+        const reps = Number(set?.reps) || 0;
+        if (kg <= 0 || reps <= 0) continue;
+        const e1rm = estimate1RM(kg, reps);
+        if (!best || e1rm > best.e1rm) best = { kg, reps, e1rm: Math.round(e1rm * 10) / 10 };
+      }
+      if (best) points.push({ dateKey: date, ...best });
+    }
+  }
+  return points.sort((a, b) => a.dateKey.localeCompare(b.dateKey));
+}
+
+export function buildMaxCycleSnapshot({
+  cycle = null,
+  cache = {},
+  exList = [],
+  todayKey = null,
+} = {}) {
+  if (!cycle || !Array.isArray(cycle.benchmarks)) return null;
+  const weekIndex = getMaxCycleWeekIndex(cycle, todayKey);
+  const track = getMaxCycleTrack(cycle, todayKey);
+  const weeks = Math.max(1, Number(cycle.weeks) || 6);
+  const schedule = buildMaxCycleSchedule(cycle);
+  const benchmarks = cycle.benchmarks.map(b => {
+    const planned = predictBenchmarkProgression(b, cycle, todayKey);
+    const actuals = findBenchmarkActuals(cache, exList, b.movementId, todayKey);
+    const latest = actuals[actuals.length - 1] || null;
+    const delta = latest ? Math.round((latest.kg - planned.plannedKg) * 10) / 10 : null;
+    return {
+      ...b,
+      planned,
+      actuals,
+      latest,
+      delta,
+      onPlan: delta === null ? null : delta >= 0,
+    };
+  });
+  const completed = benchmarks.filter(b => b.latest && b.latest.kg >= b.planned.plannedKg).length;
+  return {
+    id: cycle.id,
+    status: cycle.status || 'active',
+    framework: cycle.framework || 'dual_track_progression_v2',
+    startDate: cycle.startDate,
+    weeks,
+    weekIndex,
+    progressPct: Math.round((weekIndex / weeks) * 100),
+    track,
+    benchmarks,
+    schedule,
+    completed,
+    total: benchmarks.length,
+  };
+}
+
+export function detectPlateau(points = [], { weeks = 2 } = {}) {
+  const recent = (points || []).slice(-Math.max(2, weeks));
+  if (recent.length < Math.max(2, weeks)) return { plateau: false, reason: '데이터 부족' };
+  const best = Math.max(...recent.map(p => Number(p.e1rm) || 0));
+  const first = Number(recent[0]?.e1rm) || 0;
+  const last = Number(recent[recent.length - 1]?.e1rm) || 0;
+  const plateau = best > 0 && last <= first * 1.005;
+  return {
+    plateau,
+    reason: plateau ? `${recent.length}회 기록에서 e1RM 증가가 거의 없습니다.` : '최근 e1RM은 유지 또는 상승 중입니다.',
+    first,
+    last,
+  };
 }
 
 // ================================================================

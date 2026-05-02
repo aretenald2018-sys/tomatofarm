@@ -23,6 +23,7 @@ import {
 import { isAdmin, isAdminGuest } from './data-auth.js';
 import { _sortExList } from './data-helpers.js';
 import { loadGyms, loadRoutineTemplates } from './data-workout-equipment.js';
+import { loadEquipmentPool } from './data-equipment-pool.js';
 
 // ── Pure 헬퍼 (Firebase 비의존) ─────────────────────────────────
 // node:test 에서 import 가능하도록 data/data-pure.js 로 분리. 여기서는 re-export.
@@ -221,6 +222,7 @@ export async function loadAll() {
     _settings.home_streak_days = fbMap.home_streak_days ?? 6;
     _settings.unit_goal_start  = fbMap.unit_goal_start  ?? null;
     _settings.active_timer     = fbMap.active_timer     ?? null;
+    _settings.max_cycle        = fbMap.max_cycle        ?? null;
     _settings.cheer_last_seen  = fbMap.cheer_last_seen  ?? 0;
     _settings.tomato_state     = fbMap.tomato_state     ?? { quarterlyTomatoes: {}, totalTomatoes: 0, giftedReceived: 0, giftedSent: 0 };
     _settings.farm_state       = fbMap.farm_state       ?? null;
@@ -232,7 +234,7 @@ export async function loadAll() {
     if (_settings.diet_plan) _setDietPlan({ ...DEFAULT_DIET_PLAN, ..._settings.diet_plan });
 
     // 전문가 모드: Gym / RoutineTemplate 로드 (실패해도 전체 앱 동작 유지)
-    await Promise.all([loadGyms(), loadRoutineTemplates()]).catch(e =>
+    await Promise.all([loadGyms(), loadRoutineTemplates(), loadEquipmentPool()]).catch(e =>
       console.warn('[data] expert equipment load skipped:', e?.message || e)
     );
 

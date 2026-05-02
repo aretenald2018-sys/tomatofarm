@@ -37,6 +37,8 @@ export async function saveGym(gym) {
     name: String(gym.name || '').trim(),
     location: gym.location || '',
     notes: gym.notes || '',
+    enabledGlobalPoolIds: Array.isArray(gym.enabledGlobalPoolIds) ? gym.enabledGlobalPoolIds : undefined,
+    exclusiveEquipmentIds: Array.isArray(gym.exclusiveEquipmentIds) ? gym.exclusiveEquipmentIds : undefined,
     createdAt: gym.createdAt || Date.now(),
     updatedAt: Date.now(),
   };

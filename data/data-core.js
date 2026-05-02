@@ -199,6 +199,7 @@ export const DEFAULT_EXPERT_PRESET = {
   forbiddenMovements: [],                  // movementId[]
   preferredRpe: null,                      // '6-7'|'7-8'|'8-9'
   currentGymId: null,                      // 마지막으로 선택된 gymId (pro 전용)
+  maxPlan: null,                           // max 전용 8주 청사진
   updatedAt: null,
 };
 
@@ -216,12 +217,17 @@ export let _settings = {
   milestone_shown: {},
   streak_freezes: [],
   expert_preset:   { ...DEFAULT_EXPERT_PRESET },
+  max_cycle: null,
   // 2026-04-21: 운동 타이머 running 상태의 cross-day SoT.
   //   { startedAt: number(ms), date: {y,m,d} } | null
   //   day-doc 대신 여기에 저장함으로써 자정 넘김/다음날 앱 재진입 시에도 복원 가능.
   active_timer: null,
 };
 export function _resetSettings(v) { Object.assign(_settings, v); }
+
+// ── 운동 기구 풀 캐시 ───────────────────────────────────────────
+export let _equipmentPool = [];
+export function _setEquipmentPool(v) { _equipmentPool = Array.isArray(v) ? v : []; }
 
 // ── 토마토 사이클 캐시 ──────────────────────────────────────────
 export let _tomatoCycles = [];

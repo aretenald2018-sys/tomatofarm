@@ -50,6 +50,9 @@ import {
 import {
   loadGyms, loadRoutineTemplates,
 } from './data/data-workout-equipment.js';
+import {
+  loadEquipmentPool,
+} from './data/data-equipment-pool.js';
 
 // ═══════════════════════════════════════════════════════════════
 // re-exports (기존 import 호환)
@@ -119,6 +122,13 @@ export {
   loadRoutineTemplates, getRoutineTemplates, getRecentRoutineTemplate,
   saveRoutineTemplate, deleteRoutineTemplate,
 } from './data/data-workout-equipment.js';
+
+export {
+  loadEquipmentPool, getEquipmentPool, getGlobalEquipmentPool,
+  getGymExclusiveEquipment, getActiveEquipmentForGym,
+  saveEquipmentPoolItem, createGlobalPool, createGymExclusive,
+  updateEquipment, deleteEquipment, toggleGymPool,
+} from './data/data-equipment-pool.js';
 
 // ═══════════════════════════════════════════════════════════════
 // loadAll / saveDay / legacy tab sanitizer / twin-merge / isActiveWorkoutDayData
@@ -639,6 +649,13 @@ export async function saveExpertPreset(patch) {
 export const isExpertModeEnabled = () => !!_settings.expert_preset?.enabled;
 // 2026-04-25: 'normal' | 'pro' | 'max' 모드 discriminator.
 export const getExpertMode = () => getExpertPreset().mode || 'normal';
+export const getMaxCycle = () => _settings.max_cycle || null;
+export async function saveMaxCycle(cycle) {
+  const record = cycle && typeof cycle === 'object'
+    ? { ...cycle, updatedAt: Date.now() }
+    : null;
+  return _saveSetting('max_cycle', record);
+}
 
 export function calcStreaks() {
   return _calcStreaks(_cache, TODAY, getDietPlan(), dateKey);

@@ -50,6 +50,23 @@ import {
   toggleMaxWeakPart,
   setMaxSessionType,
   toggleMaxWeakBlockTimer,
+  openMaxBlueprintModal,
+  closeMaxBlueprintModal,
+  saveMaxBlueprintModal,
+  closeMaxRecAdjustModal,
+  applyMaxAdjustedRecommendation,
+  startMaxCycle,
+  settleMaxCycle,
+  openMaxEquipmentPoolModal,
+  closeMaxEquipmentPoolModal,
+  closeMaxV4Sheet,
+  openMaxCycleBoardSheet,
+  openMaxPlanEditorSheet,
+  saveMaxPlanEditorSheet,
+  openMaxAdjustSheet,
+  setMaxCycleTrack,
+  adjustMaxBenchmarkWeight,
+  setMaxBenchmarkWeight,
   _initMaxOnboardingEvents,
 } from './expert/max.js';
 
@@ -76,6 +93,62 @@ let _stepperSeeded = false;
 // ── Scene 09 · 운동탭 상단 전문가 카드 (Mockup A — One Card Stepper) ──
 // 구조: 모드 배지(전문가/일반 전환) → 카드(헤더 + 세그먼트 + 3-스텝)
 // 상태 'done' → 3-스텝 표시 / 'skip'·'health' → 안내 메시지
+function _renderWorkoutModeEntry(activeMode = 'normal') {
+  const mode = activeMode === 'max' || activeMode === 'pro' ? activeMode : 'normal';
+  const card = ({ id, label, desc, meta, action, icon, onclick }) => `
+    <article class="wt-mode-entry-card ${mode === id ? 'is-active' : ''}">
+      <button type="button" class="wt-mode-entry-main" onclick="${onclick}">
+        <span class="wt-mode-entry-icon">${icon}</span>
+        <span class="wt-mode-entry-copy">
+          <strong>${label}</strong>
+          <small>${desc}</small>
+        </span>
+        <span class="wt-mode-entry-cta">${action}</span>
+      </button>
+      <div class="wt-mode-entry-meta">${meta}</div>
+    </article>
+  `;
+  return `
+    <section class="wt-mode-entry" aria-label="운동 모드 선택">
+      <div class="wt-mode-entry-head">
+        <div>
+          <span>운동 방식</span>
+          <b>${mode === 'max' ? '6주 성장판으로 진행 중' : mode === 'pro' ? '헬스장 운영 모드' : '빠른 기록 모드'}</b>
+        </div>
+      </div>
+      <div class="wt-mode-entry-stack">
+        ${card({
+          id: 'normal',
+          label: '일반모드',
+          desc: '계획 없이 종목과 세트를 바로 기록합니다.',
+          meta: '<b>빠름</b><i></i><span>추천 없음</span><i></i><span>자유 기록</span>',
+          action: '기록',
+          icon: '+',
+          onclick: 'wtExcSwitchToNormalView()',
+        })}
+        ${card({
+          id: 'pro',
+          label: '프로모드',
+          desc: '헬스장별 기구와 루틴 템플릿을 관리합니다.',
+          meta: '<b>운영</b><i></i><span>헬스장/기구</span><i></i><span>루틴 추천</span>',
+          action: '관리',
+          icon: '⌂',
+          onclick: 'wtExcShowProView()',
+        })}
+        ${card({
+          id: 'max',
+          label: '테스트모드',
+          desc: '오늘 부위, 벤치마크, 처방 세트를 성장판에 맞춥니다.',
+          meta: '<b>추천</b><i></i><span>계획값 자동 입력</span><i></i><span>조정 가능</span>',
+          action: '시작',
+          icon: '▦',
+          onclick: 'wtExcShowMaxView()',
+        })}
+      </div>
+    </section>
+  `;
+}
+
 export function renderExpertTopArea() {
   const host = document.getElementById('expert-top-area');
   if (!host) return;
@@ -88,13 +161,7 @@ export function renderExpertTopArea() {
     _syncExpertFlowClass(false);
     _syncStep3ReadyClass(false);
     _renderInlineExpertPill();
-    host.innerHTML = `
-      <div class="wt-mode-seg" role="tablist" aria-label="운동 모드">
-        <button type="button" class="wt-mode-seg-btn is-on" role="tab" aria-selected="true">일반 모드</button>
-        <button type="button" class="wt-mode-seg-btn" role="tab" aria-selected="false" onclick="wtExcShowProView()">프로 모드</button>
-        <button type="button" class="wt-mode-seg-btn" role="tab" aria-selected="false" onclick="wtExcShowMaxView()">테스트 모드</button>
-      </div>
-    `;
+    host.innerHTML = _renderWorkoutModeEntry('normal');
     return;
   }
   _renderInlineExpertPill();
@@ -113,13 +180,7 @@ export function renderExpertTopArea() {
   if (!_expertViewShown) {
     _syncExpertFlowClass(false);
     _syncStep3ReadyClass(false);
-    host.innerHTML = `
-      <div class="wt-mode-seg" role="tablist" aria-label="운동 모드">
-        <button type="button" class="wt-mode-seg-btn is-on" role="tab" aria-selected="true">일반 모드</button>
-        <button type="button" class="wt-mode-seg-btn" role="tab" aria-selected="false" onclick="wtExcShowProView()">프로 모드</button>
-        <button type="button" class="wt-mode-seg-btn" role="tab" aria-selected="false" onclick="wtExcShowMaxView()">테스트 모드</button>
-      </div>
-    `;
+    host.innerHTML = _renderWorkoutModeEntry(mode);
     return;
   }
 
@@ -149,11 +210,7 @@ export function renderExpertTopArea() {
   // 통합 TDS SegmentedControl — [일반 모드 | 프로 모드 | 맥스 모드]. 2026-04-25: 3-state 확장.
   // 프로 모드에서는 기본적으로 '운동'을 하는 사용자이므로 쉬었어요/건강이슈/운동 세그먼트 제거.
   host.innerHTML = `
-    <div class="wt-mode-seg" role="tablist" aria-label="운동 모드">
-      <button type="button" class="wt-mode-seg-btn" role="tab" aria-selected="false" onclick="wtExcSwitchToNormalView()">일반 모드</button>
-      <button type="button" class="wt-mode-seg-btn is-on" role="tab" aria-selected="true">프로 모드</button>
-      <button type="button" class="wt-mode-seg-btn" role="tab" aria-selected="false" onclick="wtExcShowMaxView()">테스트 모드</button>
-    </div>
+    ${_renderWorkoutModeEntry('pro')}
     <div class="wt-exc" id="wt-expert-card">
       <div class="wt-exc-head">
         <div class="wt-exc-title">${headTitle}</div>
@@ -1430,6 +1487,100 @@ function _rankExListByRelevance(exList, cache, sessionKey, range) {
 
 // 오늘 세션 날짜(sessionKey)를 인자로 받아 과거 날짜/자정 경계에서도 정확히 반영.
 // 기본값은 TODAY → 기존 메뉴 오픈 경로 호환.
+function _isMaxInsightDay(day) {
+  if (getExpertMode() === 'max') return true;
+  return (day?.exercises || []).some(e => e?.recommendationMeta?.mode === 'max' || e?.maxPrescription);
+}
+
+function _maxInsightStats(day, exList) {
+  const entries = day?.exercises || [];
+  const exById = new Map((exList || []).map(e => [e.id, e]));
+  let plannedSets = 0;
+  let doneSets = 0;
+  let plannedVolume = 0;
+  let actualVolume = 0;
+  const rows = [];
+  for (const entry of entries) {
+    const prescription = entry.maxPrescription || null;
+    const sets = entry.sets || [];
+    const targetKg = Number(prescription?.startKg) || Number(sets[0]?.kg) || 0;
+    const targetReps = Number(prescription?.repsHigh) || Number(sets[0]?.reps) || 0;
+    const targetSets = Number(prescription?.targetSets) || sets.length || 0;
+    const done = sets.filter(s => s?.done === true && s?.setType !== 'warmup');
+    const volume = done.reduce((sum, s) => sum + (Number(s.kg) || 0) * (Number(s.reps) || 0), 0);
+    const planned = targetKg * targetReps * targetSets;
+    const achieved = targetSets > 0 && done.length >= targetSets && done.every(s => (Number(s.kg) || 0) >= targetKg && (Number(s.reps) || 0) >= targetReps);
+    plannedSets += targetSets;
+    doneSets += done.length;
+    plannedVolume += planned;
+    actualVolume += volume;
+    rows.push({
+      name: entry.name || exById.get(entry.exerciseId)?.name || entry.exerciseId,
+      plan: targetKg && targetReps ? `${targetKg}kg x ${targetReps}` : '계획값 없음',
+      actual: done[0] ? `${Math.max(...done.map(s => Number(s.kg) || 0))}kg x ${Math.max(...done.map(s => Number(s.reps) || 0))}` : '미수행',
+      status: achieved ? '달성' : (done.length ? '조정' : '미수행'),
+      statusClass: achieved ? 'good' : (done.length ? 'warn' : 'empty'),
+      meta: prescription?.benchmarkId ? '벤치마크' : (entry.maxWeakPart ? '보강' : '추천'),
+    });
+  }
+  const adherence = plannedSets ? Math.round((doneSets / plannedSets) * 100) : 0;
+  const volumeDelta = Math.round(actualVolume - plannedVolume);
+  return { rows, plannedSets, doneSets, plannedVolume, actualVolume, adherence, volumeDelta };
+}
+
+function _renderMaxInsight(content, today, day, exList) {
+  const stats = _maxInsightStats(day, exList);
+  const good = stats.adherence >= 90;
+  const verdict = good ? '성장판 페이스를 지켰어요' : (stats.adherence >= 60 ? '계획을 일부 조정했어요' : '오늘은 회복 신호가 커요');
+  const volumeText = `${stats.volumeDelta >= 0 ? '+' : ''}${stats.volumeDelta.toLocaleString()}`;
+  const nextCopy = good
+    ? '주요 벤치마크는 다음 주 계획대로 진행해도 됩니다. 미달 종목만 같은 중량으로 반복 품질을 먼저 맞추세요.'
+    : '다음 동일 부위 Day에서는 증량보다 계획 반복수 회복을 우선하세요. 보강 종목은 2-3세트로 유지하는 편이 좋습니다.';
+  content.innerHTML = `
+    <div class="max-finish-hero">
+      <div class="max-finish-kicker">오늘의 결론</div>
+      <h3>${_esc(verdict)}</h3>
+      <p>테스트모드는 칭찬보다 다음 처방의 근거가 중요합니다. 오늘 수행이 6주 성장판에서 어디에 있는지 먼저 봅니다.</p>
+      <div class="max-finish-score-row">
+        <div><b>${stats.adherence}%</b><span>계획 이행률</span></div>
+        <div><b>${volumeText}</b><span>계획 대비 볼륨</span></div>
+        <div><b>${stats.doneSets}/${stats.plannedSets || 0}</b><span>완료 세트</span></div>
+      </div>
+    </div>
+    <div class="section-label">계획 vs 실제</div>
+    <div class="max-finish-chart">
+      <div class="max-finish-chart-head">
+        <b>오늘 수행 궤적</b>
+        <span class="${good ? 'good' : 'warn'}">${good ? '정상 페이스' : '조정 필요'}</span>
+      </div>
+      <svg viewBox="0 0 330 110" aria-label="계획 실제 그래프">
+        <path d="M12 88 H318" stroke="#ededf0"/><path d="M12 58 H318" stroke="#ededf0"/><path d="M12 28 H318" stroke="#ededf0"/>
+        <path d="M18 88 C76 78, 91 65, 145 58 C205 51, 236 40, 312 28" fill="none" stroke="#fa342c" stroke-width="3" stroke-linecap="round"/>
+        <path d="M18 90 C82 82, 94 64, 145 ${good ? 58 : 70} C205 ${good ? 54 : 73}, 236 ${good ? 44 : 62}, 312 ${good ? 34 : 58}" fill="none" stroke="#111114" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="145" cy="${good ? 58 : 70}" r="5" fill="#111114"/><circle cx="145" cy="58" r="5" fill="#fa342c"/>
+      </svg>
+    </div>
+    <div class="section-label">벤치마크별 판정</div>
+    <div class="max-finish-list">
+      ${stats.rows.length ? stats.rows.map(row => `
+        <div class="max-finish-row">
+          <div><b>${_esc(row.name)}</b><span>${_esc(row.meta)} · 계획 ${_esc(row.plan)} · 실제 ${_esc(row.actual)}</span></div>
+          <strong class="${row.statusClass}">${_esc(row.status)}</strong>
+        </div>
+      `).join('') : '<div class="max-finish-empty">테스트모드 운동 기록이 없어요.</div>'}
+    </div>
+    <div class="max-finish-coach">
+      <b>다음 동일 부위 Day 제안</b>
+      <p>${_esc(nextCopy)}</p>
+    </div>
+  `;
+  _lastInsightSnapshot = {
+    summary: `[테스트모드 종료 인사이트]\n날짜: ${today}\n계획 이행률: ${stats.adherence}%\n계획 대비 볼륨: ${volumeText}\n${nextCopy}`,
+    detail: JSON.stringify({ today, stats }, null, 2),
+  };
+  insightsSetShareMode(window.insightsShareMode || 'summary');
+}
+
 export async function insightsOpen(sessionKey) {
   _openModal('insights-modal');
   // 2026-04-20: TODAY 고정값 대신 호출자가 넘긴 sessionKey를 우선 사용 (Codex 지적 #2).
@@ -1453,6 +1604,10 @@ export async function insightsOpen(sessionKey) {
   // gym을 떠나서 전체 종목 라이브러리를 참조해 오늘의 세트를 반드시 포함시킨다.
   // 참고: picker/루틴 생성은 여전히 _resolveCurrentGymId()로 헬스장 범위를 존중.
   const exList = getExList();
+  if (_isMaxInsightDay(cache?.[today])) {
+    _renderMaxInsight(content, today, cache?.[today], exList);
+    return;
+  }
   // 2026-04-20: relevance-sorted 리스트 — 오늘 운동한 종목 우선 (Codex 지적 #4).
   const rankedExList = _rankExListByRelevance(exList, cache, today, range);
   const bal = _rawCalcBal(cache, exList, MOVEMENTS, range);
@@ -2470,6 +2625,23 @@ window.applyMaxSuggestion = applyMaxSuggestion;
 window.toggleMaxWeakPart = toggleMaxWeakPart;
 window.setMaxSessionType = setMaxSessionType;
 window.toggleMaxWeakBlockTimer = toggleMaxWeakBlockTimer;
+window.openMaxBlueprintModal = openMaxBlueprintModal;
+window.closeMaxBlueprintModal = closeMaxBlueprintModal;
+window.saveMaxBlueprintModal = saveMaxBlueprintModal;
+window.closeMaxRecAdjustModal = closeMaxRecAdjustModal;
+window.applyMaxAdjustedRecommendation = applyMaxAdjustedRecommendation;
+window.startMaxCycle = startMaxCycle;
+window.settleMaxCycle = settleMaxCycle;
+window.openMaxEquipmentPoolModal = openMaxEquipmentPoolModal;
+window.closeMaxEquipmentPoolModal = closeMaxEquipmentPoolModal;
+window.closeMaxV4Sheet = closeMaxV4Sheet;
+window.openMaxCycleBoardSheet = openMaxCycleBoardSheet;
+window.openMaxPlanEditorSheet = openMaxPlanEditorSheet;
+window.saveMaxPlanEditorSheet = saveMaxPlanEditorSheet;
+window.openMaxAdjustSheet = openMaxAdjustSheet;
+window.setMaxCycleTrack = setMaxCycleTrack;
+window.adjustMaxBenchmarkWeight = adjustMaxBenchmarkWeight;
+window.setMaxBenchmarkWeight = setMaxBenchmarkWeight;
 // 모달 바인딩은 openMaxMiniOnboarding 진입 시점에 수행 (modal-manager 가 DOM 주입한 뒤).
 // 과거 setTimeout 즉시 호출은 modal DOM 미주입 상태에서 실행되어 버튼이 dead 였음.
 // 개발자 디버그: 콘솔에서 __expertDebug() 호출

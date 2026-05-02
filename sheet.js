@@ -337,6 +337,7 @@ function _renderSets(entryIdx) {
 
   sets.forEach((set, si) => {
     const isWarmup = set.setType === 'warmup';
+    const isDrop = set.setType === 'drop';
     const isDone   = set.done !== false; // undefined도 완료로 처리
     const vol = (set.kg && set.reps && !isWarmup && isDone)
       ? `<span style="color:var(--accent)">${(set.kg*set.reps).toLocaleString()}vol</span>`
@@ -346,9 +347,10 @@ function _renderSets(entryIdx) {
     row.className = 'set-row';
     row.innerHTML = `
       <span class="set-num">${si+1}</span>
-      <select class="set-type-select ${isWarmup ? 'warmup' : 'main'}" data-idx="${si}">
-        <option value="main"   ${!isWarmup ? 'selected' : ''}>본</option>
+      <select class="set-type-select ${isWarmup ? 'warmup' : (isDrop ? 'drop' : 'main')}" data-idx="${si}">
+        <option value="main"   ${!isWarmup && !isDrop ? 'selected' : ''}>본</option>
         <option value="warmup" ${isWarmup  ? 'selected' : ''}>웜업</option>
+        <option value="drop"   ${isDrop ? 'selected' : ''}>드랍</option>
       </select>
       <input class="set-input" type="number" placeholder="kg"  min="0" step="0.5" value="${set.kg||''}">
       <span class="set-sep">kg</span>

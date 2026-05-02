@@ -6,7 +6,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { suggestMaxBoosts, buildMaxPrescription, detectMaxFixedMovements } from '../calc.js';
+import {
+  suggestMaxBoosts,
+  buildMaxPrescription,
+  detectMaxFixedMovements,
+  buildMaxCycleSnapshot,
+  buildMaxCycleSchedule,
+  detectPlateau,
+} from '../calc.js';
 
 // 테스트용 MOVEMENTS 미니 카탈로그 — config.js 실제 데이터의 부분집합
 const MOVEMENTS_FIXTURE = [
@@ -57,6 +64,19 @@ test('suggestMaxBoosts · chest_upper 약점 → 바벨/덤벨 우선 정렬', (
   assert.deepEqual(top2Cats, ['barbell', 'dumbbell'], '상위 2개는 barbell/dumbbell');
   // isPreferred 표기
   assert.ok(top2.every(e => e.isPreferred === true), '상위는 isPreferred=true');
+});
+
+test('suggestMaxBoosts keeps later weak parts when limit is shared', () => {
+  const res = suggestMaxBoosts({
+    comparison: makeComparison(['chest_upper', 'chest_mid', 'shoulder_side']),
+    exList: [],
+    movements: MOVEMENTS_FIXTURE,
+    preferredCategories: ['barbell', 'dumbbell'],
+    takenExerciseIds: [],
+    limit: 3,
+  });
+  assert.deepEqual(res.map(g => g.subPattern), ['chest_upper', 'chest_mid', 'shoulder_side']);
+  assert.ok(res.every(g => g.exercises.length === 1));
 });
 
 test('buildMaxPrescription creates sets, reps, and load guidance', () => {
@@ -218,4 +238,66 @@ test('suggestMaxBoosts · limit=2 다중 weak에서 총 2개로 자름', () => {
   });
   const totalEx = res.reduce((a, g) => a + g.exercises.length, 0);
   assert.equal(totalEx, 2, '총 운동 개수 == limit');
+});
+
+test('buildMaxCycleSnapshot · 6주 성장판의 계획/실측 비교', () => {
+  const cycle = {
+    id: 'cycle_test',
+    status: 'active',
+    framework: 'dual_track_progression_v2',
+    startDate: '2026-05-04',
+    weeks: 6,
+    benchmarks: [{
+      id: 'bm_chest_barbell_bench',
+      movementId: 'barbell_bench',
+      label: '바벨 벤치프레스',
+      primaryMajor: 'chest',
+      tracks: ['M', 'H'],
+      startKg: 75,
+      targetKg: 80,
+      incrementKg: 2.5,
+    }],
+  };
+  const exList = [{ id: 'ex_bench', movementId: 'barbell_bench' }];
+  const cache = {
+    '2026-05-11': {
+      exercises: [{
+        exerciseId: 'ex_bench',
+        sets: [{ kg: 77.5, reps: 12, done: true }],
+      }],
+    },
+  };
+  const snap = buildMaxCycleSnapshot({ cycle, cache, exList, todayKey: '2026-05-18' });
+  assert.equal(snap.weekIndex, 3);
+  assert.equal(snap.track, 'M');
+  assert.equal(snap.benchmarks[0].planned.plannedKg, 77.5);
+  assert.equal(snap.benchmarks[0].latest.kg, 77.5);
+  assert.equal(snap.benchmarks[0].onPlan, true);
+});
+
+test('buildMaxCycleSchedule · 6주 동안 볼륨/강도 트랙 교차', () => {
+  const schedule = buildMaxCycleSchedule({
+    startDate: '2026-05-04',
+    weeks: 6,
+    benchmarks: [{
+      id: 'bm',
+      movementId: 'barbell_bench',
+      label: '벤치',
+      primaryMajor: 'chest',
+      startKg: 75,
+      targetKg: 80,
+      incrementKg: 2.5,
+    }],
+  });
+  assert.equal(schedule.length, 6);
+  assert.deepEqual(schedule.map(r => r.track), ['M', 'H', 'M', 'H', 'M', 'H']);
+  assert.equal(schedule[5].cells[0].planned.targetKg, 80);
+});
+
+test('detectPlateau · e1RM 정체 감지', () => {
+  const result = detectPlateau([
+    { dateKey: '2026-05-04', e1rm: 100 },
+    { dateKey: '2026-05-11', e1rm: 100.2 },
+  ], { weeks: 2 });
+  assert.equal(result.plateau, true);
 });

@@ -8,12 +8,12 @@ import { _buildSparkline }            from './render.js';
 import { wtStartWorkoutTimer,
          wtRestTimerStart }            from './timers.js';
 import { showToast }                   from '../home/utils.js';
-import { getExList, getGymExList, getLastSession, detectPRs, getCache,
+import { getExList, getGlobalExList, getGymExList, getGyms, getLastSession, detectPRs, getCache,
          dateKey, saveExercise,
          deleteExercise, getMuscleParts,
          saveCustomMuscle,
          isExpertModeEnabled,
-         getExpertPreset }              from '../data.js';
+         getExpertPreset, getExpertMode }              from '../data.js';
 import { estimate1RM, rpeRepsToPct, targetWeightKg, weightRange, SUBPATTERN_TO_MAJOR } from '../calc.js';
 import { MOVEMENTS } from '../config.js';
 // resolveCurrentGymId는 expert.js의 단일 진실원 (preset + S.workout.currentGymId 동기화).
@@ -25,7 +25,15 @@ import { resolveCurrentGymId, isExpertViewShown } from './expert.js';
 // '일반 모드 뷰' 중에는 picker가 전체 기구 풀을 쓰도록 분기 (현재 헬스장에 기구 0개여도
 // 디폴트 종목이 보이게 함).
 function _isExpertSessionActive() {
-  try { return !!isExpertModeEnabled() && !!isExpertViewShown(); }
+  try {
+    const mode = getExpertMode?.() || getExpertPreset()?.mode || 'normal';
+    return !!isExpertModeEnabled() && (mode === 'pro' || mode === 'max' || !!isExpertViewShown());
+  }
+  catch { return false; }
+}
+
+function _isMaxWorkoutMode() {
+  try { return (getExpertMode?.() || getExpertPreset()?.mode) === 'max'; }
   catch { return false; }
 }
 
@@ -181,6 +189,7 @@ function _localMaxPrescription({ movement, exerciseId, sessionType, weakTarget }
   let startKg = bestSet ? _roundToStep(estimate1RM(bestSet.kg, bestSet.reps) * pct, step) : 0;
   let action = isHeavy ? 'load' : (weakTarget || !isLarge ? 'volume' : 'hold');
   let reason = '과거 기록 기반으로 오늘 목표 세트와 반복을 제안합니다.';
+  let transparency = null;
   if (bestSet && (Number(bestSet.reps) || 0) >= repsHigh + 3) {
     action = 'load';
     startKg = startKg > 0 ? _roundToStep(startKg + step, step) : startKg;
@@ -189,10 +198,16 @@ function _localMaxPrescription({ movement, exerciseId, sessionType, weakTarget }
     action = 'volume';
     reason = '고볼륨 Day에서는 같은 무게로 유효 세트 누적을 우선합니다.';
   }
+  if (bestSet && startKg > 0 && (Number(bestSet.kg) || 0) > 0 && startKg < Number(bestSet.kg)) {
+    transparency = {
+      label: `지난 ${Number(bestSet.kg)}kg보다 낮아 보이는 이유`,
+      detail: `${targetReps}회·RPE ${targetRpe} 목표로 e1RM을 환산해 시작 무게를 낮췄어요.`,
+    };
+  }
   const actionLabel = action === 'load' ? '증량' : (action === 'volume' ? '볼륨' : '유지');
   return {
     label: `${targetSets}세트 x ${repsLow}-${repsHigh}회 · RPE ${targetRpe}`,
-    targetSets, repsLow, repsHigh, targetRpe, startKg, action, actionLabel, reason,
+    targetSets, repsLow, repsHigh, targetRpe, startKg, action, actionLabel, reason, transparency,
   };
 }
 
@@ -218,12 +233,73 @@ function _buildMaxPrescriptionBlock(entry, ex) {
   const kg = Number(prescription.startKg) > 0 ? ` · 시작 ${prescription.startKg}kg` : '';
   const action = prescription.actionLabel || (prescription.action === 'load' ? '증량' : prescription.action === 'volume' ? '볼륨' : '유지');
   const reason = prescription.reason || '과거 기록 기반으로 오늘 목표 세트와 반복을 제안합니다.';
+  const why = prescription.transparency?.detail ? `<div class="ex-max-prescription-why">${prescription.transparency.detail}</div>` : '';
   return `
     <div class="ex-max-prescription">
       <div class="ex-max-prescription-main">맥스 처방 · ${prescription.label}${kg}</div>
       <div class="ex-max-prescription-sub"><span>${action}</span>${reason}</div>
+      ${why}
     </div>
   `;
+}
+
+function _buildMaxExerciseCardMeta(entry, ex, mc, idx) {
+  const prescription = _resolveMaxPrescription(entry, ex);
+  const kg = Number(prescription?.startKg) || Number(entry?.sets?.[0]?.kg) || 0;
+  const reps = Number(prescription?.repsHigh) || Number(entry?.sets?.[0]?.reps) || 0;
+  const sets = Number(prescription?.targetSets) || (entry?.sets?.length || 0);
+  const track = entry?.recommendationMeta?.track === 'H' ? '강도' : '볼륨';
+  const week = entry?.recommendationMeta?.cycleWeek ? `W${entry.recommendationMeta.cycleWeek}` : '오늘';
+  const source = entry?.gymTagAtTime === '*' ? '공통 기구' : '선택 헬스장';
+  const isBenchmark = !!prescription?.benchmarkId || !!entry?.recommendationMeta?.cycleId;
+  const title = isBenchmark ? `${week} ${track} 트랙` : (prescription?.actionLabel || '추천 처방');
+  const subtitle = prescription?.transparency?.detail || prescription?.reason || '최근 수행 기록과 오늘 선택한 부위를 기준으로 세트를 준비했어요.';
+  const pace = prescription?.deltaKg == null
+    ? '계획'
+    : (Number(prescription.deltaKg) >= 0 ? '정상' : '조정');
+  return { prescription, kg, reps, sets, track, week, source, isBenchmark, title, subtitle, pace };
+}
+
+function _buildMaxExerciseCardHeader(entry, ex, mc, idx, sparkline) {
+  const meta = _buildMaxExerciseCardMeta(entry, ex, mc, idx);
+  const kgText = meta.kg > 0 ? `${meta.kg}kg` : '무게 입력';
+  const repsText = meta.reps > 0 ? `${meta.reps}회` : '반복 입력';
+  const setText = meta.sets > 0 ? `${meta.sets}세트` : '세트';
+  return `
+    <div class="ex-max-v2-head">
+      <div class="ex-max-v2-title-row">
+        <div>
+          <div class="ex-max-v2-source"><i style="background:${mc?.color || 'var(--primary)'}"></i>${meta.isBenchmark ? '벤치마크' : '추천 종목'} · ${meta.source}</div>
+          <div class="ex-max-v2-name">${ex?.name || entry.name || entry.exerciseId}</div>
+        </div>
+        <button class="ex-remove-btn ex-max-v2-menu" data-idx="${idx}" aria-label="종목 삭제">×</button>
+      </div>
+      <div class="ex-max-v2-plan">
+        <div>
+          <div class="ex-max-v2-kicker">오늘 성공 기준</div>
+          <div class="ex-max-v2-main">${kgText} × ${repsText}</div>
+          <div class="ex-max-v2-sub">${meta.title} · ${setText}</div>
+        </div>
+        <div class="ex-max-v2-pace"><b>${meta.pace}</b><span>계획 대비</span></div>
+      </div>
+      <div class="ex-max-v2-insights">
+        <div class="ex-max-v2-insight"><b>${meta.track} 처방</b><span>${meta.subtitle}</span></div>
+        <div class="ex-max-v2-insight ex-max-v2-chart">${sparkline || '<span>기록 2회부터 추세 표시</span>'}</div>
+      </div>
+    </div>
+  `;
+}
+
+function _maxSetTypeLabel(type) {
+  if (type === 'warmup') return '프리';
+  if (type === 'drop') return '드랍';
+  return '본';
+}
+
+function _nextMaxSetType(type) {
+  if (type === 'warmup') return 'main';
+  if (type === 'main' || !type) return 'drop';
+  return 'warmup';
 }
 
 export function wtUpdateSet(entryIdx, si, field, val) {
@@ -541,6 +617,7 @@ export function _renderExerciseList() {
   container.innerHTML = '';
   const allMuscles = getMuscleParts();
   const isExpert = _isExpertUiEnabled();
+  const isMaxMode = _isMaxWorkoutMode();
 
   // Finding 2: 오늘 세션 제외 → 자기참조 방지. 최근 기록(today 제외).
   const todayKey = _todayDateKey();
@@ -557,7 +634,7 @@ export function _renderExerciseList() {
          </div>`
       : '';
     const sparkline = _buildSparkline(entry.exerciseId, mc?.color);
-    const maxPrescriptionHtml = _buildMaxPrescriptionBlock(entry, ex);
+    const maxPrescriptionHtml = isMaxMode ? '' : _buildMaxPrescriptionBlock(entry, ex);
 
     // Scene 12 — 프로 모드 전용 UI (e1RM 기반 실제 추천 무게 로직)
     // chips/footer는 prior 우선, 없으면 오늘 entry의 완료 본세트로 폴백.
@@ -571,23 +648,44 @@ export function _renderExerciseList() {
     }
 
     const block = document.createElement('div');
-    block.className = 'ex-block' + (isExpert ? ' ex-block--expert' : '');
-    block.innerHTML = `
-      <div class="ex-block-header">
-        <span class="ex-block-muscle" style="color:${mc?.color||'#888'}">${mc?.name||''}</span>
-        <span class="ex-block-name">${ex?.name||entry.exerciseId}</span>
-        ${poPillHtml}
-        ${sparkline}
-        <button class="ex-remove-btn" data-idx="${idx}">✕</button>
-      </div>
-      ${lastHint}
-      ${maxPrescriptionHtml}
-      <div class="ex-sets" id="wt-sets-${idx}"></div>
-      <button class="ex-add-set-btn" data-idx="${idx}">+ 세트 추가</button>
-      ${expertHtml}`;
+    block.className = 'ex-block' + (isExpert ? ' ex-block--expert' : '') + (isMaxMode ? ' ex-block--max-v2' : '');
+    if (isMaxMode) {
+      block.innerHTML = `
+        ${_buildMaxExerciseCardHeader(entry, ex, mc, idx, sparkline)}
+        <div class="ex-sets ex-max-v2-sets" id="wt-sets-${idx}"></div>
+        <div class="ex-max-v2-actions">
+          <button class="ex-add-set-btn ex-max-v2-secondary" data-idx="${idx}">세트 추가</button>
+          <button class="ex-max-v2-primary" data-idx="${idx}">다음 세트 완료</button>
+        </div>
+        ${expertHtml}`;
+    } else {
+      block.innerHTML = `
+        <div class="ex-block-header">
+          <span class="ex-block-muscle" style="color:${mc?.color||'#888'}">${mc?.name||''}</span>
+          <span class="ex-block-name">${ex?.name||entry.exerciseId}</span>
+          ${poPillHtml}
+          ${sparkline}
+          <button class="ex-remove-btn" data-idx="${idx}">✕</button>
+        </div>
+        ${lastHint}
+        ${maxPrescriptionHtml}
+        <div class="ex-sets" id="wt-sets-${idx}"></div>
+        <button class="ex-add-set-btn" data-idx="${idx}">+ 세트 추가</button>
+        ${expertHtml}`;
+    }
 
     block.querySelector('.ex-remove-btn').addEventListener('click', () => wtRemoveExerciseEntry(idx));
     block.querySelector('.ex-add-set-btn').addEventListener('click', () => wtAddSet(idx));
+    const completeBtn = block.querySelector('.ex-max-v2-primary');
+    if (completeBtn) completeBtn.addEventListener('click', () => {
+      const target = (S.workout.exercises[idx]?.sets || []).findIndex(s => s.done === false);
+      if (target >= 0 && S.workout.exercises[idx]?.sets?.[target]) {
+        wtToggleSetDone(idx, target);
+        return;
+      }
+      const exName = ex?.name || entry?.name || entry.exerciseId;
+      showToast(`${exName} 종료. 다음 종목으로 넘어가도 좋아요`, 2600, 'success');
+    });
     const copyBtn = block.querySelector('.ex-copy-btn');
     if (copyBtn && last) {
       copyBtn.addEventListener('click', () => {
@@ -618,6 +716,7 @@ function _renderSets(entryIdx) {
   el.innerHTML = '';
 
   const isExpert = _isExpertUiEnabled();
+  const isMaxMode = _isMaxWorkoutMode();
   sets.forEach((set, si) => {
     const isWarmup = set.setType === 'warmup';
     const isDrop = set.setType === 'drop';
@@ -636,25 +735,34 @@ function _renderSets(entryIdx) {
       </select>` : '';
 
     const row = document.createElement('div');
-    row.className = 'set-row';
-    row.innerHTML = `
-      <span class="set-num">${si+1}</span>
-      <select class="set-type-select ${isWarmup ? 'warmup' : (isDrop ? 'drop' : 'main')}" data-idx="${si}">
-        <option value="main"   ${!isWarmup && !isDrop ?'selected':''}>본</option>
-        <option value="warmup" ${isWarmup ?'selected':''}>웜업</option>
-        <option value="drop"   ${isDrop ?'selected':''}>드랍</option>
-      </select>
-      <input class="set-input" type="number" placeholder="kg"  min="0" step="0.5" value="${set.kg||''}">
-      <span class="set-sep">kg</span>
-      <input class="set-input" type="number" placeholder="회"  min="1" step="1"   value="${set.reps||''}">
-      <span class="set-sep">회</span>
-      ${rpeSelHtml}
-      <span class="set-vol">${vol}</span>
+    row.className = isMaxMode ? `set-row ex-max-v2-set${isDone ? ' done' : ''}` : 'set-row';
+    row.innerHTML = isMaxMode ? `
+      <button type="button" class="ex-max-v2-type-btn ${isWarmup ? 'warmup' : (isDrop ? 'drop' : 'main')}" title="세트 타입">${_maxSetTypeLabel(set.setType)}</button>
+      <label class="ex-max-v2-field"><span>KG</span><input class="set-input" type="number" placeholder="kg" min="0" step="0.5" value="${set.kg||''}"></label>
+      <label class="ex-max-v2-field"><span>REP</span><input class="set-input" type="number" placeholder="회" min="1" step="1" value="${set.reps||''}"></label>
+      <label class="ex-max-v2-field"><span>RPE</span><input class="set-rpe-input" type="number" placeholder="-" min="1" max="10" step="0.5" value="${set.rpe ?? ''}"></label>
       <button class="set-done-btn ${isDone?'done':''}" title="완료 체크">✓</button>
-      <button class="set-remove-btn">✕</button>
-      <span class="set-drag-handle" title="드래그하여 순서 변경"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg></span>`;
+      <button class="set-remove-btn" title="세트 삭제">×</button>
+      <span class="set-drag-handle" title="드래그하여 순서 변경"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg></span>`
+      : `
+        <span class="set-num">${si+1}</span>
+        <select class="set-type-select ${isWarmup ? 'warmup' : (isDrop ? 'drop' : 'main')}" data-idx="${si}">
+          <option value="main"   ${!isWarmup && !isDrop ?'selected':''}>본</option>
+          <option value="warmup" ${isWarmup ?'selected':''}>웜업</option>
+          <option value="drop"   ${isDrop ?'selected':''}>드랍</option>
+        </select>
+        <input class="set-input" type="number" placeholder="kg"  min="0" step="0.5" value="${set.kg||''}">
+        <span class="set-sep">kg</span>
+        <input class="set-input" type="number" placeholder="회"  min="1" step="1"   value="${set.reps||''}">
+        <span class="set-sep">회</span>
+        ${rpeSelHtml}
+        <span class="set-vol">${vol}</span>
+        <button class="set-done-btn ${isDone?'done':''}" title="완료 체크">✓</button>
+        <button class="set-remove-btn">✕</button>
+        <span class="set-drag-handle" title="드래그하여 순서 변경"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg></span>`;
 
-    row.querySelector('.set-type-select').addEventListener('change', e => wtUpdateSetType(entryIdx, si, e.target.value));
+    row.querySelector('.set-type-select')?.addEventListener('change', e => wtUpdateSetType(entryIdx, si, e.target.value));
+    row.querySelector('.ex-max-v2-type-btn')?.addEventListener('click', () => wtUpdateSetType(entryIdx, si, _nextMaxSetType(set.setType || 'main')));
     row.querySelectorAll('.set-input')[0].addEventListener('change', e => wtUpdateSet(entryIdx, si, 'kg',   e.target.value));
     // 2026-04-20: kg/reps 입력 focus 시 rest 타이머 skip 호출 제거.
     //   기존: 입력칸 탭 = 휴식 증발 → 숫자 수정하려고 포커스만 줘도 꺼짐.
@@ -664,6 +772,8 @@ function _renderSets(entryIdx) {
     row.querySelector('.set-remove-btn').addEventListener('click', () => wtRemoveSet(entryIdx, si));
     const rpeSel = row.querySelector('.set-rpe-select');
     if (rpeSel) rpeSel.addEventListener('change', e => wtUpdateSet(entryIdx, si, 'rpe', e.target.value));
+    const rpeInput = row.querySelector('.set-rpe-input');
+    if (rpeInput) rpeInput.addEventListener('change', e => wtUpdateSet(entryIdx, si, 'rpe', e.target.value));
     el.appendChild(row);
   });
 
@@ -692,19 +802,74 @@ function _renderSets(entryIdx) {
 // 현재 헬스장이 비어있어도 디폴트 종목이 보이게 함.
 function _getPickerExercisePool() {
   try {
-    if (!_isExpertSessionActive()) return getExList();
-    const gymId = resolveCurrentGymId();
-    return gymId ? getGymExList(gymId) : getExList();
+    return getExList();
   } catch { return getExList(); }
+}
+
+function _currentPickerGymId() {
+  try { return resolveCurrentGymId() || S?.workout?.currentGymId || getExpertPreset()?.currentGymId || null; }
+  catch { return S?.workout?.currentGymId || getExpertPreset()?.currentGymId || null; }
+}
+
+function _exerciseSourceMeta(ex) {
+  const gyms = getGyms?.() || [];
+  const currentGymId = _currentPickerGymId();
+  const gymId = ex?.gymId || ex?.primaryGymId || null;
+  const gym = gymId ? gyms.find(g => g.id === gymId) : null;
+  const currentGym = currentGymId ? gyms.find(g => g.id === currentGymId) : null;
+  if (!gymId) {
+    return { label: '공통', detail: '모든 헬스장', cls: 'global' };
+  }
+  if (gymId === currentGymId) {
+    return { label: gym?.name || currentGym?.name || '현재 헬스장', detail: '전용 기구', cls: 'current' };
+  }
+  return { label: gym?.name || '다른 헬스장', detail: '전용 기구', cls: 'other' };
+}
+
+function _exerciseGymKey(ex) {
+  return ex?.gymId || ex?.primaryGymId || '';
+}
+
+function _isExerciseUsableAtCurrentGym(ex) {
+  const currentGymId = _currentPickerGymId();
+  const gymId = _exerciseGymKey(ex);
+  return !gymId || !currentGymId || gymId === currentGymId;
+}
+
+function _isExerciseEditable(ex) {
+  if (!ex?.id) return false;
+  return /^custom_/.test(String(ex.id)) || !!ex.gymId || !!ex.primaryGymId || !ex.movementId;
+}
+
+function _renderExercisePickerName(ex, alreadyAdded) {
+  const source = _exerciseSourceMeta(ex);
+  return `
+    <span class="ex-picker-main">
+      <span class="ex-picker-name">${_escPicker(ex.name)}${alreadyAdded ? ' ✓' : ''}</span>
+      <span class="ex-picker-source ${source.cls}">
+        <b>${_escPicker(source.label)}</b>
+        <small>${_escPicker(source.detail)}</small>
+      </span>
+    </span>
+  `;
+}
+
+function _escPicker(s) {
+  return String(s || '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 }
 
 // 부위 필터 상태 (null = 전체)
 let _pickerMuscleFilter = null;
+let _pickerGymFilter = null;
 window._wtSetPickerMuscleFilter = (muscleId) => {
   _pickerMuscleFilter = (_pickerMuscleFilter === muscleId) ? null : muscleId;
   _renderPickerList();
 };
 window._wtSetPickerCategoryFilter = window._wtSetPickerMuscleFilter;
+window._wtSetPickerGymFilter = (gymId) => {
+  _pickerGymFilter = gymId || null;
+  _renderPickerList();
+};
 
 // C-2: 종목명 검색 상태 (trim + lowercase)
 let _pickerSearchQuery = '';
@@ -725,6 +890,7 @@ window._wtClearPickerSearch = () => {
 // C-4: 모든 필터 일괄 해제 ("필터 초기화" 버튼용)
 window._wtResetAllPickerFilters = () => {
   _pickerMuscleFilter = null;
+  _pickerGymFilter = _isExpertSessionActive() ? 'usable' : null;
   window._wtClearPickerSearch();
 };
 
@@ -757,7 +923,12 @@ export function _renderPickerList() {
   container.innerHTML = '';
   const allMuscles = getMuscleParts();
   const rawPool = _getPickerExercisePool();
+  const gyms = getGyms?.() || [];
+  const currentGymId = _currentPickerGymId();
+  const isExpert = _isExpertSessionActive();
+  if (isExpert && !_pickerGymFilter) _pickerGymFilter = 'usable';
   const availableMuscles = new Set(rawPool.flatMap(_exerciseMajorIds).filter(Boolean));
+  const availableGymIds = new Set(rawPool.map(_exerciseGymKey).filter(Boolean));
 
   // 필터 유효성 체크: 현재 풀에 해당 부위가 없으면 자동 해제
   if (_pickerMuscleFilter && !availableMuscles.has(_pickerMuscleFilter)) {
@@ -766,16 +937,29 @@ export function _renderPickerList() {
   const muscleFiltered = _pickerMuscleFilter
     ? rawPool.filter(e => _exerciseMajorIds(e).includes(_pickerMuscleFilter))
     : rawPool;
+  const gymFiltered = (() => {
+    if (!_pickerGymFilter) return muscleFiltered;
+    if (_pickerGymFilter === 'usable') return muscleFiltered.filter(_isExerciseUsableAtCurrentGym);
+    if (_pickerGymFilter === 'global') return muscleFiltered.filter(e => !_exerciseGymKey(e));
+    return muscleFiltered.filter(e => _exerciseGymKey(e) === _pickerGymFilter);
+  })();
   // C-2: 검색어 적용 (종목명 부분 일치, 대소문자 무시)
   const pool = _pickerSearchQuery
-    ? muscleFiltered.filter(e => String(e.name || '').toLowerCase().includes(_pickerSearchQuery))
-    : muscleFiltered;
+    ? gymFiltered.filter(e => String(e.name || '').toLowerCase().includes(_pickerSearchQuery))
+    : gymFiltered;
 
   // C-4: 현재 활성 필터 배너 — 무엇이 걸려있는지 명시적으로 보여주고 한 번에 해제.
   const filterBadges = [];
   if (_pickerMuscleFilter) {
     const muscle = allMuscles.find(m => m.id === _pickerMuscleFilter);
     if (muscle) filterBadges.push({ type: 'muscle', label: `부위: ${muscle.name}` });
+  }
+  if (_pickerGymFilter) {
+    const gym = gyms.find(g => g.id === _pickerGymFilter);
+    const label = _pickerGymFilter === 'usable'
+      ? '헬스장: 사용 가능'
+      : (_pickerGymFilter === 'global' ? '헬스장: 공통' : `헬스장: ${gym?.name || '선택 헬스장'}`);
+    filterBadges.push({ type: 'gym', label });
   }
   if (_pickerSearchQuery) filterBadges.push({ type: 'search', label: `검색: "${_pickerSearchQuery}"` });
   if (filterBadges.length > 0) {
@@ -787,25 +971,47 @@ export function _renderPickerList() {
     container.appendChild(banner);
   }
 
-  // 필터 칩 UI — 부위가 있는 Exercise가 하나라도 있으면 "전체"+해당 부위들 표시.
-  // 상단 운동유형 탭(.wt-type-tab)과 클래스 분리 — 같은 DOM에 공존해도 스키마 간섭 없음.
-  if (availableMuscles.size >= 1) {
-    const chipBar = document.createElement('div');
-    chipBar.className = 'ex-picker-filter-bar';
-    const allActive = _pickerMuscleFilter === null;
-    chipBar.innerHTML = `<button type="button" class="ex-picker-filter-chip${allActive?' active':''}" onclick="window._wtSetPickerMuscleFilter(null)">전체</button>` +
-      allMuscles
-        .filter(m => availableMuscles.has(m.id))
-        .map(m => `<button type="button" class="ex-picker-filter-chip${_pickerMuscleFilter===m.id?' active':''}" onclick="window._wtSetPickerMuscleFilter('${m.id}')">${m.name}</button>`)
-        .join('');
-    container.appendChild(chipBar);
+  if (availableMuscles.size >= 1 || isExpert) {
+    const filters = document.createElement('div');
+    filters.className = 'ex-picker-filter-stack';
+    const muscleAllActive = _pickerMuscleFilter === null;
+    const muscleHtml = `<div class="ex-picker-filter-row">
+      <div class="ex-picker-filter-title">부위</div>
+      <div class="ex-picker-filter-bar">
+        <button type="button" class="ex-picker-filter-chip${muscleAllActive?' active':''}" onclick="window._wtSetPickerMuscleFilter(null)">전체</button>
+        ${allMuscles
+          .filter(m => availableMuscles.has(m.id))
+          .map(m => `<button type="button" class="ex-picker-filter-chip${_pickerMuscleFilter===m.id?' active':''}" onclick="window._wtSetPickerMuscleFilter('${m.id}')">${m.name}</button>`)
+          .join('')}
+      </div>
+    </div>`;
+    const gymOptions = [
+      { id: 'usable', name: currentGymId ? '사용 가능' : '전체', enabled: true },
+      { id: 'global', name: '공통', enabled: true },
+      ...gyms.filter(g => availableGymIds.has(g.id)).map(g => ({ id: g.id, name: g.name || '이름 없는 헬스장', enabled: true })),
+    ];
+    const gymHtml = isExpert ? `<div class="ex-picker-filter-row">
+      <div class="ex-picker-filter-title">헬스장</div>
+      <div class="ex-picker-filter-bar">
+        ${gymOptions.map(g => `<button type="button" class="ex-picker-filter-chip${_pickerGymFilter===g.id?' active':''}" onclick="window._wtSetPickerGymFilter('${_escPicker(g.id)}')">${_escPicker(g.name)}</button>`).join('')}
+      </div>
+    </div>` : '';
+    filters.innerHTML = muscleHtml + gymHtml;
+    container.appendChild(filters);
   }
 
   // P1-5: 맞춤 루틴 모드에서는 선택 전용 — 편집/삭제/신규 종목 추가는 숨김.
   // 오늘 할 운동을 고르는 순간에 카탈로그 편집 UI가 섞이면 멘탈모델이 깨짐.
   // '일반 모드 뷰'에서는 preset.enabled=true여도 일반 모드처럼 편집 UI 노출.
-  const isExpert = _isExpertSessionActive();
   let renderedGroupCount = 0;
+  const quickAdd = document.createElement('div');
+  quickAdd.className = 'ex-picker-quick-add';
+  quickAdd.innerHTML = `
+    <button type="button" class="ex-picker-add primary">+ 종목 추가(선택)</button>
+    <span>${isExpert ? '현재 필터의 헬스장 범위로 저장됩니다.' : '직접 종목을 추가합니다.'}</span>
+  `;
+  quickAdd.querySelector('button')?.addEventListener('click', () => wtOpenExerciseEditor(null, _pickerMuscleFilter || null));
+  container.appendChild(quickAdd);
   allMuscles.forEach(muscle => {
     const list = pool
       .filter(e => _exerciseMajorIds(e).includes(muscle.id))
@@ -821,12 +1027,25 @@ export function _renderPickerList() {
       const alreadyAdded = S.workout.exercises.some(e => e.exerciseId === ex.id);
       const btn = document.createElement('button');
       btn.className = 'ex-picker-item' + (alreadyAdded ? ' already' : '');
+      const editable = _isExerciseEditable(ex);
       if (isExpert) {
-        btn.innerHTML = `<span>${ex.name}${alreadyAdded?' ✓':''}</span>`;
+        btn.innerHTML = `${_renderExercisePickerName(ex, alreadyAdded)}
+          <div class="ex-picker-actions">
+            <span class="ex-picker-edit" data-exid="${ex.id}" title="종목 수정">✏️</span>
+            ${editable ? `<span class="ex-picker-delete" data-exid="${ex.id}" title="종목 삭제">삭제</span>` : ''}
+          </div>`;
+        btn.querySelector('.ex-picker-edit')?.addEventListener('click', e => {
+          e.stopPropagation();
+          wtOpenExerciseEditor(ex.id, null);
+        });
+        btn.querySelector('.ex-picker-delete')?.addEventListener('click', e => {
+          e.stopPropagation();
+          wtOpenExerciseEditor(ex.id, null);
+        });
       } else {
         // C-3: ✕(삭제 연상) → 눈감김 아이콘 + "이 목록에서 숨기기" tooltip.
         //     실제로는 "이 헬스장에선 안 써요" 의미라 파괴적 삭제가 아님.
-        btn.innerHTML = `<span>${ex.name}${alreadyAdded?' ✓':''}</span>
+        btn.innerHTML = `${_renderExercisePickerName(ex, alreadyAdded)}
           <div class="ex-picker-actions">
             <span class="ex-picker-edit" data-exid="${ex.id}" title="종목 수정">✏️</span>
             <span class="ex-picker-hide" data-exid="${ex.id}" title="이 헬스장 목록에서 숨기기" aria-label="이 헬스장 목록에서 숨기기">
@@ -870,7 +1089,6 @@ export function _renderPickerList() {
       }
       group.appendChild(btn);
     });
-    // P1-5: 맞춤 루틴 모드에서는 "신규 종목 추가" 버튼 숨김 (카탈로그 편집 분리)
     if (!isExpert) {
       const addBtn = document.createElement('button');
       addBtn.className = 'ex-picker-add';
@@ -906,6 +1124,7 @@ export async function wtOpenExercisePicker() {
   if (!modal) { console.error('[workout] ex-picker-modal not found'); return; }
   // 피커 열 때마다 부위/검색 필터 초기화 — 다른 gym/풀 전환 후 빈 화면 lock 방지
   _pickerMuscleFilter = null;
+  _pickerGymFilter = _isExpertSessionActive() ? 'usable' : null;
   _pickerSearchQuery = '';
   const searchInput = document.getElementById('ex-picker-search');
   if (searchInput) searchInput.value = '';
@@ -919,7 +1138,7 @@ export function wtOpenExerciseEditor(exId, defaultMuscleId) {
   const editor       = document.getElementById('ex-editor-modal');
   const nameInput    = document.getElementById('ex-editor-name');
   const muscleSelect = document.getElementById('ex-editor-muscle');
-  const deleteBtn    = document.getElementById('tds-btn danger sm');
+  const deleteBtn    = document.getElementById('ex-editor-delete') || document.getElementById('tds-btn danger sm');
   const titleEl      = document.getElementById('ex-editor-title');
   const allMuscles = getMuscleParts();
   let addMuscleWrap = document.getElementById('ex-editor-new-muscle-wrap');
@@ -931,6 +1150,24 @@ export function wtOpenExerciseEditor(exId, defaultMuscleId) {
     addMuscleWrap.innerHTML = '<input class="ex-editor-input" id="ex-editor-new-muscle-name" placeholder="새 부위 이름 입력">';
     muscleSelect.parentElement.appendChild(addMuscleWrap);
   }
+  let gymWrap = document.getElementById('ex-editor-gym-wrap');
+  if (!gymWrap) {
+    gymWrap = document.createElement('div');
+    gymWrap.id = 'ex-editor-gym-wrap';
+    gymWrap.style.marginTop = '8px';
+    gymWrap.innerHTML = `
+      <div class="ex-editor-label">헬스장 범위</div>
+      <select class="ex-editor-select" id="ex-editor-gym-scope"></select>
+    `;
+    muscleSelect.parentElement.parentElement.insertBefore(gymWrap, nameInput.parentElement);
+  }
+  const gymSelect = document.getElementById('ex-editor-gym-scope');
+  const gyms = getGyms?.() || [];
+  const currentGymId = _currentPickerGymId();
+  gymSelect.innerHTML = [
+    `<option value="">공통 · 모든 헬스장</option>`,
+    ...gyms.map(g => `<option value="${_escPicker(g.id)}">${_escPicker(g.name || '이름 없는 헬스장')}</option>`),
+  ].join('');
 
   muscleSelect.innerHTML = allMuscles.map(m =>
     `<option value="${m.id}">${m.name}</option>`).join('') +
@@ -944,13 +1181,17 @@ export function wtOpenExerciseEditor(exId, defaultMuscleId) {
     titleEl.textContent      = '종목 수정';
     nameInput.value          = ex?.name || '';
     muscleSelect.value       = ex?.muscleId || '';
-    deleteBtn.style.display  = 'block';
+    gymSelect.value          = _exerciseGymKey(ex);
+    if (deleteBtn) deleteBtn.style.display = _isExerciseEditable(ex) ? 'block' : 'none';
     editor.dataset.editingId = exId;
   } else {
     titleEl.textContent      = '종목 추가';
     nameInput.value          = '';
     muscleSelect.value       = defaultMuscleId || allMuscles[0]?.id || '';
-    deleteBtn.style.display  = 'none';
+    gymSelect.value          = _pickerGymFilter && !['usable', 'global'].includes(_pickerGymFilter)
+      ? _pickerGymFilter
+      : (currentGymId && _isExpertSessionActive() ? currentGymId : '');
+    if (deleteBtn) deleteBtn.style.display = 'none';
     editor.dataset.editingId = '';
   }
   const customNameInput = document.getElementById('ex-editor-new-muscle-name');
@@ -976,6 +1217,7 @@ export async function wtSaveExerciseFromEditor() {
   const editor   = document.getElementById('ex-editor-modal');
   const name     = document.getElementById('ex-editor-name').value.trim();
   const muscleSelect = document.getElementById('ex-editor-muscle');
+  const gymId = document.getElementById('ex-editor-gym-scope')?.value || null;
   let muscleId = muscleSelect.value;
   if (!name) { window.showToast?.('종목 이름을 입력해주세요', 2500, 'warning'); return; }
   if (muscleId === NEW_MUSCLE_OPTION) {
@@ -985,7 +1227,17 @@ export async function wtSaveExerciseFromEditor() {
     await saveCustomMuscle({ id: muscleId, name: newMuscleName, color: '#8b5cf6' });
   }
   const editingId = editor.dataset.editingId;
-  await saveExercise({ id: editingId || `custom_${Date.now()}`, muscleId, name, order:50 });
+  const existing = editingId ? getExList().find(e => e.id === editingId) : null;
+  await saveExercise({
+    ...(existing || {}),
+    id: editingId || `custom_${Date.now()}`,
+    muscleId,
+    name,
+    order: existing?.order ?? 50,
+    gymId: gymId || null,
+    primaryGymId: gymId || null,
+    gymTags: gymId ? [gymId] : ['*'],
+  });
   editor.classList.remove('open');
   wtOpenExercisePicker();
 }

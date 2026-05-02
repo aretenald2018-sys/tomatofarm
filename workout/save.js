@@ -127,6 +127,9 @@ function _buildMaxMeta(cleanEx) {
   const selectedMajors = Array.isArray(src.selectedMajors)
     ? [...new Set(src.selectedMajors.filter(Boolean))]
     : [];
+  const rejectedRecommendations = Array.isArray(src.rejectedRecommendations)
+    ? [...new Set(src.rejectedRecommendations.filter(Boolean))].slice(-30)
+    : [];
   const exById = new Map((getExList() || []).map(e => [e.id, e]));
   const movById = new Map((MOVEMENTS || []).map(m => [m.id, m]));
   const weakSet = new Set(selectedWeakParts);
@@ -152,6 +155,7 @@ function _buildMaxMeta(cleanEx) {
     sessionType: src.sessionType === 'heavy_volume' ? 'heavy_volume' : 'high_volume',
     selectedMajors,
     selectedWeakParts,
+    rejectedRecommendations,
     weakBlock: {
       durationSec: Math.max(0, Math.floor(Number(src.weakBlock?.durationSec) || 0)),
       activeStartedAt: src.weakBlock?.activeStartedAt || null,

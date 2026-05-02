@@ -56,39 +56,75 @@ export function _renderMealSkippedToggles() {
 // ── 스파크라인 (볼륨 히스토리) ───────────────────────────────────
 import { getVolumeHistory }          from '../data.js';
 
+let _sparklineSeq = 0;
+
+function _smoothSparkPath(coords) {
+  if (coords.length === 0) return '';
+  if (coords.length === 1) return `M ${coords[0].x.toFixed(1)} ${coords[0].y.toFixed(1)}`;
+  return coords.reduce((path, point, i) => {
+    if (i === 0) return `M ${point.x.toFixed(1)} ${point.y.toFixed(1)}`;
+    const prev = coords[i - 1];
+    const cx = (prev.x + point.x) / 2;
+    return `${path} C ${cx.toFixed(1)} ${prev.y.toFixed(1)}, ${cx.toFixed(1)} ${point.y.toFixed(1)}, ${point.x.toFixed(1)} ${point.y.toFixed(1)}`;
+  }, '');
+}
+
+function _compactVolumeDelta(value) {
+  const abs = Math.abs(value);
+  const sign = value > 0 ? '+' : value < 0 ? '-' : '';
+  if (abs >= 1000) return `${sign}${(abs / 1000).toFixed(abs >= 10000 ? 0 : 1)}k`;
+  return `${sign}${Math.round(abs)}`;
+}
+
 export function _buildSparkline(exerciseId, color) {
   const history = getVolumeHistory(exerciseId);
   if (history.length < 2) return '';
-  const vals = history.map(h => h.volume);
+  const recentHistory = history.slice(-6);
+  const vals = recentHistory.map(h => h.volume);
   const min = Math.min(...vals), max = Math.max(...vals);
   const range = max - min || 1;
-  const W = 120, H = 28, pad = 2;
+  const W = 112, H = 30, pad = 3;
   const coords = vals.map((v, i) => ({
     x: pad + (i / (vals.length - 1)) * (W - pad * 2),
     y: pad + (1 - (v - min) / range) * (H - pad * 2),
   }));
-  const points = coords.map(c => `${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(' ');
   const lastPt = coords[coords.length - 1];
   const firstPt = coords[0];
-  const lastVal = vals[vals.length - 1], firstVal = vals[0];
-  const totalDiff = lastVal - firstVal;
+  const splitAt = vals.length >= 6 ? vals.length - 3 : Math.ceil(vals.length / 2);
+  const prevVals = vals.slice(0, splitAt);
+  const recentVals = vals.slice(splitAt);
+  const avg = arr => arr.reduce((sum, v) => sum + v, 0) / Math.max(1, arr.length);
+  const prevAvg = avg(prevVals);
+  const recentAvg = avg(recentVals);
+  const avgDiff = recentAvg - prevAvg;
+  const signalThreshold = Math.max(150, prevAvg * 0.03);
+  const trend = avgDiff > signalThreshold ? 'up' : avgDiff < -signalThreshold ? 'down' : 'flat';
+  const trendLabel = trend === 'up' ? '상승' : trend === 'down' ? '하락' : '유지';
+  const bestVal = Math.max(...vals);
+  const lastVal = vals[vals.length - 1];
+  const peakLabel = bestVal > 0 && lastVal >= bestVal * 0.95 ? '고점권' : '';
   const lineColor = color || 'var(--accent)';
-  const fillId = `spark-fill-${exerciseId.replace(/[^a-z0-9]/gi,'')}`;
-  const fillPoints = `${firstPt.x.toFixed(1)},${H} ${points} ${lastPt.x.toFixed(1)},${H}`;
-  const arrow = totalDiff > 0 ? '↑' : totalDiff < 0 ? '↓' : '→';
-  const arrowColor = totalDiff > 0 ? 'var(--diet-ok)' : totalDiff < 0 ? 'var(--diet-bad)' : 'var(--muted)';
-  const pct = firstVal > 0 ? Math.abs(totalDiff / firstVal * 100).toFixed(0) : 0;
-  return `<div class="ex-sparkline-wrap">
+  const safeId = String(exerciseId).replace(/[^a-z0-9]/gi,'');
+  const fillId = `spark-fill-${safeId}-${vals.length}-${Math.round(lastVal)}-${_sparklineSeq++}`;
+  const linePath = _smoothSparkPath(coords);
+  const fillPath = `${linePath} L ${lastPt.x.toFixed(1)} ${H} L ${firstPt.x.toFixed(1)} ${H} Z`;
+  const trendText = trend === 'flat' ? trendLabel : `${trendLabel} ${_compactVolumeDelta(avgDiff)}`;
+  const detailText = `${vals.length}회 추세${peakLabel ? ` · ${peakLabel}` : ''}`;
+  const title = `최근 ${recentVals.length}회 평균과 이전 ${prevVals.length}회 평균의 볼륨 차이`;
+  return `<div class="ex-sparkline-wrap" title="${title}">
     <svg width="${W}" height="${H}" class="ex-sparkline">
       <defs><linearGradient id="${fillId}" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="${lineColor}" stop-opacity="0.15"/>
+        <stop offset="0%" stop-color="${lineColor}" stop-opacity="0.18"/>
         <stop offset="100%" stop-color="${lineColor}" stop-opacity="0"/>
       </linearGradient></defs>
-      <polygon points="${fillPoints}" fill="url(#${fillId})"/>
-      <polyline points="${points}" fill="none" stroke="${lineColor}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-      <circle cx="${lastPt.x.toFixed(1)}" cy="${lastPt.y.toFixed(1)}" r="2.5" fill="${lineColor}"/>
+      <path d="${fillPath}" fill="url(#${fillId})"/>
+      <path d="${linePath}" fill="none" stroke="${lineColor}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="${lastPt.x.toFixed(1)}" cy="${lastPt.y.toFixed(1)}" r="2.3" fill="${lineColor}"/>
     </svg>
-    <span class="ex-sparkline-diff" style="color:${arrowColor}">${arrow}${pct}%</span>
+    <span class="ex-sparkline-meta">
+      <span class="ex-sparkline-state ${trend}">${trendText}</span>
+      <span class="ex-sparkline-window">${detailText}</span>
+    </span>
   </div>`;
 }
 

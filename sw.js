@@ -3,7 +3,7 @@
 
 // 캐시 버전: 타임스탬프 기반 자동 생성 — 파일 수정 시 SW 자동 업데이트
 // (SW 파일 내용이 1바이트라도 바뀌면 브라우저가 새 SW로 인식)
-const CACHE_VERSION = 'tomatofarm-v20260501-drop-set-max-fair-boosts';
+const CACHE_VERSION = 'tomatofarm-v20260502-v4-max-finish-insight';
 const RUNTIME_CACHE = 'dashboard3-runtime';
 const STATIC_ASSETS = [
   './',
@@ -61,6 +61,7 @@ const STATIC_ASSETS = [
   './workout/expert/onboarding.js',
   './workout/expert/migrate-gym-v1.js',
   './workout/expert/max.js',
+  './workout/expert/max-cycle.js',
   './render-cooking.js',
   './render-stats.js',
   './render-admin.js',
@@ -131,6 +132,7 @@ const STATIC_ASSETS = [
   './expert-mode.css',
   './workout/expert.js',
   './data/data-workout-equipment.js',
+  './data/data-equipment-pool.js',
   './modals/expert-onboarding-modal.js',
   './modals/gym-equipment-modal.js',
   './modals/routine-suggest-modal.js',

@@ -10,7 +10,7 @@ export const MODAL_HTML = `
 <button class="tds-btn cancel-btn ghost md" onclick="wtCloseExerciseEditor()">취소</button>
 <button class="tds-btn fill md"   onclick="wtSaveExerciseFromEditor()">저장</button>
 </div>
-<button class="tds-btn danger sm" id="tds-btn danger sm" onclick="wtDeleteExerciseFromEditor()">🗑️ 종목 삭제</button>
+<button class="tds-btn danger sm" id="ex-editor-delete" onclick="wtDeleteExerciseFromEditor()">🗑️ 종목 삭제</button>
 </div>
 </div>
 </div>
