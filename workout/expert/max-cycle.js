@@ -113,6 +113,13 @@ function _shortDate(key) {
   return `${d.getMonth() + 1}월 ${d.getDate()}일 ${day}`;
 }
 
+function _addDaysKey(key, days) {
+  const d = new Date(`${key}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return key || '';
+  d.setDate(d.getDate() + Number(days || 0));
+  return _keyFromDate(d);
+}
+
 function _displayKg(cycle, todayKey, benchmark, track = 'M') {
   const override = cycle?.todayOverrides?.[todayKey]?.[`${benchmark.id}:${track}`]
     || cycle?.todayOverrides?.[todayKey]?.[benchmark.id];
@@ -171,14 +178,73 @@ function predictBenchmarkProgression(benchmark, cycle, todayKey, track = 'M') {
   };
 }
 
-function _actuals(cache = {}, exList = [], movementId, todayKey) {
-  const ids = new Set((exList || []).filter(e => e?.movementId === movementId).map(e => e.id));
+function _benchmarkMovementId(item) {
+  if (item && Object.prototype.hasOwnProperty.call(item, 'exerciseId')) return item?.movementId || null;
+  return item?.movementId || item?.id || null;
+}
+
+function _benchmarkExerciseId(item) {
+  if (item && Object.prototype.hasOwnProperty.call(item, 'exerciseId')) return item?.exerciseId || null;
+  return item?.exerciseId || (item?.movementId ? item?.id : null);
+}
+
+function _benchmarkPrimary(item) {
+  return item?.primary || item?.primaryMajor || null;
+}
+
+function _benchmarkOptionValue(item) {
+  const exerciseId = _benchmarkExerciseId(item);
+  if (exerciseId) return exerciseId;
+  const movementId = _benchmarkMovementId(item);
+  return movementId ? `movement:${movementId}` : '';
+}
+
+function _benchmarkOptionGroupKey(item) {
+  if (item?.benchmarkOptionKey) return item.benchmarkOptionKey;
+  const movementId = _benchmarkMovementId(item);
+  const category = item?.equipment_category || '';
+  const tags = Array.isArray(item?.gymTags) ? item.gymTags : [];
+  const shared = ['barbell', 'dumbbell', 'bodyweight'].includes(category) || tags.includes('*');
+  if (movementId && shared) return `shared:${movementId}`;
+  const gymKey = item?.gymId || item?.primaryGymId || tags.find(tag => tag && tag !== '*') || (shared ? '*' : 'ungrouped');
+  if (movementId) return `gym:${gymKey}:${movementId}`;
+  const nameKey = String(item?.nameKo || item?.name || item?.id || '').trim().toLowerCase();
+  return `custom:${gymKey}:${nameKey}`;
+}
+
+function _benchmarkOptionRank(item) {
+  const sourceScore = ({ exact: 3, legacy: 2, empty: 1 })[item?.benchmarkDefaults?.source] || 0;
+  const sessions = Number(item?.benchmarkDefaults?.sessions) || 0;
+  return sourceScore * 1000 + sessions * 20 + (_benchmarkExerciseId(item) ? 1 : 0);
+}
+
+function _dedupeBenchmarkOptions(items = []) {
+  const grouped = new Map();
+  for (const item of items || []) {
+    const key = _benchmarkOptionGroupKey(item);
+    const current = grouped.get(key);
+    if (!current || _benchmarkOptionRank(item) > _benchmarkOptionRank(current)) grouped.set(key, item);
+  }
+  return [...grouped.values()];
+}
+
+function _actuals(cache = {}, exList = [], benchmarkOrMovementId, todayKey, maybeExerciseId = null) {
+  const benchmark = typeof benchmarkOrMovementId === 'object'
+    ? benchmarkOrMovementId
+    : { movementId: benchmarkOrMovementId, exerciseId: maybeExerciseId };
+  const movementId = benchmark?.movementId || null;
+  const exerciseId = benchmark?.exerciseId || null;
+  const ids = new Set();
+  if (exerciseId) ids.add(exerciseId);
+  else (exList || []).filter(e => e?.movementId === movementId).forEach(e => ids.add(e.id));
   const points = [];
   for (const [date, day] of Object.entries(cache || {})) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
     if (todayKey && date > todayKey) continue;
     for (const entry of day?.exercises || []) {
-      const match = entry.movementId === movementId || ids.has(entry.exerciseId);
+      const match = exerciseId
+        ? entry.exerciseId === exerciseId
+        : (entry.movementId === movementId || ids.has(entry.exerciseId));
       if (!match) continue;
       let best = null;
       for (const set of entry.sets || []) {
@@ -194,6 +260,38 @@ function _actuals(cache = {}, exList = [], movementId, todayKey) {
     }
   }
   return points.sort((a, b) => a.dateKey.localeCompare(b.dateKey));
+}
+
+function _weekActual(actuals = [], weekStartKey, todayKey = null) {
+  const weekEndKey = _addDaysKey(weekStartKey, 7);
+  return (actuals || [])
+    .filter(p => p?.dateKey >= weekStartKey && p.dateKey < weekEndKey && (!todayKey || p.dateKey <= todayKey))
+    .sort((a, b) => (Number(b.e1rm) || 0) - (Number(a.e1rm) || 0) || (Number(b.kg) || 0) - (Number(a.kg) || 0))[0] || null;
+}
+
+function _trackWeekStatus(benchmark, row, planned, track, snapshot) {
+  const todayKey = snapshot?.todayKey || null;
+  const actual = _weekActual(benchmark?.actuals || [], row?.dateKey, todayKey);
+  const plannedKg = Number(planned?.plannedKg) || 0;
+  const targetReps = Number(planned?.targetReps) || Number(planned?.startReps) || _targetRepsForTrack(track);
+  const isFuture = todayKey && row?.dateKey > todayKey;
+  if (isFuture) return { state: 'future', label: '예정', actual: null };
+  if (!actual) {
+    if (row?.week < snapshot?.weekIndex) return { state: 'missed', label: '미수행', actual: null };
+    return { state: 'challenge', label: '도전 전', actual: null };
+  }
+  const kg = Number(actual.kg) || 0;
+  const reps = Number(actual.reps) || 0;
+  const kgOk = kg >= plannedKg;
+  const repsOk = reps >= targetReps;
+  if (kgOk && repsOk) {
+    const over = kg > plannedKg || reps > targetReps;
+    return { state: over ? 'over' : 'done', label: `${over ? '초과' : '달성'} ${kg}×${reps}`, actual };
+  }
+  const miss = kg < plannedKg
+    ? `${Math.round((kg - plannedKg) * 10) / 10}kg`
+    : `${reps - targetReps}회`;
+  return { state: 'behind', label: `${miss} 미달`, actual };
 }
 
 function _schedule(cycle) {
@@ -212,6 +310,7 @@ function _schedule(cycle) {
       cells: benchmarks.map(b => ({
         benchmarkId: b.id,
         movementId: b.movementId,
+        exerciseId: b.exerciseId || null,
         plannedByTrack: {
           M: predictBenchmarkProgression(b, normalized, key, 'M'),
           H: predictBenchmarkProgression(b, normalized, key, 'H'),
@@ -237,13 +336,16 @@ function buildMaxCycleSnapshot({ cycle = null, cache = {}, exList = [], todayKey
       M: predictBenchmarkProgression(b, normalized, todayKey, 'M'),
       H: predictBenchmarkProgression(b, normalized, todayKey, 'H'),
     };
-    const actuals = _actuals(cache, exList, b.movementId, todayKey);
+    const actuals = _actuals(cache, exList, b, todayKey);
+    const hasRegisteredExercise = b.exerciseId
+      ? !!(exList || []).some(ex => ex?.id === b.exerciseId)
+      : !!(exList || []).some(ex => ex?.movementId === b.movementId);
     const latest = actuals[actuals.length - 1] || null;
     const delta = latest ? Math.round((latest.kg - planned.plannedKg) * 10) / 10 : null;
     const actualPct = latest && planned.targetKg > planned.startKg
       ? Math.max(0, Math.min(100, Math.round(((latest.kg - planned.startKg) / (planned.targetKg - planned.startKg)) * 100)))
       : null;
-    return { ...b, activeTrack, planned, plannedByTrack, actuals, latest, delta, actualPct, onPlan: delta === null ? null : delta >= 0 };
+    return { ...b, activeTrack, planned, plannedByTrack, actuals, latest, delta, actualPct, onPlan: delta === null ? null : delta >= 0, hasRegisteredExercise };
   });
   const actualProgressVals = benchmarks
     .map(b => b.actualPct)
@@ -265,6 +367,7 @@ function buildMaxCycleSnapshot({ cycle = null, cache = {}, exList = [], todayKey
     schedule: _schedule(cycle),
     completed: benchmarks.filter(b => b.latest && b.latest.kg >= b.planned.plannedKg).length,
     total: benchmarks.length,
+    todayKey,
   };
 }
 
@@ -278,9 +381,9 @@ function detectPlateau(points = [], { weeks = 2 } = {}) {
 
 function _pickMovement(major, movements) {
   const preferred = DEFAULT_BENCHMARK_BY_MAJOR[major];
-  return (movements || []).find(m => m.id === preferred)
-    || (movements || []).find(m => m.primary === major && ['barbell', 'dumbbell', 'machine', 'cable', 'smith'].includes(m.equipment_category))
-    || (movements || []).find(m => m.primary === major)
+  return (movements || []).find(m => _benchmarkMovementId(m) === preferred)
+    || (movements || []).find(m => _benchmarkPrimary(m) === major && ['barbell', 'dumbbell', 'machine', 'cable', 'smith'].includes(m.equipment_category))
+    || (movements || []).find(m => _benchmarkPrimary(m) === major)
     || null;
 }
 
@@ -297,10 +400,14 @@ export function createDefaultMaxCycle({
   const startDate = _weekStartKey(todayKey || _keyFromDate(new Date()));
   const benchmarks = targetMajors.map(major => {
     const mov = _pickMovement(major, movements);
-    const startKg = major === 'lower' ? 100 : (major === 'back' ? 60 : (major === 'shoulder' ? 25 : 40));
-    const targetKg = startKg + _kgStepForMajor(major);
-    const step = Number(mov?.stepKg) > 0 ? Number(mov.stepKg) : 2.5;
-    const tracks = {
+    const movementId = _benchmarkMovementId(mov);
+    const exerciseId = _benchmarkExerciseId(mov);
+    const defaults = mov?.benchmarkDefaults && typeof mov.benchmarkDefaults === 'object' ? mov.benchmarkDefaults : null;
+    const fallbackStart = major === 'lower' ? 100 : (major === 'back' ? 60 : (major === 'shoulder' ? 25 : 40));
+    const step = Number(defaults?.incrementKg) > 0 ? Number(defaults.incrementKg) : (Number(mov?.stepKg) > 0 ? Number(mov.stepKg) : 2.5);
+    const startKg = Number(defaults?.startKg) > 0 ? Number(defaults.startKg) : fallbackStart;
+    const targetKg = Number(defaults?.targetKg) > 0 ? Number(defaults.targetKg) : startKg + _kgStepForMajor(major);
+    const defaultTracks = {
       M: { startKg, targetKg, incrementKg: step, startReps: 12, targetReps: 12, enabled: true },
       H: {
         startKg: _roundKg(startKg + step * 2, step),
@@ -311,11 +418,20 @@ export function createDefaultMaxCycle({
         enabled: true,
       },
     };
+    const tracks = defaults?.tracks && !Array.isArray(defaults.tracks)
+      ? {
+        M: { ...defaultTracks.M, ...(defaults.tracks.M || {}) },
+        H: { ...defaultTracks.H, ...(defaults.tracks.H || {}) },
+      }
+      : defaultTracks;
     return {
-      id: `bm_${major}_${mov?.id || 'custom'}`,
-      movementId: mov?.id || null,
-      label: mov?.nameKo || MAJOR_LABEL[major] || major,
-      primaryMajor: major,
+      id: `bm_${major}_${exerciseId || movementId || 'custom'}`,
+      exerciseId,
+      movementId,
+      label: mov?.nameKo || mov?.name || MAJOR_LABEL[major] || major,
+      primaryMajor: _benchmarkPrimary(mov) || major,
+      benchmarkSource: defaults?.source || null,
+      benchmarkSourceLabel: defaults?.sourceLabel || null,
       tracks,
       startKg,
       startReps: 12,
@@ -323,7 +439,7 @@ export function createDefaultMaxCycle({
       targetReps: 12,
       incrementKg: step,
     };
-  }).filter(b => b.movementId);
+  }).filter(b => b.exerciseId || b.movementId);
   return {
     id: `max_cycle_${startDate.replaceAll('-', '')}`,
     status: 'draft',
@@ -356,11 +472,12 @@ function _renderV4Lift(benchmark, snapshot, cycle, index = 0) {
   const paceText = benchmark.onPlan === null ? '실측 없음' : (benchmark.onPlan ? '목표 페이스' : `${benchmark.delta}kg 뒤`);
   const expanded = changed || benchmark.onPlan === false;
   return `
-    <article class="wt-v4-lift${changed ? ' is-changed' : ''}${expanded ? ' is-expanded' : ''}" data-benchmark-id="${_esc(benchmark.id)}">
+    <article class="wt-v4-lift${changed ? ' is-changed' : ''}${expanded ? ' is-expanded' : ''}${benchmark.hasRegisteredExercise === false ? ' is-missing-exercise' : ''}" data-benchmark-id="${_esc(benchmark.id)}">
       <div class="wt-v4-lift-top">
         <div>
           <div class="wt-v4-lift-part">${_esc(MAJOR_LABEL[benchmark.primaryMajor] || benchmark.primaryMajor)}</div>
           <div class="wt-v4-lift-name">${_esc(benchmark.label)} <em>${track === 'H' ? '강도' : '볼륨'}</em></div>
+          ${benchmark.hasRegisteredExercise === false ? '<div class="wt-v4-lift-warning">등록 종목에서 삭제됨 · 벤치마크를 바꾸세요</div>' : ''}
         </div>
         <button type="button" class="wt-v4-expand" data-action="toggle-max-lift" aria-label="상세 보기">${expanded ? '접기' : '상세'}</button>
       </div>
@@ -418,16 +535,18 @@ function _renderMatrix(snapshot) {
       ${rows.map(row => `
         <div class="wt-max-cycle-matrix-row${row.week === snapshot.weekIndex ? ' is-today' : ''}" role="row">
           <div>W${row.week}<small>볼륨+강도</small></div>
-          ${bms.map(b => {
-            const cell = row.cells.find(c => c.benchmarkId === b.id);
-            const volume = cell?.plannedByTrack?.M || predictBenchmarkProgression(b, snapshot, row.dateKey, 'M');
-            const intensity = cell?.plannedByTrack?.H || predictBenchmarkProgression(b, snapshot, row.dateKey, 'H');
-            return `
-              <div class="wt-max-cycle-dual-cell">
-                <span class="track-m"><em>볼륨</em><b>${_esc(volume.plannedKg)}</b><small>${_esc(volume.targetReps || _targetRepsForTrack('M'))}회</small></span>
-                <span class="track-h"><em>강도</em><b>${_esc(intensity.plannedKg)}</b><small>${_esc(intensity.targetReps || _targetRepsForTrack('H'))}회</small></span>
-              </div>
-            `;
+           ${bms.map(b => {
+             const cell = row.cells.find(c => c.benchmarkId === b.id);
+             const volume = cell?.plannedByTrack?.M || predictBenchmarkProgression(b, snapshot, row.dateKey, 'M');
+             const intensity = cell?.plannedByTrack?.H || predictBenchmarkProgression(b, snapshot, row.dateKey, 'H');
+             const volumeStatus = _trackWeekStatus(b, row, volume, 'M', snapshot);
+             const intensityStatus = _trackWeekStatus(b, row, intensity, 'H', snapshot);
+             return `
+               <div class="wt-max-cycle-dual-cell">
+                 <span class="track-m is-${_esc(volumeStatus.state)}"><em>볼륨</em><b>${_esc(volume.plannedKg)}</b><small>${_esc(volume.targetReps || _targetRepsForTrack('M'))}회</small><i>${_esc(volumeStatus.label)}</i></span>
+                 <span class="track-h is-${_esc(intensityStatus.state)}"><em>강도</em><b>${_esc(intensity.plannedKg)}</b><small>${_esc(intensity.targetReps || _targetRepsForTrack('H'))}회</small><i>${_esc(intensityStatus.label)}</i></span>
+               </div>
+             `;
           }).join('')}
         </div>
       `).join('')}
@@ -485,6 +604,7 @@ export function renderMaxCycleDashboard({ cycle, cache, exList, todayKey, isDraf
       <div class="wt-v4-lift-list">
         ${(snapshot.benchmarks || []).slice(0, 5).map((b, idx) => _renderV4Lift(b, snapshot, cycle, idx)).join('')}
       </div>
+      <button type="button" class="wt-v4-benchmark-edit-entry" data-action="open-max-plan-editor">벤치마크 종목 수정</button>
       ${recommendationHtml || ''}
       <div class="wt-v4-last-ten">
         <div class="wt-v4-last-dot"></div>
@@ -533,6 +653,14 @@ export function renderMaxCycleBoard({ cycle, cache, exList, todayKey } = {}) {
 export function renderMaxPlanEditor({ cycle, gyms = [], currentGymId = null, movements = [] } = {}) {
   const gym = gyms.find(g => g.id === currentGymId) || null;
   const benchmarks = Array.isArray(cycle?.benchmarks) ? normalizeMaxCycleTracks(cycle).benchmarks : [];
+  const exerciseOptions = _dedupeBenchmarkOptions(Array.isArray(movements) ? movements : []);
+  const selectedOptionValue = (b) => {
+    const exact = exerciseOptions.find(m => _benchmarkOptionValue(m) === b.exerciseId);
+    if (exact) return _benchmarkOptionValue(exact);
+    const sameMovement = exerciseOptions.find(m => _benchmarkMovementId(m) === b.movementId);
+    if (sameMovement) return _benchmarkOptionValue(sameMovement);
+    return b.exerciseId || (b.movementId ? `movement:${b.movementId}` : '');
+  };
   const weekOptions = [4, 6, 8].map(weeks => `
     <button type="button" class="${Number(cycle?.weeks) === weeks ? 'on' : ''}" data-plan-weeks="${weeks}">${weeks}주</button>
   `).join('');
@@ -545,7 +673,7 @@ export function renderMaxPlanEditor({ cycle, gyms = [], currentGymId = null, mov
       <div class="wt-v4-modal-head">
         <button type="button" class="wt-v4-icon" data-action="close-max-sheet">‹</button>
         <strong>계획 조정</strong>
-        <button type="button" class="wt-v4-save" data-action="save-max-plan-editor" onclick="saveMaxPlanEditorSheet()">저장</button>
+        <button type="button" class="wt-v4-save" data-action="save-max-plan-editor">저장</button>
       </div>
       <section class="wt-v4-plan-card">
         <h4>사이클</h4>
@@ -555,15 +683,37 @@ export function renderMaxPlanEditor({ cycle, gyms = [], currentGymId = null, mov
       </section>
       <section class="wt-v4-plan-section">
         <h4>벤치마크 종목</h4>
+        <p>운동추가 목록에 등록된 실제 종목을 기준으로 벤치마크를 연결합니다.</p>
         ${benchmarks.map(b => `
           <div class="wt-v4-bench-row wt-v4-bench-edit" data-benchmark-id="${_esc(b.id)}">
             <label>
               <span>${_esc(MAJOR_LABEL[b.primaryMajor] || b.primaryMajor)}</span>
-              <select data-bench-field="movementId">
-                ${movements
-                  .map(m => `<option value="${_esc(m.id)}" ${m.id === b.movementId ? 'selected' : ''}>${_esc(m.optionLabel || `${MAJOR_LABEL[m.primary] || m.primary || '기타'} · ${m.nameKo || m.id} · ${m.equipment_category || '공통'}`)}</option>`)
-                  .join('')}
+              <select data-bench-field="exerciseId">
+                ${(() => {
+                  const selectedValue = selectedOptionValue(b);
+                  const hasSelected = exerciseOptions.some(m => _benchmarkOptionValue(m) === selectedValue);
+                  const options = hasSelected || !selectedValue
+                    ? exerciseOptions
+                    : [{
+                      id: selectedValue,
+                      exerciseId: selectedValue && !String(selectedValue).startsWith('movement:') ? selectedValue : null,
+                      movementId: b.movementId || null,
+                      primary: b.primaryMajor || null,
+                      optionLabel: `등록 종목 없음 · ${b.label || b.movementId || selectedValue}`,
+                    }, ...exerciseOptions];
+                  return options
+                    .map(m => {
+                      const value = _benchmarkOptionValue(m);
+                      return `<option value="${_esc(value)}" ${value === selectedValue ? 'selected' : ''}>${_esc(m.optionLabel || `${MAJOR_LABEL[m.primary] || m.primary || '기타'} · ${m.nameKo || m.name || m.id} · ${m.equipment_category || '공통'}`)}</option>`;
+                    })
+                    .join('');
+                })()}
               </select>
+              ${(() => {
+                const selectedValue = selectedOptionValue(b);
+                const hasSelected = exerciseOptions.some(m => _benchmarkOptionValue(m) === selectedValue);
+                return hasSelected ? '' : '<small class="wt-v4-bench-missing">이 벤치마크는 현재 운동추가 목록에 없습니다. 다른 종목으로 바꾸거나 삭제하세요.</small>';
+              })()}
             </label>
             <div class="wt-v4-track-edit">
               ${['M', 'H'].map(track => {
@@ -580,7 +730,7 @@ export function renderMaxPlanEditor({ cycle, gyms = [], currentGymId = null, mov
               }).join('')}
             </div>
             <div class="wt-v4-bench-actions">
-              <small>볼륨/강도 트랙을 따로 계산합니다.</small>
+              <small data-bench-default-note>${_esc(b.benchmarkSourceLabel || '볼륨/강도 트랙을 따로 계산합니다.')}</small>
               <button type="button" data-action="delete-max-benchmark" data-benchmark-id="${_esc(b.id)}">삭제</button>
             </div>
           </div>
@@ -598,8 +748,8 @@ export function renderMaxPlanEditor({ cycle, gyms = [], currentGymId = null, mov
           <button type="button" data-action="create-max-gym">추가</button>
         </div>
         <p>현재: ${_esc(gym?.name || '헬스장 미선택')}</p>
-        <button type="button" data-action="open-equipment-pool" onclick="event.stopPropagation(); openMaxEquipmentPoolModal()">헬스장 / 기구 관리</button>
-        <button type="button" data-action="open-max-data-cleanse" onclick="event.stopPropagation(); openMaxDataCleanseModal()">데이터 클렌징</button>
+        <button type="button" data-action="open-equipment-pool">헬스장 / 기구 관리</button>
+        <button type="button" data-action="open-max-data-cleanse">데이터 클렌징</button>
       </section>
       <details class="wt-v4-advanced">
         <summary>고급 설정 <span>⌄</span></summary>

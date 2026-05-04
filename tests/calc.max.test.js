@@ -14,6 +14,12 @@ import {
   buildMaxCycleSchedule,
   detectPlateau,
 } from '../calc.js';
+import {
+  createDefaultMaxCycle,
+  buildRenderedMaxCycleSnapshot,
+  renderMaxPlanEditor,
+  renderMaxCycleBoard,
+} from '../workout/expert/max-cycle.js';
 
 // 테스트용 MOVEMENTS 미니 카탈로그 — config.js 실제 데이터의 부분집합
 const MOVEMENTS_FIXTURE = [
@@ -273,6 +279,182 @@ test('buildMaxCycleSnapshot · 6주 성장판의 계획/실측 비교', () => {
   assert.equal(snap.benchmarks[0].planned.plannedKg, 77.5);
   assert.equal(snap.benchmarks[0].latest.kg, 77.5);
   assert.equal(snap.benchmarks[0].onPlan, true);
+});
+
+test('createDefaultMaxCycle · 벤치마크는 운동추가의 실제 exerciseId를 상속한다', () => {
+  const cycle = createDefaultMaxCycle({
+    todayKey: '2026-05-04',
+    majors: ['chest'],
+    movements: [{
+      id: 'ex_moon_bench',
+      exerciseId: 'ex_moon_bench',
+      movementId: 'barbell_bench',
+      nameKo: '문정 바벨 벤치프레스',
+      primary: 'chest',
+      equipment_category: 'barbell',
+      stepKg: 2.5,
+      benchmarkDefaults: {
+        startKg: 82.5,
+        targetKg: 85,
+        incrementKg: 2.5,
+        source: 'exact',
+        sourceLabel: '최근 3회 기록 기반',
+        tracks: {
+          M: { startKg: 82.5, targetKg: 85, incrementKg: 2.5, startReps: 12, targetReps: 12, enabled: true },
+          H: { startKg: 92.5, targetKg: 95, incrementKg: 2.5, startReps: 8, targetReps: 6, enabled: true },
+        },
+      },
+    }],
+    allowFallback: false,
+  });
+  assert.equal(cycle.benchmarks[0].exerciseId, 'ex_moon_bench');
+  assert.equal(cycle.benchmarks[0].movementId, 'barbell_bench');
+  assert.equal(cycle.benchmarks[0].label, '문정 바벨 벤치프레스');
+  assert.equal(cycle.benchmarks[0].tracks.M.startKg, 82.5);
+  assert.equal(cycle.benchmarks[0].tracks.H.startKg, 92.5);
+  assert.equal(cycle.benchmarks[0].benchmarkSource, 'exact');
+});
+
+test('buildRenderedMaxCycleSnapshot · exerciseId가 있으면 같은 movement의 다른 기구 기록을 섞지 않는다', () => {
+  const cycle = {
+    id: 'cycle_exact',
+    status: 'active',
+    framework: 'dual_track_progression_v2',
+    startDate: '2026-05-04',
+    weeks: 6,
+    benchmarks: [{
+      id: 'bm_chest_ex_moon_bench',
+      exerciseId: 'ex_moon_bench',
+      movementId: 'barbell_bench',
+      label: '문정 바벨 벤치프레스',
+      primaryMajor: 'chest',
+      startKg: 75,
+      targetKg: 80,
+      incrementKg: 2.5,
+    }],
+  };
+  const exList = [
+    { id: 'ex_moon_bench', movementId: 'barbell_bench', name: '문정 바벨 벤치프레스' },
+    { id: 'ex_other_bench', movementId: 'barbell_bench', name: '타 헬스장 벤치프레스' },
+  ];
+  const cache = {
+    '2026-05-10': { exercises: [{ exerciseId: 'ex_other_bench', sets: [{ kg: 120, reps: 5, done: true }] }] },
+    '2026-05-11': { exercises: [{ exerciseId: 'ex_moon_bench', sets: [{ kg: 77.5, reps: 12, done: true }] }] },
+  };
+  const snap = buildRenderedMaxCycleSnapshot({ cycle, cache, exList, todayKey: '2026-05-18' });
+  assert.equal(snap.benchmarks[0].latest.kg, 77.5);
+  assert.equal(snap.benchmarks[0].hasRegisteredExercise, true);
+});
+
+test('renderMaxPlanEditor · legacy movementId 벤치마크도 실제 운동추가 exerciseId 선택으로 보여준다', () => {
+  const html = renderMaxPlanEditor({
+    cycle: {
+      weeks: 6,
+      benchmarks: [{
+        id: 'bm_chest_legacy',
+        movementId: 'barbell_bench',
+        label: '바벨 벤치프레스',
+        primaryMajor: 'chest',
+        startKg: 75,
+        targetKg: 80,
+        incrementKg: 2.5,
+      }],
+    },
+    movements: [{
+      id: 'ex_moon_bench',
+      exerciseId: 'ex_moon_bench',
+      movementId: 'barbell_bench',
+      nameKo: '문정 바벨 벤치프레스',
+      primary: 'chest',
+      equipment_category: 'barbell',
+      optionLabel: '가슴 · 문정 바벨 벤치프레스 · 공통',
+    }],
+  });
+  assert.match(html, /data-bench-field="exerciseId"/);
+  assert.match(html, /value="ex_moon_bench" selected/);
+  assert.doesNotMatch(html, /data-bench-field="movementId"/);
+  assert.doesNotMatch(html, /onclick=/, '계획 조정 버튼은 lazy module 전역 onclick에 의존하지 않는다');
+});
+
+test('renderMaxPlanEditor · 공통 모듈 중복 후보는 하나로 접고 기록이 더 있는 종목을 선택한다', () => {
+  const html = renderMaxPlanEditor({
+    cycle: {
+      weeks: 6,
+      benchmarks: [{
+        id: 'bm_chest_stale_db',
+        exerciseId: 'ex_old_db_bench',
+        movementId: 'dumbbell_bench',
+        label: '덤벨 벤치프레스',
+        primaryMajor: 'chest',
+        startKg: 30,
+        targetKg: 32.5,
+        incrementKg: 2.5,
+      }],
+    },
+    movements: [
+      {
+        id: 'ex_old_db_bench',
+        exerciseId: 'ex_old_db_bench',
+        movementId: 'dumbbell_bench',
+        nameKo: '덤벨 벤치프레스',
+        primary: 'chest',
+        equipment_category: 'dumbbell',
+        gymTags: ['*'],
+        benchmarkDefaults: { source: 'exact', sessions: 1 },
+        optionLabel: '가슴 · 덤벨 벤치프레스 · 공통',
+      },
+      {
+        id: 'ex_good_db_bench',
+        exerciseId: 'ex_good_db_bench',
+        movementId: 'dumbbell_bench',
+        nameKo: '덤벨 벤치프레스',
+        primary: 'chest',
+        equipment_category: 'dumbbell',
+        gymTags: ['*'],
+        benchmarkDefaults: { source: 'exact', sessions: 4 },
+        optionLabel: '가슴 · 덤벨 벤치프레스 · 공통',
+      },
+    ],
+  });
+  assert.doesNotMatch(html, /value="ex_old_db_bench"/);
+  assert.match(html, /value="ex_good_db_bench" selected/);
+});
+
+test('renderMaxCycleBoard · 주차표에 달성/미달/도전 상태를 표시한다', () => {
+  const cycle = {
+    id: 'cycle_week_state',
+    status: 'active',
+    framework: 'dual_track_progression_v2',
+    startDate: '2026-05-04',
+    weeks: 2,
+    benchmarks: [{
+      id: 'bm_chest_barbell_bench',
+      exerciseId: 'ex_bench',
+      movementId: 'barbell_bench',
+      label: '바벨 벤치프레스',
+      primaryMajor: 'chest',
+      startKg: 75,
+      targetKg: 77.5,
+      incrementKg: 2.5,
+      tracks: {
+        M: { startKg: 75, targetKg: 77.5, incrementKg: 2.5, startReps: 12, targetReps: 12, enabled: true },
+        H: { startKg: 80, targetKg: 82.5, incrementKg: 2.5, startReps: 8, targetReps: 6, enabled: true },
+      },
+    }],
+  };
+  const html = renderMaxCycleBoard({
+    cycle,
+    exList: [{ id: 'ex_bench', movementId: 'barbell_bench' }],
+    todayKey: '2026-05-11',
+    cache: {
+      '2026-05-04': {
+        exercises: [{ exerciseId: 'ex_bench', sets: [{ kg: 77.5, reps: 12, done: true, setType: 'main' }] }],
+      },
+    },
+  });
+  assert.match(html, /is-over|is-done/);
+  assert.match(html, /달성|초과/);
+  assert.match(html, /도전 전/);
 });
 
 test('buildMaxCycleSchedule · 6주 동안 볼륨/강도 트랙 교차', () => {

@@ -489,7 +489,13 @@ function _storedPrescription(prescription) {
     evidence: prescription.evidence || [],
     lastDateKey: prescription.lastDateKey,
     lastSet: prescription.lastSet,
+    exerciseId: prescription.exerciseId || null,
+    movementId: prescription.movementId || null,
+    benchmarkId: prescription.benchmarkId || null,
+    benchmarkTrack: prescription.benchmarkTrack || null,
     weakTarget: prescription.weakTarget,
+    sets: prescription.sets || null,
+    trackAlternatives: prescription.trackAlternatives || null,
   };
 }
 
@@ -510,37 +516,78 @@ function _benchmarkPrescription(prescription, movement, { weakTarget = false } =
     exList: getExList(),
     todayKey,
   });
-  const benchmark = snapshot?.benchmarks?.find(b => b.movementId === movement.id);
+  const requestedExerciseId = prescription?.exerciseId || null;
+  const benchmark = snapshot?.benchmarks?.find(b => requestedExerciseId && b.exerciseId === requestedExerciseId)
+    || snapshot?.benchmarks?.find(b => b.movementId === movement.id);
   if (!benchmark) return null;
   const track = benchmark.activeTrack === 'H' || benchmark.activeTrack === 'M'
     ? benchmark.activeTrack
     : (snapshot.track === 'H' ? 'H' : 'M');
-  const planned = benchmark.plannedByTrack?.[track] || benchmark.planned;
-  const trackSpec = benchmark.tracks?.[track] || {};
-  const kg = _todayOverrideKg(cycle, benchmark, track, todayKey) || Number(planned?.plannedKg) || Number(prescription?.startKg) || 0;
-  const repsA = Number(trackSpec.startReps) || Number(planned?.startReps) || (track === 'H' ? 8 : 12);
-  const repsB = Number(trackSpec.targetReps) || Number(planned?.targetReps) || (track === 'H' ? 6 : 12);
-  const repsLow = Math.min(repsA, repsB);
-  const repsHigh = Math.max(repsA, repsB);
-  const targetReps = Number(trackSpec.targetReps) || repsB || repsHigh;
   const targetSets = Number(prescription?.targetSets) || (weakTarget ? 5 : 4);
+  const plan = _getMaxPlan();
+  const makeTrack = (t) => {
+    const planned = benchmark.plannedByTrack?.[t] || benchmark.planned;
+    const trackSpec = benchmark.tracks?.[t] || {};
+    const kg = _todayOverrideKg(cycle, benchmark, t, todayKey) || Number(planned?.plannedKg) || Number(prescription?.startKg) || 0;
+    const isLowerWendler = t === 'H' && (benchmark.primaryMajor === 'lower' || benchmark.primaryMajor === 'glute');
+    if (isLowerWendler) {
+      const liftKey = MAX_MAIN_LIFTS[movement?.id] || (benchmark.primaryMajor === 'lower' ? 'squat' : null);
+      const tm = Number(plan.lifts?.[liftKey]?.tm) || Number(benchmark.latest?.e1rm) * 0.9 || Number(trackSpec.targetKg) || Number(planned?.targetKg) || kg;
+      const sets = _wendlerWeekSets(tm, snapshot.weekIndex).map(s => ({ ...s, rpe: 8 }));
+      return {
+        label: `W${snapshot.weekIndex} 하체 5/3/1 · ${sets.map((s, i) => `${s.kg}kg x ${s.reps}${i === sets.length - 1 && snapshot.weekIndex !== 4 ? '+' : ''}`).join(' / ')}`,
+        targetSets: sets.length,
+        repsLow: Math.min(...sets.map(s => s.reps)),
+        repsHigh: Math.max(...sets.map(s => s.reps)),
+        targetRpe: 8,
+        startKg: sets[0]?.kg || kg,
+        action: 'load',
+        actionLabel: '강도',
+        sets,
+        track: t,
+        benchmarkTrack: t,
+        exerciseId: benchmark.exerciseId || prescription?.exerciseId || null,
+        movementId: benchmark.movementId || movement.id || null,
+        reason: '하체 강도 트랙은 Training Max 기반 5/3/1로 보수적으로 처방합니다.',
+      };
+    }
+    const repsA = Number(trackSpec.startReps) || Number(planned?.startReps) || (t === 'H' ? 8 : 12);
+    const repsB = Number(trackSpec.targetReps) || Number(planned?.targetReps) || (t === 'H' ? 6 : 12);
+    const repsLow = Math.min(repsA, repsB);
+    const repsHigh = Math.max(repsA, repsB);
+    const targetReps = Number(trackSpec.targetReps) || repsB || repsHigh;
+    const trackLabel = t === 'H' ? '강도' : '볼륨';
+    return {
+      label: `W${snapshot.weekIndex} ${trackLabel} · ${targetSets}세트 x ${repsLow}-${repsHigh}회 · ${_targetRirLabel(t === 'H' ? 9 : 8)}`,
+      targetSets,
+      repsLow,
+      repsHigh,
+      targetRpe: t === 'H' ? 9 : 8,
+      startKg: kg,
+      action: t === 'H' ? 'load' : 'volume',
+      actionLabel: trackLabel,
+      sets: Array.from({ length: targetSets }, () => ({ kg: kg || 0, reps: targetReps, setType: 'main', done: false, rpe: t === 'H' ? 9 : 8 })),
+      track: t,
+      benchmarkTrack: t,
+      exerciseId: benchmark.exerciseId || prescription?.exerciseId || null,
+      movementId: benchmark.movementId || movement.id || null,
+      reason: `6주 성장판의 ${benchmark.label} ${trackLabel} 트랙 계획값을 우선 적용했습니다.`,
+    };
+  };
+  const active = makeTrack(track);
+  const trackAlternatives = { M: makeTrack('M'), H: makeTrack('H') };
+  const planned = benchmark.plannedByTrack?.[track] || benchmark.planned;
+  const kg = Number(active.startKg) || Number(planned?.plannedKg) || 0;
   const trackLabel = track === 'H' ? '강도' : '볼륨';
   const latest = benchmark.latest ? `${benchmark.latest.kg}kg x ${benchmark.latest.reps}회` : '실측 없음';
   return {
     ...prescription,
-    label: `W${snapshot.weekIndex} ${trackLabel} · ${targetSets}세트 x ${repsLow}-${repsHigh}회 · ${_targetRirLabel(track === 'H' ? 9 : 8)}`,
-    targetSets,
-    repsLow,
-    repsHigh,
-    targetRpe: track === 'H' ? 9 : 8,
-    startKg: kg,
-    action: track === 'H' ? 'load' : 'volume',
-    actionLabel: trackLabel,
+    ...active,
     deltaKg: benchmark.delta,
-    reason: `6주 성장판의 ${benchmark.label} ${trackLabel} 트랙 계획값을 우선 적용했습니다.`,
+    reason: active.reason,
     transparency: {
       type: 'benchmark_cycle',
-      label: '벤치마크 기준',
+      label: track === 'H' && (benchmark.primaryMajor === 'lower' || benchmark.primaryMajor === 'glute') ? '하체 강도 기준' : '벤치마크 기준',
       detail: `오늘 계획 ${kg}kg · 목표 ${planned?.targetKg || benchmark.targetKg}kg · 현재 ${latest}`,
     },
     evidence: [
@@ -549,9 +596,11 @@ function _benchmarkPrescription(prescription, movement, { weakTarget = false } =
       { label: '계획 중량', value: `${kg}kg` },
       { label: '최근 실측', value: latest },
     ],
+    exerciseId: benchmark.exerciseId || prescription?.exerciseId || null,
+    movementId: benchmark.movementId || movement.id || null,
     benchmarkId: benchmark.id,
     benchmarkTrack: track,
-    sets: Array.from({ length: targetSets }, () => ({ kg: kg || 0, reps: targetReps, setType: 'main', done: false, rpe: track === 'H' ? 9 : 8 })),
+    trackAlternatives,
   };
 }
 
@@ -692,6 +741,8 @@ function buildMaxPrescription({
     targetSets, repsLow, repsHigh, targetRpe,
     startKg, action, actionLabel, deltaKg, reason, transparency, evidence, lastDateKey,
     lastSet: bestSet ? { kg: Number(bestSet.kg) || 0, reps: Number(bestSet.reps) || 0, rpe: Number(bestSet.rpe) || null } : null,
+    exerciseId: exerciseId || null,
+    movementId: movement.id || null,
     weakTarget: !!weakTarget,
     sets: Array.from({ length: targetSets }, () => ({ kg: startKg || 0, reps: targetReps, setType: 'main', done: false, rpe: targetRpe })),
   };
@@ -1134,6 +1185,29 @@ function _addMajorBucket(buckets, major, item) {
   buckets.get(major).push(item);
 }
 
+function _uniqueMovementGroup(group, seen) {
+  if (!group) return null;
+  const exercises = [];
+  for (const ex of group.exercises || []) {
+    const id = ex.movementId || ex.id || ex.nameKo;
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    exercises.push(ex);
+  }
+  return exercises.length ? { ...group, exercises } : null;
+}
+
+function _uniqueMovements(list, seen) {
+  const out = [];
+  for (const mov of list || []) {
+    const id = mov.id || mov.movementId || mov.nameKo;
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push(mov);
+  }
+  return out;
+}
+
 function _renderMajorRecommendationBoard({
   majors = [],
   starterGroups = [],
@@ -1145,6 +1219,7 @@ function _renderMajorRecommendationBoard({
   meta = _ensureMaxMeta(),
 } = {}) {
   const buckets = new Map();
+  const seenMovements = new Set();
   const majorOrder = [...new Set([...(majors || []), ...(meta.selectedMajors || [])])].filter(Boolean);
   const selectedMajorSet = new Set(majorOrder.map(_normalizeMaxMajor).filter(Boolean));
 
@@ -1156,22 +1231,26 @@ function _renderMajorRecommendationBoard({
     fixedByMajor.get(major).push(mov);
   }
   for (const [major, fixed] of fixedByMajor.entries()) {
-    _addMajorBucket(buckets, major, { type: 'fixed', title: '고정종목 전략', fixed });
+    const uniqueFixed = _uniqueMovements(fixed, seenMovements);
+    if (uniqueFixed.length) _addMajorBucket(buckets, major, { type: 'fixed', title: '고정종목 전략', fixed: uniqueFixed });
   }
   for (const g of starterGroups || []) {
     const major = SUBPATTERN_TO_MAJOR[g.subPattern] || g.subPattern;
     if (selectedMajorSet.size && !selectedMajorSet.has(_normalizeMaxMajor(major))) continue;
-    _addMajorBucket(buckets, major, { type: 'starter', title: '오늘 스타터', group: g });
+    const group = _uniqueMovementGroup(g, seenMovements);
+    if (group) _addMajorBucket(buckets, major, { type: 'starter', title: '오늘 스타터', group });
   }
   for (const g of weakCoachGroups || []) {
     const major = SUBPATTERN_TO_MAJOR[g.subPattern] || g.subPattern;
     if (selectedMajorSet.size && !selectedMajorSet.has(_normalizeMaxMajor(major))) continue;
-    _addMajorBucket(buckets, major, { type: 'weak', title: `약점 전담 · ${g.subPatternLabel}`, group: g });
+    const group = _uniqueMovementGroup(g, seenMovements);
+    if (group) _addMajorBucket(buckets, major, { type: 'weak', title: `약점 전담 · ${g.subPatternLabel}`, group });
   }
   for (const g of _curateBalanceGroups(balanceGroups)) {
     const major = SUBPATTERN_TO_MAJOR[g.subPattern] || g.subPattern;
     if (selectedMajorSet.size && !selectedMajorSet.has(_normalizeMaxMajor(major))) continue;
-    _addMajorBucket(buckets, major, { type: 'balance', title: `균형보강 · ${g.subPatternLabel}`, group: g });
+    const group = _uniqueMovementGroup(g, seenMovements);
+    if (group) _addMajorBucket(buckets, major, { type: 'balance', title: `균형보강 · ${g.subPatternLabel}`, group });
   }
 
   const orderedMajors = [...new Set([...majorOrder, ...buckets.keys()])].filter(m => buckets.has(m));
@@ -2030,7 +2109,7 @@ export async function startMaxCycle() {
   const cycle = createDefaultMaxCycle({
     todayKey,
     majors,
-    movements: MOVEMENTS,
+    movements: _movementsForPlanEditor(),
     currentGymId: S?.workout?.currentGymId || getExpertPreset()?.currentGymId || null,
     allowFallback: false,
   });
@@ -2049,32 +2128,225 @@ function _cycleOrDraft() {
   return _getMaxCycleSafe() || createDefaultMaxCycle({
     todayKey,
     majors: selectedMajors,
-    movements: MOVEMENTS,
+    movements: _movementsForPlanEditor(),
     currentGymId: S?.workout?.currentGymId || getExpertPreset()?.currentGymId || null,
     allowFallback: false,
   });
 }
 
-function _movementSourceLabel(movement, gymId = null) {
-  if (!movement) return '출처 미상';
-  const category = movement.equipment_category || '';
-  if (['barbell', 'dumbbell', 'bodyweight'].includes(category)) {
+function _exercisePrimaryMajor(ex, movement = null) {
+  const muscleIds = Array.isArray(ex?.muscleIds) && ex.muscleIds.length
+    ? ex.muscleIds
+    : (ex?.muscleId ? [ex.muscleId] : []);
+  return _normalizeMaxMajor(muscleIds[0])
+    || _normalizeMaxMajor(movement?.primary || movement?.subPattern)
+    || 'chest';
+}
+
+function _exerciseSourceLabel(ex, movement = null, gymId = null) {
+  const category = ex?.category || movement?.equipment_category || '';
+  const tags = Array.isArray(ex?.gymTags) ? ex.gymTags : [];
+  const sharedByCategory = ['barbell', 'dumbbell', 'bodyweight'].includes(category);
+  if (sharedByCategory || tags.includes('*') || (!ex?.gymId && !ex?.primaryGymId)) {
     return `공통 · ${CAT_LABEL[category] || category || '기본'}`;
   }
-  const gym = (getGyms() || []).find(g => g.id === gymId) || null;
-  const active = [];
-  const match = active.find(item => Array.isArray(item.movementIds) && item.movementIds.includes(movement.id));
-  if (match?.scope === 'gym') return `${gym?.name || '선택 헬스장'} 전용`;
-  if (match?.scope === 'global') return `공통 · ${match.name || CAT_LABEL[category] || category}`;
-  return gym ? `${gym.name} 후보 · ${CAT_LABEL[category] || category || '기구'}` : `헬스장 선택 필요 · ${CAT_LABEL[category] || category || '기구'}`;
+  const gymRef = ex?.gymId || ex?.primaryGymId || tags.find(tag => tag && tag !== '*') || gymId || null;
+  const gym = (getGyms() || []).find(g => g.id === gymRef) || null;
+  return `${gym?.name || '헬스장 전용'} · ${CAT_LABEL[category] || category || '기구'}`;
+}
+
+function _exerciseOptionValue(option) {
+  if (!option) return '';
+  if (option.exerciseId) return option.exerciseId;
+  if (option.movementId) return `movement:${option.movementId}`;
+  return option.id || '';
+}
+
+function _benchmarkOptionGroupKey(option) {
+  const movementId = option?.movementId || '';
+  const category = option?.equipment_category || '';
+  const tags = Array.isArray(option?.gymTags) ? option.gymTags : [];
+  const shared = ['barbell', 'dumbbell', 'bodyweight'].includes(category) || tags.includes('*');
+  if (movementId && shared) return `shared:${movementId}`;
+  const gymKey = option?.gymId || option?.primaryGymId || tags.find(tag => tag && tag !== '*') || (shared ? '*' : 'ungrouped');
+  if (movementId) return `gym:${gymKey}:${movementId}`;
+  const nameKey = String(option?.nameKo || option?.name || option?.id || '').trim().toLowerCase();
+  return `custom:${gymKey}:${nameKey}`;
+}
+
+function _benchmarkOptionRank(option, currentGymId = null) {
+  const sourceScore = ({ exact: 3, legacy: 2, empty: 1 })[option?.benchmarkDefaults?.source] || 0;
+  const sessions = Number(option?.benchmarkDefaults?.sessions) || 0;
+  const tags = Array.isArray(option?.gymTags) ? option.gymTags : [];
+  const gymMatch = currentGymId && (option?.gymId === currentGymId || option?.primaryGymId === currentGymId || tags.includes(currentGymId)) ? 1 : 0;
+  return sourceScore * 1000 + sessions * 20 + gymMatch * 10 + (option?.exerciseId ? 1 : 0);
+}
+
+function _dedupeBenchmarkOptions(options = [], currentGymId = null) {
+  const grouped = new Map();
+  for (const option of options || []) {
+    const key = _benchmarkOptionGroupKey(option);
+    const current = grouped.get(key);
+    const next = { ...option, benchmarkOptionKey: key };
+    if (!current || _benchmarkOptionRank(next, currentGymId) > _benchmarkOptionRank(current, currentGymId)) {
+      grouped.set(key, next);
+    }
+  }
+  return [...grouped.values()];
+}
+
+function _benchmarkGrowthKg(major, step = 2.5) {
+  const s = Number(step) > 0 ? Number(step) : 2.5;
+  const base = major === 'lower' || major === 'glute' ? 5 : 2.5;
+  return Math.max(s, base);
+}
+
+function _recentBenchmarkSets({ exerciseId = null, movementId = null, todayKey = _todayKey(), limitSessions = 8 } = {}) {
+  const cache = getCache();
+  const keys = Object.keys(cache || {})
+    .filter(key => /^\d{4}-\d{2}-\d{2}$/.test(key) && (!todayKey || key < todayKey))
+    .sort((a, b) => b.localeCompare(a));
+  const exact = [];
+  const legacy = [];
+  const exactDates = new Set();
+  const legacyDates = new Set();
+  for (const key of keys) {
+    const day = cache?.[key] || {};
+    let exactHit = false;
+    let legacyHit = false;
+    for (const entry of day.exercises || []) {
+      const isExact = !!exerciseId && entry.exerciseId === exerciseId;
+      const isLegacyMovement = !exerciseId && !!movementId && entry.movementId === movementId;
+      const isOrphanMovement = !!exerciseId && !!movementId && !entry.exerciseId && entry.movementId === movementId;
+      if (!isExact && !isLegacyMovement && !isOrphanMovement) continue;
+      for (const set of _workSetsOnly(entry.sets || [])) {
+        const kg = Number(set.kg) || 0;
+        const reps = Number(set.reps) || 0;
+        if (kg <= 0 || reps <= 0) continue;
+        const row = { ...set, kg, reps, dateKey: key, e1rm: _epley(kg, reps) };
+        if (isExact) {
+          exact.push(row);
+          exactHit = true;
+        } else {
+          legacy.push(row);
+          legacyHit = true;
+        }
+      }
+    }
+    if (exactHit) exactDates.add(key);
+    if (legacyHit) legacyDates.add(key);
+    if (exactDates.size >= limitSessions) break;
+  }
+  if (exact.length) return { sets: exact, source: 'exact', sessions: exactDates.size };
+  return { sets: legacy, source: legacy.length ? 'legacy' : 'empty', sessions: legacyDates.size };
+}
+
+function _inverseEpleyKg(e1rm, reps, step = 2.5, effort = 1) {
+  const max = Number(e1rm) || 0;
+  const r = Math.max(1, Number(reps) || 1);
+  if (max <= 0) return 0;
+  return _roundToStep((max / (1 + r / 30)) * effort, step);
+}
+
+function _benchmarkDefaultsForExercise(ex, movement = null, primary = null) {
+  const major = _normalizeMaxMajor(primary || movement?.primary || ex?.muscleId) || 'chest';
+  const step = Math.max(0.5, Number(ex?.incrementKg) || Number(movement?.stepKg) || 2.5);
+  const growth = _benchmarkGrowthKg(major, step);
+  const recent = _recentBenchmarkSets({
+    exerciseId: ex?.id || null,
+    movementId: ex?.movementId || movement?.id || null,
+  });
+  const sets = recent.sets || [];
+  const best = [...sets].sort((a, b) => b.e1rm - a.e1rm || b.kg - a.kg)[0] || null;
+  const volumeExact = sets
+    .filter(s => Number(s.reps) >= 12)
+    .sort((a, b) => b.kg - a.kg || b.e1rm - a.e1rm)[0] || null;
+  const volumeNear = sets
+    .filter(s => Number(s.reps) >= 10)
+    .sort((a, b) => b.e1rm - a.e1rm || b.kg - a.kg)[0] || null;
+  const heavyExact = sets
+    .filter(s => Number(s.reps) >= 3 && Number(s.reps) <= 8)
+    .sort((a, b) => b.e1rm - a.e1rm || b.kg - a.kg)[0] || null;
+
+  const fallbackStart = major === 'lower' ? 100 : (major === 'back' ? 60 : (major === 'shoulder' ? 25 : 40));
+  const volumeStart = volumeExact
+    ? _roundToStep(volumeExact.kg, step)
+    : (volumeNear
+      ? _inverseEpleyKg(volumeNear.e1rm, 12, step, 0.98)
+      : (best ? _inverseEpleyKg(best.e1rm, 12, step, 0.96) : fallbackStart));
+  let intensityStart = heavyExact
+    ? _roundToStep(heavyExact.kg, step)
+    : (best ? _inverseEpleyKg(best.e1rm, 6, step, 0.95) : _roundToStep(volumeStart + step * 2, step));
+  if (intensityStart <= volumeStart && volumeStart > 0) intensityStart = _roundToStep(volumeStart + step, step);
+
+  const mStart = Math.max(0, _roundToStep(volumeStart, step));
+  const hStart = Math.max(0, _roundToStep(intensityStart, step));
+  const sourceLabel = recent.source === 'exact'
+    ? `최근 ${recent.sessions}회 기록 기반`
+    : (recent.source === 'legacy' ? '동작 기록 기반' : '기록 부족 · 기본값');
+  return {
+    startKg: mStart,
+    targetKg: _roundToStep(mStart + growth, step),
+    incrementKg: step,
+    source: recent.source,
+    sourceLabel,
+    sessions: recent.sessions,
+    tracks: {
+      M: {
+        startKg: mStart,
+        targetKg: _roundToStep(mStart + growth, step),
+        incrementKg: step,
+        startReps: 12,
+        targetReps: 12,
+        enabled: true,
+      },
+      H: {
+        startKg: hStart,
+        targetKg: _roundToStep(hStart + growth, step),
+        incrementKg: step,
+        startReps: 8,
+        targetReps: 6,
+        enabled: true,
+      },
+    },
+  };
 }
 
 function _movementsForPlanEditor() {
   const gymId = S?.workout?.currentGymId || getExpertPreset()?.currentGymId || null;
-  return MOVEMENTS.map(m => ({
-    ...m,
-    optionLabel: `${MAJOR_LABEL[m.primary] || m.primary || '기타'} · ${m.nameKo || m.id} · ${_movementSourceLabel(m, gymId)}`,
-  }));
+  const exList = getExList();
+  const options = [];
+  for (const ex of exList || []) {
+    if (!ex?.id) continue;
+    const mov = MOVEMENTS.find(m => m.id === ex.movementId) || null;
+    const tags = Array.isArray(ex.gymTags) ? ex.gymTags : [];
+    const category = ex.category || mov?.equipment_category || '';
+    const isShared = ['barbell', 'dumbbell', 'bodyweight'].includes(category);
+    const isGlobal = isShared || tags.includes('*') || (!ex.gymId && !ex.primaryGymId);
+    const isGymMatch = gymId && (ex.gymId === gymId || ex.primaryGymId === gymId || tags.includes(gymId));
+    if (!isGlobal && !isGymMatch) continue;
+    const primary = _exercisePrimaryMajor(ex, mov);
+    const benchmarkDefaults = _benchmarkDefaultsForExercise(ex, mov, primary);
+    options.push({
+      ...(mov || {}),
+      id: ex.id,
+      exerciseId: ex.id,
+      movementId: ex.movementId || mov?.id || null,
+      nameKo: ex.name || mov?.nameKo || ex.id,
+      originalNameKo: mov?.nameKo || '',
+      primary,
+      subPattern: (Array.isArray(ex.muscleIds) && ex.muscleIds[0]) || mov?.subPattern || ex.muscleId || null,
+      equipment_category: category || mov?.equipment_category || 'custom',
+      stepKg: Number(ex.incrementKg) > 0 ? Number(ex.incrementKg) : (Number(mov?.stepKg) || 2.5),
+      gymId: ex.gymId || null,
+      primaryGymId: ex.primaryGymId || null,
+      gymTags: tags,
+      benchmarkDefaults,
+      optionLabel: `${MAJOR_LABEL[primary] || primary || '기타'} · ${ex.name || mov?.nameKo || ex.id} · ${_exerciseSourceLabel(ex, mov, gymId)}`,
+    });
+  }
+  return _dedupeBenchmarkOptions(options, gymId)
+    .sort((a, b) => String(a.optionLabel).localeCompare(String(b.optionLabel)));
 }
 
 function _findCycleBenchmark(cycle, benchmarkId) {
@@ -2187,10 +2459,131 @@ export async function setMaxBenchmarkWeight(benchmarkId, kg) {
   if (typeof window.renderExpertTopArea === 'function') window.renderExpertTopArea();
 }
 
+function _maxV4SheetActionRoot(el = document.getElementById('max-v4-sheet')) {
+  return el?.querySelector('.wt-v4-sheet') || el;
+}
+
+function _handleMaxV4SheetClick(e) {
+  const handledTarget = e.target.closest('[data-action], [data-plan-weeks], [data-adjust-sheet]');
+  if (!handledTarget) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  const close = e.target.closest('[data-action="close-max-sheet"]');
+  if (close) {
+    closeMaxV4Sheet();
+    return;
+  }
+  const savePlan = e.target.closest('[data-action="save-max-plan-editor"]');
+  if (savePlan) {
+    e.preventDefault();
+    saveMaxPlanEditorSheet().catch(err => console.warn('[saveMaxPlanEditorSheet]:', err));
+    return;
+  }
+  const weekBtn = e.target.closest('[data-plan-weeks]');
+  if (weekBtn) {
+    const value = Number(weekBtn.getAttribute('data-plan-weeks')) || 6;
+    const hidden = document.getElementById('max-plan-weeks-value');
+    if (hidden) hidden.value = String(value);
+    document.getElementById('max-v4-sheet')?.querySelectorAll('[data-plan-weeks]').forEach(btn => btn.classList.toggle('on', btn === weekBtn));
+    return;
+  }
+  const createGym = e.target.closest('[data-action="create-max-gym"]');
+  if (createGym) {
+    createMaxGymFromPlanSheet().catch(err => console.warn('[createMaxGymFromPlanSheet]:', err));
+    return;
+  }
+  const addBenchmark = e.target.closest('[data-action="add-max-benchmark"]');
+  if (addBenchmark) {
+    addMaxBenchmarkEditorRow();
+    return;
+  }
+  const deleteBenchmark = e.target.closest('[data-action="delete-max-benchmark"]');
+  if (deleteBenchmark) {
+    deleteBenchmark.closest('.wt-v4-bench-edit')?.remove();
+    return;
+  }
+  const pool = e.target.closest('[data-action="open-equipment-pool"]');
+  if (pool) {
+    openMaxEquipmentPoolModal().catch(err => console.warn('[openMaxEquipmentPoolModal]:', err));
+    return;
+  }
+  const cleanse = e.target.closest('[data-action="open-max-data-cleanse"]');
+  if (cleanse) {
+    openMaxDataCleanseModal();
+    return;
+  }
+  const adj = e.target.closest('[data-adjust-sheet]');
+  if (adj) {
+    adjustMaxBenchmarkWeight(adj.getAttribute('data-benchmark-id'), Number(adj.getAttribute('data-delta')) || 0)
+      .then(() => openMaxAdjustSheet(adj.getAttribute('data-benchmark-id')))
+      .catch(err => console.warn('[sheet.adjust]:', err));
+    return;
+  }
+  const saveAdjust = e.target.closest('[data-action="save-max-adjust-kg"]');
+  if (saveAdjust) {
+    const benchmarkId = saveAdjust.getAttribute('data-benchmark-id');
+    const input = document.getElementById('max-adjust-kg-input');
+    setMaxBenchmarkWeight(benchmarkId, input?.value)
+      .then(() => closeMaxV4Sheet())
+      .catch(err => console.warn('[saveMaxAdjustKg]:', err));
+    return;
+  }
+  const addEquipment = e.target.closest('[data-action="add-max-equipment"]');
+  if (addEquipment) {
+    addMaxEquipmentFromPoolModal().catch(err => console.warn('[addMaxEquipmentFromPoolModal]:', err));
+    return;
+  }
+  const togglePool = e.target.closest('[data-action="toggle-max-pool"]');
+  if (togglePool) {
+    toggleMaxPoolItem(togglePool.getAttribute('data-pool-id'), togglePool.checked)
+      .catch(err => console.warn('[toggleMaxPoolItem]:', err));
+    return;
+  }
+  const deleteEquipment = e.target.closest('[data-action="delete-max-equipment"]');
+  if (deleteEquipment) {
+    deleteMaxEquipmentFromPool(deleteEquipment.getAttribute('data-pool-id'))
+      .catch(err => console.warn('[deleteMaxEquipmentFromPool]:', err));
+    return;
+  }
+  const saveCleanse = e.target.closest('[data-action="save-max-data-cleanse"]');
+  if (saveCleanse) {
+    saveMaxDataCleanseModal().catch(err => console.warn('[saveMaxDataCleanseModal]:', err));
+  }
+}
+
+function _handleMaxV4SheetChange(e) {
+  const gymSelect = e.target.closest('#max-plan-gym-id');
+  if (gymSelect) {
+    const gymId = gymSelect.value || null;
+    if (S?.workout) S.workout.currentGymId = gymId;
+    saveExpertPreset({ currentGymId: gymId, mode: 'max', enabled: true })
+      .catch(err => console.warn('[maxPlan.gym.change]:', err));
+    return;
+  }
+  const benchmarkSelect = e.target.closest('#max-v4-sheet select[data-bench-field="exerciseId"]');
+  if (benchmarkSelect) {
+    applyMaxBenchmarkDefaultsToEditorRow(
+      benchmarkSelect.closest('.wt-v4-bench-edit'),
+      benchmarkSelect.value,
+    );
+  }
+}
+
+function _ensureMaxV4SheetActionBinding(el) {
+  const root = _maxV4SheetActionRoot(el);
+  if (!root) return;
+  root.removeEventListener('click', _handleMaxV4SheetClick, true);
+  root.removeEventListener('change', _handleMaxV4SheetChange);
+  root.dataset.maxV4ActionBound = '1';
+  root.dataset.maxV4ActionVersion = '20260504-no-inline-plan-actions';
+  root.addEventListener('click', _handleMaxV4SheetClick, true);
+  root.addEventListener('change', _handleMaxV4SheetChange);
+}
+
 function _ensureMaxV4Sheet() {
   let el = document.getElementById('max-v4-sheet');
   if (el) {
-    _ensureMaxPlanSaveBinding(el);
+    _ensureMaxV4SheetActionBinding(el);
     return el;
   }
   const container = document.getElementById('modals-container') || document.body;
@@ -2205,111 +2598,8 @@ function _ensureMaxV4Sheet() {
   `;
   container.appendChild(wrapper.firstElementChild);
   const sheet = document.getElementById('max-v4-sheet');
-  _ensureMaxPlanSaveBinding(sheet);
-  sheet.addEventListener('click', (e) => {
-    const close = e.target.closest('[data-action="close-max-sheet"]');
-    if (close) {
-      closeMaxV4Sheet();
-      return;
-    }
-    const savePlan = e.target.closest('[data-action="save-max-plan-editor"]');
-    if (savePlan) {
-      saveMaxPlanEditorSheet().catch(err => console.warn('[saveMaxPlanEditorSheet]:', err));
-      return;
-    }
-    const weekBtn = e.target.closest('[data-plan-weeks]');
-    if (weekBtn) {
-      const value = Number(weekBtn.getAttribute('data-plan-weeks')) || 6;
-      const hidden = document.getElementById('max-plan-weeks-value');
-      if (hidden) hidden.value = String(value);
-      sheet.querySelectorAll('[data-plan-weeks]').forEach(btn => btn.classList.toggle('on', btn === weekBtn));
-      return;
-    }
-    const createGym = e.target.closest('[data-action="create-max-gym"]');
-    if (createGym) {
-      createMaxGymFromPlanSheet().catch(err => console.warn('[createMaxGymFromPlanSheet]:', err));
-      return;
-    }
-    const addBenchmark = e.target.closest('[data-action="add-max-benchmark"]');
-    if (addBenchmark) {
-      addMaxBenchmarkEditorRow();
-      return;
-    }
-    const deleteBenchmark = e.target.closest('[data-action="delete-max-benchmark"]');
-    if (deleteBenchmark) {
-      deleteBenchmark.closest('.wt-v4-bench-edit')?.remove();
-      return;
-    }
-    const pool = e.target.closest('[data-action="open-equipment-pool"]');
-    if (pool) {
-      openMaxEquipmentPoolModal().catch(err => console.warn('[openMaxEquipmentPoolModal]:', err));
-      return;
-    }
-    const cleanse = e.target.closest('[data-action="open-max-data-cleanse"]');
-    if (cleanse) {
-      openMaxDataCleanseModal();
-      return;
-    }
-    const adj = e.target.closest('[data-adjust-sheet]');
-    if (adj) {
-      adjustMaxBenchmarkWeight(adj.getAttribute('data-benchmark-id'), Number(adj.getAttribute('data-delta')) || 0)
-        .then(() => openMaxAdjustSheet(adj.getAttribute('data-benchmark-id')))
-        .catch(err => console.warn('[sheet.adjust]:', err));
-      return;
-    }
-    const saveAdjust = e.target.closest('[data-action="save-max-adjust-kg"]');
-    if (saveAdjust) {
-      const benchmarkId = saveAdjust.getAttribute('data-benchmark-id');
-      const input = document.getElementById('max-adjust-kg-input');
-      setMaxBenchmarkWeight(benchmarkId, input?.value)
-        .then(() => closeMaxV4Sheet())
-        .catch(err => console.warn('[saveMaxAdjustKg]:', err));
-      return;
-    }
-    const addEquipment = e.target.closest('[data-action="add-max-equipment"]');
-    if (addEquipment) {
-      addMaxEquipmentFromPoolModal().catch(err => console.warn('[addMaxEquipmentFromPoolModal]:', err));
-      return;
-    }
-    const togglePool = e.target.closest('[data-action="toggle-max-pool"]');
-    if (togglePool) {
-      toggleMaxPoolItem(togglePool.getAttribute('data-pool-id'), togglePool.checked)
-        .catch(err => console.warn('[toggleMaxPoolItem]:', err));
-      return;
-    }
-    const deleteEquipment = e.target.closest('[data-action="delete-max-equipment"]');
-    if (deleteEquipment) {
-      deleteMaxEquipmentFromPool(deleteEquipment.getAttribute('data-pool-id'))
-        .catch(err => console.warn('[deleteMaxEquipmentFromPool]:', err));
-      return;
-    }
-    const saveCleanse = e.target.closest('[data-action="save-max-data-cleanse"]');
-    if (saveCleanse) {
-      saveMaxDataCleanseModal().catch(err => console.warn('[saveMaxDataCleanseModal]:', err));
-    }
-  });
-  sheet.addEventListener('change', (e) => {
-    const gymSelect = e.target.closest('#max-plan-gym-id');
-    if (gymSelect) {
-      const gymId = gymSelect.value || null;
-      if (S?.workout) S.workout.currentGymId = gymId;
-      saveExpertPreset({ currentGymId: gymId, mode: 'max', enabled: true })
-        .catch(err => console.warn('[maxPlan.gym.change]:', err));
-    }
-  });
+  _ensureMaxV4SheetActionBinding(sheet);
   return sheet;
-}
-
-function _ensureMaxPlanSaveBinding(sheet) {
-  if (!sheet || sheet.dataset.maxPlanSaveBound === '1') return;
-  sheet.dataset.maxPlanSaveBound = '1';
-  sheet.addEventListener('click', (e) => {
-    const savePlan = e.target.closest('[data-action="save-max-plan-editor"]');
-    if (!savePlan) return;
-    e.preventDefault();
-    e.stopPropagation();
-    saveMaxPlanEditorSheet().catch(err => console.warn('[saveMaxPlanEditorSheet.bound]:', err));
-  }, true);
 }
 
 export function closeMaxV4Sheet() {
@@ -2346,51 +2636,89 @@ function _selectedMovement(movementId) {
   return MOVEMENTS.find(m => m.id === movementId) || null;
 }
 
-function _benchmarkFromMovement(movementId) {
-  const mov = _selectedMovement(movementId) || MOVEMENTS[0] || null;
-  const major = _normalizeMaxMajor(mov?.primary) || 'chest';
-  const step = Number(mov?.stepKg) > 0 ? Number(mov.stepKg) : 2.5;
-  const startKg = major === 'lower' ? 100 : (major === 'back' ? 60 : (major === 'shoulder' ? 25 : 40));
+function _selectedExerciseOption(value) {
+  const raw = String(value || '');
+  if (!raw || raw.startsWith('movement:')) return null;
+  return _movementsForPlanEditor().find(option => option.exerciseId === raw || option.id === raw) || null;
+}
+
+function _movementIdFromOptionValue(value, option = null, original = {}) {
+  const raw = String(value || '');
+  if (option?.movementId) return option.movementId;
+  if (raw.startsWith('movement:')) return raw.slice('movement:'.length) || null;
+  return original?.movementId || null;
+}
+
+function _benchmarkFromExerciseOption(optionOrValue) {
+  const rawValue = typeof optionOrValue === 'string' ? optionOrValue : _exerciseOptionValue(optionOrValue);
+  const option = typeof optionOrValue === 'string' ? _selectedExerciseOption(optionOrValue) : optionOrValue;
+  const movementId = _movementIdFromOptionValue(rawValue, option);
+  const mov = _selectedMovement(movementId) || (option?.movementId ? null : MOVEMENTS[0]) || null;
+  const exerciseId = option?.exerciseId || (!String(rawValue || '').startsWith('movement:') ? (rawValue || null) : null);
+  const major = _normalizeMaxMajor(option?.primary || mov?.primary) || 'chest';
+  const label = option?.nameKo || option?.name || mov?.nameKo || mov?.id || '벤치마크';
+  const defaults = option?.benchmarkDefaults || null;
+  const step = Math.max(0.5, Number(defaults?.incrementKg) || Number(option?.stepKg) || Number(mov?.stepKg) || 2.5);
+  const growth = _benchmarkGrowthKg(major, step);
+  const startKg = Number(defaults?.startKg) > 0
+    ? Number(defaults.startKg)
+    : (major === 'lower' ? 100 : (major === 'back' ? 60 : (major === 'shoulder' ? 25 : 40)));
+  const targetKg = Number(defaults?.targetKg) > 0 ? Number(defaults.targetKg) : startKg + growth;
+  const tracks = defaults?.tracks || {
+    M: { startKg, targetKg, incrementKg: step, startReps: 12, targetReps: 12, enabled: true },
+    H: { startKg: startKg + step * 2, targetKg: startKg + step * 2 + growth, incrementKg: step, startReps: 8, targetReps: 6, enabled: true },
+  };
   return {
-    id: `bm_${major}_${movementId || Date.now()}_${Date.now()}`,
-    movementId: mov?.id || null,
-    label: mov?.nameKo || mov?.id || '벤치마크',
+    id: `bm_${major}_${exerciseId || movementId || Date.now()}_${Date.now()}`,
+    exerciseId,
+    movementId: movementId || mov?.id || null,
+    label,
     primaryMajor: major,
     startKg,
-    targetKg: startKg + (major === 'lower' || major === 'glute' ? 5 : 2.5),
+    targetKg,
     incrementKg: step,
-    tracks: {
-      M: { startKg, targetKg: startKg + (major === 'lower' || major === 'glute' ? 5 : 2.5), incrementKg: step, startReps: 12, targetReps: 12, enabled: true },
-      H: { startKg: startKg + step * 2, targetKg: startKg + step * 2 + (major === 'lower' || major === 'glute' ? 5 : 2.5), incrementKg: step, startReps: 8, targetReps: 6, enabled: true },
-    },
+    benchmarkSource: defaults?.source || null,
+    benchmarkSourceLabel: defaults?.sourceLabel || null,
+    tracks,
   };
 }
 
-function addMaxBenchmarkEditorRow() {
-  const current = normalizeMaxCycleTracks(_cycleOrDraft()) || {};
-  const used = new Set(Array.from(document.querySelectorAll('#max-v4-sheet .wt-v4-bench-edit select[data-bench-field="movementId"]')).map(el => el.value));
-  const mov = MOVEMENTS.find(m => !used.has(m.id)) || MOVEMENTS[0];
-  if (!mov) {
-    _toast('추가할 종목 후보가 없어요', 'warning');
-    return;
+function applyMaxBenchmarkDefaultsToEditorRow(row, optionValue) {
+  if (!row) return;
+  const option = _selectedExerciseOption(optionValue);
+  const defaults = option?.benchmarkDefaults;
+  if (!defaults?.tracks) return;
+  for (const track of ['M', 'H']) {
+    const spec = defaults.tracks[track] || {};
+    const q = `[data-bench-track="${track}"]`;
+    const start = row.querySelector(`${q}[data-bench-field="startKg"]`);
+    const target = row.querySelector(`${q}[data-bench-field="targetKg"]`);
+    const reps = row.querySelector(`${q}[data-bench-field="targetReps"]`);
+    const enabled = row.querySelector(`${q}[data-bench-field="enabled"]`);
+    if (start) start.value = Number(spec.startKg) || 0;
+    if (target) target.value = Number(spec.targetKg) || Number(spec.startKg) || 0;
+    if (reps) reps.value = Number(spec.targetReps) || (track === 'H' ? 6 : 12);
+    if (enabled) enabled.checked = spec.enabled !== false;
   }
-  const next = { ...current, benchmarks: [...(current.benchmarks || []), _benchmarkFromMovement(mov.id)] };
-  const body = document.getElementById('max-v4-sheet-body');
-  if (body) body.innerHTML = renderMaxPlanEditor({
-    cycle: next,
-    gyms: getGyms(),
-    currentGymId: S?.workout?.currentGymId || getExpertPreset()?.currentGymId || null,
-    movements: _movementsForPlanEditor(),
-  });
+  const note = row.querySelector('[data-bench-default-note]');
+  if (note) note.textContent = defaults.sourceLabel || '최근 기록 기반';
 }
 
-export async function saveMaxPlanEditorSheet() {
-  const current = normalizeMaxCycleTracks(_cycleOrDraft());
-  const nextBenchmarks = Array.from(document.querySelectorAll('#max-v4-sheet .wt-v4-bench-edit')).map(row => {
+function _readMaxPlanEditorBenchmarks(current = normalizeMaxCycleTracks(_cycleOrDraft())) {
+  const rows = Array.from(document.querySelectorAll('#max-v4-sheet .wt-v4-bench-edit'));
+  if (!rows.length) return Array.isArray(current?.benchmarks) ? current.benchmarks : [];
+  return rows.map(row => {
     const id = row.getAttribute('data-benchmark-id');
     const original = (current.benchmarks || []).find(b => b.id === id) || {};
-    const movementId = row.querySelector('[data-bench-field="movementId"]')?.value || original.movementId || null;
+    const selectedValue = row.querySelector('[data-bench-field="exerciseId"]')?.value
+      || original.exerciseId
+      || (original.movementId ? `movement:${original.movementId}` : '');
+    const exerciseOption = _selectedExerciseOption(selectedValue);
+    const movementId = _movementIdFromOptionValue(selectedValue, exerciseOption, original);
     const mov = _selectedMovement(movementId);
+    const exerciseId = exerciseOption?.exerciseId
+      || (!String(selectedValue || '').startsWith('movement:') ? (selectedValue || original.exerciseId || null) : null);
+    const primaryMajor = _normalizeMaxMajor(exerciseOption?.primary || mov?.primary || original.primaryMajor) || 'chest';
     const originalM = original.tracks?.M || {};
     const tracks = {};
     for (const track of ['M', 'H']) {
@@ -2400,21 +2728,60 @@ export async function saveMaxPlanEditorSheet() {
       const targetKg = Math.max(0, Number(row.querySelector(`${q}[data-bench-field="targetKg"]`)?.value) || Number(base.targetKg) || startKg);
       const targetReps = Math.max(1, Number(row.querySelector(`${q}[data-bench-field="targetReps"]`)?.value) || Number(base.targetReps) || (track === 'H' ? 6 : 12));
       const enabled = row.querySelector(`${q}[data-bench-field="enabled"]`)?.checked !== false;
-      const incrementKg = Math.max(0.5, Number(base.incrementKg) || Number(original.incrementKg) || 2.5);
+      const incrementKg = Math.max(0.5, Number(base.incrementKg) || Number(original.incrementKg) || Number(exerciseOption?.benchmarkDefaults?.incrementKg) || 2.5);
       tracks[track] = { ...base, startKg: Math.round(startKg * 10) / 10, targetKg: Math.round(targetKg * 10) / 10, targetReps, incrementKg, enabled };
     }
+    const sourceNote = row.querySelector('[data-bench-default-note]')?.textContent?.trim() || '';
     return {
       ...original,
-      id: original.id || `bm_${mov?.primary || 'custom'}_${movementId || Date.now()}`,
+      id: original.id || `bm_${primaryMajor || 'custom'}_${exerciseId || movementId || Date.now()}`,
+      exerciseId,
       movementId,
-      label: mov?.nameKo || original.label || movementId || '벤치마크',
-      primaryMajor: mov?.primary || original.primaryMajor || 'chest',
+      label: exerciseOption?.nameKo || exerciseOption?.name || mov?.nameKo || original.label || movementId || '벤치마크',
+      primaryMajor,
+      benchmarkSource: exerciseOption?.benchmarkDefaults?.source || original.benchmarkSource || null,
+      benchmarkSourceLabel: sourceNote || exerciseOption?.benchmarkDefaults?.sourceLabel || original.benchmarkSourceLabel || null,
       startKg: tracks.M.startKg,
       targetKg: tracks.M.targetKg,
       incrementKg: tracks.M.incrementKg,
       tracks,
     };
   });
+}
+
+function _draftMaxPlanEditorCycle(current = normalizeMaxCycleTracks(_cycleOrDraft())) {
+  const gymId = document.getElementById('max-plan-gym-id')?.value || current?.primaryGymId || null;
+  const weeks = Math.max(4, Math.min(12, Number(document.getElementById('max-plan-weeks-value')?.value) || Number(current?.weeks) || 6));
+  return {
+    ...current,
+    weeks,
+    primaryGymId: gymId,
+    benchmarks: _readMaxPlanEditorBenchmarks(current),
+  };
+}
+
+function addMaxBenchmarkEditorRow() {
+  const current = _draftMaxPlanEditorCycle(normalizeMaxCycleTracks(_cycleOrDraft()) || {});
+  const used = new Set(Array.from(document.querySelectorAll('#max-v4-sheet .wt-v4-bench-edit select[data-bench-field="exerciseId"]')).map(el => el.value));
+  const candidates = _movementsForPlanEditor();
+  const mov = candidates.find(m => !used.has(_exerciseOptionValue(m))) || candidates[0] || null;
+  if (!mov) {
+    _toast('운동추가 목록에 등록된 종목이 없어요. 기구 관리에서 먼저 추가하세요.', 'warning');
+    return;
+  }
+  const next = { ...current, benchmarks: [...(current.benchmarks || []), _benchmarkFromExerciseOption(mov)] };
+  const body = document.getElementById('max-v4-sheet-body');
+  if (body) body.innerHTML = renderMaxPlanEditor({
+    cycle: next,
+    gyms: getGyms(),
+    currentGymId: next.primaryGymId || S?.workout?.currentGymId || getExpertPreset()?.currentGymId || null,
+    movements: _movementsForPlanEditor(),
+  });
+}
+
+export async function saveMaxPlanEditorSheet() {
+  const current = normalizeMaxCycleTracks(_cycleOrDraft());
+  const nextBenchmarks = _readMaxPlanEditorBenchmarks(current);
   const gymId = document.getElementById('max-plan-gym-id')?.value || null;
   const weeks = Math.max(4, Math.min(12, Number(document.getElementById('max-plan-weeks-value')?.value) || Number(current.weeks) || 6));
   const next = {
@@ -2809,6 +3176,7 @@ function _renderExerciseHistoryRows(exerciseId) {
   if (!items.length) return '<div class="wt-max-cleanse-empty">이 종목의 과거 수행 기록이 없어요.</div>';
   return items.map(({ key, entry, idx }) => {
     const sets = Array.isArray(entry.sets) ? entry.sets : [];
+    const ctx = entry.maxRecordContext || {};
     const setRows = sets.map((set, setIdx) => `
       <div class="wt-max-history-set" data-history-set-row data-date-key="${_esc(key)}" data-entry-idx="${idx}" data-set-idx="${setIdx}">
         <div class="wt-max-history-set-no">${setIdx + 1}</div>
@@ -2822,6 +3190,16 @@ function _renderExerciseHistoryRows(exerciseId) {
         <div class="wt-max-history-card-head">
           <b>${_esc(key)}</b>
           <small>${sets.length}세트 · ${_esc(entry.name || '운동 기록')}</small>
+        </div>
+        <div class="wt-max-history-context" data-history-context data-date-key="${_esc(key)}" data-entry-idx="${idx}">
+          <label><span>수행조건</span><select data-history-context-field="condition">
+            <option value="" ${ctx.condition ? '' : 'selected'}>기본</option>
+            <option value="adaptation" ${ctx.condition === 'adaptation' ? 'selected' : ''}>무게 적응기간</option>
+            <option value="lifting_shoes" ${ctx.condition === 'lifting_shoes' ? 'selected' : ''}>역도화</option>
+            <option value="flat_shoes" ${ctx.condition === 'flat_shoes' ? 'selected' : ''}>평탄화</option>
+            <option value="rom_changed" ${ctx.condition === 'rom_changed' ? 'selected' : ''}>가동범위/깊이 변화</option>
+          </select></label>
+          <label><span>메모</span><input data-history-context-field="note" type="text" maxlength="80" value="${_esc(ctx.note || '')}" placeholder="예: 깊게 앉음, 장비 변경"></label>
         </div>
         <div class="wt-max-history-sets">${setRows || '<div class="wt-max-cleanse-empty">세트 기록이 없어요.</div>'}</div>
       </div>
@@ -2991,6 +3369,7 @@ export function closeMaxExerciseHistoryModal() {
 
 export async function saveMaxExerciseHistoryModal() {
   const rows = Array.from(document.querySelectorAll('#max-ex-history-body [data-history-set-row]'));
+  const contextRows = Array.from(document.querySelectorAll('#max-ex-history-body [data-history-context]'));
   const cache = getCache() || {};
   const byDate = new Map();
   for (const row of rows) {
@@ -3014,6 +3393,25 @@ export async function saveMaxExerciseHistoryModal() {
       reps,
       done: entry.sets[setIdx].done === false ? false : true,
     };
+    entry.historyEditedAt = Date.now();
+  }
+  for (const row of contextRows) {
+    const key = row.getAttribute('data-date-key');
+    const idx = Number(row.getAttribute('data-entry-idx'));
+    if (!key || !Number.isInteger(idx)) continue;
+    if (!byDate.has(key)) {
+      byDate.set(key, JSON.parse(JSON.stringify(cache[key]?.exercises || [])));
+    }
+    const list = byDate.get(key);
+    const entry = list[idx];
+    if (!entry) continue;
+    const condition = row.querySelector('[data-history-context-field="condition"]')?.value || '';
+    const note = row.querySelector('[data-history-context-field="note"]')?.value?.trim() || '';
+    entry.maxRecordContext = condition || note ? {
+      condition,
+      note,
+      updatedAt: Date.now(),
+    } : null;
     entry.historyEditedAt = Date.now();
   }
   for (const [key, exercises] of byDate.entries()) {
@@ -3044,9 +3442,13 @@ export async function applyMaxSuggestion(movementId, weakPart = null, recMeta = 
     return;
   }
 
+  const activeCycle = _getMaxCycleSafe();
+
   // exList에 매칭되는 ex 있으면 재사용, 없으면 새로 등록 (gymId=null — 맥스는 체육관 비의존)
   let exId = null;
-  const matched = getExList().find(e => e.movementId === movementId);
+  const benchmarkExerciseId = (activeCycle?.benchmarks || []).find(b => b?.movementId === movementId && b?.exerciseId)?.exerciseId || null;
+  const matched = getExList().find(e => benchmarkExerciseId && e.id === benchmarkExerciseId)
+    || getExList().find(e => e.movementId === movementId);
   if (matched) {
     exId = matched.id;
   } else {
@@ -3081,14 +3483,13 @@ export async function applyMaxSuggestion(movementId, weakPart = null, recMeta = 
   if (!Array.isArray(S.workout.exercises)) S.workout.exercises = [];
   const meta = _ensureMaxMeta();
   const recommendationId = _buildRecommendationId(recMeta.kind || (weakPart ? 'weak_focus' : 'starter'), mov.id, weakPart || mov.subPattern);
-  const activeCycle = _getMaxCycleSafe();
   const cycleSnapshot = activeCycle ? buildRenderedMaxCycleSnapshot({
     cycle: activeCycle,
     cache: getCache(),
     exList: getExList(),
     todayKey: _todayKey(),
   }) : null;
-  const exMeta = getExList().find(e => e.id === exId) || null;
+  let exMeta = getExList().find(e => e.id === exId) || null;
   const preferredSessionType = exMeta?.maxTrackPreference === 'H'
     ? 'heavy_volume'
     : (exMeta?.maxTrackPreference === 'M' ? 'high_volume' : meta.sessionType);
@@ -3102,10 +3503,14 @@ export async function applyMaxSuggestion(movementId, weakPart = null, recMeta = 
     weakTarget: !!weakPart,
   }), mov, { weakTarget: !!weakPart });
   prescription = _applyPrescriptionOverride(prescription, recMeta.override);
+  if (prescription?.exerciseId && getExList().some(e => e.id === prescription.exerciseId)) {
+    exId = prescription.exerciseId;
+    exMeta = getExList().find(e => e.id === exId) || exMeta;
+  }
   S.workout.exercises.push({
     exerciseId: exId,
-    muscleId: mov.primary,
-    name: mov.nameKo,
+    muscleId: exMeta?.muscleId || mov.primary,
+    name: exMeta?.name || mov.nameKo,
     movementId: mov.id,
     recommendationMeta: {
       mode: 'max',
@@ -3118,7 +3523,7 @@ export async function applyMaxSuggestion(movementId, weakPart = null, recMeta = 
       subPattern: weakPart || mov.subPattern || null,
       cycleId: activeCycle?.id || null,
       cycleWeek: cycleSnapshot?.weekIndex || null,
-      track: cycleSnapshot?.track || (meta.sessionType === 'heavy_volume' ? 'H' : 'M'),
+      track: prescription?.benchmarkTrack || prescription?.track || cycleSnapshot?.track || (meta.sessionType === 'heavy_volume' ? 'H' : 'M'),
       gymScope: { sessionGymId: S.workout.currentGymId || null, tag: ['barbell', 'dumbbell', 'bodyweight'].includes(mov.equipment_category) ? '*' : (S.workout.currentGymId || '*') },
     },
     gymTagAtTime: ['barbell', 'dumbbell', 'bodyweight'].includes(mov.equipment_category) ? '*' : (S.workout.currentGymId || '*'),

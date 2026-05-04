@@ -17,6 +17,8 @@ import {
   lbToKg,
   getVolumeHistoryByMovement,
   getVolumeHistoryMulti,
+  inferWorkoutTrack,
+  getTrackMetricHistory,
   calcBalanceByPattern,
   detectPRs,
   isExerciseDaySuccess,
@@ -129,6 +131,31 @@ test('getVolumeHistoryByMovement · movementId로 집계', () => {
 test('getVolumeHistoryByMovement · 알 수 없는 movementId는 빈 배열', () => {
   const h = getVolumeHistoryByMovement(_sampleCache, _sampleExList, 'unknown_move');
   assert.deepEqual(h, []);
+});
+test('inferWorkoutTrack · 명시 트랙 우선, 없으면 반복수로 분류', () => {
+  assert.equal(inferWorkoutTrack({
+    recommendationMeta: { track: 'H' },
+    sets: [{ kg: 60, reps: 12, done: true }],
+  }).track, 'H');
+  assert.deepEqual(inferWorkoutTrack({
+    sets: [{ kg: 40, reps: 12, done: true }],
+  }), { track: 'M', source: 'reps' });
+  assert.deepEqual(inferWorkoutTrack({
+    sets: [{ kg: 90, reps: 5, done: true }],
+  }), { track: 'H', source: 'reps' });
+});
+test('getTrackMetricHistory · 볼륨/강도 그래프 데이터를 분리하고 미분류는 제외', () => {
+  const cache = {
+    '2026-04-01': { exercises: [{ exerciseId: 'bench', sets: [{ kg: 50, reps: 12, done: true }] }] },
+    '2026-04-08': { exercises: [{ exerciseId: 'bench', sets: [{ kg: 70, reps: 5, done: true }] }] },
+    '2026-04-15': { exercises: [{ exerciseId: 'bench', sets: [{ kg: 60, reps: 9, done: true }] }] },
+  };
+  const h = getTrackMetricHistory(cache, [{ id: 'bench' }], 'bench');
+  assert.equal(h.M.length, 1);
+  assert.equal(h.M[0].value, 600);
+  assert.equal(h.H.length, 1);
+  assert.ok(Math.abs(h.H[0].value - 81.67) < 0.1);
+  assert.equal(h.unclassified, 1);
 });
 
 // ── calcBalanceByPattern ─────────────────────────────────────

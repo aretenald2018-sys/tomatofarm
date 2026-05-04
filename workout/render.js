@@ -109,8 +109,13 @@ export function _buildSparkline(exerciseId, color) {
   const linePath = _smoothSparkPath(coords);
   const fillPath = `${linePath} L ${lastPt.x.toFixed(1)} ${H} L ${firstPt.x.toFixed(1)} ${H} Z`;
   const pct = prevAvg > 0 ? Math.round((avgDiff / prevAvg) * 100) : 0;
-  const trendText = trend === 'flat' ? '최근 평균 유지' : `최근 평균 ${pct > 0 ? '+' : ''}${pct}%`;
-  const detailText = `${prevVals.length}회 평균 대비${peakLabel ? ` · ${peakLabel}` : ''}`;
+  const suspicious = prevAvg > 0 && Math.abs(pct) >= 80 && recentHistory.length < 6;
+  const trendText = suspicious
+    ? '기록 점검'
+    : (trend === 'flat' ? '최근 평균 유지' : `최근 평균 ${pct > 0 ? '+' : ''}${pct}%`);
+  const detailText = suspicious
+    ? '표본이 작거나 조건이 달랐을 수 있음'
+    : `${prevVals.length}회 평균 대비${peakLabel ? ` · ${peakLabel}` : ''}`;
   const title = `최근 ${recentVals.length}회 평균과 이전 ${prevVals.length}회 평균의 볼륨 차이`;
   return `<div class="ex-sparkline-wrap" title="${title}">
     <svg width="${W}" height="${H}" class="ex-sparkline">

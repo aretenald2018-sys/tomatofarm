@@ -35,7 +35,7 @@ for port in $(seq $BASE_PORT $MAX_PORT); do
   pid=$(get_listening_pid "$port")
   [ -z "$pid" ] && continue
   is_python_process "$pid" || continue
-  if curl -s -o /dev/null --max-time 2 "http://localhost:${port}/" 2>/dev/null; then
+  if curl -fsS --max-time 2 "http://localhost:${port}/index.html" 2>/dev/null | grep -q "토마토 키우기"; then
     echo "[dev-start] Existing Python server on port ${port} (PID $pid) is healthy — reusing."
     echo ""
     echo "=== Dev server running ==="

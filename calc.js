@@ -628,6 +628,93 @@ export function getVolumeHistoryMulti(cache, exerciseIds) {
     .sort((a, b) => a.date.localeCompare(b.date));
 }
 
+export function normalizeWorkoutTrack(track) {
+  const t = String(track || '').trim().toUpperCase();
+  if (t === 'H' || t === 'HEAVY' || t === 'INTENSITY' || t === 'STRENGTH') return 'H';
+  if (t === 'M' || t === 'V' || t === 'VOLUME' || t === 'MEDIUM' || t === 'HYPERTROPHY') return 'M';
+  return '';
+}
+
+function _trackWorkSets(sets) {
+  return (sets || []).filter(s => {
+    if (!s || s.setType === 'warmup') return false;
+    if (s.done === false) return false;
+    return (Number(s.kg) || 0) > 0 && (Number(s.reps) || 0) > 0;
+  });
+}
+
+export function inferWorkoutTrack(entry = {}, ex = null) {
+  const explicit = normalizeWorkoutTrack(
+    entry?.recommendationMeta?.track ||
+    entry?.maxPrescription?.benchmarkTrack ||
+    entry?.maxPrescription?.track ||
+    entry?.maxTrackPreference
+  );
+  if (explicit) return { track: explicit, source: 'record' };
+
+  const workSets = _trackWorkSets(entry?.sets);
+  if (!workSets.length) return { track: '', source: 'empty' };
+
+  const bestSet = workSets.reduce((best, set) => {
+    const score = estimate1RM(set.kg, set.reps) || Number(set.kg) || 0;
+    const bestScore = estimate1RM(best.kg, best.reps) || Number(best.kg) || 0;
+    return score > bestScore ? set : best;
+  }, workSets[0]);
+  const reps = Number(bestSet?.reps) || 0;
+
+  if (reps >= 10) return { track: 'M', source: 'reps' };
+  if (reps > 0 && reps <= 8) return { track: 'H', source: 'reps' };
+
+  const exerciseMeta = normalizeWorkoutTrack(ex?.maxTrackPreference);
+  if (exerciseMeta) return { track: exerciseMeta, source: 'exercise-meta' };
+  return { track: '', source: 'ambiguous-reps' };
+}
+
+export function calcTrackSessionMetric(entry = {}, track = '') {
+  const t = normalizeWorkoutTrack(track) || inferWorkoutTrack(entry).track;
+  const workSets = _trackWorkSets(entry?.sets);
+  if (!t || !workSets.length) return 0;
+  if (t === 'H') {
+    return Math.max(...workSets.map(s => estimate1RM(s.kg, s.reps) || Number(s.kg) || 0));
+  }
+  return workSets.reduce((sum, s) => sum + (Number(s.kg) || 0) * (Number(s.reps) || 0), 0);
+}
+
+export function getTrackMetricHistory(cache, exList, exerciseId) {
+  if (!cache || !exerciseId) return { M: [], H: [], unclassified: 0, total: 0 };
+  const exById = new Map((exList || []).map(ex => [ex.id, ex]));
+  const byDate = {};
+  let unclassified = 0;
+  let total = 0;
+
+  for (const [key, day] of Object.entries(cache)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) continue;
+    const entries = (day.exercises || []).filter(e => e?.exerciseId === exerciseId);
+    for (const entry of entries) {
+      if (!_trackWorkSets(entry?.sets).length) continue;
+      total += 1;
+      const ex = exById.get(entry.exerciseId) || null;
+      const inferred = inferWorkoutTrack(entry, ex);
+      if (!inferred.track) {
+        unclassified += 1;
+        continue;
+      }
+      const value = calcTrackSessionMetric(entry, inferred.track);
+      if (value <= 0) continue;
+      if (!byDate[key]) byDate[key] = { date: key, M: 0, H: 0 };
+      byDate[key][inferred.track] += value;
+    }
+  }
+
+  const rows = Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date));
+  return {
+    M: rows.filter(r => r.M > 0).map(r => ({ date: r.date, value: r.M })),
+    H: rows.filter(r => r.H > 0).map(r => ({ date: r.date, value: r.H })),
+    unclassified,
+    total,
+  };
+}
+
 /**
  * subPattern별 작업세트 합계 — Scene 13 balance-block 데이터 소스.
  * weekRange = { fromKey, toKey } inclusive. 생략 시 전체 기간.

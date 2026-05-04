@@ -2268,6 +2268,7 @@
   padding: 7px 6px;
   border-radius: 8px;
   font-variant-numeric: tabular-nums lining-nums;
+  border: 1px solid transparent;
 }
 .wt-max-cycle-dual-cell em {
   display: block;
@@ -2290,6 +2291,46 @@
   margin: 0 0 0 2px;
   font-size: 9px;
   line-height: 12px;
+}
+.wt-max-cycle-dual-cell i {
+  display: block;
+  margin-top: 3px;
+  font-style: normal;
+  font-size: 9px;
+  line-height: 12px;
+  font-weight: 800;
+  color: var(--text-tertiary, #8e8e93);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wt-max-cycle-dual-cell .is-done,
+.wt-max-cycle-dual-cell .is-over {
+  background: rgba(21, 168, 102, 0.10);
+  border-color: rgba(21, 168, 102, 0.28);
+}
+.wt-max-cycle-dual-cell .is-done i,
+.wt-max-cycle-dual-cell .is-over i {
+  color: #0f8f55;
+}
+.wt-max-cycle-dual-cell .is-behind,
+.wt-max-cycle-dual-cell .is-missed {
+  background: #fff3e6;
+  border-color: rgba(180, 83, 9, 0.22);
+}
+.wt-max-cycle-dual-cell .is-behind i,
+.wt-max-cycle-dual-cell .is-missed i {
+  color: #b45309;
+}
+.wt-max-cycle-dual-cell .is-challenge {
+  background: rgba(250, 52, 44, 0.08);
+  border-color: rgba(250, 52, 44, 0.22);
+}
+.wt-max-cycle-dual-cell .is-challenge i {
+  color: #ca1d13;
+}
+.wt-max-cycle-dual-cell .is-future {
+  opacity: 0.72;
 }
 .wt-max-cycle-dual-cell .track-m b {
   color: #ca1d13;
@@ -2874,9 +2915,18 @@
   padding-top: 0;
   border-top: 0;
 }
-.wt-v4-rec-panel .wt-max-source-card--fixed,
-.wt-v4-rec-panel .wt-max-source-card--weak,
-.wt-v4-rec-panel .wt-max-source-card--balance,
+.wt-v4-rec-panel .wt-max-source-card--fixed {
+  background: transparent;
+  border-color: transparent;
+}
+.wt-v4-rec-panel .wt-max-source-card--balance {
+  background: transparent;
+  border-color: transparent;
+}
+.wt-v4-rec-panel .wt-max-source-card--weak {
+  background: transparent;
+  border-color: transparent;
+}
 .wt-v4-rec-panel .wt-max-source-card--starter {
   background: transparent;
   border-color: transparent;
@@ -2888,11 +2938,9 @@
   line-height: 14px;
   font-weight: 800;
 }
-.wt-v4-rec-panel .wt-max-source-card--weak .wt-max-source-title,
-.wt-v4-rec-panel .wt-max-source-card--balance .wt-max-source-title,
-.wt-v4-rec-panel .wt-max-source-card--fixed .wt-max-source-title {
-  color: var(--v4-ink-4);
-}
+.wt-v4-rec-panel .wt-max-source-card--weak .wt-max-source-title { color: #5b35b1; }
+.wt-v4-rec-panel .wt-max-source-card--balance .wt-max-source-title { color: #c2410c; }
+.wt-v4-rec-panel .wt-max-source-card--fixed .wt-max-source-title { color: #0e7490; }
 .wt-v4-rec-panel .wt-max-rec-grid,
 .wt-v4-rec-panel .wt-max-fixed-list {
   display: grid;
@@ -2932,18 +2980,52 @@
   line-height: 13px;
   font-weight: 800;
 }
-.wt-v4-rec-panel .wt-max-rec-kind,
-.wt-v4-rec-panel .wt-max-rec-card--habit_keep .wt-max-rec-kind,
-.wt-v4-rec-panel .wt-max-rec-card--balance_gap .wt-max-rec-kind,
-.wt-v4-rec-panel .wt-max-rec-card--weak_focus .wt-max-rec-kind {
+.wt-v4-rec-panel .wt-max-rec-kind {
   color: var(--v4-ink-3);
   background: #f4f4f5;
+}
+.wt-v4-rec-panel .wt-max-rec-card--habit_keep .wt-max-rec-kind {
+  color: #0e7490;
+  background: #cffafe;
+}
+.wt-v4-rec-panel .wt-max-rec-card--balance_gap .wt-max-rec-kind {
+  color: #c2410c;
+  background: #ffedd5;
+}
+.wt-v4-rec-panel .wt-max-rec-card--weak_focus .wt-max-rec-kind {
+  color: #5b35b1;
+  background: #ede9fe;
 }
 .wt-v4-rec-panel .wt-max-rec-cat,
 .wt-v4-rec-panel .wt-max-rec-done {
   color: var(--v4-ink-4);
   background: transparent;
   padding-left: 0;
+}
+.wt-v4-lift.is-missing-exercise {
+  border-color: rgba(220, 38, 38, .24);
+  background: rgba(254, 242, 242, .7);
+}
+.wt-v4-lift-warning,
+.wt-v4-bench-missing {
+  display: block;
+  margin-top: 3px;
+  color: #dc2626;
+  font-size: 10px;
+  line-height: 14px;
+  font-weight: 700;
+}
+.wt-v4-benchmark-edit-entry {
+  width: 100%;
+  min-height: 38px;
+  margin: 8px 0 4px;
+  border: 1px solid var(--v4-line, #ededf0);
+  border-radius: 11px;
+  background: #fff;
+  color: var(--v4-ink-2, #34343a);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
 }
 .wt-v4-rec-panel .wt-max-rec-name {
   color: var(--v4-ink-1);
