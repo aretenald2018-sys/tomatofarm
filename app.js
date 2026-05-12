@@ -28,6 +28,7 @@ import './utils/haptics.js';       // window.haptic.light/medium/heavy (Capacito
 // ── 코어 탭 (즉시 로드) ──
 import { renderHome, refreshNotifCenter, showToast } from './render-home.js';
 import { showWelcomeBackPopup } from './home/welcome-back.js';
+import { showDietPremiumReportIfNeeded } from './feature-diet-premium-report.js';
 import {
   loadWorkoutDate, changeWorkoutDate, goToTodayWorkout, saveWorkoutDay,
   openNutritionPhotoUpload, wtRecoverTimers,
@@ -302,15 +303,22 @@ async function init() {
 
     if (isAdmin()) {
       await switchTab('admin');
+      await showDietPremiumReportIfNeeded().catch((e) => console.warn('[diet-premium-report]', e));
     } else {
       renderHome({ deferCheerCard: true });
       let priorityPopupShown = false;
+      priorityPopupShown = await showDietPremiumReportIfNeeded().catch((e) => {
+        console.warn('[diet-premium-report]', e);
+        return false;
+      });
       if (previousLastLoginAt) {
-        const hoursSinceLogin = (Date.now() - previousLastLoginAt) / 3600000;
-        priorityPopupShown = await showWelcomeBackPopup(hoursSinceLogin).catch((e) => {
-          console.warn('[welcome-back]', e);
-          return false;
-        });
+        if (!priorityPopupShown) {
+          const hoursSinceLogin = (Date.now() - previousLastLoginAt) / 3600000;
+          priorityPopupShown = await showWelcomeBackPopup(hoursSinceLogin).catch((e) => {
+            console.warn('[welcome-back]', e);
+            return false;
+          });
+        }
       }
       if (!priorityPopupShown) {
         priorityPopupShown = showTutorialIfNeeded({ previousLastLoginAt });
@@ -343,6 +351,9 @@ async function init() {
   } finally {
     const loadEl = document.getElementById('loading');
     if (loadEl) { loadEl.style.display = 'none'; loadEl.classList.add('hidden'); }
+    requestAnimationFrame(() => {
+      showDietPremiumReportIfNeeded().catch((e) => console.warn('[diet-premium-report]', e));
+    });
     setTimeout(() => {
       document.querySelectorAll('.today-cell')[0]
         ?.scrollIntoView({ behavior:'smooth', block:'center' });

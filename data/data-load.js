@@ -228,6 +228,7 @@ export async function loadAll() {
     _settings.farm_state       = fbMap.farm_state       ?? null;
     _settings.milestone_shown  = fbMap.milestone_shown  ?? {};
     _settings.streak_freezes   = fbMap.streak_freezes   ?? [];
+    _settings.diet_premium_report_seen = fbMap.diet_premium_report_seen ?? {};
     _settings.expert_preset    = fbMap.expert_preset
       ? { ...DEFAULT_EXPERT_PRESET, ...fbMap.expert_preset }
       : { ...DEFAULT_EXPERT_PRESET };

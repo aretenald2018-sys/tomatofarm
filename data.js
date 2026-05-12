@@ -719,6 +719,13 @@ export const saveStreakWarningAck = (dateStr) => _saveSetting('streak_warning_ac
 export const getAdminOnboardingAck = () => !!_settings.ui_admin_onboarding_ack;
 export const saveAdminOnboardingAck = () => _saveSetting('ui_admin_onboarding_ack', true);
 
+export const getDietPremiumReportSeen = (reportId) => !!(_settings.diet_premium_report_seen || {})[reportId];
+export const saveDietPremiumReportSeen = (reportId, value = true) => {
+  const seen = { ...(_settings.diet_premium_report_seen || {}) };
+  seen[reportId] = value;
+  return _saveSetting('diet_premium_report_seen', seen);
+};
+
 // ── 홈 카드 개인화: 순서/숨김 ────────────────────────────────────────
 // order: ['hero', 'unit_goal', 'farm', 'goals', 'quests', ...] 카드 id 배열
 // hidden: ['mini_memo', 'friends'] 등 숨길 카드 id 배열
