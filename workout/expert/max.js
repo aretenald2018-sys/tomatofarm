@@ -579,6 +579,17 @@ function _epley(kg, reps) {
   return k > 0 && r > 0 ? k * (1 + r / 30) : 0;
 }
 
+function _romFactor(set = {}) {
+  if (set.romPct === '' || set.romPct == null) return 1;
+  const pct = Number(set.romPct);
+  if (!Number.isFinite(pct)) return 1;
+  return Math.max(0, Math.min(100, pct)) / 100;
+}
+
+function _setE1rm(set = {}) {
+  return _epley(set.kg, set.reps) * _romFactor(set);
+}
+
 function buildMaxPrescription({
   cache = {},
   exList = [],
@@ -607,7 +618,7 @@ function buildMaxPrescription({
     for (const entry of day?.exercises || []) {
       if (!ids.has(entry.exerciseId)) continue;
       const candidate = _workSetsOnly(entry.sets)
-        .map(s => ({ ...s, e1rm: _epley(s.kg, s.reps) }))
+        .map(s => ({ ...s, e1rm: _setE1rm(s) }))
         .sort((a, b) => b.e1rm - a.e1rm)[0];
       if (candidate) {
         bestSet = candidate;
@@ -619,14 +630,14 @@ function buildMaxPrescription({
   }
   const targetReps = isHeavy ? repsLow : repsHigh;
   const pct = Math.max(0.55, Math.min(0.86, 1 - targetReps * 0.025 - (targetRpe >= 9 ? 0 : 0.03)));
-  let startKg = bestSet ? _roundToStep(_epley(bestSet.kg, bestSet.reps) * pct, step) : 0;
+  let startKg = bestSet ? _roundToStep(_setE1rm(bestSet) * pct, step) : 0;
   let action = isHeavy ? 'load' : (weakTarget || !isLarge ? 'volume' : 'hold');
   let deltaKg = 0;
   let reason = '과거 기록이 부족해 기본 처방으로 시작합니다.';
   let transparency = null;
   const evidence = [];
   if (bestSet) {
-    const bestE1rm = _epley(bestSet.kg, bestSet.reps);
+    const bestE1rm = _setE1rm(bestSet);
     evidence.push({ label: '최근 기준 세트', value: `${lastDateKey?.slice(5).replace('-', '/') || '최근'} · ${Number(bestSet.kg) || 0}kg x ${Number(bestSet.reps) || 0}회` });
     evidence.push({ label: 'e1RM 환산', value: `${Math.round(bestE1rm * 10) / 10}kg x ${Math.round(pct * 100)}%` });
     if ((Number(bestSet.reps) || 0) >= repsHigh + 3) {
@@ -2045,7 +2056,7 @@ function _buildMainLiftProgress(cache = getCache(), exList = getExList()) {
         const entryMovementId = entry.movementId || ex?.movementId;
         if (entryMovementId !== movementId) continue;
         for (const set of _workSetsOnly(entry.sets || [])) {
-          best = Math.max(best, _epley(set.kg, set.reps));
+          best = Math.max(best, _setE1rm(set));
         }
       }
       if (best > 0) points.push({ dateKey: key, e1rm: Math.round(best * 10) / 10 });
@@ -2313,7 +2324,7 @@ function _recentBenchmarkSets({ exerciseId = null, movementId = null, todayKey =
         const kg = Number(set.kg) || 0;
         const reps = Number(set.reps) || 0;
         if (kg <= 0 || reps <= 0) continue;
-        const row = { ...set, kg, reps, dateKey: key, e1rm: _epley(kg, reps) };
+        const row = { ...set, kg, reps, dateKey: key, e1rm: _setE1rm(set) };
         if (isExact) {
           exact.push(row);
           exactHit = true;
@@ -3947,7 +3958,7 @@ function _renderMaxObStep1() {
   return `
     <div class="wt-max-ob-step">
       <div class="wt-max-ob-title">테스트 모드 기준으로 시작합니다</div>
-      <div class="wt-max-ob-sub">주 5-6회 · 한 세션 90분 · RPE 8-9 · 근비대/수행능력 전제입니다.</div>
+      <div class="wt-max-ob-sub">주 5-6회 · 한 세션 90분 · RIR 1-2 · 근비대/수행능력 전제입니다.</div>
       <div class="wt-max-ob-opts">
         <div class="wt-max-ob-opt is-on">
           <div class="wt-max-ob-opt-label">목표와 빈도는 묻지 않음</div>

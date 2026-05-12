@@ -3,6 +3,7 @@
 // ================================================================
 
 import {
+  calcRomFactor,
   calcSetVolume,
   calcVolume,
   calcVolumeAll,
@@ -14,6 +15,7 @@ import {
 } from './calc/volume.js';
 
 export {
+  calcRomFactor,
   calcSetVolume,
   calcVolume,
   calcVolumeAll,
@@ -479,6 +481,17 @@ export function rpeRepsToPct(rpe, reps) {
   return row[rep - 1];
 }
 
+export function estimateSet1RM(set = {}, { useRpe = true, applyRom = true } = {}) {
+  const kg = Number(set?.kg) || 0;
+  const reps = Number(set?.reps) || 0;
+  if (kg <= 0 || reps <= 0) return 0;
+  const rpe = Number(set?.rpe) || 0;
+  const base = useRpe && rpe >= 6
+    ? kg / (rpeRepsToPct(rpe, reps) || 1)
+    : estimate1RM(kg, reps);
+  return base * (applyRom ? calcRomFactor(set) : 1);
+}
+
 /** 목표 무게(kg) = e1RM × RPE/rep 테이블. 반올림 전 raw값. */
 export function targetWeightKg(e1RM, rpe, reps) {
   const one = Number(e1RM) || 0;
@@ -540,8 +553,8 @@ export function inferWorkoutTrack(entry = {}, ex = null) {
   if (!workSets.length) return { track: '', source: 'empty' };
 
   const bestSet = workSets.reduce((best, set) => {
-    const score = estimate1RM(set.kg, set.reps) || Number(set.kg) || 0;
-    const bestScore = estimate1RM(best.kg, best.reps) || Number(best.kg) || 0;
+    const score = estimateSet1RM(set, { useRpe: false }) || (Number(set.kg) || 0) * calcRomFactor(set);
+    const bestScore = estimateSet1RM(best, { useRpe: false }) || (Number(best.kg) || 0) * calcRomFactor(best);
     return score > bestScore ? set : best;
   }, workSets[0]);
   const reps = Number(bestSet?.reps) || 0;
@@ -559,7 +572,7 @@ export function calcTrackSessionMetric(entry = {}, track = '') {
   const workSets = _trackWorkSets(entry?.sets);
   if (!t || !workSets.length) return 0;
   if (t === 'H') {
-    return Math.max(...workSets.map(s => estimate1RM(s.kg, s.reps) || Number(s.kg) || 0));
+    return Math.max(...workSets.map(s => estimateSet1RM(s) || (Number(s.kg) || 0) * calcRomFactor(s)));
   }
   return workSets.reduce((sum, s) => sum + calcSetVolume(s), 0);
 }
@@ -1119,15 +1132,7 @@ function _workSetsOnly(sets = []) {
 }
 
 function _setE1RM(set) {
-  const kg = Number(set?.kg) || 0;
-  const reps = Number(set?.reps) || 0;
-  const rpe = Number(set?.rpe) || 0;
-  if (kg <= 0 || reps <= 0) return 0;
-  if (rpe >= 6) {
-    const pct = rpeRepsToPct(rpe, reps);
-    return pct > 0 ? kg / pct : estimate1RM(kg, reps);
-  }
-  return estimate1RM(kg, reps);
+  return estimateSet1RM(set);
 }
 
 function _bestRecentSet(sets = []) {
@@ -1152,6 +1157,11 @@ function _defaultMaxPrescription(movement, sessionType = 'high_volume', weakTarg
   return isLarge
     ? { targetSets: weakTarget ? 5 : 4, repsLow: 8, repsHigh: 12, targetRpe: 8, action: weakTarget ? 'volume' : 'hold' }
     : { targetSets: weakTarget ? 5 : 4, repsLow: 12, repsHigh: 18, targetRpe: 8, action: 'volume' };
+}
+
+function _targetRirLabel(targetRpe) {
+  const rir = Math.max(0, Math.min(9, 10 - (Number(targetRpe) || 8)));
+  return Number.isInteger(rir) ? `RIR ${rir}` : `RIR ${rir.toFixed(1)}`;
 }
 
 function _movementExerciseIds(exList = [], movementId) {
@@ -1236,7 +1246,7 @@ export function buildMaxPrescription({
   }));
   const actionLabel = progression.action === 'load' ? '증량' : (progression.action === 'volume' ? '볼륨' : '유지');
   return {
-    label: `${base.targetSets}세트 x ${base.repsLow}-${base.repsHigh}회 · RPE ${base.targetRpe}`,
+    label: `${base.targetSets}세트 x ${base.repsLow}-${base.repsHigh}회 · ${_targetRirLabel(base.targetRpe)}`,
     targetSets: base.targetSets,
     repsLow: base.repsLow,
     repsHigh: base.repsHigh,
@@ -1390,7 +1400,7 @@ export function findBenchmarkActuals(cache = {}, exList = [], movementId, todayK
         const kg = Number(set?.kg) || 0;
         const reps = Number(set?.reps) || 0;
         if (kg <= 0 || reps <= 0) continue;
-        const e1rm = estimate1RM(kg, reps);
+        const e1rm = estimateSet1RM(set);
         if (!best || e1rm > best.e1rm) best = { kg, reps, e1rm: Math.round(e1rm * 10) / 10 };
       }
       if (best) points.push({ dateKey: date, ...best });

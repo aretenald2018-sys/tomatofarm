@@ -10,6 +10,18 @@
 import { estimateInOnePass } from '../ai.js';
 import { normalizeFood, sanityCheckKcal } from '../data/korean-food-normalize.js';
 
+function _makeEstimateError(code, message) {
+  const err = new Error(message);
+  err.code = code;
+  return err;
+}
+
+function _isNonFoodArtifactName(name) {
+  const n = String(name || '').trim();
+  return /^(gemini|제미나이|google|구글|ai|인공지능|분석|분석\s*결과|음식\s*사진|이미지)$/i.test(n)
+    || /(gemini|제미나이)\s*(응답|분석|결과|추정)/i.test(n);
+}
+
 // ── 반상 prior 보정 ──────────────────────────────────────────────
 // 사진 속 모든 접시를 "전량 섭취"로 더하는 경향을 줄이기 위한 보수 추정.
 export function applyCafeteriaPrior(estimate) {
@@ -68,7 +80,7 @@ function _scaleEstimate(estimate, targetKcal) {
 // ── 아이템 이름 정규화 + kcal sanity check ───────────────────────
 export function normalizeItems(estimate) {
   if (!estimate || !Array.isArray(estimate.detectedItems)) return estimate;
-  const items = estimate.detectedItems.map(it => {
+  const items = estimate.detectedItems.filter(it => !_isNonFoodArtifactName(it?.name)).map(it => {
     const canonical = normalizeFood(it.name);
     const { kcal, corrected } = sanityCheckKcal(canonical, it.kcal, it.grams);
     return {
@@ -166,12 +178,18 @@ export function excludeItems(estimate, predicate) {
 export async function runAIEstimate(imageBase64) {
   // 단일 호출로 분류 + 상세 추정
   let estimate = await estimateInOnePass(imageBase64);
+  if (!estimate?.detectedItems?.length) {
+    throw _makeEstimateError('AI_NO_FOOD_ITEMS', '사진에서 음식 항목을 읽지 못했어요.');
+  }
 
   // Prior 보정 (반상만)
   estimate = applyCafeteriaPrior(estimate);
 
   // 한식 alias 정규화 + kcal sanity check
   estimate = normalizeItems(estimate);
+  if (!estimate?.detectedItems?.length) {
+    throw _makeEstimateError('AI_NO_FOOD_ITEMS', '사진에서 음식 항목을 읽지 못했어요.');
+  }
 
   // 한식 반상 과잉합산 방지
   estimate = applyCafeteriaPortionGuard(estimate);

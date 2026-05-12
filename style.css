@@ -7859,6 +7859,12 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
   border: 1px solid var(--seed-stroke-neutral, #e5e7eb);
   border-radius: 12px; padding: 12px 14px;
 }
+.cal-bd-row-workout {
+  cursor: pointer;
+}
+.cal-bd-row-workout:active {
+  background: var(--seed-bg-brand-weak, rgba(250,52,44,0.08));
+}
 .cal-bd-row-max {
   border-color: #ddd6fe;
   background: #f7f5ff;

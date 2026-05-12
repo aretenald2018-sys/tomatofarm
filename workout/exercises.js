@@ -14,7 +14,7 @@ import { getExList, getGlobalExList, getGymExList, getGyms, getLastSession, dete
          saveCustomMuscle,
          isExpertModeEnabled,
          getExpertPreset, getExpertMode }              from '../data.js';
-import { estimate1RM, rpeRepsToPct, targetWeightKg, weightRange, SUBPATTERN_TO_MAJOR,
+import { estimate1RM, estimateSet1RM, rpeRepsToPct, targetWeightKg, weightRange, SUBPATTERN_TO_MAJOR,
          getTrackMetricHistory, normalizeWorkoutTrack } from '../calc.js';
 import { MOVEMENTS } from '../config.js';
 // resolveCurrentGymId는 expert.js의 단일 진실원 (preset + S.workout.currentGymId 동기화).
@@ -188,10 +188,10 @@ function _localMaxPrescription({ movement, exerciseId, sessionType, weakTarget }
   const last = exerciseId ? getLastSession(exerciseId, todayKey) : null;
   const bestSet = (last?.sets || [])
     .filter(s => s && s.setType !== 'warmup' && (s.done === true || ((s.kg || 0) > 0 && (s.reps || 0) > 0)))
-    .map(s => ({ ...s, e1rm: estimate1RM(s.kg, s.reps) }))
+    .map(s => ({ ...s, e1rm: estimateSet1RM(s) }))
     .sort((a, b) => b.e1rm - a.e1rm)[0] || null;
   const pct = Math.max(0.55, Math.min(0.86, 1 - targetReps * 0.025 - (targetRpe >= 9 ? 0 : 0.03)));
-  let startKg = bestSet ? _roundToStep(estimate1RM(bestSet.kg, bestSet.reps) * pct, step) : 0;
+  let startKg = bestSet ? _roundToStep(estimateSet1RM(bestSet) * pct, step) : 0;
   let action = isHeavy ? 'load' : (weakTarget || !isLarge ? 'volume' : 'hold');
   let reason = '과거 기록 기반으로 오늘 목표 세트와 반복을 제안합니다.';
   let transparency = null;
@@ -206,12 +206,12 @@ function _localMaxPrescription({ movement, exerciseId, sessionType, weakTarget }
   if (bestSet && startKg > 0 && (Number(bestSet.kg) || 0) > 0 && startKg < Number(bestSet.kg)) {
     transparency = {
       label: `지난 ${Number(bestSet.kg)}kg보다 낮아 보이는 이유`,
-      detail: `${targetReps}회·RPE ${targetRpe} 목표로 e1RM을 환산해 시작 무게를 낮췄어요.`,
+      detail: `${targetReps}회·RIR ${_rpeToRir(targetRpe)} 목표로 ROM 보정 e1RM을 환산해 시작 무게를 낮췄어요.`,
     };
   }
   const actionLabel = action === 'load' ? '증량' : (action === 'volume' ? '볼륨' : '유지');
   return {
-    label: `${targetSets}세트 x ${repsLow}-${repsHigh}회 · RPE ${targetRpe}`,
+    label: `${targetSets}세트 x ${repsLow}-${repsHigh}회 · RIR ${_rpeToRir(targetRpe)}`,
     targetSets, repsLow, repsHigh, targetRpe, startKg, action, actionLabel, reason, transparency,
   };
 }
@@ -628,13 +628,13 @@ function _buildPoPillHtml({ exerciseId, last, targetRpe = 8 }) {
 function _buildExpertSceneBlock({ entryIdx, exerciseId, last, targetRpe = 8 }) {
   const fmt = _fmtNum;
 
-  // ── RPE 세그 HTML (active는 targetRpe 기준) ──
+  // ── RIR 세그 HTML (active는 내부 targetRpe 기준) ──
   const rpeSegs = [6, 7, 8, 9, 10].map(r =>
-    `<div class="rpe-seg${r === targetRpe ? ' active' : ''}">${r}</div>`
+    `<div class="rpe-seg${r === targetRpe ? ' active' : ''}" data-rpe="${r}">${_rpeToRir(r)}</div>`
   ).join('');
   const rpeRow = `
     <div class="rpe-row">
-      <span class="rpe-label">목표 RPE</span>
+      <span class="rpe-label">목표 RIR</span>
       <div class="rpe-segmented">${rpeSegs}</div>
     </div>`;
 
@@ -659,7 +659,7 @@ function _buildExpertSceneBlock({ entryIdx, exerciseId, last, targetRpe = 8 }) {
     const emptyFoot = `
       <div class="ws-foot">
         아직 기준 기록이 없어 추천 무게를 계산할 수 없어요.<br/>
-        kg·횟수·RPE 기록이 쌓이면 선택한 RPE ${targetRpe} 기준으로 보수/추천/공격 무게를 자동 제안해드릴게요.
+        kg·횟수·RIR 기록이 쌓이면 선택한 RIR ${_rpeToRir(targetRpe)} 기준으로 보수/추천/공격 무게를 자동 제안해드릴게요.
       </div>`;
     return `
       <div class="ex-expert-section" data-entry-idx="${entryIdx}" data-target-rpe="${targetRpe}">
@@ -691,24 +691,24 @@ function _buildExpertSceneBlock({ entryIdx, exerciseId, last, targetRpe = 8 }) {
   const sizeLabel = rec.sizeClass === 'small' ? '소근육' : '대근육';
   const refLabel  = rec.fromCurrentEntry ? '방금' : '지난 기록';
   const nextLabel = rec.fromCurrentEntry ? '다음 세트' : '오늘';
-  const foot2 = `e1RM ${rec.e1rm.toFixed(1)} · ${rec.todayReps}×RPE${targetRpe} 환산 · ±${fmt(rec.stepKg)}kg (${sizeLabel} 스텝)`;
+  const foot2 = `e1RM ${rec.e1rm.toFixed(1)} · ${rec.todayReps}×RIR${_rpeToRir(targetRpe)} 환산 · ±${fmt(rec.stepKg)}kg (${sizeLabel} 스텝)`;
   // RTS 기반 RPE 갭 해설: 실제 수행 RPE가 목표 RPE보다 낮으면(여유) → 무게 증가 신호,
   // 높으면(버거움) → 무게 유지/감량 신호. e1RM 역산이 이 원리를 이미 반영하지만,
   // 사용자에게 "왜 이 무게인지"를 과학적으로 설명하기 위해 갭을 명시.
   const rpeGap = rec.prevRpeKnown ? +(targetRpe - rec.prevRpe).toFixed(1) : null;
   let rpeHint = '';
   if (rec.prevRpeKnown && rpeGap !== null) {
-    if (rpeGap >= 1.5) rpeHint = ` · 지난 세트 여유(RPE${rec.prevRpe}) → 오늘 ${nextLabel} 강도 상향`;
-    else if (rpeGap <= -0.5) rpeHint = ` · 지난 세트 과부하(RPE${rec.prevRpe}) → 유지/조금 낮춤`;
-    else rpeHint = ` · 목표 RPE 근접 → 점진 증량 유지`;
+    if (rpeGap >= 1.5) rpeHint = ` · 지난 세트 여유(RIR${_rpeToRir(rec.prevRpe)}) → 오늘 ${nextLabel} 강도 상향`;
+    else if (rpeGap <= -0.5) rpeHint = ` · 지난 세트 과부하(RIR${_rpeToRir(rec.prevRpe)}) → 유지/조금 낮춤`;
+    else rpeHint = ` · 목표 RIR 근접 → 점진 증량 유지`;
   }
   let foot1;
   if (rec.isPRChallenge) {
     foot1 = `지금까지 최고 ${fmt(rec.prInfo.prKg)}kg · 오늘 추천 ${fmt(rec.recommended)}kg을 채우면 <b style="color:var(--primary, #fa342c);">개인 신기록</b>!`;
   } else if (diff > 0) {
-    foot1 = `${refLabel} ${fmt(rec.prevKg)}kg×${rec.prevReps}@RPE${rec.prevRpe}${rec.prevRpeKnown ? '' : '(추정)'} → ${nextLabel} <b style="color:var(--success, #1b854a);">+${fmt(diff)}kg 점진 과부하</b>${rpeHint}`;
+    foot1 = `${refLabel} ${fmt(rec.prevKg)}kg×${rec.prevReps}@RIR${_rpeToRir(rec.prevRpe)}${rec.prevRpeKnown ? '' : '(추정)'} → ${nextLabel} <b style="color:var(--success, #1b854a);">+${fmt(diff)}kg 점진 과부하</b>${rpeHint}`;
   } else {
-    foot1 = `${refLabel} ${fmt(rec.prevKg)}kg×${rec.prevReps}@RPE${rec.prevRpe}${rec.prevRpeKnown ? '' : '(추정)'} → ${nextLabel} 동일 무게 유지${rpeHint}`;
+    foot1 = `${refLabel} ${fmt(rec.prevKg)}kg×${rec.prevReps}@RIR${_rpeToRir(rec.prevRpe)}${rec.prevRpeKnown ? '' : '(추정)'} → ${nextLabel} 동일 무게 유지${rpeHint}`;
   }
   const prBanner = rec.isPRChallenge
     ? `<div class="ws-foot" style="margin-bottom:6px;">${foot1}</div>`
@@ -764,7 +764,7 @@ export function _renderExerciseList() {
       // RPE 세그 클릭 → expert section 재렌더 (추천 무게 재계산)
       const rpe = e.target.closest('.rpe-seg');
       if (rpe) {
-        const newRpe = parseInt(rpe.textContent, 10);
+        const newRpe = parseInt(rpe.dataset.rpe || rpe.textContent, 10);
         if (!newRpe) return;
         const exBlock = rpe.closest('.ex-block');
         const section = rpe.closest('.ex-expert-section');
@@ -932,13 +932,13 @@ function _renderSets(entryIdx) {
       ? `<span style="color:var(--accent)">${(set.kg*set.reps).toLocaleString()}vol</span>`
       : (isWarmup ? '<span style="color:var(--muted);font-size:9px">웜업</span>' : '');
 
-    // 실제 수행 RPE 선택 UI — Expert + 본세트 + 완료 상태에서만 노출.
+    // 실제 수행 RIR 선택 UI — Expert + 본세트 + 완료 상태에서만 노출.
     // 저장된 RPE는 다음 세션 _computeExpertRec에서 e1RM 역산에 사용되어
     // preferredRpe ↔ 실수행 RPE 갭 기반 점진적 과부하 루프를 구성.
     const rpeSelHtml = (isExpert && !isWarmup && isDone) ? `
-      <select class="set-rpe-select" data-idx="${si}" title="실제 수행 RPE">
-        <option value="" ${!set.rpe?'selected':''}>RPE</option>
-        ${[6,7,8,9,10].map(r => `<option value="${r}" ${Number(set.rpe)===r?'selected':''}>RPE ${r}</option>`).join('')}
+      <select class="set-rpe-select" data-idx="${si}" title="실제 수행 RIR">
+        <option value="" ${!set.rpe?'selected':''}>RIR</option>
+        ${[6,7,8,9,10].map(r => `<option value="${_rpeToRir(r)}" ${Number(set.rpe)===r?'selected':''}>RIR ${_rpeToRir(r)}</option>`).join('')}
       </select>` : '';
 
     const row = document.createElement('div');
@@ -948,7 +948,7 @@ function _renderSets(entryIdx) {
         <button type="button" class="ex-max-v2-type-btn ${isWarmup ? 'warmup' : (isDrop ? 'drop' : 'main')}" title="세트 타입">${_maxSetTypeLabel(set.setType)}</button>
         <label class="ex-max-v2-field"><span>KG</span><input class="set-input" type="number" placeholder="kg" min="0" step="0.5" value="${set.kg||''}"></label>
         <label class="ex-max-v2-field"><span>REP</span><input class="set-input" type="number" placeholder="회" min="1" step="1" value="${set.reps||''}"></label>
-        <label class="ex-max-v2-field"><span>RPE</span><input class="set-rpe-input" type="number" placeholder="-" min="1" max="10" step="0.5" value="${_normalizeRpe(set.rpe) ?? ''}"></label>
+        <label class="ex-max-v2-field"><span>RIR</span><input class="set-rpe-input" type="number" placeholder="-" min="0" max="9" step="0.5" value="${_rpeToRir(set.rpe)}"></label>
         <button class="set-done-btn ${isDone?'done':''}" title="완료 체크">✓</button>
         <button class="set-remove-btn" title="세트 삭제">×</button>
         <span class="set-drag-handle" title="드래그하여 순서 변경"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg></span>
@@ -986,9 +986,9 @@ function _renderSets(entryIdx) {
     row.querySelector('.set-done-btn').addEventListener('click', () => wtToggleSetDone(entryIdx, si));
     row.querySelector('.set-remove-btn').addEventListener('click', () => wtRemoveSet(entryIdx, si));
     const rpeSel = row.querySelector('.set-rpe-select');
-    if (rpeSel) rpeSel.addEventListener('change', e => wtUpdateSet(entryIdx, si, 'rpe', e.target.value));
+    if (rpeSel) rpeSel.addEventListener('change', e => wtUpdateSetRir(entryIdx, si, e.target.value));
     const maxRpeInput = row.querySelector('.set-rpe-input');
-    if (maxRpeInput) maxRpeInput.addEventListener('change', e => wtUpdateSet(entryIdx, si, 'rpe', e.target.value));
+    if (maxRpeInput) maxRpeInput.addEventListener('change', e => wtUpdateSetRir(entryIdx, si, e.target.value));
     const romRange = row.querySelector('.set-rom-range');
     const romInput = row.querySelector('.set-rom-input');
     if (romRange && romInput) {
@@ -1049,31 +1049,45 @@ function _currentPickerGymId() {
 function _exerciseSourceMeta(ex) {
   const gyms = getGyms?.() || [];
   const currentGymId = _currentPickerGymId();
-  const gymId = ex?.gymId || ex?.primaryGymId || null;
+  const gymIds = _exerciseGymIds(ex);
+  const gymId = gymIds[0] || null;
   const gym = gymId ? gyms.find(g => g.id === gymId) : null;
   const currentGym = currentGymId ? gyms.find(g => g.id === currentGymId) : null;
-  if (!gymId) {
+  if (_isExerciseGlobalScope(ex)) {
     return { label: '공통', detail: '모든 헬스장', cls: 'global' };
   }
-  if (gymId === currentGymId) {
+  if (currentGymId && gymIds.includes(currentGymId)) {
     return { label: gym?.name || currentGym?.name || '현재 헬스장', detail: '전용 기구', cls: 'current' };
   }
   return { label: gym?.name || '다른 헬스장', detail: '전용 기구', cls: 'other' };
 }
 
+function _exerciseGymIds(ex) {
+  return [...new Set([
+    ex?.gymId,
+    ex?.primaryGymId,
+    ...(Array.isArray(ex?.gymTags) ? ex.gymTags.filter(tag => tag && tag !== '*') : []),
+  ].filter(Boolean))];
+}
+
+function _isExerciseGlobalScope(ex) {
+  const tags = Array.isArray(ex?.gymTags) ? ex.gymTags : [];
+  return tags.includes('*') || _exerciseGymIds(ex).length === 0;
+}
+
 function _exerciseGymKey(ex) {
-  return ex?.gymId || ex?.primaryGymId || '';
+  return _exerciseGymIds(ex)[0] || '';
 }
 
 function _isExerciseUsableAtCurrentGym(ex) {
   const currentGymId = _currentPickerGymId();
-  const gymId = _exerciseGymKey(ex);
-  return !gymId || !currentGymId || gymId === currentGymId;
+  if (_isExerciseGlobalScope(ex) || !currentGymId) return true;
+  return _exerciseGymIds(ex).includes(currentGymId);
 }
 
 function _isExerciseEditable(ex) {
   if (!ex?.id) return false;
-  return /^custom_/.test(String(ex.id)) || !!ex.gymId || !!ex.primaryGymId || !ex.movementId;
+  return /^custom_/.test(String(ex.id)) || _exerciseGymIds(ex).length > 0 || !ex.movementId;
 }
 
 function _renderExercisePickerName(ex, alreadyAdded) {
@@ -1102,7 +1116,7 @@ window._wtSetPickerMuscleFilter = (muscleId) => {
 };
 window._wtSetPickerCategoryFilter = window._wtSetPickerMuscleFilter;
 window._wtSetPickerGymFilter = (gymId) => {
-  _pickerGymFilter = gymId || null;
+  _pickerGymFilter = gymId || (_isExpertSessionActive() ? 'all' : null);
   if (S?.workout) S.workout.pickerGymFilter = _pickerGymFilter;
   saveWorkoutDay({ silent: true }).catch(e => console.warn('[pickerGymFilter.save]:', e));
   _renderPickerList();
@@ -1127,7 +1141,7 @@ window._wtClearPickerSearch = () => {
 // C-4: 모든 필터 일괄 해제 ("필터 초기화" 버튼용)
 window._wtResetAllPickerFilters = () => {
   _pickerMuscleFilter = null;
-  _pickerGymFilter = _isExpertSessionActive() ? 'usable' : null;
+  _pickerGymFilter = _isExpertSessionActive() ? 'all' : null;
   window._wtClearPickerSearch();
 };
 
@@ -1163,9 +1177,9 @@ export function _renderPickerList() {
   const gyms = getGyms?.() || [];
   const currentGymId = _currentPickerGymId();
   const isExpert = _isExpertSessionActive();
-  if (isExpert && !_pickerGymFilter) _pickerGymFilter = 'usable';
+  if (isExpert && !_pickerGymFilter) _pickerGymFilter = 'all';
   const availableMuscles = new Set(rawPool.flatMap(_exerciseMajorIds).filter(Boolean));
-  const availableGymIds = new Set(rawPool.map(_exerciseGymKey).filter(Boolean));
+  const availableGymIds = new Set(rawPool.flatMap(_exerciseGymIds).filter(Boolean));
 
   // 필터 유효성 체크: 현재 풀에 해당 부위가 없으면 자동 해제
   if (_pickerMuscleFilter && !availableMuscles.has(_pickerMuscleFilter)) {
@@ -1175,10 +1189,10 @@ export function _renderPickerList() {
     ? rawPool.filter(e => _exerciseMajorIds(e).includes(_pickerMuscleFilter))
     : rawPool;
   const gymFiltered = (() => {
-    if (!_pickerGymFilter) return muscleFiltered;
+    if (!_pickerGymFilter || _pickerGymFilter === 'all') return muscleFiltered;
     if (_pickerGymFilter === 'usable') return muscleFiltered.filter(_isExerciseUsableAtCurrentGym);
-    if (_pickerGymFilter === 'global') return muscleFiltered.filter(e => !_exerciseGymKey(e));
-    return muscleFiltered.filter(e => _exerciseGymKey(e) === _pickerGymFilter);
+    if (_pickerGymFilter === 'global') return muscleFiltered.filter(_isExerciseGlobalScope);
+    return muscleFiltered.filter(e => _exerciseGymIds(e).includes(_pickerGymFilter));
   })();
   // C-2: 검색어 적용 (종목명 부분 일치, 대소문자 무시)
   const pool = _pickerSearchQuery
@@ -1191,7 +1205,7 @@ export function _renderPickerList() {
     const muscle = allMuscles.find(m => m.id === _pickerMuscleFilter);
     if (muscle) filterBadges.push({ type: 'muscle', label: `부위: ${muscle.name}` });
   }
-  if (_pickerGymFilter) {
+  if (_pickerGymFilter && _pickerGymFilter !== 'all') {
     const gym = gyms.find(g => g.id === _pickerGymFilter);
     const label = _pickerGymFilter === 'usable'
       ? '헬스장: 사용 가능'
@@ -1223,7 +1237,8 @@ export function _renderPickerList() {
       </div>
     </div>`;
     const gymOptions = [
-      { id: 'usable', name: currentGymId ? '사용 가능' : '전체', enabled: true },
+      { id: 'all', name: '전체', enabled: true },
+      { id: 'usable', name: currentGymId ? '사용 가능' : '공통/현재', enabled: true },
       { id: 'global', name: '공통', enabled: true },
       ...gyms.filter(g => availableGymIds.has(g.id)).map(g => ({ id: g.id, name: g.name || '이름 없는 헬스장', enabled: true })),
     ];
@@ -1362,7 +1377,7 @@ export async function wtOpenExercisePicker() {
   // 피커 열 때마다 부위/검색은 초기화하되, 헬스장 필터는 그날 세션 동안 유지한다.
   _pickerMuscleFilter = null;
   _pickerGymFilter = _isExpertSessionActive()
-    ? (S?.workout?.pickerGymFilter || 'usable')
+    ? (S?.workout?.pickerGymFilter || 'all')
     : null;
   _pickerSearchQuery = '';
   const searchInput = document.getElementById('ex-picker-search');
@@ -1428,7 +1443,7 @@ export function wtOpenExerciseEditor(exId, defaultMuscleId) {
     titleEl.textContent      = '종목 추가';
     nameInput.value          = '';
     muscleSelect.value       = defaultMuscleId || allMuscles[0]?.id || '';
-    gymSelect.value          = _pickerGymFilter && !['usable', 'global'].includes(_pickerGymFilter)
+    gymSelect.value          = _pickerGymFilter && !['all', 'usable', 'global'].includes(_pickerGymFilter)
       ? _pickerGymFilter
       : (currentGymId && _isExpertSessionActive() ? currentGymId : '');
     if (deleteBtn) deleteBtn.style.display = 'none';

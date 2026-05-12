@@ -138,7 +138,9 @@ ${_ITEM_SCHEMA.replace(
 - plateType은 위 8개 중 하나.
 - 먼저 타입을 판정한 뒤, 해당 타입 가이드에 맞춰 detectedItems를 분해.
 - 닭가슴살/훈제닭/삶은 닭은 steak로 분류하지 말고 lean_protein으로 분류.
-- 모든 숫자는 단위 없이 숫자값만.`;
+- detectedItems.name에는 실제 음식명만 넣고, Gemini/제미나이/AI/분석 결과 같은 제공자명이나 설명 문구를 절대 넣지 마라.
+- 모든 숫자는 단위 없이 숫자값만.
+- JSON 객체만 반환하고, 설명 문장은 반환하지 마라.`;
 
   const { data } = await _callGeminiJSON([
     { text: prompt },
@@ -169,7 +171,7 @@ function _shapeEstimate(data, plateType) {
     protein: Number(it.protein) || 0,
     carbs: Number(it.carbs) || 0,
     fat: Number(it.fat) || 0,
-  })).filter(it => it.name && it.kcal > 0);
+  })).filter(it => it.name && it.kcal > 0 && !_isNonFoodArtifactName(it.name));
 
   const finalPlateType = _repairChickenAsLeanProtein(plateType, cleaned);
 
@@ -182,6 +184,13 @@ function _shapeEstimate(data, plateType) {
     confidence: Math.min(1, Math.max(0, Number(data.confidence) || 0.5)),
     detectedItems: cleaned,
   };
+}
+
+function _isNonFoodArtifactName(name) {
+  const n = String(name || '').trim();
+  if (!n) return true;
+  return /^(gemini|제미나이|google|구글|ai|인공지능|분석|분석\s*결과|음식\s*사진|이미지)$/i.test(n)
+    || /(gemini|제미나이)\s*(응답|분석|결과|추정)/i.test(n);
 }
 
 function _repairChickenAsLeanProtein(plateType, items) {

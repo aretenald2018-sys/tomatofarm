@@ -2,7 +2,7 @@
 // calc/volume.js — 운동 볼륨/히스토리 순수 계산
 // ================================================================
 
-function _romFactor(set = {}) {
+export function calcRomFactor(set = {}) {
   if (set.romPct === '' || set.romPct == null) return 1;
   const pct = Number(set.romPct);
   if (!Number.isFinite(pct)) return 1;
@@ -10,7 +10,7 @@ function _romFactor(set = {}) {
 }
 
 export function calcSetVolume(set = {}) {
-  return (Number(set.kg) || 0) * (Number(set.reps) || 0) * _romFactor(set);
+  return (Number(set.kg) || 0) * (Number(set.reps) || 0) * calcRomFactor(set);
 }
 
 export function calcVolume(sets) {

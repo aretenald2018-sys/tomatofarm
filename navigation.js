@@ -80,8 +80,13 @@ export function initSwipeNavigation() {
     return (ni >= 0 && ni < tabs.length) ? tabs[ni] : null;
   }
 
+  function isModalInteraction(target = null) {
+    return !!document.querySelector('.modal.open, .modal-backdrop.open, .modal-overlay.open, .sheet-overlay.open')
+      || !!target?.closest?.('.modal, .modal-backdrop, .modal-overlay, .sheet-overlay');
+  }
+
   document.body.addEventListener('touchstart', e => {
-    if (document.querySelector('.modal.open')) return;
+    if (isModalInteraction(e.target)) return;
     const t = e.target;
     if (t.closest('.tab-nav') || t.closest('input[type="range"]') ||
         t.closest('canvas') || t.closest('textarea') ||
@@ -100,6 +105,7 @@ export function initSwipeNavigation() {
 
   document.body.addEventListener('touchmove', e => {
     if (!tracking) return;
+    if (isModalInteraction(e.target)) { tracking = false; _cleanupSwipe(); return; }
     const cx = e.touches[0].clientX;
     const cy = e.touches[0].clientY;
     const dx = cx - startX;
@@ -139,6 +145,7 @@ export function initSwipeNavigation() {
 
   document.body.addEventListener('touchend', e => {
     if (!tracking) return;
+    if (isModalInteraction(e.target)) { tracking = false; _cleanupSwipe(); return; }
     tracking = false;
     if (!swiping || !curPanel || !nextPanel) {
       _cleanupSwipe();

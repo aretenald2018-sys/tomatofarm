@@ -171,6 +171,17 @@ function _setBulkAIStatus(message, type = 'info') {
   el.dataset.type = type;
 }
 
+function _formatMealAIError(err) {
+  const raw = String(err?.message || err || '');
+  if (/AI_NO_FOOD_ITEMS|no JSON|unbalanced JSON|JSON|Gemini|제미나이|파싱/i.test(raw)) {
+    return '사진에서 음식 항목을 읽지 못했어요.';
+  }
+  if (/429|RESOURCE_EXHAUSTED|quota|resource-exhausted/i.test(raw)) {
+    return '오늘 AI 분석 한도를 초과했어요.';
+  }
+  return raw || '분석에 실패했어요.';
+}
+
 function _syncBulkAIChips() {
   document.querySelectorAll('.diet-bulk-ai-chip').forEach(chip => {
     const active = _bulkAISelection.includes(chip.dataset.meal);
@@ -289,8 +300,9 @@ window.runBulkMealAIUpload = async function(input) {
     _syncBulkAIChips();
   } catch (e) {
     console.error('[runBulkMealAIUpload] error:', e);
-    _setBulkAIStatus('분석 실패: ' + (e?.message || e), 'error');
-    window.showToast?.('일괄 등록 실패: ' + (e?.message || e), 3500, 'error');
+    const msg = _formatMealAIError(e);
+    _setBulkAIStatus('분석 실패: ' + msg, 'error');
+    window.showToast?.('일괄 등록 실패: ' + msg, 3500, 'error');
   } finally {
     if (uploadBtn) uploadBtn.disabled = false;
     input.value = '';

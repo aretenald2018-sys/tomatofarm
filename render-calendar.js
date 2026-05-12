@@ -323,10 +323,11 @@ function _openDay(key) {
 
   // breakdown
   const bd = mx.breakdown || {};
-  const row = (label, item, desc) => {
+  const row = (label, item, desc, extraClass = '') => {
     if (!item) return '';
     const gained = item.max - item.penalty;
-    return `<div class="cal-bd-row">
+    const actionAttrs = extraClass ? ' role="button" tabindex="0" aria-label="해당일 운동 기록 열기"' : '';
+    return `<div class="cal-bd-row ${extraClass}"${actionAttrs}>
       <div class="cal-bd-main">
         <span class="cal-bd-label">${label}</span>
         <span class="cal-bd-score">${gained}<small>/${item.max}</small></span>
@@ -391,7 +392,7 @@ function _openDay(key) {
     <div class="cal-bd-list">
       ${row('섭취 칼로리', bd.kcal, kcalDesc)}
       ${row('탄단지 균형', bd.macro, macroDesc)}
-      ${row('운동 소모',   bd.workout, workoutDesc)}
+      ${row('운동 소모',   bd.workout, workoutDesc, 'cal-bd-row-workout')}
       ${row('체중 방향',   bd.weight, weightDesc)}
       ${row('기록 완결',   bd.complete, completeDesc)}
       ${maxWeak?.hasAny ? `<div class="cal-bd-row cal-bd-row-max">
@@ -405,6 +406,20 @@ function _openDay(key) {
   `;
 
   openModal('calendar-day-modal');
+  const workoutRow = body.querySelector('.cal-bd-row-workout');
+  if (workoutRow) {
+    const openWorkout = () => {
+      closeModal('calendar-day-modal');
+      window.openWorkoutTab?.(yy, mm - 1, dd);
+    };
+    workoutRow.addEventListener('click', openWorkout);
+    workoutRow.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        openWorkout();
+      }
+    });
+  }
 }
 
 function _closeDay(e) {

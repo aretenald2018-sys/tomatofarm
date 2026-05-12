@@ -43,6 +43,17 @@ function _esc(s) {
   );
 }
 
+function _friendlyAIError(message, code) {
+  const raw = String(message || '');
+  if (/AI_NO_FOOD_ITEMS/i.test(code || '') || /no JSON|unbalanced JSON|JSON|Gemini|제미나이|파싱/i.test(raw)) {
+    return {
+      message: '사진에서 음식 항목을 읽지 못했어요.',
+      hint: '음식이 잘 보이게 다시 찍거나, 상세 편집/수동 입력으로 진행해 주세요.',
+    };
+  }
+  return { message: raw || '잠시 후 다시 시도해 주세요.', hint: '' };
+}
+
 // ── 컨테이너 ────────────────────────────────────────────────────
 function _getHostContainer(meal) {
   const body = document.querySelector(`.diet-toss-row[data-meal="${meal}"] .diet-toss-body`);
@@ -188,8 +199,9 @@ export function renderError(meal, message, errorCode) {
   const host = _getHostContainer(meal);
   if (!host) return;
   // 429 / RESOURCE_EXHAUSTED → 친절한 설명
-  let displayMsg = message || '잠시 후 다시 시도해 주세요.';
-  let hint = '';
+  const friendly = _friendlyAIError(message, errorCode);
+  let displayMsg = friendly.message;
+  let hint = friendly.hint;
   const em = String(message || '');
   if (/429|RESOURCE_EXHAUSTED|quota|resource-exhausted/i.test(em)) {
     displayMsg = '오늘 AI 분석 한도를 초과했어요.';

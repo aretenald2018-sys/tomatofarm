@@ -155,6 +155,17 @@ function _estimate1RM(kg, reps) {
   return r === 1 ? k : k * (1 + r / 30);
 }
 
+function _romFactor(set = {}) {
+  if (set.romPct === '' || set.romPct == null) return 1;
+  const pct = Number(set.romPct);
+  if (!Number.isFinite(pct)) return 1;
+  return Math.max(0, Math.min(100, pct)) / 100;
+}
+
+function _estimateSet1RM(set = {}) {
+  return _estimate1RM(set.kg, set.reps) * _romFactor(set);
+}
+
 export function predictBenchmarkProgression(benchmark, cycle, todayKey, track = 'M') {
   const weeks = Math.max(1, Number(cycle?.weeks) || 6);
   const week = _weekIndex(cycle, todayKey);
@@ -253,7 +264,7 @@ function _actuals(cache = {}, exList = [], benchmarkOrMovementId, todayKey, mayb
         const kg = Number(set?.kg) || 0;
         const reps = Number(set?.reps) || 0;
         if (kg <= 0 || reps <= 0) continue;
-        const e1rm = _estimate1RM(kg, reps);
+        const e1rm = _estimateSet1RM(set);
         if (!best || e1rm > best.e1rm) best = { kg, reps, e1rm: Math.round(e1rm * 10) / 10 };
       }
       if (best) points.push({ dateKey: date, ...best });

@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 
 import {
   estimate1RM,
+  estimateSet1RM,
   rpeRepsToPct,
   targetWeightKg,
   roundToIncrement,
@@ -20,6 +21,7 @@ import {
   getVolumeHistoryByMovement,
   getVolumeHistoryMulti,
   inferWorkoutTrack,
+  calcTrackSessionMetric,
   getTrackMetricHistory,
   calcBalanceByPattern,
   detectPRs,
@@ -106,6 +108,12 @@ test('ROM · 볼륨은 kg×reps×ROM% 로 계산한다', () => {
     { kg: 100, reps: 10, romPct: 20, done: false },
     { kg: 100, reps: 10, romPct: 20, done: true, setType: 'warmup' },
   ]), 1050);
+});
+
+test('ROM · 강도 트랙 e1RM에도 ROM% 를 반영한다', () => {
+  const set = { kg: 100, reps: 5, romPct: 80, done: true };
+  assert.ok(Math.abs(estimateSet1RM(set) - 93.33) < 0.1);
+  assert.ok(Math.abs(calcTrackSessionMetric({ sets: [set], recommendationMeta: { track: 'H' } }, 'H') - 93.33) < 0.1);
 });
 
 // ── getVolumeHistoryMulti / ByMovement ────────────────────────
