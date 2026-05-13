@@ -11,10 +11,12 @@
 
 import { S }                        from './state.js';
 import { showCenterToast }          from '../home/utils.js';
-import { saveDay, dateKey, isFuture, trackEvent, getExList, getExpertMode } from '../data.js';
+import { saveDay, dateKey, isFuture, trackEvent, getExList } from '../data.js';
 import { WORKOUT_PAYLOAD_KEYS, DIET_PAYLOAD_KEYS } from './save-schema.js';
 import { deriveActivityFlagsFromDetails, deriveDietSuccessFromWorkout } from './cross-domain.js';
 import { MOVEMENTS } from '../config.js';
+import { calcSetVolume } from '../calc/volume.js';
+import { shouldKeepMaxDraftExercisesForSavePure } from './save-pure.js';
 
 // 미래 날짜 저장 가드 — 어떤 경로로든 미래 날짜 쓰기 금지 (B-3).
 function _blockIfFutureDate() {
@@ -23,6 +25,19 @@ function _blockIfFutureDate() {
   if (!isFuture(date.y, date.m, date.d)) return false;
   try { window.showToast?.('미래 날짜는 저장할 수 없어요', 1800, 'warning'); } catch {}
   return true;
+}
+
+function _workoutDateKeyFromState() {
+  const date = S.shared.date;
+  if (!date || typeof date.y !== 'number') return null;
+  return dateKey(date.y, date.m, date.d);
+}
+
+function _isWorkoutDateStill(key, stage) {
+  const current = _workoutDateKeyFromState();
+  if (!key || !current || key === current) return true;
+  console.warn('[workout/save] 날짜 변경 중 stale save 차단:', { started: key, current, stage });
+  return false;
 }
 
 // ── per-meal 기록 유무 판정 헬퍼 ────────────────────────────────
@@ -122,6 +137,11 @@ function _resolveEntrySubPattern(entry, exById, movById) {
 function _buildMaxMeta(cleanEx) {
   const src = S.workout.maxMeta;
   if (!src || typeof src !== 'object') return null;
+  const currentDateKey = _workoutDateKeyFromState();
+  if (src.dateKey && currentDateKey && src.dateKey !== currentDateKey) {
+    console.warn('[workout/save] 다른 날짜 maxMeta 저장 차단:', { metaDateKey: src.dateKey, currentDateKey });
+    return null;
+  }
   const selectedWeakParts = Array.isArray(src.selectedWeakParts)
     ? [...new Set(src.selectedWeakParts.filter(Boolean))]
     : [];
@@ -135,7 +155,11 @@ function _buildMaxMeta(cleanEx) {
   const movById = new Map((MOVEMENTS || []).map(m => [m.id, m]));
   const weakSet = new Set(selectedWeakParts);
   const summary = { sets: 0, volume: 0, byPart: {} };
+  let maxExerciseCount = 0;
   for (const entry of cleanEx || []) {
+    if (entry?.recommendationMeta?.mode === 'max' || entry?.maxPrescription || entry?.maxWeakPart) {
+      maxExerciseCount += 1;
+    }
     const sp = _resolveEntrySubPattern(entry, exById, movById);
     if (!sp || (!weakSet.has(sp) && !entry.maxWeakPart)) continue;
     const part = entry.maxWeakPart || sp;
@@ -143,7 +167,7 @@ function _buildMaxMeta(cleanEx) {
       if (!set || set.setType === 'warmup') continue;
       const done = set.done === true || (set.done !== false && ((set.kg || 0) > 0 || (set.reps || 0) > 0));
       if (!done) continue;
-      const volume = (Number(set.kg) || 0) * (Number(set.reps) || 0);
+      const volume = calcSetVolume(set);
       summary.sets += 1;
       summary.volume += volume;
       if (!summary.byPart[part]) summary.byPart[part] = { sets: 0, volume: 0 };
@@ -151,14 +175,26 @@ function _buildMaxMeta(cleanEx) {
       summary.byPart[part].volume += volume;
     }
   }
+  const weakDurationSec = Math.max(0, Math.floor(Number(src.weakBlock?.durationSec) || 0));
+  const hasActiveState =
+    selectedMajors.length > 0 ||
+    selectedWeakParts.length > 0 ||
+    rejectedRecommendations.length > 0 ||
+    weakDurationSec > 0 ||
+    !!src.weakBlock?.activeStartedAt ||
+    src.majorGateOpen === true ||
+    src.majorGateOpen === false;
+  if (!hasActiveState && maxExerciseCount === 0) return null;
   return {
     mode: 'max',
+    dateKey: currentDateKey || src.dateKey || null,
     sessionType: src.sessionType === 'heavy_volume' ? 'heavy_volume' : 'high_volume',
     selectedMajors,
     selectedWeakParts,
     rejectedRecommendations,
+    majorGateOpen: src.majorGateOpen === true,
     weakBlock: {
-      durationSec: Math.max(0, Math.floor(Number(src.weakBlock?.durationSec) || 0)),
+      durationSec: weakDurationSec,
       activeStartedAt: src.weakBlock?.activeStartedAt || null,
     },
     weakSummary: summary,
@@ -212,11 +248,18 @@ function _refreshTabDots() {
 }
 
 function _hasSaveWorthySet(set) {
-  return !!(set && (set.done === true || (set.kg || 0) > 0 || (set.reps || 0) > 0));
+  if (!set || set.setType === 'warmup') return false;
+  if (set.done === true) return true;
+  if (set.done === false) return false;
+  return (Number(set.kg) || 0) > 0 && (Number(set.reps) || 0) > 0;
+}
+
+export function shouldKeepMaxDraftExercisesForSave(workout = S.workout) {
+  return shouldKeepMaxDraftExercisesForSavePure(workout, _workoutDateKeyFromState());
 }
 
 function _shouldKeepDraftExercises() {
-  return S.workout.maxMeta?.mode === 'max' || getExpertMode?.() === 'max';
+  return shouldKeepMaxDraftExercisesForSave(S.workout);
 }
 
 function _cleanExercises(includeNotes, includeDrafts = false) {
@@ -302,9 +345,12 @@ function _prepareSave({ syncWorkoutDetails }) {
 // ── 명시적 저장 (운동 도메인) ───────────────────────────────────
 export async function saveWorkoutDay(options = {}) {
   const { silent = false } = options || {};
+  const startedKey = _workoutDateKeyFromState();
   const ctx = _prepareSave({ syncWorkoutDetails: true });
   if (!ctx) return;
   const { y, m, d, cleanEx, isDietSuccess } = ctx;
+  const ctxKey = dateKey(y, m, d);
+  if (startedKey !== ctxKey || !_isWorkoutDateStill(startedKey, 'prepared')) return;
 
   const btn = silent ? null : document.getElementById('wt-save-btn');
   if (btn) { btn.disabled = true; btn.textContent = '저장 중...'; }
@@ -312,7 +358,8 @@ export async function saveWorkoutDay(options = {}) {
   const payload = _buildWorkoutPayload(cleanEx, isDietSuccess);
   _assertSchemaParity('workout', payload, WORKOUT_PAYLOAD_KEYS);
   try {
-    await saveDay(dateKey(y, m, d), payload, { rethrow: true, mode: 'merge' });
+    if (!_isWorkoutDateStill(startedKey, 'before-write')) return;
+    await saveDay(ctxKey, payload, { rethrow: true, mode: 'merge' });
   } catch (e) {
     if (btn) { btn.disabled = false; btn.textContent = '저장'; }
     console.error('[workout/save] saveWorkoutDay 실패:', e);
@@ -336,23 +383,27 @@ export async function saveWorkoutDay(options = {}) {
 // ── 식단 자동 저장 (식단 도메인) ────────────────────────────────
 // 식단 페이로드만 merge 저장 — 운동 필드 전부 제외 → 자동저장이 운동을 건드리지 못함.
 export async function _autoSaveDiet() {
+  const startedKey = _workoutDateKeyFromState();
   const ctx = _prepareSave({ syncWorkoutDetails: false });
   if (!ctx) {
     if (!S.shared.date) console.warn('[render-workout] 날짜 정보가 없어 저장할 수 없습니다');
     return;
   }
   const { y, m, d, isDietSuccess } = ctx;
+  const ctxKey = dateKey(y, m, d);
+  if (startedKey !== ctxKey || !_isWorkoutDateStill(startedKey, 'diet-prepared')) return;
   const diet = S.diet;
 
   console.log('[render-workout] 식단 자동 저장 시작:', {
-    dateKey: dateKey(y, m, d),
+    dateKey: ctxKey,
     foods: { b: diet.bFoods?.length || 0, l: diet.lFoods?.length || 0, d: diet.dFoods?.length || 0 },
   });
 
   try {
     const payload = _buildDietPayload(isDietSuccess);
     _assertSchemaParity('diet', payload, DIET_PAYLOAD_KEYS);
-    await saveDay(dateKey(y, m, d), payload, { rethrow: true, mode: 'merge' });
+    if (!_isWorkoutDateStill(startedKey, 'diet-before-write')) return;
+    await saveDay(ctxKey, payload, { rethrow: true, mode: 'merge' });
 
     const totalFoods = (diet.bFoods?.length || 0) + (diet.lFoods?.length || 0)
       + (diet.dFoods?.length || 0) + (diet.sFoods?.length || 0);
