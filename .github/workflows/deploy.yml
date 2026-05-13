@@ -27,6 +27,12 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
+      - name: Generate build info
+        run: node scripts/generate-build-info.mjs
+
+      - name: Verify runtime assets
+        run: node scripts/verify-runtime-assets.mjs
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
@@ -35,3 +41,6 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+      - name: Verify deployed build
+        run: node scripts/verify-deploy.mjs "${{ steps.deployment.outputs.page_url }}" "${{ github.sha }}"

@@ -25,15 +25,20 @@ if (_isLocalDev) {
       .then(registration => {
         console.log('[PWA] Service Worker 등록 성공:', registration);
         console.log('[PWA] Service Worker 상태 - Active:', !!registration.active, 'Installing:', !!registration.installing, 'Waiting:', !!registration.waiting);
+        if (registration.waiting && navigator.serviceWorker.controller) {
+          window.__showAppUpdateBanner?.(registration);
+        }
 
         // 업데이트 확인
         registration.addEventListener('updatefound', () => {
           console.log('[PWA] updatefound 이벤트 감지');
           const newWorker = registration.installing;
+          if (!newWorker) return;
           newWorker.addEventListener('statechange', () => {
             console.log('[PWA] Service Worker 상태 변경:', newWorker.state);
             if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
               console.log('[PWA] 새로운 버전이 준비되었습니다. 페이지를 새로고침하세요.');
+              window.__showAppUpdateBanner?.(registration);
             }
           });
         });

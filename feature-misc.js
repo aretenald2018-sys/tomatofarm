@@ -8,6 +8,7 @@ import { getSectionTitle, saveSectionTitle,
 import { renderHome, showToast } from './render-home.js';
 import { getDeferredInstallPrompt } from './pwa-fcm.js';
 import { confirmAction } from './utils/confirm-modal.js';
+import { renderBuildInfo } from './utils/build-info.js';
 
 // ── 구역 제목 편집 ────────────────────────────────────────────────
 function editSectionTitle(key) {
@@ -71,6 +72,7 @@ function openSettingsModal() {
   document.getElementById('cfg-anthropic').value = localStorage.getItem('cfg_anthropic') || '';
   _renderNutritionDBList();
   document.getElementById('settings-modal').classList.add('open');
+  renderBuildInfo().catch(e => console.warn('[settings] build info 표시 실패:', e));
   // PWA 설치 섹션 업데이트
   try {
     const section = document.getElementById('pwa-install-section');

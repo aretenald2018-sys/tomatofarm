@@ -12,7 +12,7 @@ mkdirSync(www, { recursive: true });
 
 // 복사할 파일/폴더 목록
 const targets = [
-  'index.html', 'style.css', 'app.js', 'ai.js', 'config.js', 'data.js',
+  'index.html', 'build-info.json', 'style.css', 'app.js', 'ai.js', 'config.js', 'data.js',
   'calc.js',
   'navigation.js', 'workout-ui.js', 'pwa-fcm.js',
   'fatsecret-api.js', 'sheet.js',

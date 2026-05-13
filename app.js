@@ -15,16 +15,18 @@ import './feature-fatsecret.js';
 import './feature-checkin.js';
 import './feature-misc.js';
 import './workout-ui.js';
-import './workout/expert.js';  // 전문가 모드 (window.* 노출 + 렌더)
+import './workout/expert.js?v=20260512v56';  // 전문가 모드 (window.* 노출 + 렌더)
 import { showTutorialIfNeeded } from './feature-tutorial.js';
 import { initFCM, showPWAInstallBanner, updateInstallBtn } from './pwa-fcm.js';
 import { initTabDrag, initSwipeNavigation, applyTabOrder, applyVisibleTabs } from './navigation.js';
 import { initUxPolish } from './utils/ux-polish.js';
 import { initActionRouter } from './utils/action-router.js';
+import { initBuildInfoSurface } from './utils/build-info.js';
 import './utils/confirm-modal.js'; // window.confirmAction / confirmSimple 등록
 import './utils/form-guard.js';    // window.createFormGuard / registerFormGuard 등록
 import './utils/format.js';        // window.fmtKcal / fmtDate 등 로케일 포맷
 import './utils/haptics.js';       // window.haptic.light/medium/heavy (Capacitor + web fallback)
+try { initBuildInfoSurface(); } catch (e) { console.warn('[app] build info init 실패:', e); }
 // ── 코어 탭 (즉시 로드) ──
 import { renderHome, refreshNotifCenter, showToast } from './render-home.js';
 import { showWelcomeBackPopup } from './home/welcome-back.js';
@@ -32,7 +34,7 @@ import { showDietPremiumReportIfNeeded } from './feature-diet-premium-report.js'
 import {
   loadWorkoutDate, changeWorkoutDate, goToTodayWorkout, saveWorkoutDay,
   openNutritionPhotoUpload, wtRecoverTimers,
-} from './render-workout.js';
+} from './render-workout.js?v=20260512v56';
 
 // ── 레이지 로딩 탭 캐시 ──
 const _lazyModules = {};
@@ -181,7 +183,7 @@ function _syncNavigationForCurrentRole() {
   if (moreMenu && adminOnlyMode) moreMenu.style.display = 'none';
 }
 
-async function switchTab(tab) {
+async function switchTab(tab, options = {}) {
   if (isAdmin() && tab !== 'admin') tab = 'admin';
   _currentTab = tab;
   trackEvent('nav', 'tab_visit', { tab });
@@ -196,7 +198,12 @@ async function switchTab(tab) {
   // 코어 탭 (즉시 로드)
   if (tab === 'home')     renderHome();
   if (tab === 'workout') {
-    loadWorkoutDate(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
+    const targetDate = options?.workoutDate || null;
+    if (targetDate && Number.isFinite(Number(targetDate.y)) && Number.isFinite(Number(targetDate.m)) && Number.isFinite(Number(targetDate.d))) {
+      loadWorkoutDate(Number(targetDate.y), Number(targetDate.m), Number(targetDate.d));
+    } else {
+      loadWorkoutDate(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
+    }
     wtRecoverTimers();
     // 탭 진입 시 프로 모드 뷰는 리셋 → 항상 일반 모드 뷰가 디폴트.
     if (typeof window.resetExpertView === 'function') window.resetExpertView();
@@ -231,8 +238,7 @@ document.addEventListener('cooking:saved', renderAll);
 
 // ── 운동탭에서 날짜 지정 진입 ────────────────────────────────────
 function openWorkoutTab(y, m, d) {
-  switchTab('workout');
-  loadWorkoutDate(y, m, d);
+  switchTab('workout', { workoutDate: { y, m, d } });
   wtRecoverTimers();
 }
 
@@ -242,10 +248,12 @@ function openWorkoutTab(y, m, d) {
 // ── 다이어트 플랜/체크인/FatSecret은 feature-*.js로 분리됨 ──────
 // ── 초기화 ───────────────────────────────────────────────────────
 async function init() {
+  let bootUser = null;
   try {
     // 로그인 안 되어있으면 모달만 로드하고 대기
     const { getCurrentUser, loadSavedUser } = await import('./data.js');
     const user = loadSavedUser() || getCurrentUser();
+    bootUser = user;
     const previousLastLoginAt = user?.lastLoginAt || 0;
     if (!user) {
       await loadAndInjectModals();
@@ -351,16 +359,20 @@ async function init() {
   } finally {
     const loadEl = document.getElementById('loading');
     if (loadEl) { loadEl.style.display = 'none'; loadEl.classList.add('hidden'); }
-    requestAnimationFrame(() => {
-      showDietPremiumReportIfNeeded().catch((e) => console.warn('[diet-premium-report]', e));
-    });
-    setTimeout(() => {
-      document.querySelectorAll('.today-cell')[0]
-        ?.scrollIntoView({ behavior:'smooth', block:'center' });
-    }, 400);
-    // PWA 설치 안내 배너 (앱 미설치 + 이전에 닫지 않았으면)
-    showPWAInstallBanner();
-    updateInstallBtn();
+    window.__tomatoAppReady = true;
+    window.dispatchEvent(new Event('tomato-app-ready'));
+    if (bootUser) {
+      requestAnimationFrame(() => {
+        showDietPremiumReportIfNeeded().catch((e) => console.warn('[diet-premium-report]', e));
+      });
+      setTimeout(() => {
+        document.querySelectorAll('.today-cell')[0]
+          ?.scrollIntoView({ behavior:'smooth', block:'center' });
+      }, 400);
+      // PWA 설치 안내 배너 (앱 미설치 + 이전에 닫지 않았으면)
+      showPWAInstallBanner();
+      updateInstallBtn();
+    }
   }
 }
 

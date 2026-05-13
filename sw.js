@@ -3,7 +3,7 @@
 
 // 캐시 버전: 타임스탬프 기반 자동 생성 — 파일 수정 시 SW 자동 업데이트
 // (SW 파일 내용이 1바이트라도 바뀌면 브라우저가 새 SW로 인식)
-const CACHE_VERSION = 'tomatofarm-v20260513-v59-rom-volume-summary';
+const CACHE_VERSION = 'tomatofarm-v20260513z62-runtime-asset-guard';
 const RUNTIME_CACHE = 'dashboard3-runtime';
 const STATIC_ASSETS = [
   './',
@@ -186,6 +186,7 @@ self.addEventListener('install', (event) => {
       if (failures.length) {
         console.error(`[SW] Precache failed for ${failures.length}/${STATIC_ASSETS.length} files:`);
         failures.forEach(f => console.error(`  - ${f.url}: ${f.error}`));
+        throw new Error(`Precache failed for ${failures.length}/${STATIC_ASSETS.length} files`);
       } else {
         console.log(`[SW] Precached ${STATIC_ASSETS.length} assets successfully`);
       }

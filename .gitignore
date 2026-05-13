@@ -12,6 +12,7 @@ network-analysis-report.json
 
 # Capacitor 빌드 산출물 / Android 네이티브 프로젝트
 www/
+build-info.json
 android/
 
 # 디자인 mockup (배포 불필요)
