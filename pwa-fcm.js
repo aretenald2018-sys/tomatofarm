@@ -7,6 +7,28 @@ import { refreshNotifCenter } from './render-home.js';
 
 // ── 상태 ──────────────────────────────────────────────────────────
 let _deferredInstallPrompt = null;
+const FCM_SW_SCOPE = '/tomatofarm/firebase-cloud-messaging-push/';
+
+async function _getFCMServiceWorkerRegistration() {
+  if (typeof navigator === 'undefined' || !navigator.serviceWorker) return null;
+  if (['localhost', '127.0.0.1', ''].includes(location.hostname)) return null;
+
+  if (typeof window.__getTomatoFcmSWRegistration === 'function') {
+    return window.__getTomatoFcmSWRegistration();
+  }
+  if (window.__tomatoFcmSWRegistrationPromise) {
+    return window.__tomatoFcmSWRegistrationPromise;
+  }
+
+  window.__tomatoFcmSWRegistrationPromise = navigator.serviceWorker
+    .register('firebase-messaging-sw.js', { scope: FCM_SW_SCOPE })
+    .catch((error) => {
+      window.__tomatoFcmSWRegistrationPromise = null;
+      console.warn('[FCM] Messaging SW 등록 실패:', error.message);
+      return null;
+    });
+  return window.__tomatoFcmSWRegistrationPromise;
+}
 
 // ── FCM 초기화 ────────────────────────────────────────────────────
 export async function initFCM() {
@@ -56,9 +78,14 @@ async function _registerFCMToken() {
     const apps = getApps();
     const app = apps.length ? apps[0] : initializeApp(CONFIG.FIREBASE);
     const messaging = getMessaging(app);
+    const serviceWorkerRegistration = await _getFCMServiceWorkerRegistration();
+    if (!serviceWorkerRegistration) {
+      console.warn('[FCM] Web 서비스워커 등록을 찾지 못해 토큰 등록을 건너뜁니다.');
+      return;
+    }
 
     const VAPID_KEY = 'BJDhMdCeKUGoXlAle3kS1BNQzdK-os-COSLftTtlWa-qilyv8C8Fc-TFQQNwXcIySZmIupicFsuH9cmjLY9gBZc';
-    const token = await getToken(messaging, { vapidKey: VAPID_KEY });
+    const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration });
     if (token) {
       await saveFcmToken(token);
       console.log('[FCM] 토큰 등록 완료');

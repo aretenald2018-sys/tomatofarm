@@ -1,10 +1,10 @@
 {
   "app": "tomatofarm",
-  "commit": "1f368cbeebe9d09cbc061548905ea465c50686ac",
-  "shortCommit": "1f368cbeebe9",
+  "commit": "504cb8853bcc302706e10e1a5bde5e20404fcd30",
+  "shortCommit": "504cb8853bcc",
   "branch": "main",
-  "deployedAt": "2026-05-14T02:38:37.623Z",
-  "cacheVersion": "tomatofarm-v20260514z81-light-plan-status",
+  "deployedAt": "2026-05-14T05:57:34.683Z",
+  "cacheVersion": "tomatofarm-v20260514z82-fcm-sw-scope",
   "runId": null,
   "runAttempt": null
 }
