@@ -9,6 +9,34 @@
 const _isLocalDev = ['localhost', '127.0.0.1', ''].includes(location.hostname);
 const APP_SW_SCOPE = '/tomatofarm/';
 const FCM_SW_SCOPE = '/tomatofarm/firebase-cloud-messaging-push/';
+const _announcedAppSWUpdates = new Set();
+const _pendingAppSWUpdates = new Set();
+
+function _appSWUpdateKey(registration, worker = null) {
+  const scriptURL = worker?.scriptURL || registration?.waiting?.scriptURL || 'sw.js';
+  return `${registration?.scope || APP_SW_SCOPE}|${scriptURL}`;
+}
+
+function _requestAppUpdateBanner(registration, worker = null) {
+  if (!registration || !navigator.serviceWorker.controller) return;
+  const key = _appSWUpdateKey(registration, worker);
+  if (_announcedAppSWUpdates.has(key) || _pendingAppSWUpdates.has(key)) return;
+
+  const show = () => {
+    if (_announcedAppSWUpdates.has(key)) return;
+    if (typeof window.__showAppUpdateBanner !== 'function') return;
+    _pendingAppSWUpdates.delete(key);
+    _announcedAppSWUpdates.add(key);
+    window.__showAppUpdateBanner(registration, { key });
+  };
+
+  _pendingAppSWUpdates.add(key);
+  show();
+  if (_pendingAppSWUpdates.has(key)) {
+    window.addEventListener('tomato-app-ready', show, { once: true });
+    setTimeout(show, 1000);
+  }
+}
 
 function registerFirebaseMessagingWorker() {
   if (_isLocalDev || !('serviceWorker' in navigator)) return Promise.resolve(null);
@@ -50,7 +78,7 @@ if (_isLocalDev) {
         console.log('[PWA] Service Worker 등록 성공:', registration);
         console.log('[PWA] Service Worker 상태 - Active:', !!registration.active, 'Installing:', !!registration.installing, 'Waiting:', !!registration.waiting);
         if (registration.waiting && navigator.serviceWorker.controller) {
-          window.__showAppUpdateBanner?.(registration);
+          _requestAppUpdateBanner(registration, registration.waiting);
         }
 
         // 업데이트 확인
@@ -62,7 +90,7 @@ if (_isLocalDev) {
             console.log('[PWA] Service Worker 상태 변경:', newWorker.state);
             if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
               console.log('[PWA] 새로운 버전이 준비되었습니다. 페이지를 새로고침하세요.');
-              window.__showAppUpdateBanner?.(registration);
+              _requestAppUpdateBanner(registration, newWorker);
             }
           });
         });

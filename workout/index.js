@@ -23,7 +23,7 @@ export { wtAddSet, wtRemoveSet, wtUpdateSet,
          wtOpenExercisePicker, wtCloseExercisePicker,
          wtOpenExerciseEditor, wtCloseExerciseEditor,
          wtSaveExerciseFromEditor, wtDeleteExerciseFromEditor }
-  from './exercises.js?v=20260515v6';
+  from './exercises.js?v=20260516v2';
 
 export { wtStartWorkoutTimer, wtPauseWorkoutTimer,
          wtResetWorkoutTimer, wtTogglePauseWorkoutTimer,
@@ -40,7 +40,7 @@ import { wtToggleMealSkipped }                     from './status.js';
 import { wtOpenExercisePicker, wtCloseExercisePicker,
          wtOpenExerciseEditor, wtCloseExerciseEditor,
          wtSaveExerciseFromEditor,
-         wtDeleteExerciseFromEditor }              from './exercises.js?v=20260515v6';
+         wtDeleteExerciseFromEditor }              from './exercises.js?v=20260516v2';
 import { wtStartWorkoutTimer, wtTogglePauseWorkoutTimer,
          wtResetWorkoutTimer, wtFinishWorkout, wtRecoverTimers,
          wtRestTimerStart, wtRestTimerSkip,

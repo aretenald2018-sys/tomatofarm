@@ -27,6 +27,7 @@ import {
 } from '../workout/expert/max-cycle.js';
 import {
   buildMaxBenchmarkPickerEntry,
+  buildMaxPickerExerciseEntry,
   resolveMaxBenchmarkPickerItems,
 } from '../workout/expert/max-benchmark-picker.js';
 import { renderMaxGrowthPreview, renderNextSameMuscleDayAdvice } from '../workout/expert/max-same-day-advice.js';
@@ -979,6 +980,63 @@ test('resolveMaxBenchmarkPickerItems · 등 선택 시 랫풀다운은 벤치마
   assert.ok(ids.includes('ex_high_row'));
   assert.ok(!ids.includes('ex_other_lat'));
   assert.deepEqual(items.find(item => item.exercise.id === 'ex_lat')?.kind, 'exercise');
+});
+
+test('resolveMaxBenchmarkPickerItems · movementId가 비어도 이름으로 같은 부위 종목을 복원한다', () => {
+  const cycle = {
+    id: 'cycle_picker_inferred_movement',
+    status: 'active',
+    framework: 'dual_track_progression_v2',
+    startDate: '2026-05-04',
+    weeks: 6,
+    benchmarks: [{
+      id: 'bm_back_rdl',
+      exerciseId: 'ex_rdl',
+      movementId: 'rdl',
+      label: '루마니안 데드리프트',
+      primaryMajor: 'back',
+      startKg: 80,
+      targetKg: 90,
+      incrementKg: 2.5,
+    }],
+  };
+  const exList = [
+    { id: 'ex_rdl', name: '루마니안 데드리프트', movementId: 'rdl', muscleId: 'back', gymTags: ['gym_moon'] },
+    { id: 'ex_panatta_high_row', name: '파나타 플레이트 하이로우', movementId: 'unknown', gymTags: ['gym_moon'] },
+  ];
+
+  const items = resolveMaxBenchmarkPickerItems({
+    cycle,
+    exList,
+    selectedMajors: ['back'],
+    currentGymId: 'gym_moon',
+    todayKey: '2026-05-11',
+    cache: {},
+    fallbackMovements: MOVEMENTS_FIXTURE,
+  });
+  const inferred = items.find(item => item.exercise.id === 'ex_panatta_high_row');
+
+  assert.equal(inferred?.kind, 'exercise');
+  assert.equal(inferred?.exercise.muscleId, 'back');
+  assert.equal(inferred?.exercise.movementId, 'high_row');
+});
+
+test('buildMaxPickerExerciseEntry · 벤치마크가 아닌 피커 종목은 일반 수동 종목으로 추가한다', () => {
+  const entry = buildMaxPickerExerciseEntry({
+    exercise: { id: 'ex_panatta_high_row', name: '파나타 플레이트 하이로우', muscleId: 'back', movementId: 'high_row' },
+    benchmark: null,
+    cycle: { id: 'cycle_picker_manual_extra', benchmarks: [] },
+    todayKey: '2026-05-11',
+    currentGymId: 'gym_moon',
+    now: 1,
+  });
+
+  assert.equal(entry.exerciseId, 'ex_panatta_high_row');
+  assert.equal(entry.muscleId, 'back');
+  assert.equal(entry.movementId, 'high_row');
+  assert.deepEqual(entry.sets, [{ kg: 0, reps: 0, setType: 'main', done: false }]);
+  assert.equal(entry.maxPrescription, undefined);
+  assert.equal(entry.recommendationMeta, undefined);
 });
 
 test('buildMaxBenchmarkPickerEntry · 벤치마크 카드의 계획 kg/reps를 추가 세트에 그대로 넣는다', () => {

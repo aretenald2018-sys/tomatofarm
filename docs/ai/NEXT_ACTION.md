@@ -3,10 +3,10 @@
 ## 현재 상태
 
 - 상태: `complete`
-- 계획 문서: `docs/ai/features/2026-05-15-max-picker-benchmark-plus-exercises.md`
+- 계획 문서: `docs/ai/features/2026-05-16-max-picker-pwa-update-regression.md`
 - 현재 단계: `review complete`
-- 현재 슬라이스: `Slice 3: 버전/검증/리뷰`
-- 마지막 완료: `테스트모드 종목 추가 피커 벤치마크 + 같은 부위 종목 확장 구현/검증/리뷰`
+- 현재 슬라이스: `Slice 2: 테스트모드 피커 실데이터 회귀 보강`
+- 마지막 완료: `PWA 업데이트 중복 안내 및 테스트모드 피커 실데이터 회귀 수정/검증/리뷰`
 - 다음 액션: 없음
 - 차단 사유: 없음
 

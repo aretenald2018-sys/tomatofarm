@@ -4,6 +4,20 @@
 
 let _buildInfoCache = null;
 let _updateBannerShown = false;
+let _updateReloadRequested = false;
+
+function _updateBannerState() {
+  if (typeof window === 'undefined') {
+    return { shownKeys: new Set(), reloadRequested: false };
+  }
+  if (!window.__tomatoUpdateBannerState) {
+    window.__tomatoUpdateBannerState = {
+      shownKeys: new Set(),
+      reloadRequested: false,
+    };
+  }
+  return window.__tomatoUpdateBannerState;
+}
 
 function _buildInfoUrl({ bust = true } = {}) {
   const url = new URL('../build-info.json', import.meta.url);
@@ -101,11 +115,45 @@ export async function renderBuildInfo({ targetId = 'settings-build-info', force 
   return info;
 }
 
-export function showAppUpdateBanner(registration = null) {
-  if (_updateBannerShown) return;
-  _updateBannerShown = true;
+function _reloadForAppUpdate(registration = null, button = null) {
+  const state = _updateBannerState();
+  if (_updateReloadRequested || state.reloadRequested) return;
+  _updateReloadRequested = true;
+  state.reloadRequested = true;
+  if (button) {
+    button.disabled = true;
+    button.textContent = '새로고침 중...';
+  }
+
+  const waiting = registration?.waiting;
+  if (waiting && typeof navigator !== 'undefined' && navigator.serviceWorker) {
+    let reloaded = false;
+    const reloadOnce = () => {
+      if (reloaded) return;
+      reloaded = true;
+      window.location.reload();
+    };
+    navigator.serviceWorker.addEventListener('controllerchange', reloadOnce, { once: true });
+    waiting.postMessage({ type: 'SKIP_WAITING' });
+    setTimeout(reloadOnce, 1500);
+    return;
+  }
+
+  window.location.reload();
+}
+
+export function showAppUpdateBanner(registration = null, { key = null } = {}) {
+  const state = _updateBannerState();
+  const bannerKey = key || registration?.waiting?.scriptURL || registration?.scope || 'app-update';
+  if (_updateBannerShown || state.shownKeys.has(bannerKey)) return;
   const existing = document.getElementById('app-update-banner');
-  if (existing) existing.remove();
+  if (existing) {
+    _updateBannerShown = true;
+    state.shownKeys.add(bannerKey);
+    return;
+  }
+  _updateBannerShown = true;
+  state.shownKeys.add(bannerKey);
   const banner = document.createElement('div');
   banner.id = 'app-update-banner';
   banner.className = 'app-update-banner';
@@ -114,10 +162,8 @@ export function showAppUpdateBanner(registration = null) {
     <button type="button" id="app-update-reload">새로고침</button>
   `;
   document.body.appendChild(banner);
-  document.getElementById('app-update-reload')?.addEventListener('click', () => {
-    const waiting = registration?.waiting;
-    if (waiting) waiting.postMessage({ type: 'SKIP_WAITING' });
-    window.location.reload();
+  document.getElementById('app-update-reload')?.addEventListener('click', (event) => {
+    _reloadForAppUpdate(registration, event.currentTarget);
   });
 }
 

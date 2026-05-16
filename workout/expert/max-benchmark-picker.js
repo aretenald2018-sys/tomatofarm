@@ -4,6 +4,7 @@
 // ================================================================
 
 import { SUBPATTERN_TO_MAJOR } from '../../calc.js';
+import { inferExerciseMovementId } from '../../data/data-pure.js';
 import {
   buildMaxCycleSnapshot,
   createDefaultMaxCycle,
@@ -59,15 +60,23 @@ function _pickerExerciseMatchesGym(ex = {}, gymId = null) {
 }
 
 function _movementForExercise(ex = {}, movements = []) {
-  const movementId = ex?.movementId || null;
+  const movementId = _movementIdForExercise(ex, movements);
   if (!movementId) return null;
   return (movements || []).find(m => m?.id === movementId) || null;
 }
 
+function _movementIdForExercise(ex = {}, movements = []) {
+  const explicit = ex?.movementId && ex.movementId !== 'unknown' ? String(ex.movementId) : '';
+  if (explicit) return explicit;
+  return inferExerciseMovementId(ex, movements) || null;
+}
+
 function _exerciseMajorIds(ex = {}, movements = []) {
   const ids = new Set();
-  const direct = normalizeMaxPickerMajor(ex?.muscleId);
-  if (direct) ids.add(direct);
+  [ex?.muscleId, ex?.primaryMajor, ex?.major, ex?.primary, ex?.subPattern].forEach(id => {
+    const normalized = normalizeMaxPickerMajor(id);
+    if (normalized) ids.add(normalized);
+  });
   (Array.isArray(ex?.muscleIds) ? ex.muscleIds : []).forEach(id => {
     const normalized = normalizeMaxPickerMajor(id);
     if (normalized) ids.add(normalized);
@@ -81,8 +90,9 @@ function _exerciseMajorIds(ex = {}, movements = []) {
 }
 
 function _normalizePickerExercise(ex = {}, major = null, movements = []) {
-  const primaryMajor = normalizeMaxPickerMajor(ex?.muscleId)
-    || normalizeMaxPickerMajor(major)
+  const matchedMajor = normalizeMaxPickerMajor(major);
+  const primaryMajor = matchedMajor
+    || normalizeMaxPickerMajor(ex?.muscleId)
     || _exerciseMajorIds(ex, movements)[0]
     || null;
   return {
@@ -91,7 +101,7 @@ function _normalizePickerExercise(ex = {}, major = null, movements = []) {
     muscleIds: Array.isArray(ex?.muscleIds) && ex.muscleIds.length
       ? ex.muscleIds
       : [primaryMajor].filter(Boolean),
-    movementId: ex?.movementId || null,
+    movementId: _movementIdForExercise(ex, movements),
     name: ex?.name || ex?.nameKo || ex?.label || ex?.id,
   };
 }
@@ -283,5 +293,34 @@ export function buildMaxBenchmarkPickerEntry({
     maxWeakPart: null,
     maxPrescription: prescription,
     sets: prescription.sets || [],
+  };
+}
+
+export function buildMaxPickerExerciseEntry({
+  exercise = null,
+  benchmark = null,
+  cycle = null,
+  todayKey = null,
+  currentGymId = null,
+  now = Date.now(),
+} = {}) {
+  if (!exercise?.id) return null;
+  if (benchmark) {
+    const benchmarkEntry = buildMaxBenchmarkPickerEntry({
+      exercise,
+      benchmark,
+      cycle,
+      todayKey,
+      currentGymId,
+      now,
+    });
+    if (benchmarkEntry) return benchmarkEntry;
+  }
+  return {
+    muscleId: exercise.muscleId || null,
+    exerciseId: exercise.id,
+    name: exercise.name || exercise.nameKo || exercise.label || exercise.id,
+    movementId: exercise.movementId || null,
+    sets: [{ kg: 0, reps: 0, setType: 'main', done: false }],
   };
 }

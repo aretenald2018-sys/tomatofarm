@@ -18,9 +18,9 @@ import { estimate1RM, estimateSet1RM, rpeRepsToPct, targetWeightKg, weightRange,
          getTrackMetricHistory, getLastTrackSession, normalizeWorkoutTrack, calcSetVolume } from '../calc.js?v=20260514v72';
 import { MOVEMENTS } from '../config.js';
 import {
-  buildMaxBenchmarkPickerEntry,
+  buildMaxPickerExerciseEntry,
   resolveMaxBenchmarkPickerItems,
-} from './expert/max-benchmark-picker.js?v=20260515v14';
+} from './expert/max-benchmark-picker.js?v=20260516v2';
 // resolveCurrentGymId는 expert.js의 단일 진실원 (preset + S.workout.currentGymId 동기화).
 // isExpertViewShown은 세션 뷰 상태 (일반 모드 뷰 ↔ 프로 모드 뷰) 조회용.
 // expert.js는 exercises.js를 static import 하지 않으므로 순환 참조 없음.
@@ -1202,7 +1202,7 @@ function _renderMaxBenchmarkPickerMeta(ex) {
 
 function _buildPickerExerciseEntry(ex) {
   if (_isMaxBenchmarkPickerExercise(ex)) {
-    const entry = buildMaxBenchmarkPickerEntry({
+    const entry = buildMaxPickerExerciseEntry({
       exercise: ex,
       benchmark: ex.__maxBenchmark,
       cycle: ex.__maxCycle,
