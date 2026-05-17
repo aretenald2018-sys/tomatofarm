@@ -1,22 +1,32 @@
 // ================================================================
-// utils/build-info.js — 배포 버전 확인 + 서비스워커 업데이트 배너
+// utils/build-info.js — 배포 버전 확인 + 서비스워커 업데이트 안내
 // ================================================================
 
 let _buildInfoCache = null;
-let _updateBannerShown = false;
 let _updateReloadRequested = false;
 
 function _updateBannerState() {
   if (typeof window === 'undefined') {
-    return { shownKeys: new Set(), reloadRequested: false };
-  }
-  if (!window.__tomatoUpdateBannerState) {
-    window.__tomatoUpdateBannerState = {
+    return {
       shownKeys: new Set(),
       reloadRequested: false,
+      latestRegistration: null,
+      latestKey: null,
+      panelOpen: false,
+      outsideCloseBound: false,
     };
   }
-  return window.__tomatoUpdateBannerState;
+  if (!window.__tomatoUpdateBannerState) {
+    window.__tomatoUpdateBannerState = {};
+  }
+  const state = window.__tomatoUpdateBannerState;
+  if (!(state.shownKeys instanceof Set)) state.shownKeys = new Set(state.shownKeys || []);
+  if (typeof state.reloadRequested !== 'boolean') state.reloadRequested = false;
+  if (!('latestRegistration' in state)) state.latestRegistration = null;
+  if (!('latestKey' in state)) state.latestKey = null;
+  if (typeof state.panelOpen !== 'boolean') state.panelOpen = false;
+  if (typeof state.outsideCloseBound !== 'boolean') state.outsideCloseBound = false;
+  return state;
 }
 
 function _buildInfoUrl({ bust = true } = {}) {
@@ -115,8 +125,83 @@ export async function renderBuildInfo({ targetId = 'settings-build-info', force 
   return info;
 }
 
+function _setAppUpdatePanelOpen(open) {
+  if (typeof document === 'undefined') return;
+  const state = _updateBannerState();
+  state.panelOpen = !!open;
+  const root = document.getElementById('app-update-indicator');
+  if (!root) return;
+  const toggle = root.querySelector('#app-update-toggle');
+  const panel = root.querySelector('#app-update-panel');
+  root.dataset.open = state.panelOpen ? 'true' : 'false';
+  if (toggle) toggle.setAttribute('aria-expanded', state.panelOpen ? 'true' : 'false');
+  if (panel) panel.hidden = !state.panelOpen;
+}
+
+function _ensureAppUpdateIndicator() {
+  if (typeof document === 'undefined' || !document.body) return null;
+  document.getElementById('app-update-banner')?.remove();
+
+  let root = document.getElementById('app-update-indicator');
+  if (!root) {
+    root = document.createElement('div');
+    root.id = 'app-update-indicator';
+    root.className = 'app-update-indicator';
+    root.dataset.open = 'false';
+    root.innerHTML = `
+      <button type="button" class="app-update-icon-btn" id="app-update-toggle" aria-label="새 버전 확인" aria-expanded="false" aria-controls="app-update-panel">
+        <span class="app-update-icon" aria-hidden="true">↻</span>
+        <span class="app-update-dot" aria-hidden="true"></span>
+      </button>
+      <div class="app-update-panel" id="app-update-panel" role="dialog" aria-label="앱 업데이트" hidden>
+        <div class="app-update-panel-copy">
+          <strong>새 버전이 준비됐어요</strong>
+          <span>최신 버전으로 다시 시작할 수 있어요.</span>
+        </div>
+        <button type="button" class="app-update-reload" id="app-update-reload">새로고침</button>
+      </div>
+    `;
+    root.addEventListener('click', (event) => {
+      const target = event.target;
+      const toggle = target?.closest?.('#app-update-toggle');
+      const reload = target?.closest?.('#app-update-reload');
+      if (toggle) {
+        event.preventDefault();
+        event.stopPropagation();
+        _setAppUpdatePanelOpen(!_updateBannerState().panelOpen);
+        return;
+      }
+      if (reload) {
+        event.preventDefault();
+        event.stopPropagation();
+        _reloadForAppUpdate(_updateBannerState().latestRegistration, reload);
+      }
+    });
+    document.body.appendChild(root);
+  }
+
+  const state = _updateBannerState();
+  if (!state.outsideCloseBound) {
+    document.addEventListener('click', (event) => {
+      const current = document.getElementById('app-update-indicator');
+      if (!current || current.contains(event.target)) return;
+      _setAppUpdatePanelOpen(false);
+    });
+    state.outsideCloseBound = true;
+  }
+
+  const reload = root.querySelector('#app-update-reload');
+  if (reload) {
+    reload.disabled = !!state.reloadRequested;
+    reload.textContent = state.reloadRequested ? '새로고침 중...' : '새로고침';
+  }
+  _setAppUpdatePanelOpen(state.panelOpen);
+  return root;
+}
+
 function _reloadForAppUpdate(registration = null, button = null) {
   const state = _updateBannerState();
+  const targetRegistration = registration || state.latestRegistration;
   if (_updateReloadRequested || state.reloadRequested) return;
   _updateReloadRequested = true;
   state.reloadRequested = true;
@@ -125,7 +210,7 @@ function _reloadForAppUpdate(registration = null, button = null) {
     button.textContent = '새로고침 중...';
   }
 
-  const waiting = registration?.waiting;
+  const waiting = targetRegistration?.waiting;
   if (waiting && typeof navigator !== 'undefined' && navigator.serviceWorker) {
     let reloaded = false;
     const reloadOnce = () => {
@@ -145,26 +230,10 @@ function _reloadForAppUpdate(registration = null, button = null) {
 export function showAppUpdateBanner(registration = null, { key = null } = {}) {
   const state = _updateBannerState();
   const bannerKey = key || registration?.waiting?.scriptURL || registration?.scope || 'app-update';
-  if (_updateBannerShown || state.shownKeys.has(bannerKey)) return;
-  const existing = document.getElementById('app-update-banner');
-  if (existing) {
-    _updateBannerShown = true;
-    state.shownKeys.add(bannerKey);
-    return;
-  }
-  _updateBannerShown = true;
+  state.latestRegistration = registration || state.latestRegistration;
+  state.latestKey = bannerKey;
   state.shownKeys.add(bannerKey);
-  const banner = document.createElement('div');
-  banner.id = 'app-update-banner';
-  banner.className = 'app-update-banner';
-  banner.innerHTML = `
-    <span>새 버전이 준비됐어요</span>
-    <button type="button" id="app-update-reload">새로고침</button>
-  `;
-  document.body.appendChild(banner);
-  document.getElementById('app-update-reload')?.addEventListener('click', (event) => {
-    _reloadForAppUpdate(registration, event.currentTarget);
-  });
+  _ensureAppUpdateIndicator();
 }
 
 export function initBuildInfoSurface() {

@@ -21,7 +21,7 @@ import { initFCM, showPWAInstallBanner, updateInstallBtn } from './pwa-fcm.js';
 import { initTabDrag, initSwipeNavigation, applyTabOrder, applyVisibleTabs } from './navigation.js';
 import { initUxPolish } from './utils/ux-polish.js';
 import { initActionRouter } from './utils/action-router.js';
-import { initBuildInfoSurface } from './utils/build-info.js?v=20260516v1';
+import { initBuildInfoSurface } from './utils/build-info.js?v=20260517v1';
 import './utils/confirm-modal.js'; // window.confirmAction / confirmSimple 등록
 import './utils/form-guard.js';    // window.createFormGuard / registerFormGuard 등록
 import './utils/format.js';        // window.fmtKcal / fmtDate 등 로케일 포맷
@@ -34,7 +34,7 @@ import { showDietPremiumReportIfNeeded } from './feature-diet-premium-report.js'
 import {
   loadWorkoutDate, changeWorkoutDate, goToTodayWorkout, saveWorkoutDay,
   openNutritionPhotoUpload, wtRecoverTimers,
-} from './render-workout.js?v=20260516v3';
+} from './render-workout.js?v=20260517v1';
 
 // ── 레이지 로딩 탭 캐시 ──
 const _lazyModules = {};

@@ -9,8 +9,9 @@
 const _isLocalDev = ['localhost', '127.0.0.1', ''].includes(location.hostname);
 const APP_SW_SCOPE = '/tomatofarm/';
 const FCM_SW_SCOPE = '/tomatofarm/firebase-cloud-messaging-push/';
-const _announcedAppSWUpdates = new Set();
-const _pendingAppSWUpdates = new Set();
+const _pendingAppSWUpdates = new Map();
+let _appSWUpdateSeq = 0;
+let _latestAppSWUpdateSeq = 0;
 
 function _appSWUpdateKey(registration, worker = null) {
   const scriptURL = worker?.scriptURL || registration?.waiting?.scriptURL || 'sw.js';
@@ -20,19 +21,23 @@ function _appSWUpdateKey(registration, worker = null) {
 function _requestAppUpdateBanner(registration, worker = null) {
   if (!registration || !navigator.serviceWorker.controller) return;
   const key = _appSWUpdateKey(registration, worker);
-  if (_announcedAppSWUpdates.has(key) || _pendingAppSWUpdates.has(key)) return;
+  const seq = ++_appSWUpdateSeq;
+  _latestAppSWUpdateSeq = seq;
+  const wasPending = _pendingAppSWUpdates.has(key);
+  _pendingAppSWUpdates.set(key, { registration, worker, seq });
 
   const show = () => {
-    if (_announcedAppSWUpdates.has(key)) return;
-    if (typeof window.__showAppUpdateBanner !== 'function') return;
+    if (typeof window.__showAppUpdateBanner !== 'function') return false;
+    const pending = _pendingAppSWUpdates.get(key);
+    if (!pending) return false;
     _pendingAppSWUpdates.delete(key);
-    _announcedAppSWUpdates.add(key);
-    window.__showAppUpdateBanner(registration, { key });
+    if (pending.seq < _latestAppSWUpdateSeq) return true;
+    window.__showAppUpdateBanner(pending.registration, { key });
+    return true;
   };
 
-  _pendingAppSWUpdates.add(key);
-  show();
-  if (_pendingAppSWUpdates.has(key)) {
+  if (show()) return;
+  if (!wasPending) {
     window.addEventListener('tomato-app-ready', show, { once: true });
     setTimeout(show, 1000);
   }
@@ -89,7 +94,7 @@ if (_isLocalDev) {
           newWorker.addEventListener('statechange', () => {
             console.log('[PWA] Service Worker 상태 변경:', newWorker.state);
             if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              console.log('[PWA] 새로운 버전이 준비되었습니다. 페이지를 새로고침하세요.');
+              console.log('[PWA] 새로운 버전이 준비되었습니다. 업데이트 아이콘을 표시합니다.');
               _requestAppUpdateBanner(registration, newWorker);
             }
           });
