@@ -58,7 +58,7 @@ function verifyInternalRequest(req, secret, nowEpochMs = Date.now()) {
 async function loadTomatoSource(tomatoDb, ownerId, nowEpochMs) {
   const canonicalOwnerId = canonicalTomatoOwnerId(ownerId);
   const todayKey = dateKeyAt(nowEpochMs);
-  const startKey = addDays(todayKey, -56);
+  const startKey = addDays(todayKey, -365);
   const accountSources = await Promise.all(tomatoOwnerAliases(canonicalOwnerId).map((sourceOwnerId) => Promise.all([
     tomatoDb.collection(`users/${sourceOwnerId}/workouts`).where(FieldPath.documentId(), ">=", startKey).get(),
     tomatoDb.collection(`users/${sourceOwnerId}/settings`).get(),
@@ -86,15 +86,19 @@ async function loadTomatoSource(tomatoDb, ownerId, nowEpochMs) {
 }
 
 async function loadBudgetSource(budgetDb, budgetUid, nowEpochMs) {
-  const fromEpochMs = nowEpochMs - 70 * 24 * 60 * 60 * 1000;
+  const fromEpochMs = nowEpochMs - 365 * 24 * 60 * 60 * 1000;
   const from = new Date(fromEpochMs);
+  const monthStartKey = `${dateKeyAt(nowEpochMs).slice(0, 7)}-01`;
+  const monthStart = new Date(`${monthStartKey}T00:00:00+09:00`);
   const base = budgetDb.doc(`users/${budgetUid}`);
-  const [transactionsSnap, categoriesSnap, tastingsSnap, bottlesSnap, settingsSnap] = await Promise.all([
+  const [transactionsSnap, categoriesSnap, tastingsSnap, bottlesSnap, settingsSnap, appSettingsSnap, rewardPointEntriesSnap] = await Promise.all([
     base.collection("transactions").where("occurredAt", ">=", from).get(),
     base.collection("categories").get(),
     base.collection("wine_tastings").orderBy("tastedAt", "desc").limit(100).get(),
     base.collection("wine_bottles").get(),
     base.collection("dashboard_settings").doc("config").get(),
+    base.collection("settings").doc("app").get(),
+    base.collection("reward_point_entries").where("usedAt", ">=", monthStart).get(),
   ]);
   return {
     transactions: transactionsSnap.docs.map((document) => ({ id: document.id, ...document.data() })),
@@ -102,6 +106,8 @@ async function loadBudgetSource(budgetDb, budgetUid, nowEpochMs) {
     tastings: tastingsSnap.docs.map((document) => ({ id: document.id, ...document.data() })),
     bottles: bottlesSnap.docs.map((document) => ({ id: document.id, ...document.data() })),
     dashboardSettings: settingsSnap.exists ? settingsSnap.data() : { weights: DEFAULT_DASHBOARD_WEIGHTS },
+    appSettings: appSettingsSnap.exists ? appSettingsSnap.data() : {},
+    rewardPointEntries: rewardPointEntriesSnap.docs.map((document) => ({ id: document.id, ...document.data() })),
   };
 }
 

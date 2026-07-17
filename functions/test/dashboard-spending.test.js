@@ -32,3 +32,29 @@ test("spending comparison is actual month-to-date versus last month through the 
   assert.equal(result.currentCumulativeTrend.at(-1), 150000);
   assert.equal(result.previousCumulativeTrend.at(-1), 110000);
 });
+
+test("spending exposes the budget app's current two-week and today caps", () => {
+  const result = spendingDomain({
+    appSettings: { biweeklyStartDate: "2026-07-06" },
+    categories: [
+      { id: "food", kind: "expense", budgetRhythm: "spread", target: 600000, monthlyTargets: { "2026-07": 600000 } },
+      { id: "travel", kind: "expense", budgetRhythm: "front_loaded", target: 140000, monthlyTargets: { "2026-07": 140000 } },
+      { id: "rent", kind: "expense", budgetRhythm: "fixed", target: 900000 },
+    ],
+    transactions: [
+      { type: "card_payment", categoryId: "food", amount: 70000, occurredAt: at("2026-07-07") },
+      { type: "card_payment", categoryId: "food", amount: 30000, occurredAt: at("2026-07-16") },
+      { type: "card_payment", categoryId: "travel", amount: 20000, occurredAt: at("2026-07-16") },
+      { type: "card_payment", categoryId: "rent", amount: 900000, occurredAt: at("2026-07-16") },
+    ],
+  }, at("2026-07-16").getTime());
+
+  assert.deepEqual(result.twoWeek, {
+    startDate: "2026-07-06",
+    endDate: "2026-07-19",
+    spent: 120000,
+    target: 440000,
+    todaySpent: 50000,
+    todayTarget: Math.round(440000 / 14),
+  });
+});

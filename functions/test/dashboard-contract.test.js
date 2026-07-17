@@ -76,3 +76,47 @@ test("wine score uses only the five most recent valid ratings", () => {
   assert.equal(snapshot.domains.wine.score, 80);
   assert.equal(snapshot.wine.name, "Test Wine");
 });
+
+test("dashboard keeps the latest five running records and point balance details", () => {
+  const now = Date.UTC(2026, 6, 16, 3);
+  const workouts = [1, 2, 3, 4, 5, 6].map((day) => ({
+    id: `2026-07-${String(day + 8).padStart(2, "0")}`,
+    running: true,
+    runDistance: day,
+    runDurationSec: day * 300,
+    runRouteSummary: { cadenceSpm: 160 + day },
+  }));
+  const snapshot = buildDashboardSnapshot({
+    nowEpochMs: now,
+    tomato: { workouts, settings: {} },
+    budget: {
+      categories: [{ id: "food", kind: "expense", budgetRhythm: "spread", target: 300000 }],
+      transactions: [
+        ...Array.from({ length: 90 }, (_, index) => ({
+          type: "card_payment",
+          categoryId: "food",
+          amount: 10000,
+          occurredAt: new Date(now - (index + 1) * 24 * 60 * 60 * 1000),
+        })),
+      ],
+      appSettings: {
+        biweeklyStartDate: "2026-07-06",
+        rewardSavings: {
+          lookbackDays: 90,
+          baselineMethod: "simple_daily",
+          pointItems: [{ id: "wine", label: "와인구매 포인트", rate: 0.3, enabled: true }],
+        },
+      },
+      rewardPointEntries: [{ pointItemId: "wine", amount: 100, usedAt: new Date(now - 24 * 60 * 60 * 1000) }],
+      tastings: [],
+      bottles: [],
+    },
+  });
+
+  assert.deepEqual(snapshot.running.records.map((record) => record.distanceKm), [6, 5, 4, 3, 2]);
+  assert.deepEqual(snapshot.running.records.map((record) => record.cadenceSpm), [166, 165, 164, 163, 162]);
+  assert.equal(snapshot.points.state, "ready");
+  assert.equal(snapshot.points.label, "와인구매 포인트");
+  assert.ok(snapshot.points.balance >= 0);
+  assert.ok(snapshot.points.earnedTwoWeek >= 0);
+});

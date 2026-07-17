@@ -215,6 +215,7 @@ function runningSessionMetrics(session = {}) {
     durationSec,
     paceSecPerKm,
     cadenceSpm: number(summary.cadenceSpm || summary.avgCadenceSpm) || null,
+    startedAt: asEpochMs(session.runStartedAt || summary.startedAt) || null,
   };
 }
 
@@ -332,7 +333,15 @@ function runningDomain(workouts, runningPlan, todayKey, nowEpochMs) {
   const distanceTrend = trendScore(current.distanceKm, previous.distanceKm);
   const paceTrend = trendScore(current.paceSecPerKm, previous.paceSecPerKm, { lowerIsBetter: true });
   const trend = average([distanceTrend, paceTrend].filter((value) => value != null));
-  const allRuns = weekRows.flatMap((week) => week.metrics).sort((a, b) => a.dateKey.localeCompare(b.dateKey));
+  const allRuns = normalizedWorkouts(workouts)
+    .flatMap((day) => runningSessions(day).map((session, sessionIndex) => ({
+      dateKey: day.dateKey,
+      sessionIndex,
+      ...runningSessionMetrics(session),
+    })))
+    .sort((a, b) => a.dateKey.localeCompare(b.dateKey)
+      || number(a.startedAt) - number(b.startedAt)
+      || a.sessionIndex - b.sessionIndex);
   const latest = allRuns.at(-1);
   const updatedAtEpochMs = latest ? dateKeyToEpochMs(latest.dateKey) + 23 * 60 * 60 * 1000 : null;
   return {
@@ -354,6 +363,12 @@ function runningDomain(workouts, runningPlan, todayKey, nowEpochMs) {
       ? round(((current.cadenceSpm - previous.cadenceSpm) / previous.cadenceSpm) * 100, 1)
       : null,
     trend: weekRows.map((row) => round(row.distanceKm, 1)),
+    records: allRuns.slice(-5).reverse().map((run) => ({
+      dateKey: run.dateKey,
+      distanceKm: round(run.distanceKm, 2),
+      paceSecPerKm: run.paceSecPerKm > 0 ? Math.round(run.paceSecPerKm) : null,
+      cadenceSpm: run.cadenceSpm ? Math.round(run.cadenceSpm) : null,
+    })),
   };
 }
 
@@ -426,6 +441,20 @@ function spendingDomain(budget, nowEpochMs) {
     previousCumulativeTrend.push(Math.round(previousCumulative));
   }
   const samePeriodDifference = previousSpent - currentSpent;
+  const todayKey = dateKeyAt(nowEpochMs);
+  const cycle = biweeklyRange(todayKey, budget?.appSettings?.biweeklyStartDate);
+  const twoWeekTarget = controlCategories.reduce((total, category) => (
+    total + biweeklyTarget(category, monthKey)
+  ), 0);
+  const twoWeekSpent = sum(rows.filter((row) => (
+    row.controlExpense > 0
+    && dateKeyAt(row.epochMs) >= cycle.startDate
+    && dateKeyAt(row.epochMs) <= todayKey
+  )).map((row) => row.controlExpense));
+  const todaySpent = sum(rows.filter((row) => (
+    row.controlExpense > 0 && dateKeyAt(row.epochMs) === todayKey
+  )).map((row) => row.controlExpense));
+  const todayTarget = twoWeekTarget > 0 ? Math.round(twoWeekTarget / 14) : 0;
   return {
     score: mixedScore(goal, trend),
     freshness: freshnessStatus(latest?.epochMs, nowEpochMs),
@@ -443,7 +472,141 @@ function spendingDomain(budget, nowEpochMs) {
     comparisonDay: comparableDay,
     currentCumulativeTrend,
     previousCumulativeTrend,
+    twoWeek: {
+      startDate: cycle.startDate,
+      endDate: cycle.endDate,
+      spent: Math.round(twoWeekSpent),
+      target: Math.round(twoWeekTarget),
+      todaySpent: Math.round(todaySpent),
+      todayTarget,
+    },
   };
+}
+
+function biweeklyTarget(category = {}, monthKey = "") {
+  const monthly = number(category?.monthlyTargets?.[monthKey] ?? category?.target);
+  return category?.budgetRhythm === "front_loaded" ? Math.round(monthly) : Math.round(monthly / 2);
+}
+
+function biweeklyRange(todayKey, anchorDate) {
+  const anchor = /^\d{4}-\d{2}-\d{2}$/.test(String(anchorDate || "")) ? String(anchorDate) : "";
+  if (anchor) {
+    const diffDays = Math.floor((dateKeyToEpochMs(todayKey) - dateKeyToEpochMs(anchor)) / (24 * 60 * 60 * 1000));
+    const startDate = addDays(anchor, Math.floor(diffDays / 14) * 14);
+    return { startDate, endDate: addDays(startDate, 13) };
+  }
+  const iso = new Date(`${todayKey}T12:00:00Z`);
+  const day = iso.getUTCDay() || 7;
+  iso.setUTCDate(iso.getUTCDate() + 4 - day);
+  const yearStart = Date.UTC(iso.getUTCFullYear(), 0, 1);
+  const week = Math.ceil((((iso.getTime() - yearStart) / 86400000) + 1) / 7);
+  const monday = mondayOf(todayKey);
+  const startDate = week % 2 === 0 ? addDays(monday, -7) : monday;
+  return { startDate, endDate: addDays(startDate, 13) };
+}
+
+function rewardPointsDomain(budget, nowEpochMs) {
+  const appSettings = budget?.appSettings || {};
+  const rewardSettings = appSettings?.rewardSavings || {};
+  const categories = Array.isArray(budget?.categories) ? budget.categories : [];
+  const byId = new Map(categories.map((category) => [category.id, category]));
+  const pointItems = normalizePointItems(rewardSettings);
+  const enabledItems = pointItems.filter((item) => item.enabled);
+  if (!enabledItems.length) return { state: "missing" };
+  const todayKey = dateKeyAt(nowEpochMs);
+  const selectedDailyReward = rewardSettings?.dailyReward || {};
+  const configuredFocus = enabledItems.find((item) => item.id === String(selectedDailyReward.focusBucketKey || ""));
+  const point = configuredFocus || enabledItems[0];
+  const cycle = biweeklyRange(todayKey, appSettings.biweeklyStartDate);
+  const lookbackDays = [90, 180, 365].includes(Math.round(number(rewardSettings.lookbackDays)))
+    ? Math.round(number(rewardSettings.lookbackDays))
+    : 180;
+  const baselineStart = addDays(todayKey, -lookbackDays);
+  const isVariableExpense = (transaction) => {
+    if (transactionExpense(transaction) <= 0) return false;
+    const category = byId.get(transaction.categoryId) || categories.find((row) => row.name === transaction.category);
+    return !!category && category.kind === "expense" && category.budgetRhythm !== "fixed";
+  };
+  const spendByDate = new Map();
+  for (const transaction of Array.isArray(budget?.transactions) ? budget.transactions : []) {
+    if (!isVariableExpense(transaction)) continue;
+    const epochMs = timestampOfTransaction(transaction);
+    if (epochMs == null) continue;
+    const key = dateKeyAt(epochMs);
+    spendByDate.set(key, (spendByDate.get(key) || 0) + transactionExpense(transaction));
+  }
+  const dailyBaseline = rewardDailyBaseline(spendByDate, baselineStart, todayKey, rewardSettings.baselineMethod);
+  if (dailyBaseline <= 0) return { state: "waiting", label: point.label };
+  const daySaved = (key) => Math.max(0, dailyBaseline - number(spendByDate.get(key)));
+  const monthStart = `${todayKey.slice(0, 7)}-01`;
+  const earnedBetween = (startKey, endKey) => {
+    let earned = 0;
+    for (let key = startKey; key <= endKey; key = addDays(key, 1)) earned += Math.round(daySaved(key) * point.rate);
+    return earned;
+  };
+  const selectedToday = selectedDailyReward.enabled !== false
+    && selectedDailyReward.selectedDateKey === todayKey
+    && selectedDailyReward.selectedRuleId === "focusPoint"
+    && selectedDailyReward.focusBucketKey === point.id;
+  const bonus = selectedToday
+    ? Math.min(Math.round(daySaved(todayKey) * normalizePointRate(selectedDailyReward.bonusRate, 0.1)), Math.max(0, Math.round(number(selectedDailyReward.bonusCap, 5000))))
+    : 0;
+  const earnedMonth = earnedBetween(monthStart, todayKey) + bonus;
+  const earnedTwoWeek = earnedBetween(cycle.startDate, todayKey) + bonus;
+  const spentMonth = (Array.isArray(budget?.rewardPointEntries) ? budget.rewardPointEntries : []).reduce((total, entry) => {
+    const usedAt = timestampOfTransaction({ occurredAt: entry?.usedAt });
+    if (usedAt == null) return total;
+    const key = dateKeyAt(usedAt);
+    if (key < monthStart || key > todayKey || String(entry?.pointItemId || entry?.itemId || entry?.key || "") !== point.id) return total;
+    return total + Math.max(0, Math.round(number(entry?.amount)));
+  }, 0);
+  return {
+    state: "ready",
+    label: point.label,
+    balance: Math.round(earnedMonth - spentMonth),
+    earnedTwoWeek: Math.round(earnedTwoWeek),
+  };
+}
+
+function normalizePointItems(rewardSettings = {}) {
+  const defaults = [
+    { id: "winePurchase", label: "와인구매 포인트", rate: 0.3, enabled: true },
+    { id: "premiumIngredients", label: "고급재료 포인트", rate: 0, enabled: true },
+    { id: "travelFund", label: "여행충당 포인트", rate: 0, enabled: true },
+  ];
+  const source = Array.isArray(rewardSettings.pointItems) && rewardSettings.pointItems.length
+    ? rewardSettings.pointItems
+    : defaults;
+  return source.map((item, index) => ({
+    id: String(item?.id || defaults[index]?.id || "").trim(),
+    label: String(item?.label || item?.name || defaults[index]?.label || "포인트").trim(),
+    rate: normalizePointRate(item?.rate ?? rewardSettings?.pointRates?.[item?.id] ?? defaults[index]?.rate, 0),
+    enabled: item?.enabled !== false && item?.enabled !== "false",
+    order: number(item?.order, (index + 1) * 10),
+  })).filter((item) => item.id).sort((left, right) => left.order - right.order);
+}
+
+function normalizePointRate(value, fallback) {
+  const rate = number(value, fallback);
+  return Math.max(0, Math.min(1, rate > 1 ? rate / 100 : rate));
+}
+
+function rewardDailyBaseline(spendByDate, startKey, endKey, method) {
+  const keys = [];
+  for (let key = startKey; key < endKey; key = addDays(key, 1)) keys.push(key);
+  if (!keys.length) return 0;
+  const total = sum(keys.map((key) => number(spendByDate.get(key))));
+  if (method === "simple_daily") return total / keys.length;
+  const weekly = [];
+  for (let index = 0; index < keys.length; index += 7) {
+    const slice = keys.slice(index, index + 7);
+    const amount = sum(slice.map((key) => number(spendByDate.get(key))));
+    if (amount > 0) weekly.push((amount / slice.length) * 7);
+  }
+  if (weekly.length < 4) return total / keys.length;
+  const sorted = weekly.sort((left, right) => left - right);
+  const trim = Math.floor(sorted.length * 0.1);
+  return sum(sorted.slice(trim, sorted.length - trim)) / Math.max(1, sorted.length - trim * 2) / 7;
 }
 
 function wineDomain(budget, nowEpochMs) {
@@ -508,6 +671,7 @@ function buildDashboardSnapshot({ tomato = {}, budget = {}, weights, revision = 
     spending: spendingDomain(budget, nowEpochMs),
     wine: wineDomain(budget, nowEpochMs),
   };
+  const points = rewardPointsDomain(budget, nowEpochMs);
   const overall = computeOverallScore(domains, normalizedWeights);
   const streakDays = combinedStreak(tomato.workouts || [], todayKey);
   const snapshot = {
@@ -537,6 +701,7 @@ function buildDashboardSnapshot({ tomato = {}, budget = {}, weights, revision = 
       cadenceSpm: domains.running.latestCadenceSpm,
       weeklyDistanceKm: domains.running.weeklyDistanceKm,
       trend: domains.running.trend,
+      records: domains.running.records,
     },
     spending: {
       samePeriodDifference: domains.spending.samePeriodDifference,
@@ -546,7 +711,9 @@ function buildDashboardSnapshot({ tomato = {}, budget = {}, weights, revision = 
       comparisonDay: domains.spending.comparisonDay,
       currentCumulativeTrend: domains.spending.currentCumulativeTrend,
       previousCumulativeTrend: domains.spending.previousCumulativeTrend,
+      twoWeek: domains.spending.twoWeek,
     },
+    points,
     wine: domains.wine.latest,
   };
   const validation = validateDashboardSnapshot(snapshot);
