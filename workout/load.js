@@ -99,6 +99,9 @@ export function loadWorkoutDate(y, m, d, options = {}) {
   const targetSessionIndex = requestedSessionIndex ?? (isSameDate ? Math.max(0, Number(S.workout.sessionIndex) || 0) : 0);
 
   if (isSameDate && targetSessionIndex === (Number(S.workout.sessionIndex) || 0)) {
+    // Today is commonly loaded before the diet tab is opened. Keep the
+    // panel-local food handlers available even when no date hydration runs.
+    bindDietFoodActions();
     _renderDateLabel();
     _renderExerciseList();
     _renderWorkoutTimer();

@@ -9,6 +9,7 @@ const indexHtml = readFileSync('index.html', 'utf8');
 const staticActionsJs = readFileSync('app/static-actions.js', 'utf8');
 const workoutUiJs = readFileSync('workout-ui.js', 'utf8');
 const workoutRenderJs = readFileSync('workout/render.js', 'utf8');
+const workoutLoadJs = readFileSync('workout/load.js', 'utf8');
 const featureNutritionJs = readFileSync('feature-nutrition.js', 'utf8');
 const nutritionSearchModalJs = readFileSync('modals/nutrition-search-modal.js', 'utf8');
 const nutritionItemModalJs = readFileSync('modals/nutrition-item-modal.js', 'utf8');
@@ -66,6 +67,14 @@ test('the retired quick-choice sheet and its crossed-out actions are not shipped
 test('frequent food cards use the static namespaced diet action', () => {
   assert.match(workoutRenderJs, /data-action="diet:add-frequent-food"/);
   assert.match(staticActionsJs, /'diet:add-frequent-food': \(control\) => wtAddFrequentFoodSuggestion\(control\.dataset\.meal, control\.dataset\.suggestionKey\)/);
+});
+
+test('same-date workout loads bind diet food actions before returning', () => {
+  assert.match(
+    workoutLoadJs,
+    /if \(isSameDate && targetSessionIndex === \(Number\(S\.workout\.sessionIndex\) \|\| 0\)\) \{[\s\S]*?bindDietFoodActions\(\);[\s\S]*?return;/,
+    'opening the diet tab after today was already loaded must not leave food actions unbound'
+  );
 });
 
 test('photo registration replaces the search sheet with a ready photo editor', () => {
