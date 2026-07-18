@@ -30,6 +30,7 @@ import {
   ADMIN_ACCOUNT_ID,
   ADMIN_GUEST_ACCOUNT_ID,
   buildAccountUnificationPlan,
+  buildMissingWorkoutFieldPatch,
 } from './account-unification.js';
 
 // ── Pure 헬퍼 (Firebase 비의존) ─────────────────────────────────
@@ -133,37 +134,8 @@ function _getWorkoutTwinOwnerId(ownerId) {
 // 운동 도메인 필드 — 트윈 병합 시 owner 에 값이 없으면 twin 값 채우기.
 // 과거: 전체 day 객체 단위로 판정 → owner 에 식단만 있고 운동 없는 날엔 twin 의 운동이
 //       병합 안 돼 스트릭이 계정 로그인 시마다 1↔5 로 흔들렸다 (문정토마토 이슈).
-const _TWIN_WORKOUT_FIELDS = [
-  'workoutSessions',
-  'exercises', 'cf', 'swimming', 'running', 'stretching',
-  'runDistance', 'runDurationMin', 'runDurationSec', 'runMemo',
-  'runSource', 'runStartedAt', 'runEndedAt', 'runRoute', 'runRouteRef', 'runRouteSummary',
-  'runPlaceSummary', 'runAvgPaceSecPerKm', 'runGpsAccuracySummary',
-  'swimDistance', 'swimDurationMin', 'swimDurationSec', 'swimStroke', 'swimMemo',
-  'cfWod', 'cfDurationMin', 'cfDurationSec', 'cfMemo',
-  'stretchDuration', 'stretchMemo',
-  'workoutDuration', 'workoutTimeline', 'workoutPhoto',
-  'gymId', 'routineMeta',
-];
-
-function _isFieldEmpty(v) {
-  if (v === undefined || v === null) return true;
-  if (Array.isArray(v)) return v.length === 0;
-  if (typeof v === 'string') return v === '';
-  if (typeof v === 'number') return v === 0;
-  if (typeof v === 'boolean') return v === false;
-  if (typeof v === 'object') return Object.keys(v).length === 0;
-  return false;
-}
-
 function _mergeTwinWorkoutFields(existing, incoming) {
-  const merged = { ...existing };
-  for (const field of _TWIN_WORKOUT_FIELDS) {
-    if (_isFieldEmpty(existing[field]) && !_isFieldEmpty(incoming[field])) {
-      merged[field] = incoming[field];
-    }
-  }
-  return merged;
+  return { ...existing, ...buildMissingWorkoutFieldPatch(existing, incoming) };
 }
 
 async function _mergeWorkoutTwinCache(ownerId) {
@@ -225,6 +197,32 @@ async function _copyMissingDocuments({ targetUserId, collectionName, guestUserId
   return copied;
 }
 
+async function _backfillSharedAccountWorkoutFields() {
+  const [canonicalSnap, guestSnap] = await Promise.all([
+    getDocs(collection(db, 'users', ADMIN_ACCOUNT_ID, 'workouts')),
+    getDocs(collection(db, 'users', ADMIN_GUEST_ACCOUNT_ID, 'workouts')),
+  ]);
+  const canonicalById = new Set(canonicalSnap.docs.map(documentSnapshot => documentSnapshot.id));
+  let repaired = 0;
+
+  for (const guestDocument of guestSnap.docs) {
+    if (!canonicalById.has(guestDocument.id)) continue;
+    const targetRef = doc(db, 'users', ADMIN_ACCOUNT_ID, 'workouts', guestDocument.id);
+    const didRepair = await runTransaction(db, async (transaction) => {
+      // A current canonical workout must win even when it was saved after the
+      // collection scan above, so decide from the transaction read.
+      const current = await transaction.get(targetRef);
+      if (!current.exists()) return false;
+      const patch = buildMissingWorkoutFieldPatch(current.data(), guestDocument.data());
+      if (Object.keys(patch).length === 0) return false;
+      transaction.set(targetRef, patch, { merge: true });
+      return true;
+    });
+    if (didRepair) repaired += 1;
+  }
+  return repaired;
+}
+
 // Public legacy-root migration API.  It is now copy-only instead of replacing
 // a user document that may have been written by another app session.
 export async function migrateDataToUser(userId) {
@@ -253,10 +251,16 @@ export async function unifySharedAccountData() {
       collectionName,
     });
   }
+  const workoutFieldsRepaired = await _backfillSharedAccountWorkoutFields();
   await setDoc(markerRef, {
-    value: { version: ACCOUNT_UNIFICATION_VERSION, copied, completedAt: Date.now() },
+    value: {
+      version: ACCOUNT_UNIFICATION_VERSION,
+      copied,
+      workoutFieldsRepaired,
+      completedAt: Date.now(),
+    },
   }, { merge: true });
-  return { state: 'unified', copied };
+  return { state: 'unified', copied, workoutFieldsRepaired };
 }
 
 // ═══════════════════════════════════════════════════════════════

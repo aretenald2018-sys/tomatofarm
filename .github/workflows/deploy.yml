@@ -33,6 +33,9 @@ jobs:
       - name: Generate build info
         run: node scripts/generate-build-info.mjs
 
+      - name: Verify downloadable APK runtime assets
+        run: node scripts/verify-apk-runtime-assets.mjs --apk public/downloads/tomato-mobile-debug.apk
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:

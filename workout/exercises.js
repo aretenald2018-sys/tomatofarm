@@ -145,6 +145,7 @@ const WORKOUT_NUMBER_INPUT_SELECTOR = '.set-input, .set-rpe-input, .set-rom-inpu
 const WORKOUT_INPUT_SCROLL_GUARD_BOTTOM_PX = 156;
 const WORKOUT_INPUT_SCROLL_GUARD_MAX_DELTA = 96;
 const _workoutInputFocusState = new WeakMap();
+let _pendingWorkoutNumberInputTarget = null;
 let _activeWorkoutEntryIdx = 0;
 let _exerciseEditorReturnToPicker = true;
 
@@ -382,9 +383,48 @@ function _captureWorkoutNumberInputRenderScroll(input) {
 function _shouldKeepWorkoutNumberInputMounted(field, sourceInput) {
   if (!['kg', 'reps'].includes(String(field || ''))) return false;
   if (!sourceInput?.matches?.(WORKOUT_NUMBER_INPUT_SELECTOR) || !sourceInput.isConnected) return false;
+  if (_getPendingWorkoutNumberInputTarget(sourceInput)) return true;
   const row = sourceInput.closest?.('.set-row');
   const active = document.activeElement;
   return !!row && active?.matches?.(WORKOUT_NUMBER_INPUT_SELECTOR) && row.contains(active);
+}
+
+function _numberInputMeta(input) {
+  const entryIdx = Number(input?.dataset?.wtEntryIndex);
+  const setIdx = Number(input?.dataset?.wtSetIndex);
+  const field = String(input?.dataset?.wtSetField || '');
+  if (!Number.isInteger(entryIdx) || !Number.isInteger(setIdx) || !['kg', 'reps'].includes(field)) return null;
+  return { entryIdx, setIdx, field };
+}
+
+function _clearPendingWorkoutNumberInputTarget(input = null) {
+  if (!input || _pendingWorkoutNumberInputTarget?.input === input) {
+    _pendingWorkoutNumberInputTarget = null;
+  }
+}
+
+function _rememberWorkoutNumberInputTarget(input) {
+  const meta = _numberInputMeta(input);
+  if (!meta || !input?.isConnected) return;
+  _pendingWorkoutNumberInputTarget = {
+    ...meta,
+    input,
+    expiresAt: Date.now() + 1500,
+  };
+}
+
+function _getPendingWorkoutNumberInputTarget(sourceInput) {
+  const pending = _pendingWorkoutNumberInputTarget;
+  if (!pending) return null;
+  if (pending.expiresAt < Date.now()
+    || !pending.input?.isConnected
+    || !pending.input.matches?.(WORKOUT_NUMBER_INPUT_SELECTOR)) {
+    _clearPendingWorkoutNumberInputTarget();
+    return null;
+  }
+  const sourceMeta = _numberInputMeta(sourceInput);
+  if (!sourceMeta || pending.input === sourceInput || pending.entryIdx !== sourceMeta.entryIdx) return null;
+  return pending.input;
 }
 
 function _captureWorkoutNumberInputScroll(input) {
@@ -430,13 +470,25 @@ function _bindWorkoutNumberInputFocusGuard(scope) {
     input.dataset.wtNumberInputGuard = '1';
     input.addEventListener('pointerdown', (event) => {
       if (event.pointerType && event.pointerType !== 'touch') return;
+      _rememberWorkoutNumberInputTarget(input);
       _captureWorkoutNumberInputScroll(input);
       _focusWorkoutNumberInputWithoutScroll(input);
     }, { passive: true });
-    input.addEventListener('touchstart', () => _captureWorkoutNumberInputScroll(input), { passive: true });
+    input.addEventListener('touchstart', () => {
+      _rememberWorkoutNumberInputTarget(input);
+      _captureWorkoutNumberInputScroll(input);
+    }, { passive: true });
     input.addEventListener('focus', () => {
       if (!_workoutInputFocusState.has(input)) _captureWorkoutNumberInputScroll(input);
       _restoreWorkoutNumberInputScroll(input);
+    });
+    input.addEventListener('blur', () => {
+      window.setTimeout(() => {
+        if (document.activeElement !== input) _clearPendingWorkoutNumberInputTarget(input);
+      }, 0);
+    });
+    input.addEventListener('keydown', event => {
+      if (event.key === 'Escape') _clearPendingWorkoutNumberInputTarget(input);
     });
   });
 }
@@ -1134,7 +1186,7 @@ export function wtUpdateSet(entryIdx, si, field, val, sourceInput = null) {
   _restoreWorkoutRenderScroll(restoreScroll);
   saveWorkoutDay({ silent: true })
     .then(() => {
-      if (isMaxEntry && _setFieldAffectsTrackMetric(field) && !_shouldKeepWorkoutNumberInputMounted(field, sourceInput)) {
+      if (isMaxEntry && _setFieldAffectsTrackMetric(field) && !keepNumberInputMounted) {
         if (!_rerenderMaxEntryOwner(entryIdx)) _renderExerciseList();
         _restoreWorkoutRenderScroll(restoreScroll);
       }
@@ -1833,6 +1885,12 @@ function _renderSets(entryIdx, targetEl = null) {
       if (_isWendlerSet(set)) return;
       wtUpdateSetType(entryIdx, si, _nextMaxSetType(set.setType || 'main', set));
     });
+    const workoutSetInputs = row.querySelectorAll('.set-input');
+    for (const [input, field] of [[workoutSetInputs[0], 'kg'], [workoutSetInputs[1], 'reps']]) {
+      input.dataset.wtEntryIndex = String(entryIdx);
+      input.dataset.wtSetIndex = String(si);
+      input.dataset.wtSetField = field;
+    }
     row.querySelectorAll('.set-input')[0].addEventListener('input', e => _updateSetDraftField(entryIdx, si, 'kg', e.target.value));
     row.querySelectorAll('.set-input')[0].addEventListener('change', e => wtUpdateSet(entryIdx, si, 'kg',   e.target.value, e.target));
     // 2026-04-20: kg/reps 입력 focus 시 rest 타이머 skip 호출 제거.

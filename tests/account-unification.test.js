@@ -2,9 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   ACCOUNT_DATA_COLLECTIONS,
+  ACCOUNT_UNIFICATION_VERSION,
   ADMIN_ACCOUNT_ID,
   ADMIN_GUEST_ACCOUNT_ID,
   buildAccountUnificationPlan,
+  buildMissingWorkoutFieldPatch,
   canonicalAccountOwnerId,
   getAccountOwnerAliases,
 } from '../data/account-unification.js';
@@ -42,6 +44,54 @@ test('unification covers meals, seasons, and workout configuration collections',
   ]) {
     assert.ok(ACCOUNT_DATA_COLLECTIONS.includes(collectionName), `${collectionName} must be unified`);
   }
+});
+
+test('v2 unification fills a diet-only canonical day with guest running fields only', () => {
+  const canonical = {
+    lFoods: [{ name: 'meal' }],
+    lPhoto: 'canonical-lunch.jpg',
+    memo: 'keep this note',
+  };
+  const guest = {
+    lFoods: [{ name: 'guest meal' }],
+    lPhoto: 'guest-lunch.jpg',
+    memo: 'guest note',
+    running: true,
+    runDistance: 5.2,
+    runDurationMin: 31,
+    runRoute: [{ lat: 37, lng: 127, ts: 1 }],
+  };
+  const patch = buildMissingWorkoutFieldPatch(canonical, guest);
+
+  assert.equal(ACCOUNT_UNIFICATION_VERSION, 2);
+  assert.deepEqual(patch, {
+    running: true,
+    runDistance: 5.2,
+    runDurationMin: 31,
+    runRoute: [{ lat: 37, lng: 127, ts: 1 }],
+  });
+  assert.equal(patch.lFoods, undefined);
+  assert.equal(patch.lPhoto, undefined);
+  assert.equal(patch.memo, undefined);
+});
+
+test('v2 unification preserves a canonical workout and is idempotent', () => {
+  const canonical = {
+    exercises: [{ id: 'canonical-bench' }],
+    running: true,
+    runDistance: 3,
+    bPhoto: 'breakfast.jpg',
+  };
+  const guest = {
+    exercises: [{ id: 'guest-squat' }],
+    running: true,
+    runDistance: 8,
+    bPhoto: 'guest-breakfast.jpg',
+  };
+  const patch = buildMissingWorkoutFieldPatch(canonical, guest);
+
+  assert.deepEqual(patch, {});
+  assert.deepEqual(buildMissingWorkoutFieldPatch({ ...canonical, ...patch }, guest), {});
 });
 
 test('life-zone reads the canonical account before a guest alias', () => {

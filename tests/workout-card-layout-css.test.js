@@ -158,6 +158,10 @@ test('workout number inputs are larger and guarded against keyboard focus scroll
   assert.match(workoutExercises, /const WORKOUT_NUMBER_INPUT_SELECTOR = '\.set-input, \.set-rpe-input, \.set-rom-input'/);
   assert.match(workoutExercises, /input\.focus\(\{ preventScroll: true \}\)/);
   assert.match(workoutExercises, /dataset\.wtNumberInputGuard/);
+  assert.match(workoutExercises, /function _rememberWorkoutNumberInputTarget/);
+  assert.match(workoutExercises, /function _getPendingWorkoutNumberInputTarget/);
+  assert.match(workoutExercises, /dataset\.wtEntryIndex/);
+  assert.match(workoutExercises, /pointerdown/);
   assert.match(workoutExercises, /function _captureWorkoutNumberInputRenderScroll/);
   assert.match(workoutExercises, /function _restoreWorkoutRenderScroll/);
   assert.match(workoutExercises, /function _parseWorkoutSetNumberInput/);

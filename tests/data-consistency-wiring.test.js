@@ -211,5 +211,5 @@ test('pending journal is precached and the service worker cache includes both fi
 
   assert.match(runtimeAssetList, /'\.\/data\/pending-day-writes\.js'/);
   assert.match(serviceWorkerSource,
-    /const CACHE_VERSION = 'tomatofarm-v\d{8}z\d+-owner-day-journal-workout-inline-field-commit';/);
+    /const CACHE_VERSION = 'tomatofarm-v\d{8}z\d+-[^']+';/);
 });

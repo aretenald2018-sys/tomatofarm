@@ -107,11 +107,10 @@ function _now() {
   return Date.now();
 }
 
-async function _showToast(message, duration = 1800, type = 'info') {
-  try {
-    const mod = await import('../home/utils.js');
-    mod.showToast?.(message, duration, type);
-  } catch {}
+function _showToast(message, duration = 1800, type = 'info') {
+  void import('../home/utils.js')
+    .then(mod => mod.showToast?.(message, duration, type))
+    .catch(() => {});
 }
 
 function _num(value, fallback = 0) {
