@@ -41,7 +41,7 @@ test('production deploy is locked to the Tomato Farm repository, branch, and Pag
   assert.match(repositoryBoundary, /TOMATOFARM_BRANCH = 'main'/);
   assert.match(repositoryBoundary, /TOMATOFARM_PAGES_URL = 'https:\/\/aretenald2018-sys\.github\.io\/tomatofarm\/'/);
   assert.match(deployProduction, /assertTomatofarmPushTarget\(remote, remoteUrl\)/);
-  assert.match(deployProduction, /git\(\['push', remote, `HEAD:\$\{remoteRef\}`\]/);
+  assert.match(deployProduction, /git\(\['push', remote, remoteRef\]/);
   assert.match(deployProduction, /verify-deploy\.mjs/);
   assert.match(deployProduction, /verify-deployed-markers\.mjs/);
   assert.equal(packageJson.scripts['deploy:production'], 'node scripts/deploy-production.mjs');
@@ -51,7 +51,10 @@ test('production deploy is locked to the Tomato Farm repository, branch, and Pag
 test('pre-push hook blocks cross-environment remotes', () => {
   assert.match(prePush, /check-push-target\.mjs/);
   assert.match(repositoryBoundary, /blocked cross-environment push/);
-  assert.equal(packageJson.scripts['check:repository'], 'node scripts/check-repository-boundary.mjs');
+  assert.equal(
+    packageJson.scripts['check:repository'],
+    'node scripts/check-repository-boundary.mjs && node scripts/check-project-governance.mjs',
+  );
   assert.equal(repositoryFromRemoteUrl('git@github.com:aretenald2018-sys/tomatofarm.git'), 'aretenald2018-sys/tomatofarm');
   assert.doesNotThrow(() => assertTomatofarmPushTarget('origin', 'https://github.com/aretenald2018-sys/tomatofarm.git'));
   assert.throws(

@@ -24,6 +24,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Verify project governance
+        run: node scripts/check-project-governance.mjs
+
+      - name: Verify generated CSS
+        run: node scripts/generate-style-entry.mjs --check
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
 

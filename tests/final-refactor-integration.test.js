@@ -23,15 +23,17 @@ test('refactored home interactions are scoped and removed globals stay removed',
 });
 
 test('final documentation points to current boundaries and production workflow', async () => {
-  const [readme, architecture, quickstart, compatibility] = await Promise.all([
+  const [readme, architecture, agents, compatibility] = await Promise.all([
     readFile(resolve(root, 'README.md'), 'utf8'),
     readFile(resolve(root, 'ARCHITECTURE.md'), 'utf8'),
-    readFile(resolve(root, 'QUICKSTART.md'), 'utf8'),
+    readFile(resolve(root, 'AGENTS.md'), 'utf8'),
     readFile(resolve(root, 'docs/COMPATIBILITY.md'), 'utf8'),
   ]);
-  assert.match(readme, /runtime-assets\.js/);
-  assert.match(architecture, /shell → domain → data facade → Firebase adapter/);
-  assert.match(quickstart, /verify:deploy/);
+  assert.match(readme, /npm\.cmd run verify:assets/);
+  assert.match(architecture, /view\/controller -> domain model\/service -> data\.js/);
+  assert.match(architecture, /one durable physical owner/);
+  assert.match(agents, /git worktree list/);
+  assert.match(agents, /style\.css.+generated/is);
   assert.match(compatibility, /Removal target/);
   assert.doesNotMatch(compatibility, /`app\/compatibility-bridge\.js` exposes/);
   assert.match(compatibility, /No new code may import either shim/);

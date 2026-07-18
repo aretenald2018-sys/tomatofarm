@@ -74,7 +74,7 @@ if (currentBranch !== remoteRef) {
 const head = git(['rev-parse', 'HEAD']);
 const shortHead = git(['rev-parse', '--short=12', 'HEAD']);
 console.log(`[deploy-production] push ${shortHead} -> ${remote}/${remoteRef}`);
-git(['push', remote, `HEAD:${remoteRef}`], { stdio: 'inherit' });
+git(['push', remote, remoteRef], { stdio: 'inherit' });
 
 console.log(`[deploy-production] verify deploy ${shortHead}`);
 run(process.execPath, [scriptPath('verify-deploy.mjs'), baseUrl, head], { stdio: 'inherit' });

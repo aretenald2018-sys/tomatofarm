@@ -1,7 +1,7 @@
 // ================================================================
 // test-v2.board-core.test.js — 테스트모드 v2 성장 보드 순수 로직 테스트
 // 실행: `node --test tests/test-v2.board-core.test.js`
-// 계약 기준: docs/ai/features/2026-06-12-test-mode-v2-board.md
+// Contract target: workout/test-v2/ public behavior.
 // ================================================================
 
 import { test } from 'node:test';

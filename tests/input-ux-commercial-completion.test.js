@@ -4,9 +4,6 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
 
-const designMd = readFileSync('DESIGN.md', 'utf8');
-const finalPlan = readFileSync('.omo/plans/2026-07-03-input-ux-commercial-completion.md', 'utf8');
-const projectPlan = readFileSync('docs/ai/features/2026-07-03-input-ux-commercial-completion.md', 'utf8');
 const indexHtml = readFileSync('index.html', 'utf8');
 const workoutTypeUiJs = readFileSync('workout/type-ui.js', 'utf8');
 const styleCss = readAppCssSync();
@@ -112,15 +109,6 @@ function buildWorkoutUiHarness() {
   }, { filename: 'workout-ui.js' });
   return { calls, elements, window: contextWindow };
 }
-
-test('final plan and design system define the approved input UX slice', () => {
-  assert.match(designMd, /Meal Quick Add Sheet/);
-  assert.match(designMd, /Manual Cardio Sheet/);
-  assert.match(finalPlan, /상태: approved_for_execution/);
-  assert.match(finalPlan, /운동 탭의 활동 선택/);
-  assert.match(finalPlan, /식단 `\+ 음식 추가`/);
-  assert.match(projectPlan, /상태: `approved_for_execution`/);
-});
 
 test('workout shell exposes first-class activity type entries and forms', () => {
   const activityTabs = [

@@ -2,15 +2,19 @@ import { readAppCssSync } from './helpers/css-source.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import puppeteer from 'puppeteer';
 
 const calendarJs = readFileSync(new URL('../render-calendar.js', import.meta.url), 'utf8');
 const setPresentationJs = readFileSync(new URL('../workout/set-presentation.js', import.meta.url), 'utf8');
 const styleCss = readAppCssSync();
-const mobileEvidenceDir = fileURLToPath(new URL('../.omo/evidence/workout-set-mobile-interactions/', import.meta.url));
-const mobileEvidenceJson = fileURLToPath(new URL('../.omo/evidence/workout-set-mobile-interactions/mobile-set-row-e2e.json', import.meta.url));
-const mobileEvidenceScreenshot = fileURLToPath(new URL('../.omo/evidence/workout-set-mobile-interactions/mobile-set-row-after.png', import.meta.url));
+const testArtifactRoot = process.env.TOMATO_TEST_ARTIFACT_DIR
+  ? path.resolve(process.env.TOMATO_TEST_ARTIFACT_DIR)
+  : path.join(tmpdir(), 'tomatofarm-test-artifacts');
+const mobileEvidenceDir = path.join(testArtifactRoot, 'workout-set-mobile-interactions');
+const mobileEvidenceJson = path.join(mobileEvidenceDir, 'mobile-set-row-e2e.json');
+const mobileEvidenceScreenshot = path.join(mobileEvidenceDir, 'mobile-set-row-after.png');
 
 function extractFunctionSource(source, name) {
   const asyncStart = source.indexOf(`async function ${name}`);

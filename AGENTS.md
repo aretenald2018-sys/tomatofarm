@@ -1,40 +1,35 @@
 # Tomato Project Codex Rules
 
-- Implement directly by default. Create a plan only when the user requests one, the scope is materially ambiguous, or the change spans several independent modules.
-- Diagnose before editing only when the bug cannot be reproduced or its cause is uncertain.
-- Read task-specific documentation only when the affected feature requires it. For NPC/life-zone art, read `docs/ai/NPC_ASSET_WORKFLOW.md`.
-- Canonical Checkout: `C:\Users\USER\Desktop\Tomato Project\tomatofarm(for lite version)`. Use this checkout to manage worktrees and as the sole local `main` integration/deployment checkout.
-- Each worktree is its own project root. Run `npm`, `node`, `python`, and ordinary task-scoped `git` commands from the active worktree root, never from `C:\Users\USER` or from a different worktree.
+## Work unit and branches
 
-## Tab-Scoped Worktree and Release Workflow
+- The current user request is the source of truth. Do not resume work from historical plan, review, evidence, or next-action files.
+- Implement directly by default. Write a plan only for materially ambiguous work or several independent modules.
+- Use one task branch for one user outcome or one root cause. Before creating a branch, inspect active worktrees and branches for the same feature surface. Continue the existing unfinished feature branch for follow-up work; create a new branch only for independent work.
+- Base a genuinely new task on the latest `origin/main`. Never base it on another unfinished feature branch.
+- Discover the integration checkout with `git worktree list`; the checkout whose branch is `main` is the only integration and production owner. Do not hardcode a local path.
+- A task worktree may commit its branch, but it must not mutate local `main`, push `main`, or deploy production.
 
-- A clear user request to implement, fix, or apply a change authorizes the normal end-to-end workflow: implementation, relevant checks, direct local UI verification, task commit, safe integration, and one final production deployment. Do not ask for separate approval at each stage. Ask only when the requested scope is materially ambiguous, a destructive action or external decision is required, or unexpected/unapproved changes prevent safe integration. If the user says `local-only`, `do not deploy`, or equivalent, stop after local verification and the task-branch commit.
-- Treat each user request scoped to a screen or tab as one independent task. Fetch `origin`, then create its task branch and worktree from the latest `origin/main`, never from the current feature branch, `codex/dev`, or another work-in-progress branch. Verify the base explicitly; physical worktree separation alone does not isolate Git history.
-- Keep one task per task branch. Do not merge, cherry-pick, or base a task branch on another task branch merely for convenience.
-- The canonical checkout is the only integration owner. Task worktrees may commit their own branches but must never check out or mutate local `main`, push to `origin/main`, run the production deploy command, or deploy Pages.
-- If a task depends on another unfinished task, or changes shared surfaces such as `app.js`, `style.css`, `data.js`, navigation, shared modals, runtime assets, or `sw.js`, note the dependency during the work and treat the affected tasks as a grouped release. Continue autonomously when the intended combined behavior is clear; ask the user only if the dependency changes product scope or requires a choice.
-- Every user-facing UI change must be verified directly in a browser before integration. Start the root app with `node scripts/dev-start.mjs`, open the target URL in the in-app browser, exercise the exact changed flow and affected buttons/tabs, and confirm the visible result. Stop the verification server afterward; do not claim it remains running. Static checks alone are not UI verification.
-- If browser verification is blocked, keep the work on its task branch, report `not verified yet` with the exact blocker, and do not integrate or deploy it. For non-UI changes, run the most relevant static or automated checks instead.
-- For one completed and verified task, update a clean canonical local `main` with `git pull --ff-only`, then integrate only that task's complete commit sequence by cherry-pick or a reviewed squash. Do not fast-forward or merge a work-in-progress task branch directly into `main`.
-- For several completed tasks, create a temporary `release/...` branch from the latest `origin/main`, cherry-pick each complete task sequence, resolve shared-file conflicts there, and run combined automated checks plus direct browser regression checks for every affected tab. Promote only the verified release result to canonical local `main`.
-- Immediately before integration and again before production push, fetch `origin` and review `git log --oneline origin/main..main`, `git diff --stat origin/main...main`, and `git diff --name-only origin/main...main`. If any unexpected commit or file appears, or `origin/main` advanced, rebuild or update the integration and repeat the affected checks; never force-push or repair production afterward.
-- Because every `main` push triggers Pages deployment, accumulate the verified integration locally and push exactly once with `git push origin main`. Never push each task separately, never use a refspec such as `HEAD:main`, and never use force push for production.
-- After cherry-picking or squashing a task branch, never merge that original branch into `main` later. Archive or delete it after verification so its duplicate history cannot be reintroduced.
+## Source and ownership boundaries
 
-## Production Deployment and Verification
+- Root source files are authoritative. `www/` is generated by `scripts/copy-www.js` and is never edited directly.
+- Edit CSS only in `styles/`, `admin/admin-hig.css`, or `test-mode-v2.css`. Root `style.css` is generated by `scripts/generate-style-entry.mjs` and is never an editing surface.
+- Runtime assets are declared in `runtime-assets.js`. If a cached source or asset changes, regenerate derived files and bump `sw.js` `CACHE_VERSION` in the same change.
+- UI and feature modules use the `data.js` facade. Private `users/{owner}/...` paths must use the shared owner resolver/repository and fail closed when owner selection is unresolved; never create a second writable alias.
+- Preserve existing persisted fields through domain serializers and round-trip tests. Treat `setDoc` without merge as a full overwrite.
+- One interactive DOM root has one controller that owns its rendering and internal actions. Patch values in place during input gestures; rerender only for structural changes. Do not depend on an ancestor handler that an inner `stopPropagation()` can block.
+- For life-zone art or NPC work, read `docs/LIFE_ZONE_ASSETS.md` before editing.
 
-- Only the canonical checkout with local `main` currently checked out may push to `origin/main` or deploy production. A task worktree can never deploy, even when its task is complete.
-- Do not deploy in response to read-only requests such as explanation, diagnosis, review, or status. For an implementation request, perform one final deployment only after the requested UI flow and the integrated regression surface pass locally, unless the user explicitly opted out of deployment.
-- Run `npm.cmd run check:repository` immediately before the one allowed production push. Push only `main` to `origin/main`; never deploy to Dashboard3 from this checkout.
-- After production deployment, verify that the Tomato Farm Pages URL serves the expected commit/assets and exercise the changed UI flow there. A successful build or HTTP 200 alone is insufficient. If production verification fails, report the failure precisely and do not claim completion.
-- For work intentionally kept on a non-`main` branch, report the checks performed, state that production deployment was skipped, and say `not verified yet` when a required UI flow could not be exercised.
-- Do NOT run `python -m http.server` directly. Do NOT use `taskkill //F //IM python.exe` or any blanket Python kill — it terminates unrelated Python processes from other projects (e.g. the biz project). The `dev-start.mjs` launcher handles port selection without killing unrelated processes.
-- CRITICAL: If you modify any file included in `sw.js` `STATIC_ASSETS`, you must bump `CACHE_VERSION` in `sw.js` in the same change.
-- The root directory is the single source of truth. `www/` is the Capacitor build artifact produced by `scripts/copy-www.js`. **Never edit files under `www/` directly.** All source changes go to root files (`index.html`, `app.js`, `style.css`, `workout/*.js`, etc.). The dev server (`node scripts/dev-start.mjs`) serves the root.
-- Firebase access must go through `data.js`. Do not call Firestore directly from views or feature modules.
-- Treat `setDoc` as a full overwrite. Preserve all existing fields, especially photo fields such as `bPhoto`, `lPhoto`, `dPhoto`, `sPhoto`, and `workoutPhoto`.
-- Environment Boundary: This checkout is production Tomato Farm only. Keep exactly one Git remote, `origin = https://github.com/aretenald2018-sys/tomatofarm.git`; never add Dashboard3 as a remote or use Dashboard3 deployment commands here. Dashboard3 work belongs in its own checkout. Run `npm.cmd run setup:repository` once after cloning and `npm.cmd run check:repository` before any push.
-- Keep the project in vanilla JavaScript. Do not introduce frameworks, bundlers, or build tooling.
-- Modal/Button Event Rule: If a modal sheet or inner container uses `event.stopPropagation()`, do not rely on delegated click handlers from the overlay/backdrop for buttons, tabs, or actions inside it. Bind handlers inside the sheet/body or use explicit direct handlers, then exercise every new button/tab during the required browser verification.
-- Lazy Module Button Rule: Do not add new always-visible `onclick="moduleFunction()"` buttons that depend on functions from lazy-loaded modules. Bind the button inside the module's render/init function, or expose a stable global before the HTML can be clicked. Exercise every new tab/segmented button during the required browser verification.
-- Final handoff must name changed files and verification performed. Include a URL or server command only when the requested work exercised that surface.
+## Verification
+
+- Run the most relevant behavioral tests first, then the applicable suite. Structure tests may inspect source; buttons, inputs, modals, persistence, and update flows require behavior tests.
+- Every user-facing UI change must be exercised in a browser with `node scripts/dev-start.mjs`. Test the exact changed controls and the affected regression surface, then stop the server.
+- Tests and verification commands must not write evidence into tracked source directories. Use a temporary or ignored artifact directory.
+- Never use `python -m http.server` or blanket process-kill commands for local verification.
+
+## Release
+
+- A clear implementation request authorizes implementation, checks, browser verification, task commit, safe integration, and one production release unless the user says local-only or no-deploy.
+- Shared surfaces such as `app.js`, `data.js`, navigation, modal infrastructure, runtime assets, CSS, or `sw.js` require a grouped release and combined regression check.
+- Immediately before integration and production push, fetch `origin`, verify the exact commit/file delta, and rebuild the integration if `origin/main` moved.
+- Only a clean canonical `main` may run `npm.cmd run check:repository` and `git push origin main`. Push once; never force-push.
+- After Pages deployment, verify the expected commit and exercise the changed production flow. HTTP 200 alone is not completion.

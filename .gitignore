@@ -4,6 +4,10 @@ node_modules/
 !public/downloads/
 !public/downloads/*.apk
 .claude/
+.omo/
+.codex-worktrees/
+.codex-remote-attachments/
+.test-results/
 dom-analysis-report.json
 network-analysis-report.json
 .dev-task.json
