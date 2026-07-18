@@ -23,7 +23,7 @@ function reject(condition, message) {
 }
 
 const files = trackedFiles().filter((file) => existsSync(path.join(root, file)));
-const authoritativeMarkdown = new Set([
+const requiredMarkdown = new Set([
   'AGENTS.md',
   'ARCHITECTURE.md',
   'CLAUDE.md',
@@ -35,12 +35,19 @@ const authoritativeMarkdown = new Set([
   'docs/workout-data-lineage.md',
   'workout/expert/AGENTS.md',
 ]);
+const durableMarkdownPrefixes = [
+  'docs/adr/',
+  'docs/contracts/',
+  'docs/reference/',
+];
 
 const markdownFiles = files.filter((file) => file.toLowerCase().endsWith('.md'));
 for (const file of markdownFiles) {
-  reject(!authoritativeMarkdown.has(file), `unapproved Markdown instruction/history file: ${file}`);
+  const allowed = requiredMarkdown.has(file)
+    || durableMarkdownPrefixes.some((prefix) => file.startsWith(prefix));
+  reject(!allowed, `Markdown must be a required document or durable ADR/contract/reference: ${file}`);
 }
-for (const file of authoritativeMarkdown) {
+for (const file of requiredMarkdown) {
   reject(!files.includes(file), `missing authoritative document: ${file}`);
 }
 
@@ -61,7 +68,7 @@ const staleInstructionPatterns = [
   [/\.omo[\\/]/iu, 'local evidence path'],
 ];
 
-for (const file of authoritativeMarkdown) {
+for (const file of markdownFiles) {
   const source = read(file);
   for (const [pattern, label] of staleInstructionPatterns) {
     reject(pattern.test(source), `${file}: ${label}`);
@@ -111,5 +118,5 @@ if (failures.length) {
   for (const failure of failures) console.error(`- ${failure}`);
   process.exitCode = 1;
 } else {
-  console.log(`[project-governance] ok ${markdownFiles.length} authoritative Markdown files`);
+  console.log(`[project-governance] ok ${markdownFiles.length} governed Markdown files`);
 }

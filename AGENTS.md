@@ -4,6 +4,7 @@
 
 - The current user request is the source of truth. Do not resume work from historical plan, review, evidence, or next-action files.
 - Implement directly by default. Write a plan only for materially ambiguous work or several independent modules.
+- Keep repository Markdown for durable architecture, ADR, contract, or reference material. Keep task plans, reviews, status logs, and generated evidence out of the source tree.
 - Use one task branch for one user outcome or one root cause. Before creating a branch, inspect active worktrees and branches for the same feature surface. Continue the existing unfinished feature branch for follow-up work; create a new branch only for independent work.
 - Base a genuinely new task on the latest `origin/main`. Never base it on another unfinished feature branch.
 - Discover the integration checkout with `git worktree list`; the checkout whose branch is `main` is the only integration and production owner. Do not hardcode a local path.

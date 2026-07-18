@@ -34,6 +34,7 @@ test('final documentation points to current boundaries and production workflow',
   assert.match(architecture, /one durable physical owner/);
   assert.match(agents, /git worktree list/);
   assert.match(agents, /style\.css.+generated/is);
+  assert.match(agents, /durable architecture, ADR, contract, or reference material/);
   assert.match(compatibility, /Removal target/);
   assert.doesNotMatch(compatibility, /`app\/compatibility-bridge\.js` exposes/);
   assert.match(compatibility, /No new code may import either shim/);
