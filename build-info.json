@@ -1,10 +1,15 @@
 {
   "app": "tomatofarm",
-  "commit": "1f5f7a00dbbc60550ae4c59c7a51ffd5ad47cbbd",
-  "shortCommit": "1f5f7a00dbbc",
+  "commit": "local-dirty",
+  "shortCommit": "local-dirty",
+  "sourceBaseCommit": "4214d2a4855559e309ea21fc5e4ca5724e6911cb",
+  "sourceDirty": true,
   "branch": "codex/workout-regression-remediation-20260718",
-  "deployedAt": "2026-07-18T07:22:55.781Z",
-  "cacheVersion": "tomatofarm-v20260718z7-workout-keyboard-continuity",
+  "deployedAt": "2026-07-18T09:57:05.169Z",
+  "cacheVersion": "tomatofarm-v20260718z12-pwa-release-dedupe",
+  "runtimeDigest": "83ade7ba0839dec1044a929319d70e8def13253899fe19d2a3da06ec361a526a",
+  "runtimeDigestAlgorithm": "sha256",
+  "runtimeDigestVersion": 1,
   "runId": null,
   "runAttempt": null
 }

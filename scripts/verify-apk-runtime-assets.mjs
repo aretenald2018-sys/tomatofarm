@@ -3,6 +3,14 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { inflateRawSync } from 'node:zlib';
+import {
+  RUNTIME_DIGEST_ALGORITHM,
+  RUNTIME_DIGEST_VERSION,
+  computeRuntimeDigest,
+  computeRuntimeDigestFromRoot,
+  normalizeRuntimeAssetBytes,
+  runtimeDigestAssetPaths,
+} from './runtime-digest.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const apkArgumentIndex = process.argv.indexOf('--apk');
@@ -55,33 +63,82 @@ function apkEntry(buffer, entryName) {
   throw new Error(`APK entry missing: ${entryName}`);
 }
 
-function cleanAssetPath(asset) {
-  const value = String(asset || '').replace(/^\.\//, '').split(/[?#]/, 1)[0];
-  return value || 'index.html';
-}
-
 function cacheVersion(source) {
   return source.match(/CACHE_VERSION\s*=\s*['"]([^'"]+)['"]/)?.[1] || '';
 }
 
+function validateBuildSourceMetadata(label, buildInfo, failures) {
+  if (typeof buildInfo.sourceDirty !== 'boolean') {
+    failures.push(`${label} sourceDirty is missing or invalid`);
+    return;
+  }
+  if (!Object.hasOwn(buildInfo, 'sourceBaseCommit')) {
+    failures.push(`${label} sourceBaseCommit is missing`);
+  }
+  if (buildInfo.sourceDirty && buildInfo.commit !== 'local-dirty') {
+    failures.push(`${label} dirty source must use commit=local-dirty`);
+  }
+  if (!buildInfo.sourceDirty && buildInfo.commit !== buildInfo.sourceBaseCommit) {
+    failures.push(`${label} clean source commit differs from sourceBaseCommit`);
+  }
+}
+
 const apk = await readFile(apkPath);
 const failures = [];
-for (const asset of runtimeAssets) {
-  const relativePath = cleanAssetPath(asset);
-  if (relativePath === 'build-info.json') continue;
+const runtimeAssetPaths = runtimeDigestAssetPaths(runtimeAssets);
+for (const relativePath of runtimeAssetPaths) {
   const sourcePath = path.join(root, relativePath);
   const apkEntryPath = `assets/public/${relativePath}`;
   try {
     const [source, embedded] = await Promise.all([readFile(sourcePath), Promise.resolve(apkEntry(apk, apkEntryPath))]);
-    if (!source.equals(embedded)) failures.push(`${relativePath} differs from ${apkEntryPath}`);
+    const normalizedSource = normalizeRuntimeAssetBytes(relativePath, source);
+    const normalizedEmbedded = normalizeRuntimeAssetBytes(relativePath, embedded);
+    if (!normalizedSource.equals(normalizedEmbedded)) failures.push(`${relativePath} differs from ${apkEntryPath}`);
   } catch (error) {
     failures.push(`${relativePath}: ${error.message}`);
   }
 }
 
 try {
-  const rootSw = await readFile(path.join(root, 'sw.js'), 'utf8');
+  const [rootSw, rootBuildInfoText, rootRuntimeDigest, apkRuntimeDigest] = await Promise.all([
+    readFile(path.join(root, 'sw.js'), 'utf8'),
+    readFile(path.join(root, 'build-info.json'), 'utf8'),
+    computeRuntimeDigestFromRoot(root, runtimeAssets),
+    computeRuntimeDigest({
+      runtimeAssets,
+      readAsset: relativePath => apkEntry(apk, `assets/public/${relativePath}`),
+    }),
+  ]);
+  const rootBuildInfo = JSON.parse(rootBuildInfoText);
   const apkBuildInfo = JSON.parse(apkEntry(apk, 'assets/public/build-info.json').toString('utf8'));
+
+  validateBuildSourceMetadata('root build-info.json', rootBuildInfo, failures);
+  validateBuildSourceMetadata('APK build-info.json', apkBuildInfo, failures);
+
+  if (rootBuildInfo.runtimeDigest !== rootRuntimeDigest) {
+    failures.push('root build-info.json runtimeDigest differs from root runtime assets');
+  }
+  if (apkBuildInfo.runtimeDigest !== apkRuntimeDigest) {
+    failures.push('APK build-info.json runtimeDigest differs from embedded runtime assets');
+  }
+  if (rootRuntimeDigest !== apkRuntimeDigest) {
+    failures.push('root runtimeDigest differs from APK runtimeDigest');
+  }
+  for (const [label, buildInfo] of [
+    ['root build-info.json', rootBuildInfo],
+    ['APK build-info.json', apkBuildInfo],
+  ]) {
+    if (buildInfo.runtimeDigestAlgorithm !== RUNTIME_DIGEST_ALGORITHM) {
+      failures.push(`${label} runtimeDigestAlgorithm is invalid`);
+    }
+    if (buildInfo.runtimeDigestVersion !== RUNTIME_DIGEST_VERSION) {
+      failures.push(`${label} runtimeDigestVersion is invalid`);
+    }
+  }
+
+  if (rootBuildInfo.cacheVersion !== cacheVersion(rootSw)) {
+    failures.push('root build-info.json cacheVersion differs from root sw.js');
+  }
   if (apkBuildInfo.cacheVersion !== cacheVersion(rootSw)) {
     failures.push('build-info.json cacheVersion differs from root sw.js');
   }
@@ -95,4 +152,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log(`[apk-runtime-assets] ok assets=${runtimeAssets.length} apk=${path.relative(root, apkPath)}`);
+console.log(`[apk-runtime-assets] ok assets=${runtimeAssetPaths.length} apk=${path.relative(root, apkPath)}`);

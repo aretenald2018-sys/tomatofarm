@@ -8,7 +8,7 @@ import { CONFIG, MUSCLES, MOVEMENTS } from '../config.js';
 import {
   db, doc, setDoc, deleteDoc, getDoc, collection, getDocs, query, where, runTransaction,
   getCurrentUserRef, setCurrentUserRef,
-  ADMIN_ID, ADMIN_GUEST_ID, getDataOwnerId,
+  ADMIN_ID, getDataOwnerId,
   _col, _doc,
   _cache, _exList, _customMuscles, _goals, _quests, _cooking, _bodyCheckins, _nutritionDB,
   _setCache, _setExList, _setCustomMuscles, _setGoals, _setQuests, _setCooking, _setBodyCheckins, _setNutritionDB,
@@ -26,6 +26,7 @@ import { isAdmin, isAdminGuest } from './data-auth.js';
 import { getAccountList, saveAccount } from './data-account.js';
 import { _socialId, _isMySocialId } from './data-social-friends.js';
 import { sendNotification } from './data-social-interact.js';
+import { resolvePrivateDataOwnerId } from './shared-account-owner.js';
 
 import {
   calcDietMetrics  as _calcDietMetrics,
@@ -151,7 +152,7 @@ export {
 } from './data-equipment-pool.js';
 
 // ═══════════════════════════════════════════════════════════════
-// loadAll / saveDay / legacy tab sanitizer / twin-merge / isActiveWorkoutDayData
+// loadAll / saveDay / legacy tab sanitizer / single-owner loading helpers
 // → data/data-load.js, data/data-save.js 로 분리 (2026-04-20 R4)
 // 기존 import 호환을 위해 data.js 에서 re-export.
 // ═══════════════════════════════════════════════════════════════
@@ -1005,17 +1006,28 @@ export async function publishDietPremiumReportIssue({ period = 'weekly', targetU
     return { ...baseIssue, deliveredCount: 0, disabled: true };
   }
 
-  await _fbOp('publishDietPremiumReportIssue', () => Promise.all(targets.map((userId) => (
-    setDoc(doc(db, 'users', userId, 'settings', 'diet_premium_report_inbox'), {
+  const resolvedTargets = await Promise.all(targets.map(async (userId) => ({
+    userId,
+    ownerId: await resolvePrivateDataOwnerId(userId),
+  })));
+  const deliveries = [...new Map(
+    resolvedTargets.map(target => [target.ownerId, target]),
+  ).values()];
+  await _fbOp('publishDietPremiumReportIssue', () => Promise.all(deliveries.map(({ userId, ownerId }) => (
+    setDoc(doc(db, 'users', ownerId, 'settings', 'diet_premium_report_inbox'), {
       value: { ...baseIssue, recipientUserId: userId },
     })
   ))), { rethrow: true });
 
-  if (targets.includes(getDataOwnerId())) {
-    _settings.diet_premium_report_inbox = { ...baseIssue, recipientUserId: getDataOwnerId() };
+  const localDelivery = deliveries.find(target => target.ownerId === getDataOwnerId());
+  if (localDelivery) {
+    _settings.diet_premium_report_inbox = {
+      ...baseIssue,
+      recipientUserId: localDelivery.userId,
+    };
   }
 
-  return { ...baseIssue, deliveredCount: targets.length };
+  return { ...baseIssue, deliveredCount: deliveries.length };
 }
 
 export const getDietPremiumReportSeen = (reportId) => !!(_settings.diet_premium_report_seen || {})[reportId];
@@ -1107,6 +1119,7 @@ export function getAllTomatoCycles() { return _tomatoCycles; }
 
 export async function sendTomatoGift(toUserId, message) {
   if (!getCurrentUserRef()) return { error: '로그인이 필요해요.' };
+  const recipientOwnerId = await resolvePrivateDataOwnerId(toUserId);
   const state = getTomatoState();
   const available = state.totalTomatoes + state.giftedReceived - state.giftedSent;
   if (available <= 0) return { error: '선물할 토마토가 없어요.' };
@@ -1120,18 +1133,22 @@ export async function sendTomatoGift(toUserId, message) {
   state.giftedSent++;
   await saveTomatoState(state);
   try {
-    const recvSnap = await getDoc(doc(db, 'users', toUserId, 'settings', 'tomato_state'));
+    const recvSnap = await getDoc(doc(db, 'users', recipientOwnerId, 'settings', 'tomato_state'));
     const recvState = recvSnap.exists()
       ? (recvSnap.data().value || { quarterlyTomatoes: {}, totalTomatoes: 0, giftedReceived: 0, giftedSent: 0 })
       : { quarterlyTomatoes: {}, totalTomatoes: 0, giftedReceived: 0, giftedSent: 0 };
     recvState.giftedReceived = (recvState.giftedReceived || 0) + 1;
-    await setDoc(doc(db, 'users', toUserId, 'settings', 'tomato_state'), { value: recvState });
+    await setDoc(doc(db, 'users', recipientOwnerId, 'settings', 'tomato_state'), { value: recvState });
   } catch(e) { console.warn('[gift] 받는 사람 토마토 상태 업데이트 실패:', e); }
   await sendNotification(toUserId, { type: 'tomato_gift', from: fromId, message: '토마토를 선물했어요! 🍅' });
   return { ok: true };
 }
 
 export async function revertTomatoGift(fromUserId, toUserId) {
+  const [senderOwnerId, recipientOwnerId] = await Promise.all([
+    resolvePrivateDataOwnerId(fromUserId),
+    resolvePrivateDataOwnerId(toUserId),
+  ]);
   const snap = await getDocs(collection(db, '_tomato_gifts'));
   let deleted = 0;
   for (const d of snap.docs) {
@@ -1141,17 +1158,17 @@ export async function revertTomatoGift(fromUserId, toUserId) {
       deleted++;
     }
   }
-  const senderSnap = await getDoc(doc(db, 'users', fromUserId, 'settings', 'tomato_state'));
+  const senderSnap = await getDoc(doc(db, 'users', senderOwnerId, 'settings', 'tomato_state'));
   if (senderSnap.exists()) {
     const sState = senderSnap.data().value;
     sState.giftedSent = Math.max(0, (sState.giftedSent || 0) - deleted);
-    await setDoc(doc(db, 'users', fromUserId, 'settings', 'tomato_state'), { value: sState });
+    await setDoc(doc(db, 'users', senderOwnerId, 'settings', 'tomato_state'), { value: sState });
   }
-  const recvSnap = await getDoc(doc(db, 'users', toUserId, 'settings', 'tomato_state'));
+  const recvSnap = await getDoc(doc(db, 'users', recipientOwnerId, 'settings', 'tomato_state'));
   if (recvSnap.exists()) {
     const rState = recvSnap.data().value;
     rState.giftedReceived = Math.max(0, (rState.giftedReceived || 0) - deleted);
-    await setDoc(doc(db, 'users', toUserId, 'settings', 'tomato_state'), { value: rState });
+    await setDoc(doc(db, 'users', recipientOwnerId, 'settings', 'tomato_state'), { value: rState });
   }
   if (_socialId() === fromUserId) {
     const s = getTomatoState();

@@ -2,16 +2,16 @@
 // data/data-load.js — 앱 시작 시 전체 데이터 로드 + 관련 마이그레이션/헬퍼
 // ================================================================
 // loadAll: 로그인 후 _cache + _settings + _exList + _goals/_quests 등 초기 덤프.
-// migrateDataToUser: admin 최초 로그인 시 root 컬렉션 → users/{uid}/* 로 이관.
-// _mergeWorkoutTwinCache: admin <-> admin(guest) 트윈 계정의 workouts 병합.
+// migrateDataToUser: 선택된 물리 소유자로 legacy root 문서를 copy-only 이관.
+// 관리자/게스트는 로드 전에 하나의 원격 등록 소유자로 해석하며 서로 병합하지 않음.
 // _sanitizeTabList: 레거시 탭 필터 (finance/wine/movie/monthly 등 제거).
 // isActiveWorkoutDayData: day 객체가 "기록 있음" 상태인지 판정.
 // ================================================================
 
 import { CONFIG, MOVEMENTS } from '../config.js';
 import {
-  db, doc, setDoc, collection, getDocs, getDoc, runTransaction, onSnapshot,
-  getCurrentUserRef, ADMIN_ID, getDataOwnerId,
+  db, doc, setDoc, collection, getDocFromServer, getDocs, getDocsFromServer, runTransaction, onSnapshot,
+  getCurrentUserRef, getDataOwnerId,
   _cache, _nutritionDB,
   _setCache, _setExList, _setCustomMuscles, _setGoals, _setQuests, _setCooking, _setBodyCheckins, _setNutritionDB,
   DEFAULT_TAB_ORDER, DEFAULT_DIET_PLAN, DEFAULT_EXPERT_PRESET,
@@ -25,13 +25,16 @@ import { loadGyms, loadRoutineTemplates } from './data-workout-equipment.js';
 import { loadEquipmentPool } from './data-equipment-pool.js';
 import {
   ACCOUNT_DATA_COLLECTIONS,
-  ACCOUNT_UNIFICATION_MARKER_ID,
-  ACCOUNT_UNIFICATION_VERSION,
   ADMIN_ACCOUNT_ID,
-  ADMIN_GUEST_ACCOUNT_ID,
+  LEGACY_ROOT_MIGRATION_COLLECTION,
+  LEGACY_ROOT_MIGRATION_ID,
+  LEGACY_ROOT_MIGRATION_VERSION,
   buildAccountUnificationPlan,
-  buildMissingWorkoutFieldPatch,
+  isSharedAdminAccount,
 } from './account-unification.js';
+import {
+  resolvePrivateDataOwnerId,
+} from './shared-account-owner.js';
 
 // ── Pure 헬퍼 (Firebase 비의존) ─────────────────────────────────
 // node:test 에서 import 가능하도록 data/data-pure.js 로 분리. 여기서는 re-export.
@@ -120,65 +123,23 @@ export function startWorkoutRealtimeSync(ownerId = getDataOwnerId()) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// Admin ↔ Admin(guest) twin-account workout merge
+// Shared account owner resolution and legacy root migration
 // ═══════════════════════════════════════════════════════════════
-// 관리자/게스트 트윈 계정이 같은 사람의 운동 기록을 공유하므로 로드 시
-// 상대 계정의 활성 day 를 내 _cache 에 얕게 병합. 기록 없는 쪽을 덮어쓰지 않음.
-function _getWorkoutTwinOwnerId(ownerId) {
-  const id = String(ownerId || '').trim();
-  if (!id) return '';
-  if (/\(guest\)$/i.test(id)) return id.replace(/\(guest\)$/i, '').trim();
-  return `${id}(guest)`;
-}
-
-// 운동 도메인 필드 — 트윈 병합 시 owner 에 값이 없으면 twin 값 채우기.
-// 과거: 전체 day 객체 단위로 판정 → owner 에 식단만 있고 운동 없는 날엔 twin 의 운동이
-//       병합 안 돼 스트릭이 계정 로그인 시마다 1↔5 로 흔들렸다 (문정토마토 이슈).
-function _mergeTwinWorkoutFields(existing, incoming) {
-  return { ...existing, ...buildMissingWorkoutFieldPatch(existing, incoming) };
-}
-
-async function _mergeWorkoutTwinCache(ownerId) {
-  const twinOwnerId = _getWorkoutTwinOwnerId(ownerId);
-  if (!ownerId || !twinOwnerId || twinOwnerId === ownerId) return;
-
-  try {
-    const twinSnap = await getDocs(collection(db, 'users', twinOwnerId, 'workouts'));
-    twinSnap.forEach((d) => {
-      const incoming = d.data();
-      const existing = _cache[d.id];
-      if (!existing) {
-        _cache[d.id] = incoming;
-        return;
-      }
-      // 필드 단위 병합 — owner 가 값을 갖고 있지 않은 운동 필드만 twin 값으로 채움.
-      _cache[d.id] = _mergeTwinWorkoutFields(existing, incoming);
-    });
-  } catch (e) {
-    console.warn('[data] workout twin merge failed:', e.message);
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════
-// migrateDataToUser — admin 최초 로그인 시 root → users/{uid}/* 이관
+// 관리자/게스트 데이터는 원격 레지스트리가 선택한 물리 소유자 한 곳만 읽고 쓴다.
+// migrateDataToUser — legacy root → 선택된 users/{owner}/* copy-only 이관
 // ═══════════════════════════════════════════════════════════════
 function _snapshotDocuments(snapshot) {
   return snapshot.docs.map((document) => ({ id: document.id, data: document.data() }));
 }
 
-async function _copyMissingDocuments({ targetUserId, collectionName, guestUserId = null }) {
-  const reads = [
-    getDocs(collection(db, 'users', targetUserId, collectionName)),
-    getDocs(collection(db, collectionName)),
-  ];
-  if (guestUserId) reads.splice(1, 0, getDocs(collection(db, 'users', guestUserId, collectionName)));
-
-  const [canonicalSnap, ...sources] = await Promise.all(reads);
-  const [guestSnap, legacySnap] = guestUserId ? sources : [null, sources[0]];
+async function _copyMissingDocuments({ targetUserId, collectionName }) {
+  const [canonicalSnap, legacySnap] = await Promise.all([
+    getDocsFromServer(collection(db, 'users', targetUserId, collectionName)),
+    getDocsFromServer(collection(db, collectionName)),
+  ]);
   const plan = buildAccountUnificationPlan({
     canonicalDocuments: _snapshotDocuments(canonicalSnap),
-    guestDocuments: guestSnap ? _snapshotDocuments(guestSnap) : [],
-    legacyDocuments: legacySnap ? _snapshotDocuments(legacySnap) : [],
+    legacyDocuments: _snapshotDocuments(legacySnap),
   });
 
   let copied = 0;
@@ -197,70 +158,53 @@ async function _copyMissingDocuments({ targetUserId, collectionName, guestUserId
   return copied;
 }
 
-async function _backfillSharedAccountWorkoutFields() {
-  const [canonicalSnap, guestSnap] = await Promise.all([
-    getDocs(collection(db, 'users', ADMIN_ACCOUNT_ID, 'workouts')),
-    getDocs(collection(db, 'users', ADMIN_GUEST_ACCOUNT_ID, 'workouts')),
-  ]);
-  const canonicalById = new Set(canonicalSnap.docs.map(documentSnapshot => documentSnapshot.id));
-  let repaired = 0;
-
-  for (const guestDocument of guestSnap.docs) {
-    if (!canonicalById.has(guestDocument.id)) continue;
-    const targetRef = doc(db, 'users', ADMIN_ACCOUNT_ID, 'workouts', guestDocument.id);
-    const didRepair = await runTransaction(db, async (transaction) => {
-      // A current canonical workout must win even when it was saved after the
-      // collection scan above, so decide from the transaction read.
-      const current = await transaction.get(targetRef);
-      if (!current.exists()) return false;
-      const patch = buildMissingWorkoutFieldPatch(current.data(), guestDocument.data());
-      if (Object.keys(patch).length === 0) return false;
-      transaction.set(targetRef, patch, { merge: true });
-      return true;
-    });
-    if (didRepair) repaired += 1;
-  }
-  return repaired;
-}
-
 // Public legacy-root migration API.  It is now copy-only instead of replacing
 // a user document that may have been written by another app session.
 export async function migrateDataToUser(userId) {
+  const targetUserId = await resolvePrivateDataOwnerId(userId);
+  if (!isSharedAdminAccount(userId)) {
+    let copied = 0;
+    for (const collectionName of ACCOUNT_DATA_COLLECTIONS) {
+      copied += await _copyMissingDocuments({ targetUserId, collectionName });
+    }
+    return copied;
+  }
+  const markerRef = doc(
+    db,
+    LEGACY_ROOT_MIGRATION_COLLECTION,
+    LEGACY_ROOT_MIGRATION_ID,
+  );
+  const markerSnapshot = await getDocFromServer(markerRef);
+  const marker = markerSnapshot.data() || {};
+  if (Number(marker.version || 0) >= LEGACY_ROOT_MIGRATION_VERSION) {
+    if (marker.ownerId !== targetUserId) {
+      throw new Error('legacy root migration owner conflicts with the shared owner registry');
+    }
+    return 0;
+  }
+
   let copied = 0;
   for (const collectionName of ACCOUNT_DATA_COLLECTIONS) {
-    copied += await _copyMissingDocuments({ targetUserId: userId, collectionName });
-  }
-  return copied;
-}
-
-// The guest and root stores are read only as historical sources.  Canonical
-// same-date workouts always win so a stale guest run cannot replace a newer
-// canonical meal entry in the life zone or in the dashboard.
-export async function unifySharedAccountData() {
-  const markerRef = doc(db, 'users', ADMIN_ACCOUNT_ID, 'settings', ACCOUNT_UNIFICATION_MARKER_ID);
-  const marker = await getDoc(markerRef);
-  if (Number(marker.data()?.value?.version || 0) >= ACCOUNT_UNIFICATION_VERSION) {
-    return { state: 'already-unified', copied: 0 };
+    copied += await _copyMissingDocuments({ targetUserId, collectionName });
   }
 
-  let copied = 0;
-  for (const collectionName of ACCOUNT_DATA_COLLECTIONS) {
-    copied += await _copyMissingDocuments({
-      targetUserId: ADMIN_ACCOUNT_ID,
-      guestUserId: ADMIN_GUEST_ACCOUNT_ID,
-      collectionName,
-    });
-  }
-  const workoutFieldsRepaired = await _backfillSharedAccountWorkoutFields();
-  await setDoc(markerRef, {
-    value: {
-      version: ACCOUNT_UNIFICATION_VERSION,
+  await runTransaction(db, async (transaction) => {
+    const latestSnapshot = await transaction.get(markerRef);
+    const latest = latestSnapshot.data() || {};
+    if (Number(latest.version || 0) >= LEGACY_ROOT_MIGRATION_VERSION) {
+      if (latest.ownerId !== targetUserId) {
+        throw new Error('legacy root migration completed for a different physical owner');
+      }
+      return;
+    }
+    transaction.set(markerRef, {
+      ownerId: targetUserId,
+      version: LEGACY_ROOT_MIGRATION_VERSION,
       copied,
-      workoutFieldsRepaired,
       completedAt: Date.now(),
-    },
-  }, { merge: true });
-  return { state: 'unified', copied, workoutFieldsRepaired };
+    });
+  });
+  return copied;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -268,6 +212,18 @@ export async function unifySharedAccountData() {
 // ═══════════════════════════════════════════════════════════════
 export async function loadAll() {
   const loadGeneration = ++_loadAllGeneration;
+  if (getCurrentUserRef()) {
+    try {
+      await resolvePrivateDataOwnerId(getCurrentUserRef().id);
+    } catch (error) {
+      if (_loadAllGeneration !== loadGeneration) return;
+      stopWorkoutRealtimeSync();
+      _setCache({});
+      _setSyncStatus('err');
+      console.warn('[data] shared account owner resolution failed:', error?.message || error);
+      return;
+    }
+  }
   const ownerId = getDataOwnerId();
   if (!ownerId) {
     // 이전 계정 캐시를 로그인 화면이나 다음 계정에 노출하지 않는다.
@@ -298,16 +254,16 @@ export async function loadAll() {
   _setCache(pendingSeed);
 
   try {
-    if (getCurrentUserRef() && ownerId === ADMIN_ACCOUNT_ID) {
+    if (isSharedAdminAccount(getCurrentUserRef()?.id)) {
       try {
-        await unifySharedAccountData();
+        await migrateDataToUser(getCurrentUserRef().id);
       } catch (error) {
-        // Keep canonical data readable if a legacy collection is temporarily
-        // inaccessible.  No completion marker is written, so this safely retries.
-        console.warn('[data] shared account unification deferred:', error?.message || error);
+        // Copy transactions are idempotent and completion is recorded only
+        // after every collection succeeds, so a later load can safely retry.
+        console.warn('[data] legacy root migration deferred:', error?.message || error);
       }
+      if (abandonIfStale()) return;
     }
-    if (abandonIfStale()) return;
 
     const [snap, exSnap, goalSnap, questSnap,
            cookSnap, checkinSnap, nutritionSnap,
@@ -376,16 +332,18 @@ export async function loadAll() {
     { const ndb = []; nutritionSnap.forEach(d => ndb.push(d.data())); _setNutritionDB(ndb); }
 
     if (_nutritionDB.length === 0 && !isAdmin() && !isAdminGuest()) {
-      getDocs(collection(db, 'users', ADMIN_ID, 'nutrition_db')).then(sharedSnap => {
-        if (!isCurrentLoad()) return;
-        const sharedItems = [];
-        sharedSnap.forEach(d => sharedItems.push(d.data()));
-        if (sharedItems.length > 0) {
-          _setNutritionDB(sharedItems);
-          Promise.all(sharedItems.map(item => setDoc(ownerDoc('nutrition_db', item.id), item)))
-            .catch(e => console.warn('[data] 영양DB 복사 실패:', e.message));
-        }
-      }).catch(e => console.warn('[data] 관리자 영양DB 로드 실패:', e.message));
+      resolvePrivateDataOwnerId(ADMIN_ACCOUNT_ID)
+        .then(sharedOwnerId => getDocs(collection(db, 'users', sharedOwnerId, 'nutrition_db')))
+        .then(sharedSnap => {
+          if (!isCurrentLoad()) return;
+          const sharedItems = [];
+          sharedSnap.forEach(d => sharedItems.push(d.data()));
+          if (sharedItems.length > 0) {
+            _setNutritionDB(sharedItems);
+            Promise.all(sharedItems.map(item => setDoc(ownerDoc('nutrition_db', item.id), item)))
+              .catch(e => console.warn('[data] 영양DB 복사 실패:', e.message));
+          }
+        }).catch(e => console.warn('[data] 관리자 영양DB 로드 실패:', e.message));
     }
 
     { const tc = []; tomatoSnap.forEach(d => tc.push(d.data())); _setTomatoCycles(tc); }

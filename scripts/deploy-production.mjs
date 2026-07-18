@@ -14,6 +14,7 @@ const baseUrl = TOMATOFARM_PAGES_URL;
 const remote = TOMATOFARM_REMOTE;
 const remoteRef = TOMATOFARM_BRANCH;
 const buildInfoPath = path.join(root, 'build-info.json');
+const sharedOwnerReleaseGatePath = path.join(root, 'scripts', 'verify-shared-owner-release-gate.mjs');
 
 function run(command, args, options = {}) {
   const output = execFileSync(command, args, {
@@ -63,6 +64,7 @@ function readCacheVersion() {
 const remoteUrl = git(['remote', 'get-url', remote]);
 assertTomatofarmPushTarget(remote, remoteUrl);
 assertCleanTrackedTree();
+run(process.execPath, [sharedOwnerReleaseGatePath], { stdio: 'inherit' });
 
 const currentBranch = git(['branch', '--show-current']);
 if (currentBranch !== remoteRef) {

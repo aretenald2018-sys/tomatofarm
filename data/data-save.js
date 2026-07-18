@@ -21,6 +21,7 @@ import {
   listPendingDayWrites,
   mergePendingDayWritesIntoCache,
   acknowledgePendingDayWrites,
+  reassignPendingDayWrites,
 } from './pending-day-writes.js';
 
 const _pendingFlushByOwnerDate = new Map();
@@ -135,6 +136,20 @@ export function restorePendingDayWritesForOwner(ownerId, baseCache = {}) {
     console.warn('[data] pending day restore skipped:', error?.message || error);
     return { ...baseCache };
   }
+}
+
+export function reassignPendingDayWritesToOwner(targetOwnerId, sourceOwnerIds = []) {
+  if (!targetOwnerId) return 0;
+  let moved = 0;
+  const storage = _pendingStorage();
+  for (const sourceOwnerId of new Set(sourceOwnerIds || [])) {
+    if (!sourceOwnerId || sourceOwnerId === targetOwnerId) continue;
+    moved += reassignPendingDayWrites(storage, {
+      fromOwnerId: sourceOwnerId,
+      toOwnerId: targetOwnerId,
+    }).moved;
+  }
+  return moved;
 }
 
 function _isDefinitelyOffline() {

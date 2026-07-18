@@ -6,6 +6,8 @@ const read = (path) => readFileSync(new URL('../' + path, import.meta.url), 'utf
 
 const dataLoadSource = read('data/data-load.js');
 const dataApiSource = read('data/data-api.js');
+const dataCoreSource = read('data/data-core.js');
+const sharedOwnerSource = read('data/shared-account-owner.js');
 const workoutEquipmentSource = read('data/data-workout-equipment.js');
 const equipmentPoolSource = read('data/data-equipment-pool.js');
 const appSource = read('app.js');
@@ -35,7 +37,7 @@ function assertOrdered(source, tokens, label) {
   }
 }
 
-test('loadAll immediately seeds pending data and captures owner-scoped Firestore references', () => {
+test('loadAll resolves the physical owner before seeding pending data and capturing refs', () => {
   const loadAll = sliceFrom(dataLoadSource, 'export async function loadAll()', 'loadAll');
 
   assert.match(loadAll,
@@ -43,11 +45,13 @@ test('loadAll immediately seeds pending data and captures owner-scoped Firestore
   assert.match(loadAll,
     /const ownerDoc = \(name, id\) => doc\(db, 'users', ownerId, name, id\);/);
 
-  const pendingSeed = loadAll.indexOf('const pendingSeed = restorePendingDayWritesForOwner(ownerId, {});');
-  const cacheSeed = loadAll.indexOf('_setCache(pendingSeed);');
-  const firstAwait = loadAll.indexOf('await ');
-  assert.ok(pendingSeed >= 0 && pendingSeed < cacheSeed && cacheSeed < firstAwait,
-    'fresh pending cache must be visible before loadAll performs any asynchronous read');
+  assertOrdered(loadAll, [
+    'await resolvePrivateDataOwnerId(getCurrentUserRef().id);',
+    'const ownerId = getDataOwnerId();',
+    'const pendingSeed = restorePendingDayWritesForOwner(ownerId, {});',
+    '_setCache(pendingSeed);',
+    'const [snap, exSnap, goalSnap, questSnap,',
+  ], 'owner decision before private reads');
 
   for (const collectionName of [
     'workouts', 'exercises', 'goals', 'quests', 'cooking',
@@ -105,7 +109,7 @@ test('workout realtime subscription stays owner-scoped and emits changed-date ev
   const realtime = sliceBetween(
     dataLoadSource,
     'export function startWorkoutRealtimeSync',
-    '// Admin ↔ Admin(guest) twin-account workout merge',
+    '// Shared account owner resolution and legacy root migration',
     'startWorkoutRealtimeSync',
   );
   const notify = sliceBetween(
@@ -135,7 +139,7 @@ test('a queued callback from an unsubscribed realtime listener cannot stop a new
   const realtime = sliceBetween(
     dataLoadSource,
     'export function startWorkoutRealtimeSync',
-    '// Admin ↔ Admin(guest) twin-account workout merge',
+    '// Shared account owner resolution and legacy root migration',
     'startWorkoutRealtimeSync',
   );
 
@@ -210,6 +214,121 @@ test('pending journal is precached and the service worker cache includes both fi
   );
 
   assert.match(runtimeAssetList, /'\.\/data\/pending-day-writes\.js'/);
+  assert.match(runtimeAssetList, /'\.\/data\/shared-account-owner\.js'/);
   assert.match(serviceWorkerSource,
     /const CACHE_VERSION = 'tomatofarm-v\d{8}z\d+-[^']+';/);
+});
+
+test('shared admin data uses a durable one-owner registry and never field-merges aliases', () => {
+  assert.match(sharedOwnerSource,
+    /SHARED_ACCOUNT_OWNER_REGISTRY_COLLECTION[\s\S]*SHARED_ACCOUNT_OWNER_REGISTRY_ID/);
+  assert.match(sharedOwnerSource,
+    /readSharedAccountDataOwnerRegistry\(registrySnapshot\.data\(\)\)/);
+  assert.match(sharedOwnerSource, /SHARED_DATA_OWNER_NOT_INITIALIZED/);
+  assert.doesNotMatch(sharedOwnerSource,
+    /getDocsFromServer|runTransaction|transaction\.set|selectSharedAccountDataOwner/);
+  assert.doesNotMatch(dataLoadSource,
+    /unifySharedAccountData|buildMissingWorkoutFieldPatch|_mergeWorkoutTwinCache|_backfillSharedAccountWorkoutFields/);
+  assert.match(dataCoreSource,
+    /if \(_currentUser && isSharedAdminAccount\(_currentUser\.id\)\)[\s\S]*SHARED_DATA_OWNER_UNRESOLVED/);
+
+  const adopter = sliceBetween(
+    sharedOwnerSource,
+    'function _adoptSharedAccountDataOwner(ownerId)',
+    '\n}\n\nasync function _resolveSharedAccountDataOwner',
+    'shared owner adopter',
+  );
+  assertOrdered(adopter, [
+    'reassignPendingDayWritesToOwner(selectedOwnerId',
+    'return setSharedAccountDataOwnerId(selectedOwnerId);',
+  ], 'pending journal reassignment before session owner commit');
+
+  const setter = sliceBetween(
+    dataCoreSource,
+    'export function setSharedAccountDataOwnerId(ownerId)',
+    '\n}\n\nexport function resolveDataOwnerId',
+    'shared owner setter',
+  );
+  assertOrdered(setter, [
+    'localStorage.setItem(SHARED_ACCOUNT_OWNER_CACHE_KEY, normalized);',
+    '_sharedAccountDataOwnerId = normalized;',
+    '_cachedSharedAccountDataOwnerId = normalized;',
+  ], 'durable owner cache before in-memory owner commit');
+});
+
+test('a new session validates the remote registry before accepting an offline owner cache', () => {
+  assert.match(dataCoreSource, /getDoc, getDocFromServer,/);
+  assert.match(dataCoreSource, /let _cachedSharedAccountDataOwnerId = normalizeSharedAccountDataOwnerId/);
+  assert.match(dataCoreSource, /let _sharedAccountDataOwnerId = null;/);
+
+  assertOrdered(sharedOwnerSource, [
+    'registrySnapshot = await getDocFromServer(registryRef);',
+    '} catch (error) {',
+    'const cachedOwnerId = getCachedSharedAccountDataOwnerId();',
+    'if (cachedOwnerId && _isRemoteRegistryUnavailable(error)) {',
+    'return _adoptSharedAccountDataOwner(cachedOwnerId);',
+  ], 'remote registry before offline cache');
+
+  const resolver = sliceFrom(
+    sharedOwnerSource,
+    'export async function resolvePrivateDataOwnerId(ownerId)',
+    'resolvePrivateDataOwnerId',
+  );
+  assert.match(resolver, /const selectedOwnerId = await ensureSharedAccountDataOwner\(\);/);
+  assert.doesNotMatch(resolver, /resolveDataOwnerId\(ownerId\) \|\|/);
+});
+
+test('legacy root data migrates copy-only to the selected owner before shared private reads', () => {
+  const copier = sliceBetween(
+    dataLoadSource,
+    'async function _copyMissingDocuments',
+    '// Public legacy-root migration API.',
+    '_copyMissingDocuments',
+  );
+  const migrate = sliceBetween(
+    dataLoadSource,
+    'export async function migrateDataToUser',
+    'export async function loadAll()',
+    'migrateDataToUser',
+  );
+  const loadAll = sliceFrom(dataLoadSource, 'export async function loadAll()', 'loadAll');
+
+  assert.match(migrate, /const targetUserId = await resolvePrivateDataOwnerId\(userId\);/);
+  assert.match(migrate, /LEGACY_ROOT_MIGRATION_COLLECTION[\s\S]*LEGACY_ROOT_MIGRATION_ID/);
+  assert.match(migrate, /const markerSnapshot = await getDocFromServer\(markerRef\);/);
+  assert.match(migrate, /copied \+= await _copyMissingDocuments\(\{ targetUserId, collectionName \}\);/);
+  assertOrdered(copier, [
+    'const didCopy = await runTransaction(db, async (transaction) => {',
+    'const current = await transaction.get(targetRef);',
+    'if (current.exists()) return false;',
+    'transaction.set(targetRef, documentData.data);',
+  ], 'copy-only transaction must not overwrite selected-owner documents');
+  assertOrdered(migrate, [
+    'for (const collectionName of ACCOUNT_DATA_COLLECTIONS)',
+    'await _copyMissingDocuments({ targetUserId, collectionName })',
+    'await runTransaction(db, async (transaction) => {',
+    'transaction.set(markerRef, {',
+  ], 'copy all root data before completion marker');
+  assert.doesNotMatch(migrate, /ADMIN_GUEST_ACCOUNT_ID|guestUserId|guestDocuments/);
+  assert.match(dataLoadSource,
+    /getDocsFromServer\(collection\(db, 'users', targetUserId, collectionName\)\)[\s\S]*getDocsFromServer\(collection\(db, collectionName\)\)/);
+  assertOrdered(loadAll, [
+    'await resolvePrivateDataOwnerId(getCurrentUserRef().id);',
+    'if (isSharedAdminAccount(getCurrentUserRef()?.id)) {',
+    'await migrateDataToUser(getCurrentUserRef().id);',
+    'const [snap, exSnap, goalSnap, questSnap,',
+  ], 'shared root migration before selected-owner load');
+});
+
+test('shared owner timeout keeps the app fail-closed behind an explicit retry action', () => {
+  assert.match(appSource,
+    /if \(isAdminInstance\(user\.id\) && !getDataOwnerId\(\)\) \{\s*_showSharedOwnerRetryState\(\);\s*return false;/);
+  assert.match(appSource, /id="shared-owner-retry-btn"/);
+  assert.match(appSource, /확인되기 전에는 기록을 저장하지 않습니다/);
+  assert.match(appSource, /retryButton\?\.addEventListener\('click',[\s\S]*Promise\.resolve\(\)\.then\(\(\) => init\(\)\)/);
+  assert.match(appSource, /retryButton\?\.addEventListener\('click',[\s\S]*\}, \{ once: true \}\);/);
+  assert.match(appSource,
+    /if \(_appInitPromise\) \{[\s\S]*if \(_appInitUserId === requestedUserId\) return _appInitPromise;/);
+  assert.match(appSource,
+    /finally \{\s*if \(!_sharedOwnerBootBlocked\) \{\s*_hideLoadingOverlay\(\);\s*window\.__tomatoAppReady = true;/);
 });

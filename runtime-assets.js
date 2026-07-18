@@ -252,6 +252,7 @@
   './data/data-functions.js',
   './data/data-admin.js',
   './data/data-load.js',
+  './data/shared-account-owner.js',
   './data/data-save.js',
   './data/pending-day-writes.js',
   './data/data-pure.js',

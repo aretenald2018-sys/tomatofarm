@@ -461,5 +461,6 @@ test('general workout load restores preview plus ref without eager full-route hy
   assert.match(hydrationSource, /route:\s*Array\.isArray\(source\.runRoute\)\s*\?\s*source\.runRoute\s*:\s*\[\]/);
   assert.match(hydrationSource, /routeRef:\s*source\.runRouteRef\s*\|\|\s*null/);
   assert.doesNotMatch(loadSource, /loadRunningRoute/);
-  assert.match(accountUnificationSource, /'runRoute',\s*'runRouteRef',\s*'runRouteSummary'/);
+  assert.match(accountUnificationSource, /'running_routes'/);
+  assert.doesNotMatch(accountUnificationSource, /WORKOUT_UNIFICATION_FIELDS|buildMissingWorkoutFieldPatch/);
 });

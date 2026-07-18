@@ -161,6 +161,8 @@ function _isMaxEntryMode(entryIdx) {
 function _rerenderMaxEntryOwner(entryIdx) {
   const slot = _embeddedMaxCards.get(entryIdx);
   if (!slot?.container?.isConnected) return false;
+  const rootCard = document.querySelector(`#wt-exercise-list [data-wt-entry-idx="${entryIdx}"]`);
+  if (rootCard) _renderExerciseList();
   renderEmbeddedMaxExerciseCard(slot.container, entryIdx, slot.options);
   return true;
 }
@@ -378,15 +380,6 @@ function _restoreWorkoutRenderScroll(state) {
 function _captureWorkoutNumberInputRenderScroll(input) {
   if (!input?.matches?.(WORKOUT_NUMBER_INPUT_SELECTOR) || !input.closest?.('#tab-workout')) return null;
   return _captureWorkoutRenderScroll();
-}
-
-function _shouldKeepWorkoutNumberInputMounted(field, sourceInput) {
-  if (!['kg', 'reps'].includes(String(field || ''))) return false;
-  if (!sourceInput?.matches?.(WORKOUT_NUMBER_INPUT_SELECTOR) || !sourceInput.isConnected) return false;
-  if (_getPendingWorkoutNumberInputTarget(sourceInput)) return true;
-  const row = sourceInput.closest?.('.set-row');
-  const active = document.activeElement;
-  return !!row && active?.matches?.(WORKOUT_NUMBER_INPUT_SELECTOR) && row.contains(active);
 }
 
 function _numberInputMeta(input) {
@@ -1132,6 +1125,117 @@ function _parseWorkoutSetNumberInput(val, options = {}) {
   return Math.max(0, next);
 }
 
+function _workoutSetRows(entryIdx, si) {
+  if (typeof document === 'undefined') return [];
+  const rows = new Set();
+  document.querySelectorAll(
+    `.set-input[data-wt-entry-index="${entryIdx}"][data-wt-set-index="${si}"]`,
+  ).forEach((input) => {
+    const row = input.closest?.('.set-row');
+    if (row) rows.add(row);
+  });
+  return [...rows];
+}
+
+function _workoutEntryCards(entryIdx) {
+  if (typeof document === 'undefined') return [];
+  const cards = new Set();
+  document.querySelectorAll(
+    `.set-input[data-wt-entry-index="${entryIdx}"]`,
+  ).forEach((input) => {
+    const card = input.closest?.('.ex-block');
+    if (card) cards.add(card);
+  });
+  const rootCard = document.querySelector(`#wt-exercise-list [data-wt-entry-idx="${entryIdx}"]`);
+  if (rootCard) cards.add(rootCard);
+  const slot = _embeddedMaxCards.get(entryIdx);
+  const embeddedCard = slot?.container?.isConnected
+    ? slot.container.querySelector?.('.ex-block')
+    : null;
+  if (embeddedCard) cards.add(embeddedCard);
+  return [...cards];
+}
+
+function _syncWorkoutSetPresentation(entryIdx, si, options = {}) {
+  const entry = S.workout.exercises?.[entryIdx];
+  const set = entry?.sets?.[si];
+  if (!entry || !set || typeof document === 'undefined') return;
+  const sourceInput = options.sourceInput || null;
+  const isDone = set.done !== false;
+  const isWarmup = set.setType === 'warmup';
+  const allDone = _isWorkoutEntryComplete(entry);
+  _workoutSetRows(entryIdx, si).forEach((row) => {
+    if (options.syncInputValues) {
+      const peerValues = [
+        [row.querySelector('[data-wt-set-field="kg"]'), set.kg || ''],
+        [row.querySelector('[data-wt-set-field="reps"]'), set.reps || ''],
+        [row.querySelector('.set-rpe-input'), _rpeToRir(set.rpe)],
+        [row.querySelector('.set-rom-input'), _romPctToScoreInput(set.romPct)],
+      ];
+      peerValues.forEach(([input, value]) => {
+        if (!input || input === sourceInput) return;
+        const nextValue = String(value ?? '');
+        if (input.value !== nextValue) input.value = nextValue;
+      });
+    }
+    row.classList.toggle('done', isDone);
+    row.querySelector('.set-done-btn')?.classList.toggle('done', isDone);
+    const volume = row.querySelector('.set-vol');
+    if (volume) {
+      volume.innerHTML = (set.kg && set.reps && !isWarmup && isDone)
+        ? `<span style="color:var(--accent)">${_formatExerciseSetVolume(calcSetVolume(set))}</span>`
+        : (isWarmup ? '<span style="color:var(--muted);font-size:9px">웜업</span>' : '');
+    }
+    const rpeSelect = row.querySelector('.set-rpe-select');
+    if (rpeSelect) rpeSelect.hidden = !isDone;
+  });
+
+  const isManualCardio = _isManualCardioEntry(entry);
+  const ex = !isManualCardio
+    ? getExList().find(item => item.id === entry.exerciseId)
+    : null;
+  const mc = !isManualCardio
+    ? getMuscleParts().find(item => item.id === entry.muscleId)
+    : null;
+  const meta = isManualCardio ? null : _buildMaxExerciseCardMeta(entry, ex, mc, entryIdx);
+  _workoutEntryCards(entryIdx).forEach((card) => {
+    card.classList.toggle('is-complete', allDone);
+    const primary = card.querySelector('.ex-max-v2-primary');
+    if (primary) {
+      primary.classList.toggle('is-done', allDone);
+      const rootCarouselCard = !!card.closest('#wt-exercise-list');
+      primary.textContent = allDone || (rootCarouselCard && _openWorkoutSetCount(entry) <= 1)
+        ? '운동 완료'
+        : '다음 세트 완료';
+    }
+    const headerMain = card.querySelector('.ex-max-v2-main');
+    if (headerMain && meta) {
+      headerMain.textContent = `${meta.kg > 0 ? `${meta.kg}kg` : '무게 입력'} × ${meta.reps > 0 ? `${meta.reps}회` : '반복 입력'}`;
+    }
+  });
+
+  const dot = document.querySelector(`[data-wt-entry-dot-idx="${entryIdx}"]`);
+  if (dot) {
+    dot.classList.toggle('is-complete', allDone);
+    dot.classList.toggle('is-pending', !allDone);
+    dot.setAttribute(
+      'aria-label',
+      `${entryIdx + 1}번 ${_workoutEntryName(entry)}${allDone ? ' 완료' : ' 진행 중'}`,
+    );
+  }
+}
+
+function _syncWorkoutEntryDerivedPresentation(entryIdx) {
+  const entry = S.workout.exercises?.[entryIdx];
+  if (!entry || _isManualCardioEntry(entry) || typeof document === 'undefined') return;
+  const ex = getExList().find(item => item.id === entry.exerciseId);
+  _workoutEntryCards(entryIdx).forEach((card) => {
+    const trend = card.querySelector('.ex-max-v2-trend');
+    if (!trend) return;
+    trend.innerHTML = _buildMaxTrackSparkline(entry, ex);
+  });
+}
+
 function _updateSetDraftField(entryIdx, si, field, val) {
   const set = S.workout.exercises?.[entryIdx]?.sets?.[si];
   if (!set) return;
@@ -1149,6 +1253,7 @@ function _updateSetDraftField(entryIdx, si, field, val) {
     set.done = false;
     clearSetCompletedAt(set);
     if ((Number(set[field]) || 0) > 0) _refreshWorkoutTimeline(`set draft ${field}`);
+    _syncWorkoutSetPresentation(entryIdx, si);
   }
   wtPersistActiveWorkoutDraft(`set draft ${field}`);
 }
@@ -1156,7 +1261,9 @@ function _updateSetDraftField(entryIdx, si, field, val) {
 export function wtUpdateSet(entryIdx, si, field, val, sourceInput = null) {
   // RPE 빈 값은 null로 저장 — 0과 구분해 _computeExpertRec의 prevRpeKnown 판정을 명확히.
   const restoreScroll = _captureWorkoutNumberInputRenderScroll(sourceInput);
-  const keepNumberInputMounted = _shouldKeepWorkoutNumberInputMounted(field, sourceInput);
+  const preserveNumberInputNode = ['kg', 'reps', 'rpe', 'romPct'].includes(String(field || ''))
+    && sourceInput?.matches?.(WORKOUT_NUMBER_INPUT_SELECTOR)
+    && sourceInput.isConnected;
   let parsed;
   if (field === 'setType') parsed = val;
   else if (field === 'rpe') parsed = _normalizeRpe(val);
@@ -1170,14 +1277,19 @@ export function wtUpdateSet(entryIdx, si, field, val, sourceInput = null) {
     value: parsed,
     remove: field === 'romPct' && parsed == null,
   });
+  const isMaxEntry = _isMaxEntryMode(entryIdx);
   if (field === 'kg' || field === 'reps') {
-    const set = S.workout.exercises[entryIdx].sets[si];
     // 의미 있는 수치(>0)가 들어오면 완료 타임라인 표시만 다시 계산한다.
     if ((parsed || 0) > 0) _refreshWorkoutTimeline(`set update ${field}`);
   }
+  if (preserveNumberInputNode) {
+    _syncWorkoutSetPresentation(entryIdx, si, { sourceInput, syncInputValues: true });
+    if (isMaxEntry && _setFieldAffectsTrackMetric(field)) {
+      _syncWorkoutEntryDerivedPresentation(entryIdx);
+    }
+  }
   wtPersistActiveWorkoutDraft(`set update ${field}`);
-  const isMaxEntry = _isMaxEntryMode(entryIdx);
-  if (!keepNumberInputMounted) {
+  if (!preserveNumberInputNode) {
     if (isMaxEntry && _setFieldAffectsTrackMetric(field)) {
       if (!_rerenderMaxEntryOwner(entryIdx)) _renderExerciseList();
     }
@@ -1186,7 +1298,7 @@ export function wtUpdateSet(entryIdx, si, field, val, sourceInput = null) {
   _restoreWorkoutRenderScroll(restoreScroll);
   saveWorkoutDay({ silent: true })
     .then(() => {
-      if (isMaxEntry && _setFieldAffectsTrackMetric(field) && !keepNumberInputMounted) {
+      if (isMaxEntry && _setFieldAffectsTrackMetric(field) && !preserveNumberInputNode) {
         if (!_rerenderMaxEntryOwner(entryIdx)) _renderExerciseList();
         _restoreWorkoutRenderScroll(restoreScroll);
       }

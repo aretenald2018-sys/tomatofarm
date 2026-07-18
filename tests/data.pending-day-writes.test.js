@@ -7,6 +7,7 @@ import {
   groupPendingDayWrites,
   listPendingDayWrites,
   mergePendingDayWritesIntoCache,
+  reassignPendingDayWrites,
 } from '../data/pending-day-writes.js';
 
 class MemoryStorage {
@@ -106,6 +107,64 @@ test('owner filtering is exact and does not alias canonical or guest identities'
   assert.deepEqual(canonicalEntries.map((entry) => entry.record.payload.memo), ['canonical']);
   assert.deepEqual(guestEntries.map((entry) => entry.record.payload.memo), ['guest']);
   assert.throws(() => groupPendingDayWrites([...canonicalEntries, ...guestEntries]), /one ownerId/);
+});
+
+test('pending writes move to the selected physical owner without leaving alias copies', () => {
+  const storage = new MemoryStorage();
+  enqueuePendingDayWrite(storage, {
+    ownerId: '김_태우',
+    dateKey: DATE,
+    payload: { running: false, runDistance: 0 },
+    writeId: 'admin-day',
+    now: 3,
+  });
+  enqueuePendingDayWrite(storage, {
+    ownerId: '김_태우',
+    dateKey: '2026-07-16',
+    payload: { exercises: [] },
+    writeId: 'admin-previous',
+    now: 4,
+  });
+
+  const result = reassignPendingDayWrites(storage, {
+    fromOwnerId: '김_태우',
+    toOwnerId: '김_태우(guest)',
+  });
+
+  assert.equal(result.moved, 2);
+  assert.deepEqual(listPendingDayWrites(storage, { ownerId: '김_태우' }), []);
+  const guestEntries = listPendingDayWrites(storage, { ownerId: '김_태우(guest)' });
+  assert.equal(guestEntries.length, 2);
+  assert.ok(guestEntries.every(entry => entry.record.ownerId === '김_태우(guest)'));
+  assert.equal(reassignPendingDayWrites(storage, {
+    fromOwnerId: '김_태우',
+    toOwnerId: '김_태우(guest)',
+  }).moved, 0);
+});
+
+test('owner reassignment preserves the source when a destination write conflicts', () => {
+  const storage = new MemoryStorage();
+  enqueuePendingDayWrite(storage, {
+    ownerId: '김_태우',
+    dateKey: DATE,
+    payload: { memo: 'source' },
+    writeId: 'same-write',
+    now: 5,
+  });
+  enqueuePendingDayWrite(storage, {
+    ownerId: '김_태우(guest)',
+    dateKey: DATE,
+    payload: { memo: 'different destination' },
+    writeId: 'same-write',
+    now: 5,
+  });
+
+  assert.throws(() => reassignPendingDayWrites(storage, {
+    fromOwnerId: '김_태우',
+    toOwnerId: '김_태우(guest)',
+  }), /conflicts/);
+  assert.equal(listPendingDayWrites(storage, { ownerId: '김_태우' }).length, 1);
+  assert.equal(listPendingDayWrites(storage, { ownerId: '김_태우(guest)' }).length, 1);
 });
 
 test('a later workout patch accumulates an earlier diet patch before compacting it', () => {

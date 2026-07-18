@@ -23,6 +23,7 @@
     "server": "node tools/api-server.js",
     "audit:ai-diet": "node scripts/audit-ai-diet-account.mjs",
     "verify:assets": "node scripts/generate-style-entry.mjs && node scripts/generate-build-info.mjs && node scripts/verify-runtime-assets.mjs",
+    "verify:ssot-release-gate": "node scripts/verify-shared-owner-release-gate.mjs",
     "verify:apk-runtime": "node scripts/verify-apk-runtime-assets.mjs --apk public/downloads/tomato-mobile-debug.apk",
     "verify:deploy": "node scripts/verify-deploy.mjs",
     "verify:deployed-markers": "node scripts/verify-deployed-markers.mjs",

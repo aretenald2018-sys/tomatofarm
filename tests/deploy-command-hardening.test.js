@@ -5,6 +5,11 @@ import { readFile } from 'node:fs/promises';
 const verifyDeploy = await readFile(new URL('../scripts/verify-deploy.mjs', import.meta.url), 'utf8');
 const verifyMarkers = await readFile(new URL('../scripts/verify-deployed-markers.mjs', import.meta.url), 'utf8');
 const deployProduction = await readFile(new URL('../scripts/deploy-production.mjs', import.meta.url), 'utf8');
+const sharedOwnerReleaseGate = await readFile(
+  new URL('../scripts/verify-shared-owner-release-gate.mjs', import.meta.url),
+  'utf8',
+);
+const deployWorkflow = await readFile(new URL('../.github/workflows/deploy.yml', import.meta.url), 'utf8');
 const repositoryBoundary = await readFile(new URL('../scripts/repository-boundary.mjs', import.meta.url), 'utf8');
 const prePush = await readFile(new URL('../.githooks/pre-push', import.meta.url), 'utf8');
 const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
@@ -46,6 +51,24 @@ test('production deploy is locked to the Tomato Farm repository, branch, and Pag
   assert.match(deployProduction, /verify-deployed-markers\.mjs/);
   assert.equal(packageJson.scripts['deploy:production'], 'node scripts/deploy-production.mjs');
   assert.equal(packageJson.scripts['deploy:dashboard3'], undefined);
+});
+
+test('production deploy fails closed until the server-decided v2 SSOT gate is attested', () => {
+  assert.match(sharedOwnerReleaseGate, /EXPECTED_GATE = 'decided-v2-rules-fenced'/);
+  assert.match(sharedOwnerReleaseGate, /shared-account SSOT release gate is closed/);
+  assert.equal(
+    packageJson.scripts['verify:ssot-release-gate'],
+    'node scripts/verify-shared-owner-release-gate.mjs',
+  );
+
+  const localGate = deployProduction.indexOf('run(process.execPath, [sharedOwnerReleaseGatePath]');
+  const localPush = deployProduction.indexOf("git(['push', remote");
+  assert.ok(localGate >= 0 && localPush > localGate, 'local gate must run before production push');
+
+  const workflowGate = deployWorkflow.indexOf('node scripts/verify-shared-owner-release-gate.mjs');
+  const workflowUpload = deployWorkflow.indexOf('uses: actions/upload-pages-artifact@');
+  assert.ok(workflowGate >= 0 && workflowUpload > workflowGate, 'CI gate must run before Pages upload');
+  assert.match(deployWorkflow, /vars\.TOMATO_SHARED_OWNER_V2_READY/);
 });
 
 test('pre-push hook blocks cross-environment remotes', () => {

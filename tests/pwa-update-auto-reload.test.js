@@ -151,6 +151,19 @@ test('same service worker update is handled only once even if duplicate signals 
   assert.equal(state.banners.length, 1);
 });
 
+test('a distinct service worker at the same URL is handled as a new release', () => {
+  const { context, state } = loadPwaRegisterHarness({ activeDraft: true });
+  const first = makeWaitingRegistration(state);
+  const second = makeWaitingRegistration(state);
+
+  context._requestAppUpdateBanner(first.registration, first.worker);
+  context._requestAppUpdateBanner(second.registration, second.worker);
+
+  assert.equal(state.messages.length, 0);
+  assert.equal(state.banners.length, 2);
+  assert.notEqual(state.banners[0].meta.key, state.banners[1].meta.key);
+});
+
 test('service worker controllerchange still reloads once', () => {
   const { context, state } = loadPwaRegisterHarness();
   const { registration, worker } = makeWaitingRegistration(state);
@@ -191,7 +204,8 @@ test('more-menu manual app refresh uses build-info update helper', () => {
   assert.match(buildInfoJs, /__wtPersistActiveDraft/);
   assert.match(buildInfoJs, /_syncAppRefreshButtonState/);
   assert.match(buildInfoJs, /has-update/);
-  assert.match(pwaRegisterJs, /APP_SW_UPDATE_HANDLED_PREFIX/);
+  assert.match(pwaRegisterJs, /const _handledAppSWWorkers = new WeakSet\(\)/);
+  assert.doesNotMatch(pwaRegisterJs, /APP_SW_UPDATE_HANDLED_PREFIX|APP_SW_UPDATE_RELEASE/);
   assert.doesNotMatch(buildInfoJs, /app-update-indicator/);
   assert.doesNotMatch(buildInfoJs, /app-update-toggle/);
   assert.doesNotMatch(buildInfoJs, /app-update-reload/);
