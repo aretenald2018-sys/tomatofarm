@@ -51,7 +51,11 @@ public class MainActivity extends BridgeActivity {
             final String safeAction = widgetAction;
             getBridge().getWebView().postDelayed(() -> {
                 getBridge().getWebView().evaluateJavascript(
-                    "document.dispatchEvent(new CustomEvent('widget:action',{detail:{action:'" + safeAction + "'}}));",
+                    "(function(){"
+                        + "var fire=function(){document.dispatchEvent(new CustomEvent('widget:action',{detail:{action:'" + safeAction + "'}}));};"
+                        + "if(window.__tomatoAppReady===true){fire();}"
+                        + "else{window.addEventListener('tomato-app-ready',fire,{once:true});}"
+                        + "})();",
                     null
                 );
             }, 800);

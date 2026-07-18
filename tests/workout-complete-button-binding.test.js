@@ -53,7 +53,7 @@ test('test board saving preserves existing completion logs and propagates failur
   assert.match(dataJs, /import \{ mergeBoardCompletionLogs \} from '\.\.\/workout\/test-v2\/board-core\.js'/);
   assert.match(save, /runTransaction\(db, async \(transaction\) =>/);
   assert.match(save, /transaction\.get\(activeRef\)/);
-  assert.match(save, /mergeBoardCompletionLogs\(latestBoard, board\)/);
+  assert.match(save, /mergeBoardCompletionLogs\(latestBoard, normalizedBoard\)/);
   assert.match(save, /transaction\.set\(activeRef, \{ value: nextBoard \}\)/);
   assert.match(save, /rethrow:\s*true/);
 });

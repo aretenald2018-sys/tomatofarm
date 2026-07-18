@@ -10,6 +10,7 @@ const {
   canonicalTomatoOwnerId,
   isSharedTomatoOwner,
   mergeTomatoDocuments,
+  mergeTomatoWorkoutDocuments,
   tomatoOwnerAliases,
 } = require("./owner");
 
@@ -73,7 +74,7 @@ async function loadTomatoSource(tomatoDb, ownerId, nowEpochMs) {
     : null;
   const sourceGroups = legacyRoot ? [...accountSources, legacyRoot] : accountSources;
   return {
-    workouts: mergeTomatoDocuments(sourceGroups.map((group) => group[0]), (document) => ({
+    workouts: mergeTomatoWorkoutDocuments(sourceGroups.map((group) => group[0]), (document) => ({
       id: document.id, dateKey: document.id, ...document.data(),
     })),
     settings: Object.fromEntries(mergeTomatoDocuments(sourceGroups.map((group) => group[1]), (document) => [

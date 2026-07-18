@@ -160,16 +160,46 @@ function dayByKey(workouts) {
   return new Map(normalizedWorkouts(workouts).map((day) => [day.dateKey, day]));
 }
 
+function hasMeaningfulRecordValue(value) {
+  if (value == null || value === false) return false;
+  if (typeof value === "number") return Number.isFinite(value) && value !== 0;
+  if (typeof value === "string") return value.trim().length > 0;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === "object") return Object.values(value).some(hasMeaningfulRecordValue);
+  return true;
+}
+
+function hasStrengthSessionRecord(session = {}) {
+  return Array.isArray(session?.exercises) && session.exercises.length > 0;
+}
+
+function hasRunningSessionRecord(session = {}) {
+  const summary = session?.runRouteSummary && typeof session.runRouteSummary === "object"
+    ? session.runRouteSummary
+    : null;
+  return !!(
+    session?.running
+    || number(session?.runDistance) > 0
+    || number(session?.runDurationSec) > 0
+    || number(session?.runDurationMin) > 0
+    || (Array.isArray(session?.runRoute) && session.runRoute.length > 0)
+    || hasMeaningfulRecordValue(session?.runRouteRef)
+    || hasMeaningfulRecordValue(summary)
+  );
+}
+
 function strengthSessions(day = {}) {
-  const candidates = Array.isArray(day.workoutSessions) && day.workoutSessions.length ? day.workoutSessions : [day];
-  return candidates.filter((session) => Array.isArray(session?.exercises) && session.exercises.length);
+  const sessionMatches = (Array.isArray(day.workoutSessions) ? day.workoutSessions : [])
+    .filter(hasStrengthSessionRecord);
+  if (sessionMatches.length) return sessionMatches;
+  return hasStrengthSessionRecord(day) ? [day] : [];
 }
 
 function runningSessions(day = {}) {
-  const candidates = Array.isArray(day.workoutSessions) && day.workoutSessions.length ? day.workoutSessions : [day];
-  return candidates.filter((session) => (
-    session?.running || number(session?.runDistance) > 0 || number(session?.runDurationSec) > 0 || number(session?.runDurationMin) > 0
-  ));
+  const sessionMatches = (Array.isArray(day.workoutSessions) ? day.workoutSessions : [])
+    .filter(hasRunningSessionRecord);
+  if (sessionMatches.length) return sessionMatches;
+  return hasRunningSessionRecord(day) ? [day] : [];
 }
 
 function setDone(set = {}) {
@@ -207,8 +237,15 @@ function strengthDayMetrics(day = {}) {
 
 function runningSessionMetrics(session = {}) {
   const summary = session.runRouteSummary && typeof session.runRouteSummary === "object" ? session.runRouteSummary : {};
-  const distanceKm = number(session.runDistance || summary.distanceKm || summary.totalDistanceKm);
-  const durationSec = number(session.runDurationSec) || number(session.runDurationMin) * 60 || number(summary.durationSec);
+  const explicitDistanceKm = number(session.runDistance);
+  const distanceKm = explicitDistanceKm > 0
+    ? explicitDistanceKm
+    : number(summary.distanceKm || summary.totalDistanceKm);
+  const explicitDurationSec = Math.max(0, number(session.runDurationMin)) * 60
+    + Math.max(0, number(session.runDurationSec));
+  const durationSec = explicitDurationSec > 0
+    ? explicitDurationSec
+    : number(summary.durationSec || summary.totalDurationSec);
   const paceSecPerKm = number(session.runAvgPaceSecPerKm || summary.avgPaceSecPerKm) || (distanceKm > 0 ? durationSec / distanceKm : 0);
   return {
     distanceKm,
@@ -652,6 +689,25 @@ function combinedStreak(workouts, todayKey) {
   return current;
 }
 
+function activeSeasonBoard(settings = {}, activeSeason = null) {
+  const seasonId = String(activeSeason?.id || "").trim();
+  if (!seasonId) return null;
+  const keyed = settings?.[`season_${seasonId}_test_board_v2`];
+  if (keyed && typeof keyed === "object" && !Array.isArray(keyed)) {
+    const keyedSeasonId = String(keyed.seasonId || "").trim();
+    if (!keyedSeasonId) return { ...keyed, seasonId };
+    if (keyedSeasonId === seasonId) return keyed;
+  }
+  const generic = settings?.test_board_v2;
+  if (
+    generic
+    && typeof generic === "object"
+    && !Array.isArray(generic)
+    && String(generic.seasonId || "").trim() === seasonId
+  ) return generic;
+  return null;
+}
+
 function buildDashboardSnapshot({ tomato = {}, budget = {}, weights, revision = 1, nowEpochMs = Date.now() } = {}) {
   const normalizedWeights = normalizeDashboardWeights(weights || budget.dashboardSettings?.weights || DEFAULT_DASHBOARD_WEIGHTS);
   const todayKey = dateKeyAt(nowEpochMs);
@@ -659,10 +715,7 @@ function buildDashboardSnapshot({ tomato = {}, budget = {}, weights, revision = 
   const activeSeason = (registry.seasons || []).find((season) => season.startDate <= todayKey && season.endDate >= todayKey) || null;
   const workoutPlan = activeSeason ? tomato.settings?.[`season_${activeSeason.id}_workout_plan`] || {} : {};
   const runningPlan = activeSeason ? tomato.settings?.[`season_${activeSeason.id}_running_plan`] || {} : {};
-  const seasonBoard = activeSeason
-    ? tomato.settings?.[`season_${activeSeason.id}_test_board_v2`]
-      || (tomato.settings?.test_board_v2?.seasonId === activeSeason.id ? tomato.settings.test_board_v2 : null)
-    : null;
+  const seasonBoard = activeSeasonBoard(tomato.settings, activeSeason);
   const healthGoal = buildSeasonHealthGoals({ season: activeSeason, board: seasonBoard, todayKey });
   const domains = {
     food: foodDomain(tomato.workouts || [], tomato.settings?.diet_plan || {}, todayKey, nowEpochMs),
@@ -723,6 +776,7 @@ function buildDashboardSnapshot({ tomato = {}, budget = {}, weights, revision = 
 
 module.exports = {
   addDays,
+  activeSeasonBoard,
   buildDashboardSnapshot,
   calcDietMetrics,
   dateKeyAt,

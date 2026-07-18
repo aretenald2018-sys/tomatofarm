@@ -116,7 +116,7 @@ test('workout navigation keeps only rendered calendar and day sheet surfaces', a
   assert.doesNotMatch(appJs, /wtOpenWorkoutDaySheet:\s*openWorkoutDaySheetFromAction/);
   assert.doesNotMatch(appJs, /_redirectWorkoutRecordRouteToDaySheet|WORKOUT_ROUTES|currentWorkoutRoute/);
   assert.doesNotMatch(appJs, /wtOpenWorkoutRecord|openWorkoutRecordFromCalendar/);
-  assert.match(appJs, /function openWorkoutTab\(y, m, d\)[\s\S]*openWorkoutDaySheetFromAction\(key, _takeWorkoutTargetSessionIndex\(0\)/);
+  assert.match(appJs, /function openWorkoutTab\(y, m, d\)[\s\S]*openWorkoutDaySheetFromAction\(key, 0/);
   assert.match(appJs, /sheet:tab-open/);
   assert.doesNotMatch(appJs, /_setWorkoutSurface\('record'\)/);
   assert.doesNotMatch(appJs, /wt-workout-record-mode|wt-calendar-edit-mode/);

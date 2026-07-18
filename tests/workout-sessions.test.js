@@ -23,6 +23,26 @@ test('legacy top-level workout reads as first session', () => {
   assert.equal(hasWorkoutSessionData(sessions[1]), false);
 });
 
+test('root running data remains visible beside a non-running session array', () => {
+  const sessions = getWorkoutSessions({
+    workoutSessions: [{
+      id: 'strength-1',
+      exercises: [{ id: 'bench', sets: [{ kg: 80, reps: 8, done: true }] }],
+    }],
+    running: true,
+    runDistance: 5.2,
+    runDurationMin: 31,
+    runDurationSec: 12,
+    runRouteRef: { path: 'routes/run-1' },
+  });
+
+  assert.equal(sessions.length, 2);
+  assert.equal(sessions[0].id, 'strength-1');
+  assert.equal(sessions[1].running, true);
+  assert.equal(sessions[1].runDistance, 5.2);
+  assert.deepEqual(sessions[1].runRouteRef, { path: 'routes/run-1' });
+});
+
 test('upsertWorkoutSession stores selected session and aggregates top-level fields', () => {
   const day = {
     exercises: [{ name: '벤치', sets: [{ kg: 80, reps: 8, done: true }] }],

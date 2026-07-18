@@ -31,6 +31,7 @@ import {
   ADMIN_GUEST_ACCOUNT_ID,
   buildAccountUnificationPlan,
 } from './account-unification.js';
+import { mergeWorkoutDayRecords, workoutDayRecordsEqual } from './workout-day-merge.js';
 
 // ── Pure 헬퍼 (Firebase 비의존) ─────────────────────────────────
 // node:test 에서 import 가능하도록 data/data-pure.js 로 분리. 여기서는 re-export.
@@ -207,6 +208,7 @@ async function _copyMissingDocuments({ targetUserId, collectionName, guestUserId
     canonicalDocuments: _snapshotDocuments(canonicalSnap),
     guestDocuments: guestSnap ? _snapshotDocuments(guestSnap) : [],
     legacyDocuments: legacySnap ? _snapshotDocuments(legacySnap) : [],
+    collectionName,
   });
 
   let copied = 0;
@@ -216,6 +218,13 @@ async function _copyMissingDocuments({ targetUserId, collectionName, guestUserId
     // transaction 안에서 다시 확인해 현재 식단/운동/사진을 절대 덮지 않는다.
     const didCopy = await runTransaction(db, async (transaction) => {
       const current = await transaction.get(targetRef);
+      if (collectionName === 'workouts') {
+        const currentData = current.exists() ? current.data() : {};
+        const merged = mergeWorkoutDayRecords(currentData, documentData.data);
+        if (current.exists() && workoutDayRecordsEqual(currentData, merged)) return false;
+        transaction.set(targetRef, merged, { merge: true });
+        return true;
+      }
       if (current.exists()) return false;
       transaction.set(targetRef, documentData.data);
       return true;
@@ -235,9 +244,9 @@ export async function migrateDataToUser(userId) {
   return copied;
 }
 
-// The guest and root stores are read only as historical sources.  Canonical
-// same-date workouts always win so a stale guest run cannot replace a newer
-// canonical meal entry in the life zone or in the dashboard.
+// The guest and root stores are read only as historical sources. Canonical
+// records win within each meal/activity domain, while missing same-date domains
+// (for example a guest run beside a canonical lunch) are recovered once.
 export async function unifySharedAccountData() {
   const markerRef = doc(db, 'users', ADMIN_ACCOUNT_ID, 'settings', ACCOUNT_UNIFICATION_MARKER_ID);
   const marker = await getDoc(markerRef);

@@ -241,10 +241,12 @@
   './home/admin-onboarding.js',
   // data 리팩토링 모듈
   './data/firestore-cache.js',
+  './data/workout-day-merge.js',
   './data/account-unification.js',
   './data/data-core.js',
   './data/data-api.js',
   './data/season-model.js',
+  './data/season-board-resolver.js',
   './data/season-selectors.js',
   './data/season-creation.js',
   './data/season-store.js',

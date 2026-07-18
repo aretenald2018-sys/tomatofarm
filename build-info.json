@@ -1,10 +1,10 @@
 {
   "app": "tomatofarm",
-  "commit": "119820bb15013f36a880ec025dfe84836f8d6e36",
-  "shortCommit": "119820bb1501",
-  "branch": "main",
-  "deployedAt": "2026-07-17T14:20:02.322Z",
-  "cacheVersion": "tomatofarm-v20260717z13-owner-day-journal-workout-inline-field-commit",
+  "commit": "1f5f7a00dbbc60550ae4c59c7a51ffd5ad47cbbd",
+  "shortCommit": "1f5f7a00dbbc",
+  "branch": "codex/fix-daybird-widget-data",
+  "deployedAt": "2026-07-18T14:35:39.891Z",
+  "cacheVersion": "tomatofarm-v20260718z6-owner-day-journal-workout-inline-field-commit",
   "runId": null,
   "runAttempt": null
 }

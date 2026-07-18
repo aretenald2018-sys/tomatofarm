@@ -56,6 +56,7 @@ import {
   loadEquipmentPool,
 } from './data-equipment-pool.js';
 import { mergeBoardCompletionLogs } from '../workout/test-v2/board-core.js';
+import { normalizeBoardForSeason, resolveSeasonTestBoard } from './season-board-resolver.js';
 
 // ═══════════════════════════════════════════════════════════════
 // re-exports (기존 import 호환)
@@ -782,16 +783,26 @@ export const getTestBoardV2 = () => {
   const todayKey = dateKey(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
   const currentSeason = findSeasonForDate(_settings.season_registry || {}, todayKey);
   const seasonBoard = currentSeason ? _settings[`season_${currentSeason.id}_test_board_v2`] : null;
-  return seasonBoard || _settings.test_board_v2 || null;
+  return resolveSeasonTestBoard({
+    currentSeason,
+    seasonBoard,
+    genericBoard: _settings.test_board_v2,
+  });
 };
 export async function saveTestBoardV2(board) {
   if (!board || typeof board !== 'object') return null;
   const todayKey = dateKey(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
   const currentSeason = findSeasonForDate(_settings.season_registry || {}, todayKey);
+  const normalizedBoard = normalizeBoardForSeason(board, currentSeason);
+  if (!normalizedBoard) return null;
   const seasonKey = currentSeason ? `season_${currentSeason.id}_test_board_v2` : null;
   const activeRef = _doc('settings', 'test_board_v2');
   const seasonRef = seasonKey ? _doc('settings', seasonKey) : null;
-  const localBoard = seasonKey ? (_settings[seasonKey] || _settings.test_board_v2 || null) : (_settings.test_board_v2 || null);
+  const localBoard = resolveSeasonTestBoard({
+    currentSeason,
+    seasonBoard: seasonKey ? _settings[seasonKey] : null,
+    genericBoard: _settings.test_board_v2,
+  });
   const merged = await _fbOp(
     `saveSetting(${seasonKey || 'test_board_v2'})`,
     () => runTransaction(db, async (transaction) => {
@@ -799,10 +810,12 @@ export async function saveTestBoardV2(board) {
       const activeSnap = await transaction.get(activeRef);
       const remoteSeasonBoard = seasonSnap?.exists() ? (seasonSnap.data()?.value || null) : null;
       const remoteActiveBoard = activeSnap.exists() ? (activeSnap.data()?.value || null) : null;
-      const latestBoard = remoteSeasonBoard
-        || (remoteActiveBoard?.seasonId === currentSeason?.id ? remoteActiveBoard : null)
-        || localBoard;
-      const nextBoard = mergeBoardCompletionLogs(latestBoard, board);
+      const latestBoard = resolveSeasonTestBoard({
+        currentSeason,
+        seasonBoard: remoteSeasonBoard,
+        genericBoard: remoteActiveBoard,
+      }) || localBoard;
+      const nextBoard = mergeBoardCompletionLogs(latestBoard, normalizedBoard);
       if (seasonRef) transaction.set(seasonRef, { value: nextBoard });
       transaction.set(activeRef, { value: nextBoard });
       return nextBoard;

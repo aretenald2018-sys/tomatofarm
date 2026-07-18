@@ -54,7 +54,6 @@ import {
 } from './workout/index.js';
 import { wtHandleExercisePickerBack } from './workout/exercises.js';
 import { wtHandleRunningSessionBack, wtOpenRunningSession } from './workout/running-session.js';
-import { tm2OpenBoard } from './workout/test-v2/entry.js';
 import {
   initSeasonDashboardWidgetSync,
   scheduleSeasonDashboardWidgetSync,
@@ -513,7 +512,7 @@ setTimeout(initWorkoutSystemBack, 0);
 setTimeout(initWorkoutPullBackGesture, 0);
 
 async function switchTab(tab, options = {}) {
-  if (isAdmin() && tab !== 'admin') tab = 'admin';
+  if (isAdmin() && tab !== 'admin' && options?.allowAdminDestination !== true) tab = 'admin';
   if (!isRegisteredTab(tab)) {
     console.warn(`[app] unknown tab ignored: ${tab}`);
     return false;
@@ -541,7 +540,7 @@ async function switchTab(tab, options = {}) {
       && Number.isFinite(Number(targetDate.d));
     if (hasTargetDate) {
       const key = _dateKeyFromParts(Number(targetDate.y), Number(targetDate.m), Number(targetDate.d));
-      const targetSessionIndex = _takeWorkoutTargetSessionIndex(0);
+      const targetSessionIndex = 0;
       const parsed = _parseWorkoutDateKey(key);
       openWorkoutDaySheet(key, {
         sessionIndex: targetSessionIndex,
@@ -639,20 +638,30 @@ async function openDashboardDestination(action) {
     return;
   }
   if (action === 'diet') {
-    await switchTab('diet');
+    await switchTab('diet', { allowAdminDestination: true });
     return;
   }
   if (action === 'season') {
-    await switchTab('workout');
-    await tm2OpenBoard();
+    // The widget target is the current workout calendar/season card. Opening
+    // the historical test board here also opened settled cycles and stale goal
+    // sheets, so modals remain user-initiated from the current-season card.
+    await switchTab('workout', { allowAdminDestination: true });
     return;
   }
   if (action === 'running') {
-    await switchTab('workout');
+    await switchTab('workout', {
+      allowAdminDestination: true,
+      workoutDate: {
+        y: TODAY.getFullYear(),
+        m: TODAY.getMonth(),
+        d: TODAY.getDate(),
+      },
+      history: 'replace',
+    });
     wtOpenRunningSession();
     return;
   }
-  if (action === 'workout') await switchTab('workout');
+  if (action === 'workout') await switchTab('workout', { allowAdminDestination: true });
 }
 
 function readDashboardEntry() {
@@ -668,16 +677,28 @@ function clearDashboardEntry() {
 }
 
 let _pendingDashboardEntry = readDashboardEntry();
+let _dashboardDestinationRevision = 0;
+let _dashboardDataReady = false;
+let _dashboardDataLoadGeneration = 0;
 function openPendingDashboardEntry() {
-  if (!_pendingDashboardEntry || !(getCurrentUser() || loadSavedUser())) return;
+  if (
+    !_pendingDashboardEntry
+    || window.__tomatoAppReady !== true
+    || _dashboardDataReady !== true
+    || !(getCurrentUser() || loadSavedUser())
+  ) return;
   const entry = _pendingDashboardEntry;
   _pendingDashboardEntry = '';
+  _dashboardDestinationRevision += 1;
   clearDashboardEntry();
   void openDashboardDestination(entry);
 }
 
 document.addEventListener('widget:action', (event) => {
-  void openDashboardDestination(String(event.detail?.action || ''));
+  const action = String(event.detail?.action || '');
+  if (!['diet', 'season', 'running', 'workout', 'refresh'].includes(action)) return;
+  _pendingDashboardEntry = action;
+  openPendingDashboardEntry();
 });
 document.addEventListener('app:start-user-session', (event) => {
   Promise.resolve(startTomatoUserSession())
@@ -695,7 +716,7 @@ document.addEventListener('app:start-user-session', (event) => {
 function openWorkoutTab(y, m, d) {
   const key = _dateKeyFromParts(y, m, d);
   if (key) {
-    openWorkoutDaySheetFromAction(key, _takeWorkoutTargetSessionIndex(0), {
+    openWorkoutDaySheetFromAction(key, 0, {
       history: 'replace',
       action: 'sheet:open-from-tab-date',
     });
@@ -768,6 +789,10 @@ async function _showPostLoginExperience({ previousLastLoginAt, runningSessionRes
 }
 
 async function _initializeAppSession() {
+  window.__tomatoAppReady = false;
+  _dashboardDataReady = false;
+  const dashboardDataLoadGeneration = ++_dashboardDataLoadGeneration;
+  const dashboardRevisionAtBoot = _dashboardDestinationRevision;
   let bootUser = null;
   let runningSessionRestored = false;
   try {
@@ -783,9 +808,17 @@ async function _initializeAppSession() {
     }
 
     // 모달 로드 + 데이터 로드 병렬 실행
+    // Keep the real data promise alive after the shell timeout. Dashboard
+    // deep links wait for it so they never render from the empty bootstrap
+    // cache and then remain stale.
+    const dashboardDataLoad = Promise.resolve(loadAll()).finally(() => {
+      if (_dashboardDataLoadGeneration !== dashboardDataLoadGeneration) return;
+      _dashboardDataReady = true;
+      if (window.__tomatoAppReady === true) openPendingDashboardEntry();
+    });
     await Promise.all([
       _withTimeout(loadAndInjectModals(), 8000, 'modal load'),
-      _withTimeout(loadAll(), 10000, 'data load'),
+      _withTimeout(dashboardDataLoad, 10000, 'data load'),
     ]);
     // localStorage 캐시를 Firebase 최신으로 동기화
     await _withTimeout(refreshCurrentUserFromDB(), 6000, 'user refresh');
@@ -839,14 +872,18 @@ async function _initializeAppSession() {
     if (isAdmin()) {
       if (!runningSessionRestored) {
         await _withTimeout(switchTab('admin'), APP_BOOT_AUXILIARY_TIMEOUT_MS, 'admin tab render');
-        void showDietPremiumReportIfNeeded().catch((e) => console.warn('[diet-premium-report]', e));
+        if (!_pendingDashboardEntry) {
+          void showDietPremiumReportIfNeeded().catch((e) => console.warn('[diet-premium-report]', e));
+        }
       }
     } else {
       renderHome({ deferCheerCard: true });
       // 알림/길드 조회는 APK의 느린 Firebase 연결에서 오래 멈출 수 있다. 앱 셸은
       // 먼저 표시하고, 환영 팝업 같은 보조 경험은 백그라운드에서 처리한다.
-      void _showPostLoginExperience({ previousLastLoginAt, runningSessionRestored })
-        .catch((e) => console.warn('[post-login]', e));
+      if (!_pendingDashboardEntry) {
+        void _showPostLoginExperience({ previousLastLoginAt, runningSessionRestored })
+          .catch((e) => console.warn('[post-login]', e));
+      }
     }
 
     // 홈/관리자 첫 화면이 준비되면, 보조 네트워크 작업을 기다리지 않고 닫는다.
@@ -877,7 +914,8 @@ async function _initializeAppSession() {
     window.dispatchEvent(new Event('tomato-app-ready'));
     if (bootUser) {
       openPendingDashboardEntry();
-      if (!runningSessionRestored) {
+      const openedDashboardEntry = _dashboardDestinationRevision > dashboardRevisionAtBoot;
+      if (!runningSessionRestored && !openedDashboardEntry && !_pendingDashboardEntry) {
         requestAnimationFrame(() => {
           showDietPremiumReportIfNeeded().catch((e) => console.warn('[diet-premium-report]', e));
         });

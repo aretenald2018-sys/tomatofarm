@@ -2,7 +2,7 @@
 // workout/sessions.js — 날짜별 운동 회차 호환 레이어
 // ================================================================
 
-import { hasRunningSessionRecord } from './running-model.js';
+import { hasRunningSessionRecord, runningOnlySessionFields } from './running-model.js';
 
 export const WORKOUT_SESSION_KEYS = Object.freeze([
   'exercises', 'cf', 'stretching', 'swimming', 'running',
@@ -165,6 +165,16 @@ export function getWorkoutSessions(day = {}, options = {}) {
     ? day.workoutSessions
     : [buildLegacyWorkoutSession(day, 0)];
   const sessions = raw.map((session, index) => normalizeWorkoutSession(session, index));
+  // Some older/mobile saves kept the aggregate run on the day root even when
+  // workoutSessions already contained a strength entry. Preserve that run as
+  // its own session instead of letting the array hide it.
+  if (hasRunningSessionRecord(day) && !sessions.some(hasRunningSessionRecord)) {
+    sessions.push(normalizeWorkoutSession({
+      ...runningOnlySessionFields(day),
+      id: `recovered-running-${sessions.length + 1}`,
+      label: `${sessions.length + 1}회차`,
+    }, sessions.length));
+  }
   while (sessions.length < minCount) sessions.push(emptyWorkoutSession(sessions.length));
   return sessions;
 }

@@ -18,13 +18,21 @@ test('TomatoFarm exposes the dashboard module deep-link contract', () => {
 });
 
 test('dashboard destinations open their exact TomatoFarm screens', () => {
-  assert.match(app, /action === 'diet'[\s\S]*switchTab\('diet'\)/);
-  assert.match(app, /action === 'season'[\s\S]*switchTab\('workout'\)[\s\S]*tm2OpenBoard\(\)/);
-  assert.match(app, /action === 'running'[\s\S]*switchTab\('workout'\)[\s\S]*wtOpenRunningSession\(\)/);
+  assert.match(app, /action === 'diet'[\s\S]*switchTab\('diet', \{ allowAdminDestination: true \}\)/);
+  assert.match(app, /action === 'season'[\s\S]*switchTab\('workout', \{ allowAdminDestination: true \}\)/);
+  assert.doesNotMatch(app, /tm2OpenBoard/);
+  assert.match(app, /action === 'running'[\s\S]*switchTab\('workout', \{[\s\S]*allowAdminDestination: true[\s\S]*workoutDate:[\s\S]*wtOpenRunningSession\(\)/);
   assert.match(app, /\['diet', 'season', 'running'\]\.includes\(entry\)/);
+  assert.match(app, /window\.__tomatoAppReady !== true/);
+  assert.match(app, /_dashboardDataReady !== true/);
+  assert.match(app, /Promise\.resolve\(loadAll\(\)\)\.finally[\s\S]*_dashboardDataReady = true[\s\S]*openPendingDashboardEntry\(\)/);
+  assert.match(app, /_dashboardDataLoadGeneration !== dashboardDataLoadGeneration/);
+  assert.match(app, /!openedDashboardEntry && !_pendingDashboardEntry/);
+  assert.match(activity, /window\.__tomatoAppReady===true[\s\S]*tomato-app-ready[\s\S]*once:true/);
+  assert.doesNotMatch(app, /_takeWorkoutTargetSessionIndex/);
 });
 
 test('the distributable TomatoFarm APK version is bumped for deep links', () => {
-  assert.match(gradle, /versionCode 3/);
-  assert.match(gradle, /versionName "1\.2"/);
+  assert.match(gradle, /versionCode 4/);
+  assert.match(gradle, /versionName "1\.3"/);
 });
