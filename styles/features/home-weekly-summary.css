@@ -1,0 +1,63 @@
+/* Home weekly summary — TDS mobile card composition */
+.home-weekly-summary {
+  --summary-carb: #3aa76d;
+  --summary-protein: #8764d8;
+  --summary-fat: #e9884a;
+  --summary-running: #398fca;
+  --summary-strength: #4b91d1;
+  --summary-positive: #2f9a67;
+}
+.home-weekly-summary .summary-card { overflow: hidden; }
+.home-weekly-summary .summary-split-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--space-2); }
+.home-weekly-summary .summary-split-card { min-width:0; margin-bottom:var(--space-2); }
+.home-weekly-summary .home-card-title { font-size:var(--seed-t3); line-height:1.25; }
+.home-weekly-summary .summary-pill { flex:0 0 auto; padding:var(--space-1) var(--space-2); border-radius:var(--radius-full); background:var(--surface3); color:var(--text-secondary); font-size:var(--seed-t1); line-height:1; white-space:nowrap; }
+.home-weekly-summary .summary-diet-body { display:grid; grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr); gap:var(--space-3); align-items:center; }
+.home-weekly-summary .summary-calorie-ring { display:grid; place-items:center; width:112px; height:112px; max-width:100%; aspect-ratio:1; padding:10px; border-radius:50%; background:conic-gradient(var(--primary) var(--summary-ring-progress),var(--surface3) 0); }
+.home-weekly-summary .summary-calorie-ring-center { display:flex; width:100%; height:100%; flex-direction:column; align-items:center; justify-content:center; border-radius:50%; background:var(--surface); text-align:center; }
+.home-weekly-summary .summary-calorie-label,.home-weekly-summary .summary-calorie-target { color:var(--text-secondary); font-size:var(--seed-t1); line-height:1.2; }
+.home-weekly-summary .summary-calorie-ring .diet-goal-stat-val { font-size:var(--seed-t7); line-height:1.1; }
+.home-weekly-summary .summary-calorie-percent { color:var(--primary); font-size:var(--seed-t2); line-height:1.2; }
+.home-weekly-summary .summary-macro-list { display:flex; flex-direction:column; gap:var(--space-2); min-width:0; }
+.home-weekly-summary .summary-macro-head { display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:var(--space-1); align-items:baseline; color:var(--text-secondary); font-size:var(--seed-t1); line-height:1.2; }
+.home-weekly-summary .summary-macro-head strong { color:var(--text); font-family:var(--font-mono); font-size:var(--seed-t1); font-weight:700; white-space:nowrap; }
+.home-weekly-summary .summary-macro-head b { font-size:var(--seed-t1); font-weight:700; }
+.home-weekly-summary .diet-goal-prog-bar { margin-top:var(--space-1); }
+.home-weekly-summary .summary-macro-fill.carb { background:var(--summary-carb); }
+.home-weekly-summary .summary-macro-fill.protein { background:var(--summary-protein); }
+.home-weekly-summary .summary-macro-fill.fat { background:var(--summary-fat); }
+.home-weekly-summary .summary-header-stat { color:var(--summary-strength); font-size:var(--seed-t1); font-weight:700; line-height:1.2; text-align:right; }
+.home-weekly-summary .summary-strength-list { display:flex; flex-direction:column; }
+.home-weekly-summary .summary-strength-row { display:flex; min-height:32px; align-items:center; gap:var(--space-1); border-top:1px solid var(--border); color:var(--text); font-size:var(--seed-t1); line-height:1.25; }
+.home-weekly-summary .summary-strength-row:first-child { border-top:0; }
+.home-weekly-summary .summary-check { display:grid; flex:0 0 18px; width:18px; height:18px; place-items:center; border:1.5px solid var(--border); border-radius:50%; color:#fff; font-size:var(--seed-t1); line-height:1; }
+.home-weekly-summary .summary-check.is-done { border-color:var(--summary-strength); background:var(--summary-strength); }
+.home-weekly-summary .summary-strength-label { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.home-weekly-summary .summary-strength-label b { font-family:var(--font-mono); font-weight:500; }
+.home-weekly-summary .summary-running-icon { font-size:var(--seed-t3); line-height:1; }
+.home-weekly-summary .summary-running-layout { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:var(--space-2); align-items:end; }
+.home-weekly-summary .summary-pace { display:flex; align-items:baseline; gap:var(--space-1); white-space:nowrap; }
+.home-weekly-summary .summary-pace strong { color:var(--text); font-family:var(--font-mono); font-size:calc(var(--seed-t8) + var(--space-1)); letter-spacing:-.04em; line-height:1; }
+.home-weekly-summary .summary-pace span { color:var(--text-secondary); font-size:var(--seed-t1); }
+.home-weekly-summary .summary-pace-delta { margin-top:var(--space-1); color:var(--text-secondary); font-size:var(--seed-t1); font-weight:700; line-height:1.2; white-space:nowrap; }
+.home-weekly-summary .summary-pace-delta.is-positive { color:var(--summary-positive); }
+.home-weekly-summary .summary-running-previous { margin-top:var(--space-1); color:var(--text-secondary); font-size:var(--seed-t1); line-height:1.25; }
+.home-weekly-summary .summary-sparkline { display:block; width:60px; height:30px; overflow:visible; }
+.home-weekly-summary .summary-sparkline polyline { fill:none; stroke:var(--summary-running); stroke-linecap:round; stroke-linejoin:round; stroke-width:2; }
+.home-weekly-summary .summary-sparkline-empty { min-width:60px; }
+.home-weekly-summary .summary-change-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); }
+.home-weekly-summary .summary-change-metric { display:flex; min-width:0; flex-direction:column; align-items:center; gap:var(--space-1); padding:0 var(--space-2); text-align:center; }
+.home-weekly-summary .summary-change-metric + .summary-change-metric { border-left:1px solid var(--border); }
+.home-weekly-summary .summary-change-label,.home-weekly-summary .summary-change-description { color:var(--text-secondary); font-size:var(--seed-t1); line-height:1.2; }
+.home-weekly-summary .summary-change-value { color:var(--text-secondary); font-family:var(--font-mono); font-size:var(--seed-t6); line-height:1.1; white-space:nowrap; }
+.home-weekly-summary .summary-change-value.is-positive { color:var(--summary-positive); }
+.home-weekly-summary .summary-change-value.is-strength { color:var(--summary-strength); }
+.home-weekly-summary .summary-empty,.home-weekly-summary .summary-card-empty { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:var(--space-2); color:var(--text-secondary); font-size:var(--seed-t2); line-height:1.4; text-align:center; }
+.home-weekly-summary .summary-empty-action { padding:var(--space-1) var(--space-3); font-size:var(--seed-t1); }
+@media (max-width:390px) {
+  .home-weekly-summary .summary-diet-body { gap:var(--space-2); }
+  .home-weekly-summary .summary-calorie-ring { width:100px; }
+  .home-weekly-summary .summary-macro-head { grid-template-columns:1fr auto; }
+  .home-weekly-summary .summary-macro-head b { grid-column:2; grid-row:1; }
+  .home-weekly-summary .summary-macro-head strong { grid-column:1/-1; grid-row:2; }
+}
