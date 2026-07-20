@@ -15,7 +15,6 @@ import {
   deleteGoalItem, analyzeGoalFeasibilityHandler,
 } from '../app-modal-goals.js';
 import { openUnitGoalDatePicker } from '../home/unit-goal.js';
-import { openWorkoutSeasonWizard } from '../workout/season-manager.js';
 import { switchLeaderboardTab } from '../home/hero.js';
 import { openFriendManager } from '../home/friend-feed.js';
 import {
@@ -82,7 +81,6 @@ export function registerStaticActions() {
     'home:open-quest': (_control, _event, period) => openQuestModal(period),
     'home:open-goal': () => openGoalModal(),
     'home:open-checkin': () => openCheckinModal(),
-    'home:open-season': () => openWorkoutSeasonWizard(),
     'home:switch-tab': (control) => document.dispatchEvent(new CustomEvent('app:switch-tab', { detail: { tab: control.dataset.tab } })),
     'home:toggle-mini-memo': (control) => toggleMiniMemoItem(control.dataset.itemId),
     'home:delete-mini-memo': (control) => deleteMiniMemoItem(control.dataset.itemId),

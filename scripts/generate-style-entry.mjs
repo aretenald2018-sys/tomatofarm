@@ -22,7 +22,6 @@ export const STYLE_ENTRY_SOURCES = Object.freeze([
   'styles/components.css',
   'styles/primitives.css',
   'styles/features/home-foundations.css',
-  'styles/features/home-weekly-summary.css',
   'styles/features/calendar-overlays.css',
   'styles/features/workout-core.css',
   'styles/features/diet-core.css',

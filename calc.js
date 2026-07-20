@@ -157,39 +157,6 @@ export function calcDietMetrics(plan) {
   };
 }
 
-
-/**
- * 이번 주와 지난 주의 같은 일수 구간을 비교하는 단백질 섭취 변화 계산.
- * 입력은 getDiet() 결과처럼 bProtein/lProtein/dProtein/sProtein을 가진
- * 식단 객체 배열 또는 protein 값을 가진 요약 객체 배열 모두 허용한다.
- */
-export function calcWeeklyDietMacroChange(thisWeekDietDays = [], lastWeekDietDays = []) {
-  const proteinOf = (day) => {
-    if (!day || typeof day !== 'object') return 0;
-    const direct = Number(day.protein);
-    if (Number.isFinite(direct)) return Math.max(0, direct);
-    return ['bProtein', 'lProtein', 'dProtein', 'sProtein']
-      .reduce((sum, key) => sum + (Number(day[key]) || 0), 0);
-  };
-  const average = (days) => {
-    const rows = Array.isArray(days) ? days : [];
-    if (!rows.length) return 0;
-    return rows.reduce((sum, day) => sum + proteinOf(day), 0) / rows.length;
-  };
-  const currentAvgProteinG = average(thisWeekDietDays);
-  const previousAvgProteinG = average(lastWeekDietDays);
-  const deltaPct = previousAvgProteinG > 0
-    ? Math.round(((currentAvgProteinG - previousAvgProteinG) / previousAvgProteinG) * 1000) / 10
-    : null;
-  return {
-    status: previousAvgProteinG > 0 && Array.isArray(thisWeekDietDays) && thisWeekDietDays.length > 0
-      ? 'ready'
-      : 'collecting',
-    currentAvgProteinG: Math.round(currentAvgProteinG * 10) / 10,
-    previousAvgProteinG: Math.round(previousAvgProteinG * 10) / 10,
-    deltaPct,
-  };
-}
 /**
  * 운동 칼로리 크레딧 계산
  * @param {object} plan - 다이어트 플랜

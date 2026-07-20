@@ -1,10 +1,10 @@
 {
   "app": "tomatofarm",
-  "commit": "local",
-  "shortCommit": "local",
-  "branch": "local",
-  "deployedAt": "2026-07-19T13:09:23.554Z",
-  "cacheVersion": "tomatofarm-v20260719z5-home-weekly-summary-widget",
+  "commit": "4f205959ed5d4cefbc4e03fa8cf7269666c5ff78",
+  "shortCommit": "4f205959ed5d",
+  "branch": "main",
+  "deployedAt": "2026-07-19T08:32:07.273Z",
+  "cacheVersion": "tomatofarm-v20260719z3-owner-day-journal-workout-inline-field-commit",
   "runId": null,
   "runAttempt": null
 }
