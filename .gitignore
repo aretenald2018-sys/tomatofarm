@@ -4,6 +4,8 @@ node_modules/
 !public/downloads/
 !public/downloads/*.apk
 .claude/
+.codex-worktrees/
+.codex-remote-attachments/
 dom-analysis-report.json
 network-analysis-report.json
 .dev-task.json

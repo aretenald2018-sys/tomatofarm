@@ -13,6 +13,12 @@
 - In a review session, review against the plan and changed files. Do not add new feature work during review.
 - Durable handoff matters more than chat memory: every substantial request must leave a plan, review, or ADR document that a fresh session can read.
 
+## Shared Development Baseline
+
+All computers and Claude/Codex sessions must use `origin/main` as the only shared source of truth. A local folder or old local `main` is never authoritative. After cloning, run `npm.cmd run setup:repository`; before starting work from a clean `main`, run `npm.cmd run sync:development` and `npm.cmd run check:development`.
+
+Use a unique task branch/worktree created from the latest `origin/main` for implementation. Do not commit directly to a stale local `main`, do not reset or clean another person's worktree, and do not assume that two local branches with similar names point at the same commit. The full handoff procedure is documented in `docs/SHARED_DEVELOPMENT.md`.
+
 ## 프로젝트 개요
 건강/생산성 추적 PWA. Vanilla JS(ES6), Firebase, Vercel. 빌드 스텝 없는 단일 index.html.
 - **참조 문서:** @ARCHITECTURE.md (구조 레퍼런스), @prd.md (제품 요구사항), @plan.md (작업 진행)

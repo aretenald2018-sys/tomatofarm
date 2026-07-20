@@ -4,6 +4,8 @@
 
 ## Production
 
+공통 개발환경과 메인 컴퓨터·서브 컴퓨터·Claude/Codex 간 동기화 규칙은 [docs/SHARED_DEVELOPMENT.md](docs/SHARED_DEVELOPMENT.md)를 따른다. 모든 checkout의 공통 기준점은 `origin/main`이다.
+
 - URL: `https://aretenald2018-sys.github.io/tomatofarm/`
 - 배포 브랜치: `origin/main`
 - 데이터: Firebase Authentication/Firestore 경계는 루트 `data.js` facade를 통해서만 접근합니다.

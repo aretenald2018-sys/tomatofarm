@@ -3,8 +3,10 @@
 - Implement directly by default. Create a plan only when the user requests one, the scope is materially ambiguous, or the change spans several independent modules.
 - Diagnose before editing only when the bug cannot be reproduced or its cause is uncertain.
 - Read task-specific documentation only when the affected feature requires it. For NPC/life-zone art, read `docs/ai/NPC_ASSET_WORKFLOW.md`.
-- Canonical Checkout: `C:\Users\USER\Desktop\Tomato Project\tomatofarm(for lite version)`. Use this checkout to manage worktrees and as the sole local `main` integration/deployment checkout.
+- Shared Source of Truth: `origin/main` on `https://github.com/aretenald2018-sys/tomatofarm.git`. A canonical integration checkout is machine-local; never assume another computer's absolute path or local commit is authoritative.
+- Canonical integration checkout: one designated checkout may own local `main` integration/deployment. Other computers and Claude/Codex use clean task worktrees and must sync from `origin/main` before starting work.
 - Each worktree is its own project root. Run `npm`, `node`, `python`, and ordinary task-scoped `git` commands from the active worktree root, never from `C:\Users\USER` or from a different worktree.
+- After cloning or before starting a new task, run `npm.cmd run setup:repository`, then `npm.cmd run sync:development` from a clean `main`. Use `npm.cmd run check:development` to prove the current baseline; never use an old local `main` as the shared reference.
 
 ## Tab-Scoped Worktree and Release Workflow
 

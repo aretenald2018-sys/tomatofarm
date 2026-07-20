@@ -1,5 +1,9 @@
 # Tomato Farm Quickstart
 
+## Shared development baseline
+
+모든 컴퓨터와 Claude/Codex는 `origin/main`을 공통 기준점으로 사용한다. 새 checkout은 `npm.cmd run setup:repository` 후 `npm.cmd run sync:development`와 `npm.cmd run check:development`를 실행한다. 상세 절차는 [docs/SHARED_DEVELOPMENT.md](docs/SHARED_DEVELOPMENT.md)를 따른다.
+
 ## Production-first workflow
 
 이 checkout의 최종 검증 대상은 localhost가 아니라 Tomato Farm GitHub Pages입니다.

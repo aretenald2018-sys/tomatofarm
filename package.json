@@ -31,7 +31,9 @@
     "verify:workout": "node scripts/verify-workout-fixture.mjs",
     "verify:wear-refresh": "node scripts/verify-wear-refresh-adb.mjs",
     "install:wear-pair": "node scripts/verify-wear-refresh-adb.mjs --mode install",
-    "install:wear-watch": "node scripts/verify-wear-refresh-adb.mjs --mode install-watch"
+    "install:wear-watch": "node scripts/verify-wear-refresh-adb.mjs --mode install-watch",
+    "sync:development": "node scripts/sync-development.mjs",
+    "check:development": "node scripts/check-development-sync.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.0",

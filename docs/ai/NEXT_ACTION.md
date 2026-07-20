@@ -3225,3 +3225,10 @@
 - 실행 세션 종료 후 `ready_for_review`로 갱신한다.
 - 리뷰 세션 종료 후 문제가 있으면 `ready_for_fix`, 문제가 없고 다음 슬라이스가 있으면 `ready_for_execution`, 모든 슬라이스가 끝났으면 `complete`로 갱신한다.
 - 다음 프롬프트나 리뷰 프롬프트를 사용자에게 복붙하라고 요구하지 않는다. 필요한 프롬프트 내용은 계획 문서와 이 파일에 남기고 에이전트가 직접 읽어 진행한다.
+
+# 2026-07-20 Shared Development Environment
+
+- 상태: `ready_for_review`
+- 계획: `docs/ai/features/2026-07-20-shared-development-environment.md`
+- 목표: 메인 컴퓨터·서브 컴퓨터·Claude/Codex가 `origin/main`을 공통 기준점으로 사용하도록 동기화 명령, 검사, 문서를 추가한다.
+- 다음 단계: 변경 파일과 안전장치를 검토하고 task commit 후 통합한다.
