@@ -115,10 +115,11 @@ function renderRunning(model) {
   const run = model.recentRunning;
   const delta = run.paceDeltaSec; // 음수 = 페이스 단축(개선)
   const body = run.hasData
-    ? `<div class="summary-run-head">
-        <div class="summary-run-metric"><span>최근 최고</span><div class="summary-pace"><strong>${pace(run.bestPaceSecPerKm)}</strong><b>/km</b></div></div>
-        ${delta == null ? '' : `<div class="summary-run-metric right"><span>페이스 개선</span><strong class="summary-run-delta${delta < 0 ? ' is-positive' : delta > 0 ? ' is-negative' : ''}">${delta === 0 ? '±0초' : `${delta < 0 ? '-' : '+'}${Math.abs(delta)}초`}</strong></div>`}
+    ? `<div class="summary-run-top">
+        <span class="summary-run-kicker">최근 최고</span>
+        <div class="summary-pace"><strong>${pace(run.bestPaceSecPerKm)}</strong><b>/km</b></div>
       </div>
+      ${delta == null ? '' : `<div class="summary-run-improve"><span>페이스 개선</span><strong class="summary-run-delta${delta < 0 ? ' is-positive' : delta > 0 ? ' is-negative' : ''}">${delta === 0 ? '±0초' : `${delta < 0 ? '-' : '+'}${Math.abs(delta)}초`}</strong></div>`}
       ${run.bestPriorPaceSecPerKm > 0 ? `<div class="summary-run-prev">이전 최고 ${pace(run.bestPriorPaceSecPerKm)}/km</div>` : `<div class="summary-run-prev">최근 ${run.count}회 · ${number(run.totalDistanceKm, run.totalDistanceKm % 1 ? 1 : 0)}km</div>`}
       ${renderRunsBars(run.runs)}`
     : emptyState('최근 러닝 기록이 없습니다', '러닝 기록하기', 'workout');
