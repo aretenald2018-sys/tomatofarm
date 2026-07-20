@@ -1674,13 +1674,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initLoginScreen();
 });
 
-function toggleTheme() {
-  const root = document.documentElement;
-  const isLight = root.classList.toggle('light');
-  localStorage.setItem('theme', isLight ? 'light' : 'dark');
-  document.getElementById('theme-toggle').textContent = isLight ? '☀️' : '🌙';
-}
-// 밝은 모드 고정
+// 밝은 모드 고정 (앱은 라이트 테마 전용, :root.light 규칙을 활성화)
 (function() {
   document.documentElement.classList.add('light');
 })();

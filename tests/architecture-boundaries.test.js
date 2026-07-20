@@ -16,7 +16,9 @@ function walk(directory) {
     const projectPath = relative(root, absolute).replaceAll('\\', '/');
     const top = projectPath.split('/')[0];
     if (statSync(absolute).isDirectory()) {
-      if (!excludedDirectories.has(top)) files.push(...walk(absolute));
+      // Skip dot-directories (.git, .github, .codex-worktrees, …) so a
+      // Codex worktree checkout on disk cannot pollute the source scan.
+      if (!entry.startsWith('.') && !excludedDirectories.has(top)) files.push(...walk(absolute));
       continue;
     }
     files.push({

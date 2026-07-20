@@ -17,6 +17,8 @@ index.html / app.js
   -> sw.js                service worker and cache namespace
 ```
 
+The directories above group the domains; they do not hold every module. Substantial feature and render logic still lives in flat root modules (`app.js`, `data.js`, `render-*.js`, `feature-*.js`, `calc.js`, `sw.js`, and peers). Treat the repository root itself as part of the source tree.
+
 ## Dependency direction
 
 The supported direction is:

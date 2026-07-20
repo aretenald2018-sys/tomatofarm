@@ -2730,18 +2730,15 @@ export async function wtExcShowProView() {
 }
 // 테스트모드 켜기. Dashboard3에서는 온보딩/일반카드 경유 없이 테스트모드 렌더만 유지한다.
 export async function wtExcShowMaxView() {
-  console.log('[max] wtExcShowMaxView called');
   try {
     await _persistWorkoutBeforeModeSwitch();
     const cur = getExpertPreset();
-    console.log('[max] current preset:', { mode: cur.mode, goal: cur.goal, enabled: cur.enabled });
     if (cur.mode !== 'max' || !cur.enabled) {
       await saveExpertPreset({ mode: 'max', enabled: true, snoozedUntil: null });
     }
     _expertViewShown = true;
     renderExpertTopArea();
     await _rerenderWorkoutAfterModeSwitch();
-    console.log('[max] test mode view rendered');
   } catch (e) {
     console.error('[wtExcShowMaxView] FAIL:', e);
     if (typeof showToast === 'function') showToast('테스트 모드 진입 실패: ' + e.message, 4000, 'error');

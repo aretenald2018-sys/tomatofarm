@@ -404,8 +404,6 @@ export function selectNutritionItem(itemId) {
     item = getNutritionDB().find(n => n.id === itemId);
   }
 
-  console.log('[selectNutritionItem] 찾은 항목:', { itemId, item, cacheSize: { recent: _nutritionSearchCache.recent?.length, db: _nutritionSearchCache.db?.length, csv: _nutritionSearchCache.csv?.length } });
-
   const searchMeal = getNutritionSearchMeal();
   if (!item || !searchMeal) {
     console.error('[selectNutritionItem] 항목을 찾을 수 없거나 meal이 없습니다:', { itemId, hasItem: !!item, hasMeal: !!searchMeal });
@@ -428,7 +426,6 @@ export function selectNutritionItemFromCache(itemDataKey) {
     return;
   }
 
-  console.log('[selectNutritionItemFromCache] 항목 열기:', { itemDataKey, item });
   openNutritionWeightModal(toCanonicalNutritionItem(item));
 }
 

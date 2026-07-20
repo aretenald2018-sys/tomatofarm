@@ -2,6 +2,7 @@
 
 ## Work unit and branches
 
+- tomatofarm is production. New features are developed and validated in the TomatoDev development environment and promoted here when the user decides; this checkout integrates and releases production. Promotion carries app code only, not the TomatoDev isolation overlay.
 - The current user request is the source of truth. Do not resume work from historical plan, review, evidence, or next-action files.
 - Implement directly by default. Write a plan only for materially ambiguous work or several independent modules.
 - Keep repository Markdown for durable architecture, ADR, contract, or reference material. Keep task plans, reviews, status logs, and generated evidence out of the source tree.

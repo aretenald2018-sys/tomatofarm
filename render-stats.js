@@ -1893,11 +1893,9 @@ function _recentChartKeys(days = 90) {
 }
 
 function _chartColors() {
-  const dark = document.documentElement.getAttribute('data-theme') === 'dark' ||
-               window.matchMedia('(prefers-color-scheme: dark)').matches;
   return {
-    grid: dark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)',
-    text: dark ? '#8899a6' : '#6b7280',
+    grid: 'rgba(0,0,0,0.07)',
+    text: '#6b7280',
   };
 }
 

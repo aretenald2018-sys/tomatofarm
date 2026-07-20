@@ -1145,14 +1145,6 @@ body {
 .comment-section-panel { max-height: 240px; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 .comment-toggle-btn:hover { color: var(--primary) !important; }
 
-.theme-toggle {
-  width: 36px; height: 36px; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  background: none; border: none; font-size: 16px; cursor: pointer;
-  transition: background var(--transition);
-}
-.theme-toggle:hover { background: var(--surface2); }
-
 /* ── Bottom Tab Navigation ── */
 /* TDS Mobile Menu — height 60px */
 .bottom-tabs {
