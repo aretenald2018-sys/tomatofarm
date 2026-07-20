@@ -13,6 +13,7 @@ const {
   refreshAllLinkedDashboards,
   verifyInternalRequest,
 } = require("./dashboard/service");
+const { createMirrorHandler } = require("./sync/firestore-mirror");
 
 initializeApp();
 
@@ -23,6 +24,7 @@ const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
 const GROQ_API_KEY = defineSecret("GROQ_API_KEY");
 const BUDGET_FIREBASE_SERVICE_ACCOUNT = defineSecret("BUDGET_FIREBASE_SERVICE_ACCOUNT");
 const DASHBOARD_INTERNAL_HMAC = defineSecret("DASHBOARD_INTERNAL_HMAC");
+const TOMATO_SYNC_PEER_SERVICE_ACCOUNT = defineSecret("TOMATO_SYNC_PEER_SERVICE_ACCOUNT");
 const GROQ_MODEL = "llama-3.3-70b-versatile";
 // Groq vision-capable model (Llama 4 Scout) — 이미지 입력 포함 요청 시 사용.
 // 텍스트 전용 요청은 기존 GROQ_MODEL 유지.
@@ -40,6 +42,46 @@ exports.sendPushOnNotification = onDocumentCreated(
     const data = event.data?.data();
     return deliverNotification({ db: getFirestore(), messaging: getMessaging(), data });
   }
+);
+
+function currentFirebaseProjectId() {
+  const projectId = String(process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || "").trim();
+  if (projectId) return projectId;
+  try {
+    const configured = JSON.parse(process.env.FIREBASE_CONFIG || "{}");
+    if (configured.projectId) return String(configured.projectId);
+  } catch {}
+  throw new Error("Firebase runtime project id is unavailable for Tomato peer sync");
+}
+
+const TOMATO_SYNC_TRIGGER_OPTIONS = {
+  region: "asia-northeast3",
+  retry: true,
+  secrets: [TOMATO_SYNC_PEER_SERVICE_ACCOUNT],
+};
+
+function mirrorTomatoDocument(event) {
+  return createMirrorHandler({
+    sourceDb: getFirestore(),
+    sourceProjectId: currentFirebaseProjectId(),
+    peerServiceAccountValue: () => TOMATO_SYNC_PEER_SERVICE_ACCOUNT.value(),
+  })(event);
+}
+
+// Keep the paths explicit: Firestore event patterns must end at a document and
+// do not observe subcollections automatically. The handler itself rejects
+// operational collections such as FCM tokens and notifications.
+exports.syncTomatoUserDocument = onDocumentWritten(
+  { ...TOMATO_SYNC_TRIGGER_OPTIONS, document: "users/{ownerId}/{collectionId}/{documentId}" },
+  mirrorTomatoDocument,
+);
+exports.syncTomatoNestedDocument = onDocumentWritten(
+  { ...TOMATO_SYNC_TRIGGER_OPTIONS, document: "users/{ownerId}/{collectionId}/{documentId}/{nestedCollectionId}/{nestedDocumentId}" },
+  mirrorTomatoDocument,
+);
+exports.syncTomatoSharedDocument = onDocumentWritten(
+  { ...TOMATO_SYNC_TRIGGER_OPTIONS, document: "{collectionId}/{documentId}" },
+  mirrorTomatoDocument,
 );
 
 const DASHBOARD_TRIGGER_OPTIONS = {
