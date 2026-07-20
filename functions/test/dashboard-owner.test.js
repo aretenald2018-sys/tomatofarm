@@ -26,7 +26,7 @@ const {
 const REGISTRY_PATH = `${TOMATO_DATA_OWNER_REGISTRY_COLLECTION}/${TOMATO_DATA_OWNER_REGISTRY_ID}`;
 
 function snapshot(docs) {
-  return { docs };
+  return { docs: docs.map((entry) => ({ id: entry.id, data: () => entry.data })) };
 }
 
 function decidedRegistry(ownerId) {
