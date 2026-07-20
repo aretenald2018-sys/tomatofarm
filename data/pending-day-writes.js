@@ -246,6 +246,38 @@ export function listPendingDayWrites(storage, { ownerId, dateKey } = {}) {
 }
 
 /**
+ * Rekeys immutable pending entries to a newly selected physical owner. Every
+ * destination value is written before the matching source snapshot is removed,
+ * so an interrupted migration can be retried without losing a local workout.
+ */
+export function reassignPendingDayWrites(storage, { fromOwnerId, toOwnerId } = {}) {
+  assertStorage(storage, ['key', 'getItem', 'setItem', 'removeItem']);
+  const sourceOwnerId = assertOwnerId(fromOwnerId);
+  const targetOwnerId = assertOwnerId(toOwnerId);
+  if (sourceOwnerId === targetOwnerId) return { moved: 0, entries: [] };
+
+  const sourceEntries = listPendingDayWrites(storage, { ownerId: sourceOwnerId });
+  const targetEntries = [];
+  for (const sourceEntry of sourceEntries) {
+    const record = { ...sourceEntry.record, ownerId: targetOwnerId };
+    const key = keyForRecord(record);
+    const raw = JSON.stringify(record);
+    const existing = storage.getItem(key);
+    if (existing !== null && existing !== raw) {
+      throw new Error(`pending day writeId conflicts at selected owner: ${record.writeId}`);
+    }
+    if (existing === null) storage.setItem(key, raw);
+    targetEntries.push({ key, raw, record });
+  }
+
+  const removed = acknowledgePendingDayWrites(storage, sourceEntries);
+  if (removed !== sourceEntries.length) {
+    throw new Error('pending day owner reassignment could not acknowledge every source entry');
+  }
+  return { moved: sourceEntries.length, entries: targetEntries };
+}
+
+/**
  * Persists a new immutable entry before removing any included snapshots.
  * A failed setItem therefore leaves every previous entry untouched.
  */

@@ -14,6 +14,7 @@ const {
   verifyInternalRequest,
 } = require("./dashboard/service");
 const { createMirrorHandler } = require("./sync/firestore-mirror");
+const { resolveTomatoDataOwnerId } = require("./dashboard/owner");
 
 initializeApp();
 
@@ -194,41 +195,19 @@ function _isActiveDay(workoutData) {
   return false;
 }
 
-function _candidateWorkoutOwnerIds(account) {
-  const ids = [
-    account?.ownerId,
-    account?.dataOwnerId,
-    account?.socialId,
-    account?.dataId,
-    account?.id,
-    String(account?.id || "").replace(/\(guest\)$/, "").trim(),
-    String(account?.id || "").replace(/\(guest\)$/, "").trim()
-      ? `${String(account?.id || "").replace(/\(guest\)$/, "").trim()}(guest)`
-      : "",
-    String(account?.id || "").replace(/\s+/g, "").trim(),
-    String(account?.id || "").replace(/\s+/g, "").trim()
-      ? `${String(account?.id || "").replace(/\s+/g, "").trim()}(guest)`
-      : "",
-    `${account?.lastName || ""}_${account?.firstName || ""}`.toLowerCase().replace(/\s/g, ""),
-  ];
-  return [...new Set(ids.filter(Boolean))];
-}
-
 async function _resolveActiveDaysForAccount(db, account, weekKeys) {
-  const ownerIds = _candidateWorkoutOwnerIds(account);
-  for (const ownerId of ownerIds) {
-    const dayResults = await Promise.allSettled(
-      weekKeys.map((dk) => db.doc(`users/${ownerId}/workouts/${dk}`).get())
-    );
-    let activeDays = 0;
-    for (const r of dayResults) {
-      if (r.status === "fulfilled" && r.value.exists) {
-        if (_isActiveDay(r.value.data())) activeDays++;
-      }
+  const ownerId = await resolveTomatoDataOwnerId(db, account?.id);
+  if (!ownerId) return 0;
+  const dayResults = await Promise.allSettled(
+    weekKeys.map((dk) => db.doc(`users/${ownerId}/workouts/${dk}`).get())
+  );
+  let activeDays = 0;
+  for (const r of dayResults) {
+    if (r.status === "fulfilled" && r.value.exists) {
+      if (_isActiveDay(r.value.data())) activeDays++;
     }
-    if (activeDays > 0) return activeDays;
   }
-  return 0;
+  return activeDays;
 }
 
 function _normalizeGuildId(value) {

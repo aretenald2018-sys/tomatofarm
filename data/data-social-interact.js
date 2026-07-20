@@ -8,6 +8,7 @@ import {
 } from './data-core.js';
 import { isAdmin, isAdminGuest, _simpleHash } from './data-auth.js';
 import { _socialId, _isMySocialId } from './data-social-friends.js';
+import { resolvePrivateDataOwnerId } from './shared-account-owner.js';
 
 // ── 알림 ────────────────────────────────────────────────────────
 export async function sendNotification(toUserId, data) {
@@ -280,7 +281,8 @@ export async function getMySelfCheerRaw() {
   const u = getCurrentUserRef();
   if (!u) return null;
   try {
-    const snap = await getDoc(doc(db, 'users', u.id, 'settings', 'self_cheer'));
+    const ownerId = await resolvePrivateDataOwnerId(u.id);
+    const snap = await getDoc(doc(db, 'users', ownerId, 'settings', 'self_cheer'));
     return snap.exists() ? snap.data() : null;
   } catch (e) {
     console.warn('[self-cheer] get:', e);
@@ -302,15 +304,17 @@ export async function saveMySelfCheer(payload) {
     updatedAt: Date.now(),
     expiresAt: todayEnd.getTime(),
   };
-  await setDoc(doc(db, 'users', u.id, 'settings', 'self_cheer'), entry, { merge: true });
+  const ownerId = await resolvePrivateDataOwnerId(u.id);
+  await setDoc(doc(db, 'users', ownerId, 'settings', 'self_cheer'), entry, { merge: true });
   return entry;
 }
 
 export async function deleteMySelfCheer() {
   const u = getCurrentUserRef();
   if (!u) return;
+  const ownerId = await resolvePrivateDataOwnerId(u.id);
   // 텍스트 비우고 expires=0 으로 만료 처리 (docRef 삭제 대신 merge로 비활성)
-  await setDoc(doc(db, 'users', u.id, 'settings', 'self_cheer'), {
+  await setDoc(doc(db, 'users', ownerId, 'settings', 'self_cheer'), {
     text: '', updatedAt: Date.now(), expiresAt: 0,
   }, { merge: true });
 }
@@ -318,7 +322,8 @@ export async function deleteMySelfCheer() {
 export async function getFriendSelfCheer(friendId) {
   if (!friendId) return null;
   try {
-    const snap = await getDoc(doc(db, 'users', friendId, 'settings', 'self_cheer'));
+    const ownerId = await resolvePrivateDataOwnerId(friendId);
+    const snap = await getDoc(doc(db, 'users', ownerId, 'settings', 'self_cheer'));
     if (!snap.exists()) return null;
     const data = snap.data();
     if (!data?.text) return null;

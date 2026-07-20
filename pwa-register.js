@@ -11,19 +11,15 @@ const APP_SW_SCOPE = new URL('./', location.href).pathname;
 const FCM_SW_SCOPE = new URL('firebase-cloud-messaging-push/', new URL('./', location.href)).pathname;
 const _pendingAppSWUpdates = new Map();
 const APP_SW_AUTO_RELOAD_TIMEOUT_MS = 1500;
-const APP_SW_AUTO_RELOAD_ATTEMPT_PREFIX = 'tomatofarm_app_sw_auto_reload_attempted:';
-const APP_SW_UPDATE_HANDLED_PREFIX = 'tomatofarm_app_sw_update_handled:';
-const APP_SW_UPDATE_RELEASE = (() => {
-  try {
-    const scriptUrl = typeof document !== 'undefined' ? document.currentScript?.src : '';
-    return scriptUrl ? new URL(scriptUrl, location.href).href : location.href;
-  } catch {
-    return 'unversioned';
-  }
-})();
+const _appSWWorkerIds = new WeakMap();
+const _handledAppSWWorkers = new WeakSet();
+const _attemptedAppSWAutoReloadWorkers = new WeakSet();
+const _handledAppSWFallbackKeys = new Set();
+const _attemptedAppSWAutoReloadFallbackKeys = new Set();
 let _appSWUpdateSeq = 0;
 let _latestAppSWUpdateSeq = 0;
 let _appSWAutoReloading = false;
+let _appSWWorkerIdSeq = 0;
 
 async function _refreshAppSWRegistration(registration = null) {
   if (!('serviceWorker' in navigator)) return registration;
@@ -40,9 +36,20 @@ async function _refreshAppSWRegistration(registration = null) {
   }
 }
 
+function _appSWTargetWorker(registration, worker = null) {
+  return worker || registration?.waiting || registration?.installing || null;
+}
+
+function _appSWWorkerId(worker) {
+  if (!worker || (typeof worker !== 'object' && typeof worker !== 'function')) return 'none';
+  if (!_appSWWorkerIds.has(worker)) _appSWWorkerIds.set(worker, ++_appSWWorkerIdSeq);
+  return _appSWWorkerIds.get(worker);
+}
+
 function _appSWUpdateKey(registration, worker = null) {
-  const scriptURL = worker?.scriptURL || registration?.waiting?.scriptURL || 'sw.js';
-  return `${registration?.scope || APP_SW_SCOPE}|${scriptURL}|${APP_SW_UPDATE_RELEASE}`;
+  const targetWorker = _appSWTargetWorker(registration, worker);
+  const scriptURL = targetWorker?.scriptURL || 'sw.js';
+  return `${registration?.scope || APP_SW_SCOPE}|${scriptURL}|worker:${_appSWWorkerId(targetWorker)}`;
 }
 
 function _hasActiveWorkoutDraftForAppSWUpdate() {
@@ -53,32 +60,26 @@ function _hasActiveWorkoutDraftForAppSWUpdate() {
   }
 }
 
-function _hasAttemptedAppSWAutoReload(key) {
-  try {
-    return sessionStorage.getItem(APP_SW_AUTO_RELOAD_ATTEMPT_PREFIX + key) === '1';
-  } catch {
-    return false;
-  }
+function _hasAttemptedAppSWAutoReload(key, worker = null) {
+  return worker
+    ? _attemptedAppSWAutoReloadWorkers.has(worker)
+    : _attemptedAppSWAutoReloadFallbackKeys.has(key);
 }
 
-function _markAppSWAutoReloadAttempted(key) {
-  try {
-    sessionStorage.setItem(APP_SW_AUTO_RELOAD_ATTEMPT_PREFIX + key, '1');
-  } catch {}
+function _markAppSWAutoReloadAttempted(key, worker = null) {
+  if (worker) _attemptedAppSWAutoReloadWorkers.add(worker);
+  else _attemptedAppSWAutoReloadFallbackKeys.add(key);
 }
 
-function _hasHandledAppSWUpdate(key) {
-  try {
-    return sessionStorage.getItem(APP_SW_UPDATE_HANDLED_PREFIX + key) === '1';
-  } catch {
-    return false;
-  }
+function _hasHandledAppSWUpdate(key, worker = null) {
+  return worker
+    ? _handledAppSWWorkers.has(worker)
+    : _handledAppSWFallbackKeys.has(key);
 }
 
-function _markAppSWUpdateHandled(key) {
-  try {
-    sessionStorage.setItem(APP_SW_UPDATE_HANDLED_PREFIX + key, '1');
-  } catch {}
+function _markAppSWUpdateHandled(key, worker = null) {
+  if (worker) _handledAppSWWorkers.add(worker);
+  else _handledAppSWFallbackKeys.add(key);
 }
 
 function _showPendingAppSWUpdateBanner(registration, worker = null, key = null) {
@@ -97,8 +98,8 @@ function _autoApplyAppSWUpdate(registration, worker = null) {
   const targetWorker = worker || registration.waiting;
   if (!targetWorker || typeof targetWorker.postMessage !== 'function') return false;
   const key = _appSWUpdateKey(registration, targetWorker);
-  if (_hasAttemptedAppSWAutoReload(key)) return false;
-  _markAppSWAutoReloadAttempted(key);
+  if (_hasAttemptedAppSWAutoReload(key, targetWorker)) return false;
+  _markAppSWAutoReloadAttempted(key, targetWorker);
   _appSWAutoReloading = true;
   let settled = false;
   const settle = () => {
@@ -129,13 +130,14 @@ function _autoApplyAppSWUpdate(registration, worker = null) {
 
 function _requestAppUpdateBanner(registration, worker = null) {
   if (!registration || !navigator.serviceWorker.controller) return;
-  const key = _appSWUpdateKey(registration, worker);
-  if (_hasHandledAppSWUpdate(key)) return;
-  _markAppSWUpdateHandled(key);
+  const targetWorker = _appSWTargetWorker(registration, worker);
+  const key = _appSWUpdateKey(registration, targetWorker);
+  if (_hasHandledAppSWUpdate(key, targetWorker)) return;
+  _markAppSWUpdateHandled(key, targetWorker);
   const seq = ++_appSWUpdateSeq;
   _latestAppSWUpdateSeq = seq;
   const wasPending = _pendingAppSWUpdates.has(key);
-  _pendingAppSWUpdates.set(key, { registration, worker, seq });
+  _pendingAppSWUpdates.set(key, { registration, worker: targetWorker, seq });
 
   const show = ({ allowAutoReload = true } = {}) => {
     const pending = _pendingAppSWUpdates.get(key);

@@ -4,7 +4,6 @@
 
 import {
   db, doc, setDoc, deleteDoc, getDoc, collection, getDocs,
-  ADMIN_ID, ADMIN_GUEST_ID,
 } from './data-core.js';
 import { _socialId, _isMySocialId, getFriendWorkout } from './data-social-friends.js';
 import { getAccountList } from './data-account.js';
@@ -95,36 +94,15 @@ function _isActiveDay(workoutData) {
   return false;
 }
 
-function _candidateWorkoutOwnerIds(accountId) {
-  const raw = String(accountId || '').trim();
-  const stripped = raw.replace(/\(guest\)$/, '').trim();
-  const compact = stripped.replace(/\s+/g, '').trim();
-  const ids = [raw];
-  if (stripped) ids.push(stripped);
-  if (compact) ids.push(compact);
-  if (stripped) ids.push(`${stripped}(guest)`);
-  if (compact) ids.push(`${compact}(guest)`);
-  if (raw === ADMIN_ID) ids.push(ADMIN_GUEST_ID);
-  if (raw === ADMIN_GUEST_ID) ids.push(ADMIN_ID);
-  return [...new Set(ids.filter(Boolean))];
-}
-
 async function _resolveActiveDaysFromWorkouts(accountId, weekKeys) {
-  const ownerIds = _candidateWorkoutOwnerIds(accountId);
-  let best = 0;
-
-  for (const ownerId of ownerIds) {
-    const results = await Promise.allSettled(weekKeys.map((dk) => getFriendWorkout(ownerId, dk)));
-    let activeDays = 0;
-    for (const result of results) {
-      if (result.status === 'fulfilled' && _isActiveDay(result.value)) {
-        activeDays++;
-      }
+  const results = await Promise.allSettled(weekKeys.map((dk) => getFriendWorkout(accountId, dk)));
+  let activeDays = 0;
+  for (const result of results) {
+    if (result.status === 'fulfilled' && _isActiveDay(result.value)) {
+      activeDays++;
     }
-    best = Math.max(best, activeDays);
   }
-
-  return best;
+  return activeDays;
 }
 
 function _filterGuildStats(result, filterGuild) {

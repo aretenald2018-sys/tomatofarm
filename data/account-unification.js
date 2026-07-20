@@ -7,13 +7,21 @@ export const ADMIN_ACCOUNT_ID = '김_태우';
 export const ADMIN_GUEST_ACCOUNT_ID = '김_태우(guest)';
 export const ACCOUNT_UNIFICATION_MARKER_ID = 'account_data_unification_v2';
 export const ACCOUNT_UNIFICATION_VERSION = 2;
+export const SHARED_ACCOUNT_OWNER_REGISTRY_COLLECTION = '_account_data_owners';
+export const SHARED_ACCOUNT_OWNER_REGISTRY_ID = 'tomato_admin';
+export const SHARED_ACCOUNT_OWNER_REGISTRY_VERSION = 2;
+export const SHARED_ACCOUNT_OWNER_REGISTRY_STATUS = 'decided';
+export const SHARED_ACCOUNT_OWNER_CACHE_KEY = 'tomatofarm:shared-account-data-owner:v2';
+export const LEGACY_ROOT_MIGRATION_COLLECTION = '_account_data_migrations';
+export const LEGACY_ROOT_MIGRATION_ID = 'tomato_legacy_root_to_shared_owner';
+export const LEGACY_ROOT_MIGRATION_VERSION = 1;
 
 // Every user-scoped collection currently written by Tomato Farm, plus the
 // legacy collections that were already copied by migrateDataToUser.
 export const ACCOUNT_DATA_COLLECTIONS = Object.freeze([
-  'workouts', 'exercises', 'goals', 'quests', 'wines', 'cal_events', 'cooking',
+  'workouts', 'exercises', 'goals', 'quests', 'wines', 'movies', 'cal_events', 'cooking',
   'body_checkins', 'nutrition_db', 'tomato_cycles', 'custom_muscles',
-  'gyms', 'routine_templates', 'equipment_pool',
+  'gyms', 'routine_templates', 'equipment_pool', 'running_routes',
   'finance_benchmarks', 'finance_actuals', 'finance_loans', 'finance_positions',
   'finance_plans', 'finance_budgets', 'settings',
 ]);
@@ -25,6 +33,37 @@ export function canonicalAccountOwnerId(ownerId) {
 
 export function isSharedAdminAccount(ownerId) {
   return canonicalAccountOwnerId(ownerId) === ADMIN_ACCOUNT_ID;
+}
+
+export function normalizeSharedAccountDataOwnerId(ownerId) {
+  const normalized = String(ownerId || '').trim();
+  return normalized === ADMIN_ACCOUNT_ID || normalized === ADMIN_GUEST_ACCOUNT_ID
+    ? normalized
+    : null;
+}
+
+export function readSharedAccountDataOwnerRegistry(registry = null) {
+  if (!registry || typeof registry !== 'object') return null;
+  if (Number(registry.version || 0) < SHARED_ACCOUNT_OWNER_REGISTRY_VERSION) return null;
+  if (registry.status !== SHARED_ACCOUNT_OWNER_REGISTRY_STATUS) return null;
+  return normalizeSharedAccountDataOwnerId(registry.ownerId);
+}
+
+// A remote registry decision is authoritative. Before that one-time decision,
+// any document in users/{admin}/** counts as data, even false/0/[] tombstones.
+// Only a literally empty admin namespace may select the historical guest store.
+export function selectSharedAccountDataOwner({ registeredOwnerId = null, adminHasData = false } = {}) {
+  return normalizeSharedAccountDataOwnerId(registeredOwnerId)
+    || (adminHasData ? ADMIN_ACCOUNT_ID : ADMIN_GUEST_ACCOUNT_ID);
+}
+
+// Logical/social identity remains ADMIN_ACCOUNT_ID. Private data paths use the
+// separately resolved physical owner, preventing two writable SSOTs.
+export function resolveAccountDataOwnerId(ownerId, sharedAccountDataOwnerId = null) {
+  const canonical = canonicalAccountOwnerId(ownerId);
+  if (!canonical) return null;
+  if (canonical !== ADMIN_ACCOUNT_ID) return canonical;
+  return normalizeSharedAccountDataOwnerId(sharedAccountDataOwnerId);
 }
 
 export function getAccountOwnerAliases(ownerId) {
@@ -42,6 +81,8 @@ function documentMap(documents = []) {
 // Canonical documents are authoritative. Workout days are the one exception at
 // document level: their independent meal and activity domains are recovered
 // without allowing an alias to replace an existing canonical domain.
+// Legacy root migration is copy-only. The other admin alias is never a source:
+// once a physical owner is selected, runtime data must come from that SSOT.
 export function buildAccountUnificationPlan({
   canonicalDocuments = [],
   guestDocuments = [],
@@ -57,11 +98,9 @@ export function buildAccountUnificationPlan({
   }
   const canonical = documentMap(canonicalDocuments);
   const planned = new Map();
-  for (const source of [guestDocuments, legacyDocuments]) {
-    for (const document of source || []) {
-      if (!document?.id || canonical.has(document.id) || planned.has(document.id)) continue;
-      planned.set(document.id, document);
-    }
+  for (const document of legacyDocuments || []) {
+    if (!document?.id || canonical.has(document.id) || planned.has(document.id)) continue;
+    planned.set(document.id, document);
   }
   return [...planned.values()];
 }

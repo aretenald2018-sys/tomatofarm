@@ -5,7 +5,8 @@
 import { loadAll, TODAY, getTabOrder,
          getRawVisibleTabs, DEFAULT_VIS_TABS,
          isAdmin, isAdminGuest, trackEvent,
-         getCurrentUser, loadSavedUser, refreshCurrentUserFromDB } from './data.js';
+         getCurrentUser, getDataOwnerId, isAdminInstance,
+         loadSavedUser, refreshCurrentUserFromDB } from './data.js';
 import { loadCSVDatabase } from './fatsecret-api.js';
 // ── 분리된 모듈 ──
 import './feature-diet-plan.js';
@@ -77,12 +78,55 @@ function _withTimeout(promise, ms, label) {
 }
 
 const APP_BOOT_AUXILIARY_TIMEOUT_MS = 2500;
+let _sharedOwnerBootBlocked = false;
+
+function _renderLoadingProgress(message = '데이터 불러오는 중...') {
+  const loading = document.getElementById('loading');
+  if (!loading) return;
+  loading.innerHTML = `
+    <div class="spinner"></div>
+    <div class="u-text-sm u-text-secondary">${message}</div>
+  `;
+  loading.classList.remove('hidden');
+  loading.style.display = 'flex';
+}
+
+function _showSharedOwnerRetryState() {
+  _sharedOwnerBootBlocked = true;
+  window.__tomatoAppReady = false;
+  const loading = document.getElementById('loading');
+  if (!loading) return;
+  loading.innerHTML = `
+    <div aria-hidden="true" style="font-size:36px;">🍅</div>
+    <div style="font-size:16px;font-weight:700;color:var(--text);">데이터 저장 위치를 확인하지 못했어요</div>
+    <div class="u-text-sm u-text-secondary" style="max-width:300px;text-align:center;line-height:1.5;">
+      인터넷 연결을 확인한 뒤 다시 시도해주세요. 확인되기 전에는 기록을 저장하지 않습니다.
+    </div>
+    <button type="button" id="shared-owner-retry-btn" style="padding:12px 22px;border:0;border-radius:999px;background:var(--primary);color:#fff;font-size:14px;font-weight:700;cursor:pointer;">
+      다시 시도
+    </button>
+  `;
+  loading.classList.remove('hidden');
+  loading.style.display = 'flex';
+  const retryButton = document.getElementById('shared-owner-retry-btn');
+  retryButton?.addEventListener('click', () => {
+    retryButton.disabled = true;
+    _sharedOwnerBootBlocked = false;
+    _renderLoadingProgress('데이터 저장 위치 다시 확인 중...');
+    void Promise.resolve().then(() => init()).catch((error) => {
+      console.warn('[init] shared owner retry failed:', error?.message || error);
+      _showSharedOwnerRetryState();
+    });
+  }, { once: true });
+}
 
 function _hideLoadingOverlay() {
+  if (_sharedOwnerBootBlocked) return;
   const loading = document.getElementById('loading');
   if (!loading) return;
   loading.style.display = 'none';
   loading.classList.add('hidden');
+  loading.innerHTML = '<div class="spinner"></div><div class="u-text-sm u-text-secondary">데이터 불러오는 중...</div>';
 }
 
 // ── 탭 스켈레톤 삽입 (레이지 로드 피드백) ──
@@ -820,6 +864,10 @@ async function _initializeAppSession() {
       _withTimeout(loadAndInjectModals(), 8000, 'modal load'),
       _withTimeout(dashboardDataLoad, 10000, 'data load'),
     ]);
+    if (isAdminInstance(user.id) && !getDataOwnerId()) {
+      _showSharedOwnerRetryState();
+      return false;
+    }
     // localStorage 캐시를 Firebase 최신으로 동기화
     await _withTimeout(refreshCurrentUserFromDB(), 6000, 'user refresh');
     const refreshedUser = getCurrentUser() || user;
@@ -909,24 +957,26 @@ async function _initializeAppSession() {
     // 오류가 발생해도 로딩 화면 숨기고 기본 렌더링
     renderHome();
   } finally {
-    _hideLoadingOverlay();
-    window.__tomatoAppReady = true;
-    window.dispatchEvent(new Event('tomato-app-ready'));
-    if (bootUser) {
-      openPendingDashboardEntry();
-      const openedDashboardEntry = _dashboardDestinationRevision > dashboardRevisionAtBoot;
-      if (!runningSessionRestored && !openedDashboardEntry && !_pendingDashboardEntry) {
-        requestAnimationFrame(() => {
-          showDietPremiumReportIfNeeded().catch((e) => console.warn('[diet-premium-report]', e));
-        });
-        setTimeout(() => {
-          document.querySelectorAll('.today-cell')[0]
-            ?.scrollIntoView({ behavior:'smooth', block:'center' });
-        }, 400);
-        // PWA 설치 안내 배너 (앱 미설치 + 이전에 닫지 않았으면)
-        showPWAInstallBanner();
+    if (!_sharedOwnerBootBlocked) {
+      _hideLoadingOverlay();
+      window.__tomatoAppReady = true;
+      window.dispatchEvent(new Event('tomato-app-ready'));
+      if (bootUser) {
+        openPendingDashboardEntry();
+        const openedDashboardEntry = _dashboardDestinationRevision > dashboardRevisionAtBoot;
+        if (!runningSessionRestored && !openedDashboardEntry && !_pendingDashboardEntry) {
+          requestAnimationFrame(() => {
+            showDietPremiumReportIfNeeded().catch((e) => console.warn('[diet-premium-report]', e));
+          });
+          setTimeout(() => {
+            document.querySelectorAll('.today-cell')[0]
+              ?.scrollIntoView({ behavior:'smooth', block:'center' });
+          }, 400);
+          // PWA 설치 안내 배너 (앱 미설치 + 이전에 닫지 않았으면)
+          showPWAInstallBanner();
+        }
+        updateInstallBtn();
       }
-      updateInstallBtn();
     }
   }
 }

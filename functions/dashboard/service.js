@@ -8,9 +8,7 @@ const { buildDashboardSnapshot, addDays, dateKeyAt } = require("./aggregate");
 const { DEFAULT_DASHBOARD_WEIGHTS, normalizeDashboardWeights } = require("./contract");
 const {
   canonicalTomatoOwnerId,
-  isSharedTomatoOwner,
-  mergeTomatoDocuments,
-  mergeTomatoWorkoutDocuments,
+  resolveTomatoDataOwnerId,
   tomatoOwnerAliases,
 } = require("./owner");
 
@@ -57,30 +55,22 @@ function verifyInternalRequest(req, secret, nowEpochMs = Date.now()) {
 }
 
 async function loadTomatoSource(tomatoDb, ownerId, nowEpochMs) {
-  const canonicalOwnerId = canonicalTomatoOwnerId(ownerId);
+  const dataOwnerId = await resolveTomatoDataOwnerId(tomatoDb, ownerId);
   const todayKey = dateKeyAt(nowEpochMs);
   const startKey = addDays(todayKey, -365);
-  const accountSources = await Promise.all(tomatoOwnerAliases(canonicalOwnerId).map((sourceOwnerId) => Promise.all([
-    tomatoDb.collection(`users/${sourceOwnerId}/workouts`).where(FieldPath.documentId(), ">=", startKey).get(),
-    tomatoDb.collection(`users/${sourceOwnerId}/settings`).get(),
-    tomatoDb.collection(`users/${sourceOwnerId}/exercises`).get(),
-  ])));
-  const legacyRoot = isSharedTomatoOwner(canonicalOwnerId)
-    ? await Promise.all([
-      tomatoDb.collection("workouts").where(FieldPath.documentId(), ">=", startKey).get(),
-      tomatoDb.collection("settings").get(),
-      tomatoDb.collection("exercises").get(),
-    ])
-    : null;
-  const sourceGroups = legacyRoot ? [...accountSources, legacyRoot] : accountSources;
+  const [workoutsSnapshot, settingsSnapshot, exercisesSnapshot] = await Promise.all([
+    tomatoDb.collection(`users/${dataOwnerId}/workouts`).where(FieldPath.documentId(), ">=", startKey).get(),
+    tomatoDb.collection(`users/${dataOwnerId}/settings`).get(),
+    tomatoDb.collection(`users/${dataOwnerId}/exercises`).get(),
+  ]);
   return {
-    workouts: mergeTomatoWorkoutDocuments(sourceGroups.map((group) => group[0]), (document) => ({
+    workouts: workoutsSnapshot.docs.map((document) => ({
       id: document.id, dateKey: document.id, ...document.data(),
     })),
-    settings: Object.fromEntries(mergeTomatoDocuments(sourceGroups.map((group) => group[1]), (document) => [
+    settings: Object.fromEntries(settingsSnapshot.docs.map((document) => [
       document.id, document.data()?.value ?? document.data(),
     ])),
-    exercises: mergeTomatoDocuments(sourceGroups.map((group) => group[2]), (document) => ({
+    exercises: exercisesSnapshot.docs.map((document) => ({
       id: document.id, ...document.data(),
     })),
   };

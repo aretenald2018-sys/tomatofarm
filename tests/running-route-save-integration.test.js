@@ -456,10 +456,11 @@ test('malformed preview ref fails before route or day persistence', async () => 
 test('general workout load restores preview plus ref without eager full-route hydration', () => {
   const loadSource = readFileSync(path.join(repoRoot, 'workout/load.js'), 'utf8');
   const hydrationSource = readFileSync(path.join(repoRoot, 'workout/session-hydration.js'), 'utf8');
-  const dataLoadSource = readFileSync(path.join(repoRoot, 'data/data-load.js'), 'utf8');
+  const accountUnificationSource = readFileSync(path.join(repoRoot, 'data/account-unification.js'), 'utf8');
 
   assert.match(hydrationSource, /route:\s*Array\.isArray\(source\.runRoute\)\s*\?\s*source\.runRoute\s*:\s*\[\]/);
   assert.match(hydrationSource, /routeRef:\s*source\.runRouteRef\s*\|\|\s*null/);
   assert.doesNotMatch(loadSource, /loadRunningRoute/);
-  assert.match(dataLoadSource, /'runRoute',\s*'runRouteRef',\s*'runRouteSummary'/);
+  assert.match(accountUnificationSource, /'running_routes'/);
+  assert.doesNotMatch(accountUnificationSource, /WORKOUT_UNIFICATION_FIELDS|buildMissingWorkoutFieldPatch/);
 });

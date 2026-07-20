@@ -3,6 +3,7 @@
 import {
   db, collection, getDocs, query, where, documentId,
 } from './data-core.js';
+import { resolvePrivateDataOwnerId } from './shared-account-owner.js';
 
 function chunk(items, size) {
   const chunks = [];
@@ -40,11 +41,12 @@ export async function getAdminSocialSnapshot() {
 }
 
 export async function getAdminRecentWorkouts(userId, dateKeys) {
+  const ownerId = await resolvePrivateDataOwnerId(userId);
   const workouts = [];
   for (const batch of chunk(dateKeys, 30)) {
     if (!batch.length) continue;
     const snapshot = await getDocs(query(
-      collection(db, 'users', userId, 'workouts'),
+      collection(db, 'users', ownerId, 'workouts'),
       where(documentId(), 'in', batch),
     ));
     snapshot.forEach((entry) => workouts.push({ dk: entry.id, w: entry.data() }));
@@ -53,11 +55,12 @@ export async function getAdminRecentWorkouts(userId, dateKeys) {
 }
 
 export async function getAdminRecentBodyCheckins(userId, dateKeys) {
+  const ownerId = await resolvePrivateDataOwnerId(userId);
   const checkins = [];
   for (const batch of chunk(dateKeys, 30)) {
     if (!batch.length) continue;
     const snapshot = await getDocs(query(
-      collection(db, 'users', userId, 'body_checkins'),
+      collection(db, 'users', ownerId, 'body_checkins'),
       where('date', 'in', batch),
     ));
     snapshot.forEach((entry) => checkins.push({ id: entry.id, ...entry.data() }));

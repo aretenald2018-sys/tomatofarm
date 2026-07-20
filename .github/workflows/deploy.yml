@@ -24,14 +24,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Verify shared account SSOT release gate
+        env:
+          TOMATO_SHARED_OWNER_V2_READY: ${{ vars.TOMATO_SHARED_OWNER_V2_READY }}
+        run: node scripts/verify-shared-owner-release-gate.mjs
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
+
+      - name: Generate build info
+        run: node scripts/generate-build-info.mjs
 
       - name: Verify runtime assets
         run: node scripts/verify-runtime-assets.mjs
 
-      - name: Generate build info
-        run: node scripts/generate-build-info.mjs
+      - name: Verify downloadable APK runtime assets
+        run: node scripts/verify-apk-runtime-assets.mjs --apk public/downloads/tomato-mobile-debug.apk
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

@@ -6,8 +6,8 @@ import { initializeApp }    from "https://www.gstatic.com/firebasejs/11.6.0/fire
 import { initializeAppCheck, ReCaptchaV3Provider } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app-check.js";
 import {
   getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
-  doc, setDoc, updateDoc, deleteDoc, getDoc,
-  collection, getDocs, query, where, documentId, orderBy, limit,
+  doc, setDoc, updateDoc, deleteDoc, getDoc, getDocFromServer,
+  collection, getDocs, getDocsFromServer, query, where, documentId, orderBy, limit,
   arrayUnion, writeBatch, runTransaction, onSnapshot,
 } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 import { getFunctions } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-functions.js";
@@ -17,7 +17,10 @@ import { createFirestoreWithMultiTabCache } from './firestore-cache.js';
 import {
   ADMIN_ACCOUNT_ID,
   ADMIN_GUEST_ACCOUNT_ID,
-  canonicalAccountOwnerId,
+  isSharedAdminAccount,
+  normalizeSharedAccountDataOwnerId,
+  resolveAccountDataOwnerId,
+  SHARED_ACCOUNT_OWNER_CACHE_KEY,
 } from './account-unification.js';
 
 // ── Firebase 초기화 ─────────────────────────────────────────────
@@ -55,7 +58,7 @@ export const db = createFirestoreWithMultiTabCache(app, {
 export const functions = getFunctions(app, 'asia-northeast3');
 
 // Firestore 함수 re-export (하위 모듈용)
-export { doc, setDoc, updateDoc, deleteDoc, getDoc, collection, getDocs, query, where, documentId, orderBy, limit, arrayUnion, writeBatch, runTransaction, onSnapshot };
+export { doc, setDoc, updateDoc, deleteDoc, getDoc, getDocFromServer, collection, getDocs, getDocsFromServer, query, where, documentId, orderBy, limit, arrayUnion, writeBatch, runTransaction, onSnapshot };
 
 // ── IndexedDB 백업 (모바일 localStorage 클리어 방지) ─────────────
 const _IDB_NAME = 'dashboard3_session';
@@ -109,6 +112,37 @@ export function setCurrentUserRef(u) { _currentUser = u; }
 export const ADMIN_ID       = ADMIN_ACCOUNT_ID;
 export const ADMIN_GUEST_ID = ADMIN_GUEST_ACCOUNT_ID;
 
+let _cachedSharedAccountDataOwnerId = normalizeSharedAccountDataOwnerId(
+  localStorage.getItem(SHARED_ACCOUNT_OWNER_CACHE_KEY),
+);
+// A persisted value is only an offline hint. Every new JS session starts
+// unresolved until shared-account-owner.js validates the remote registry or
+// explicitly accepts this hint after a server-read failure.
+let _sharedAccountDataOwnerId = null;
+
+export function getCachedSharedAccountDataOwnerId() {
+  return _cachedSharedAccountDataOwnerId;
+}
+
+export function getSharedAccountDataOwnerId() {
+  return _sharedAccountDataOwnerId;
+}
+
+export function setSharedAccountDataOwnerId(ownerId) {
+  const normalized = normalizeSharedAccountDataOwnerId(ownerId);
+  if (!normalized) throw new TypeError('shared account data owner must be an admin alias');
+  // Persist first: if the device journal/cache cannot be made durable, keep
+  // the in-memory owner unresolved so app bootstrap remains fail-closed.
+  localStorage.setItem(SHARED_ACCOUNT_OWNER_CACHE_KEY, normalized);
+  _sharedAccountDataOwnerId = normalized;
+  _cachedSharedAccountDataOwnerId = normalized;
+  return normalized;
+}
+
+export function resolveDataOwnerId(ownerId) {
+  return resolveAccountDataOwnerId(ownerId, _sharedAccountDataOwnerId);
+}
+
 let _kimMode = localStorage.getItem('kimMode') || 'admin';
 export function getKimMode() { return _kimMode; }
 export function setKimMode(mode) {
@@ -118,13 +152,18 @@ export function setKimMode(mode) {
 
 export function getDataOwnerId() {
   if (!_currentUser) return null;
-  return canonicalAccountOwnerId(_currentUser.id);
+  return resolveDataOwnerId(_currentUser.id);
 }
 
 // ── Firebase 경로 헬퍼 ──────────────────────────────────────────
 export function _col(name) {
   const ownerId = getDataOwnerId();
   if (!ownerId) {
+    if (_currentUser && isSharedAdminAccount(_currentUser.id)) {
+      const error = new Error('shared account data owner is unresolved');
+      error.code = 'SHARED_DATA_OWNER_UNRESOLVED';
+      throw error;
+    }
     console.warn('[data] _col called without user! collection:', name);
     return collection(db, '_orphan', name);
   }
@@ -134,6 +173,11 @@ export function _col(name) {
 export function _doc(name, id) {
   const ownerId = getDataOwnerId();
   if (!ownerId) {
+    if (_currentUser && isSharedAdminAccount(_currentUser.id)) {
+      const error = new Error('shared account data owner is unresolved');
+      error.code = 'SHARED_DATA_OWNER_UNRESOLVED';
+      throw error;
+    }
     console.warn('[data] _doc called without user! doc:', name, id);
     return doc(db, '_orphan', name, id);
   }
