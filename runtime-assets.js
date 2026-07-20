@@ -110,6 +110,7 @@
   './home/welcome-back.js',
   './home/today-summary.js',
   './home/weekly-summary-model.js',
+  './home/weekly-summary-view.js',
   './home/weekly-summary.js',
   './home/weekly-streak.js',
   './home/goals-quests.js',
