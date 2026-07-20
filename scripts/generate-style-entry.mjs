@@ -76,5 +76,14 @@ const entry = [
   ...parts,
 ].join('\n');
 
-await writeFile(resolve(root, 'style.css'), entry, 'utf8');
-console.log(`[style-entry] bundled ${STYLE_ENTRY_SOURCES.length} sources`);
+const outputPath = resolve(root, 'style.css');
+if (process.argv.includes('--check')) {
+  const current = await readFile(outputPath, 'utf8').catch(() => '');
+  if (current !== entry) {
+    throw new Error('style.css is stale; run node scripts/generate-style-entry.mjs and commit the result');
+  }
+  console.log(`[style-entry] verified ${STYLE_ENTRY_SOURCES.length} sources`);
+} else {
+  await writeFile(outputPath, entry, 'utf8');
+  console.log(`[style-entry] bundled ${STYLE_ENTRY_SOURCES.length} sources`);
+}

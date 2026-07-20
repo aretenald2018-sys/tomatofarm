@@ -205,7 +205,7 @@ test('workout data updates rerender the active app tab', () => {
   }
 });
 
-test('pending journal is precached and the service worker cache includes both fixes', () => {
+test('pending journal is precached under a versioned service worker cache', () => {
   const runtimeAssetList = sliceBetween(
     runtimeAssetsSource,
     'root.TOMATO_STATIC_ASSETS = Object.freeze([',

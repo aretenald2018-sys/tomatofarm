@@ -1,47 +1,36 @@
-# Tomato Farm Design System
+# Tomato Farm design system
 
-## CSS load order and ownership
+## CSS ownership
 
-1. `styles/tokens.css`: color, spacing, radius, typography, elevation, motion, interaction tokens only.
-2. `styles/components.css`: established TDS component contracts and utilities.
-3. `styles/primitives.css`: composable field, chip, sheet, and feedback-state primitives.
-4. `styles/features/*.css`: feature-owned rules in the exact order declared by `scripts/generate-style-entry.mjs`. A file owns one screen or interaction surface; later files are explicit compatibility overrides.
-5. `styles/compatibility.css`: app-shell font and temporary light-mode compatibility only. Feature rules do not belong here.
-6. `styles/workout/expert-mode.css`: the isolated expert-mode scene stylesheet. `expert-mode.css` is a temporary empty compatibility entry.
-7. `styles/accessibility.css`: last-loaded focus, minimum touch target, assistive text, and reduced-motion guarantees.
+The cascade order is the `STYLE_ENTRY_SOURCES` array in `scripts/generate-style-entry.mjs`.
 
-Feature selectors should stay under their feature root. New selectors must not rely on a later `!important` override. Shared components use the `tds-` prefix; feature-owned classes keep their existing feature prefix.
+1. `styles/tokens.css` owns design tokens.
+2. `styles/components.css` and `styles/primitives.css` own reusable components and fields.
+3. `styles/features/*.css` owns feature surfaces. A selector stays under its feature root.
+4. `styles/compatibility.css` contains temporary compatibility only.
+5. `styles/workout/expert-mode.css` owns the isolated expert-mode scene.
+6. `styles/accessibility.css` is the final focus, touch-target, assistive-text, and reduced-motion layer.
 
-`style.css` is a generated standalone entry bundle, not an import manifest and not an editing surface. `scripts/generate-style-entry.mjs` concatenates each owned stylesheet with source boundary comments in its declared order. This is a native WebView compatibility boundary: an older cached `index.html` that requests only `style.css` still receives the complete cascade after an update. Moving a rule between feature files requires checking its adjacent source in that generator; alphabetic filename order is not the cascade contract. `runtime-assets.js` must list every source stylesheet so offline startup sees the same cascade.
+Root `style.css` is a generated standalone WebView bundle. Never edit it directly. Change an owner stylesheet, run the generator, and use `node scripts/generate-style-entry.mjs --check` to verify that the tracked bundle is current.
 
-### Large stylesheet exceptions
+All owner stylesheets and the generated bundle must remain in `runtime-assets.js`. Moving a rule between files requires checking the generator's declared order; filename order is not the cascade contract.
 
-- `styles/features/home-life-zone.css` exceeds 1,200 lines because the life-zone scene, its responsive sprite layout, and reduced-motion variants share the same selector state machine. Its sole responsibility is the home life-zone surface.
-- `styles/features/workout-day-sheet.css` exceeds 1,200 lines because collapsed/full sheet geometry, touch behavior, keyboard pad, and running read cards form one ordered responsive surface. Its sole responsibility is the workout day sheet.
-- `styles/workout/expert-mode.css` remains a larger isolated scene stylesheet. It owns only Expert/Max/Test scene presentation; splitting it before the remaining legacy scene selectors are removed would obscure their cross-scene override order.
+## Selector rules
 
-All other feature stylesheets stay below 1,200 lines. These three exceptions are guarded by the architecture test and must not gain a second responsibility.
+- Shared components use the `tds-` prefix; feature classes keep their established feature prefix.
+- New rules do not depend on a later `!important` override.
+- Feature selectors do not leak outside their screen/controller root.
+- Layout data that belongs to a runtime scene is passed through CSS variables rather than duplicated as hard-coded coordinates in several stylesheets.
 
 ## Interaction contract
 
-- Primary interactive controls use a native `button`, `a`, `input`, `select`, or `textarea` whenever possible.
-- Custom controls require keyboard behavior, an accessible name, and state attributes such as `aria-expanded`, `aria-selected`, or `aria-pressed`.
-- Primary touch controls are at least `44px` by `44px` through `--touch-target-min`.
-- Modal opening moves focus into the dialog, traps Tab within the top dialog, and restores focus to the opener on close.
-- Loading containers use `aria-busy="true"`; empty, offline, error, and success feedback use `.tds-feedback` with `data-state`.
+- Prefer native `button`, `a`, `input`, `select`, and `textarea` elements.
+- Custom controls require an accessible name, keyboard behavior, and the relevant `aria-*` state.
+- Primary touch targets are at least `44px` by `44px` through `--touch-target-min`.
+- Opening a dialog moves focus into it; closing restores focus to the opener.
+- Loading surfaces use `aria-busy`; empty, offline, error, and success feedback use `.tds-feedback` with `data-state`.
 - Motion respects `prefers-reduced-motion` in the final accessibility layer.
 
-## Primitive examples
+## Visual verification
 
-```html
-<label class="tds-field">
-  <span class="tds-field-label">운동 이름</span>
-  <input class="tds-input" name="exercise" aria-describedby="exercise-help">
-  <span class="tds-field-help" id="exercise-help">검색어를 입력하세요.</span>
-</label>
-
-<section class="tds-feedback" data-state="offline" role="status">
-  <p>오프라인 상태입니다.</p>
-  <div class="tds-feedback-actions"><button class="tds-btn">다시 시도</button></div>
-</section>
-```
+UI completion requires the real composed screen at phone and tablet widths. Verify enabled and disabled controls, focus/keyboard behavior, modal close paths, loading/error states, and reduced motion. Source regexes and isolated asset dimensions are not visual approval.

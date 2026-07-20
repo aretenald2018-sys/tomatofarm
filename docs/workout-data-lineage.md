@@ -1,42 +1,33 @@
-# Workout Data Lineage
+# Workout data lineage
 
-이 문서는 테스트모드 운동 앱에서 같은 데이터가 화면마다 다르게 해석되는 문제를 막기 위한 기준표다.
+## Stable identifiers
 
-## Field Ownership
+| Field | Meaning | Owner |
+| --- | --- | --- |
+| `exerciseId` | 실제로 추가·기록한 운동 종목 | `users/{owner}/exercises` catalog |
+| `movementId` | 여러 종목을 묶는 움직임 taxonomy | `config.js` `MOVEMENTS` |
+| `gymId` / `gymIds` / `gymTags` | 운동 종목의 체육관 노출 범위 | equipment/exercise repositories |
+| `recommendationMeta.track` | 볼륨(M), 강도(H), 프로그램 기록 분류 | workout recommendation model |
+| `romPct` | 세트별 ROM 보정률 | workout set model |
+| `rpe` / `rir` | 세트 강도 입력 | workout set model |
 
-| Field | Meaning | Writer | Readers |
-| --- | --- | --- | --- |
-| `exerciseId` | 실제 추가/기록 단위 | 운동 추가 모달, dev seed | 세트 목록, 직전 기록, 추천 무게, 벤치마크 actuals |
-| `movementId` | 같은 동작을 묶는 통합 단위 | 운동 메타데이터 | 벤치마크 후보, movement 기반 fallback |
-| `gymId`, `gymTags`, `gymIds` | 특정 지점 노출 범위 | 기구/운동 메타 편집 | 종목 추가 필터, benchmark resolver |
-| `recommendationMeta.track` | 볼륨 `M` / 강도 `H` 실제 기록 분류 | 추천 세트 생성, 세트 저장 | 그래프, fixture 검증 |
-| `romPct` | 세트별 ROM 보정률 | 세트 UI | `calcSetVolume`, `estimateSet1RM`, 그래프 |
-| `rpe` | 내부 계산 입력값 | 세트 UI/추천 | `estimateSet1RM`; UI 문구는 RIR 기준으로 표시 |
+## Calculation owners
 
-## SSOT Functions
-
-| Concern | Single Source |
+| Concern | Single source |
 | --- | --- |
-| 세트 볼륨 | `calc/volume.js` `calcSetVolume(set)` |
-| 세트 e1RM | `calc.js` `estimateSet1RM(set)` |
-| 트랙별 세션 지표 | `calc.js` `calcTrackSessionMetric(entry, track)` |
-| 운동 지점 스코프 | `resolveMovementExercises(movementId, exList, { gymId })` |
-| 벤치마크 대표 운동 | `resolveBenchmarkExercise(benchmark, exList, { gymId })` |
-| 벤치마크 실측 | `buildBenchmarkActuals({ cache, exList, benchmark, todayKey })` |
+| 세트 볼륨 | `calc/volume.js` `calcSetVolume` |
+| 세트 e1RM | `calc.js` `estimateSet1RM` |
+| 트랙별 세션 지표 | `calc.js` `calcTrackSessionMetric` |
+| movement의 실제 종목 | `resolveMovementExercises` |
+| benchmark 대상 종목 | `resolveBenchmarkExercise` |
+| benchmark 실적 | `buildBenchmarkActuals` |
 
-## Required Invariants
+## Required invariants
 
-1. `exerciseId`가 있는 벤치마크는 같은 `movementId`의 다른 지점 운동 기록을 섞지 않는다.
-2. legacy `movementId` 벤치마크는 resolver를 통해 현재 지점에서 실제 추가 가능한 종목으로 표시한다.
-3. ROM 80% 세트는 볼륨과 강도 지표 모두 0.8배로 반영한다.
-4. 테스트모드 직전 기록 표시는 `kg x reps x sets`만 노출한다.
-5. 배포 완료 기준은 GitHub Pages 성공이 아니라 `build-info.json.commit === github.sha` 확인까지다.
+1. `exerciseId`가 있는 기록은 같은 `movementId`의 다른 종목과 합치지 않습니다.
+2. legacy `movementId` benchmark는 현재 체육관에서 실제 선택 가능한 종목으로만 해석합니다.
+3. ROM 보정은 볼륨과 강도 계산에 동일하게 반영합니다.
+4. 과거 workout document는 실행 당시의 스냅샷이며 현재 exercise catalog를 덮어쓰지 않습니다.
+5. 저장은 workout payload builder를 거치며 사진, route/ref, session metadata를 round trip에서 보존합니다.
 
-## Fixture
-
-대표 데이터는 `tests/fixtures/workout-test-mode-fixture.json`에 둔다. 검증은 아래 명령으로 한다.
-
-```bash
-node scripts/verify-workout-fixture.mjs
-node --test tests/*.js
-```
+Fixture 검증은 `node scripts/verify-workout-fixture.mjs`로 실행합니다.

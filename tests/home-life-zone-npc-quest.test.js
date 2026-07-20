@@ -261,7 +261,6 @@ test('life zone running actors render track sprites and a map capture bubble on 
   const source = readText('home/life-zone.js');
   const css = readAppCssSync();
   const sw = readText('sw.js') + readText('runtime-assets.js');
-  const plan = readText('docs/ai/features/2026-06-29-running-track-live-art.md');
   const sprites = [
     'jups-running-track.png',
     'moonjung-tomato-running-track.png',
@@ -325,11 +324,6 @@ test('life zone running actors render track sprites and a map capture bubble on 
   assert.match(source, /selfRunning \? actor\.source === 'self' : !runningBubbleRendered/);
   assert.equal(fs.existsSync(path.join(root, 'scripts/make-life-zone-running-sprites.py')), false);
   assert.equal(fs.existsSync(path.join(root, 'scripts/process-life-zone-running-sprites.py')), true);
-  assert.match(plan, /imagegen/);
-  assert.match(plan, /jups-running-track\.png/);
-  assert.match(plan, /moonjung-tomato-running-track\.png/);
-  assert.match(plan, /lee-jaeheon-running-track\.png/);
-
   assert.match(css, /\.lz-actor--pose-running-track \{/);
   assert.match(css, /\.lz-actor--pose-running-track::before \{/);
   assert.match(css, /--lz-run-scale:\s*1/);

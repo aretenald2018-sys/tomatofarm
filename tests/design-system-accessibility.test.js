@@ -88,5 +88,6 @@ test('design system owns tokens, primitives, accessibility, and CSS order', asyn
   assert.match(runtimeAssets, /\.\/styles\/primitives\.css/);
   assert.match(runtimeAssets, /\.\/styles\/accessibility\.css/);
   assert.match(runtimeAssets, /\.\/styles\/workout\/expert-mode\.css/);
-  assert.match(docs, /CSS load order and ownership/);
+  assert.match(docs, /STYLE_ENTRY_SOURCES/);
+  assert.match(docs, /style\.css` is a generated standalone WebView bundle/);
 });
