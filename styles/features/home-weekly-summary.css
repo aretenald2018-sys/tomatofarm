@@ -1,0 +1,120 @@
+/* Home weekly summary — readable, data-backed cards (mockup-matched) */
+.home-weekly-summary {
+  --summary-calorie: #22a95c;
+  --summary-carb: #2f9d6a;
+  --summary-protein: #7856c8;
+  --summary-fat: #d97736;
+  --summary-running: #237db8;
+  --summary-strength: #326fae;
+  --summary-positive: #218653;
+  --summary-negative: #d24b4b;
+  display: grid;
+  gap: 14px;
+  margin: 14px 0 18px;
+}
+.home-weekly-summary .summary-card { margin: 0; overflow: hidden; padding: 18px; }
+.home-weekly-summary .home-card-header { align-items: center; margin-bottom: 14px; }
+.home-weekly-summary .home-card-title { display: flex; align-items: center; gap: 6px; font-size: 16px; font-weight: 800; line-height: 1.3; }
+.home-weekly-summary .summary-split-card .home-card-title { font-size: 14px; }
+.home-weekly-summary .summary-title-icon { flex: 0 0 auto; font-size: 16px; line-height: 1; }
+.home-weekly-summary .summary-pill { flex: 0 0 auto; padding: 6px 9px; border-radius: 999px; background: var(--surface3); color: var(--text-secondary); font-size: 12px; font-weight: 700; white-space: nowrap; }
+
+/* ── 오늘 식단 ── */
+.home-weekly-summary .summary-diet-body { display: grid; grid-template-columns: minmax(132px, .9fr) minmax(0, 1.1fr); gap: 18px; align-items: center; }
+.home-weekly-summary .summary-calorie-ring { display: grid; width: 136px; max-width: 100%; aspect-ratio: 1; place-items: center; padding: 11px; border-radius: 50%; background: conic-gradient(var(--summary-calorie) var(--summary-ring-progress), var(--surface3) 0); }
+.home-weekly-summary .summary-calorie-ring.no-target { background: var(--surface3); }
+.home-weekly-summary .summary-calorie-ring-center { display: flex; width: 100%; height: 100%; flex-direction: column; align-items: center; justify-content: center; border-radius: 50%; background: var(--surface); text-align: center; }
+.home-weekly-summary .summary-calorie-ring-center strong { color: var(--text); font-family: var(--font-mono); font-size: 30px; letter-spacing: -.04em; line-height: 1.1; }
+.home-weekly-summary .summary-calorie-ring-center span { color: var(--text-secondary); font-size: 12px; line-height: 1.3; }
+.home-weekly-summary .summary-calorie-label { font-weight: 600; }
+.home-weekly-summary .summary-calorie-ring-center b { margin-top: 3px; color: var(--summary-calorie); font-size: 16px; }
+.home-weekly-summary .summary-macro-list { display: flex; min-width: 0; flex-direction: column; gap: 14px; }
+.home-weekly-summary .summary-macro-row { min-width: 0; }
+.home-weekly-summary .summary-macro-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px; align-items: baseline; color: var(--text-secondary); font-size: 14px; line-height: 1.35; }
+.home-weekly-summary .summary-macro-head b { grid-column: 2; grid-row: 1; color: var(--text-secondary); font-size: 14px; font-weight: 700; }
+.home-weekly-summary .summary-macro-head strong { grid-column: 1 / -1; grid-row: 2; color: var(--text); font-family: var(--font-mono); font-size: 15px; font-weight: 700; white-space: nowrap; }
+.home-weekly-summary .summary-progress { height: 7px; margin-top: 6px; overflow: hidden; border-radius: 99px; background: var(--surface3); }
+.home-weekly-summary .summary-progress i { display: block; height: 100%; border-radius: inherit; }
+.home-weekly-summary .summary-progress .carb { background: var(--summary-carb); }
+.home-weekly-summary .summary-progress .protein { background: var(--summary-protein); }
+.home-weekly-summary .summary-progress .fat { background: var(--summary-fat); }
+.home-weekly-summary .summary-macro-no-target { margin-top: 6px; color: var(--text-tertiary); font-size: 12px; }
+
+/* ── split grid (근력 목표 · 러닝) ── */
+.home-weekly-summary .summary-split-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: stretch; }
+.home-weekly-summary .summary-split-card { min-width: 0; }
+
+/* ── 이번 주 근력 목표 ── */
+.home-weekly-summary .summary-goal-progress { margin: -4px 0 12px; color: var(--text-secondary); font-size: 14px; line-height: 1.2; }
+.home-weekly-summary .summary-goal-progress strong { color: var(--summary-strength); font-family: var(--font-mono); font-size: 20px; font-weight: 800; }
+.home-weekly-summary .summary-goal-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.home-weekly-summary .summary-goal-row { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+.home-weekly-summary .summary-goal-check { position: relative; flex: 0 0 auto; margin-top: 1px; width: 18px; height: 18px; border: 2px solid var(--border); border-radius: 50%; box-sizing: border-box; }
+.home-weekly-summary .summary-goal-row.is-done .summary-goal-check { border-color: var(--summary-strength); background: var(--summary-strength); }
+.home-weekly-summary .summary-goal-row.is-done .summary-goal-check::after { content: ''; position: absolute; top: 3px; left: 5px; width: 4px; height: 8px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.home-weekly-summary .summary-goal-body { display: flex; min-width: 0; flex-direction: column; gap: 1px; }
+.home-weekly-summary .summary-goal-name { min-width: 0; overflow: hidden; color: var(--text); font-size: 13px; font-weight: 600; line-height: 1.25; white-space: nowrap; text-overflow: ellipsis; }
+.home-weekly-summary .summary-goal-target { color: var(--text-secondary); font-family: var(--font-mono); font-size: 12px; font-weight: 700; line-height: 1.2; white-space: nowrap; }
+.home-weekly-summary .summary-goal-row:not(.is-done) .summary-goal-name { color: var(--text-secondary); }
+
+/* ── 최근 러닝 ── */
+.home-weekly-summary .summary-run-top { display: flex; flex-direction: column; gap: 3px; }
+.home-weekly-summary .summary-run-kicker { color: var(--text-secondary); font-size: 12px; line-height: 1.2; }
+.home-weekly-summary .summary-pace { display: flex; align-items: baseline; gap: 3px; white-space: nowrap; }
+.home-weekly-summary .summary-pace strong { color: var(--text); font-family: var(--font-mono); font-size: 27px; letter-spacing: -.04em; line-height: 1; }
+.home-weekly-summary .summary-pace b { color: var(--text-secondary); font-size: 12px; font-weight: 600; }
+.home-weekly-summary .summary-run-improve { display: flex; align-items: baseline; gap: 6px; margin-top: 9px; }
+.home-weekly-summary .summary-run-improve span { color: var(--text-secondary); font-size: 12px; line-height: 1.2; white-space: nowrap; }
+.home-weekly-summary .summary-run-delta { font-family: var(--font-mono); font-size: 17px; font-weight: 800; line-height: 1; white-space: nowrap; }
+.home-weekly-summary .summary-run-delta.is-positive { color: var(--summary-positive); }
+.home-weekly-summary .summary-run-delta.is-negative { color: var(--summary-negative); }
+.home-weekly-summary .summary-run-prev { margin-top: 7px; color: var(--text-secondary); font-size: 12px; line-height: 1.3; }
+.home-weekly-summary .summary-run-chart { display: flex; align-items: flex-end; justify-content: space-between; gap: 4px; height: 66px; margin-top: 12px; }
+.home-weekly-summary .summary-run-bar-col { display: flex; flex: 1 1 0; flex-direction: column; align-items: center; justify-content: flex-end; gap: 5px; height: 100%; }
+.home-weekly-summary .summary-run-bar-track { display: flex; width: 100%; height: 46px; align-items: flex-end; justify-content: center; }
+.home-weekly-summary .summary-run-bar-track i { display: block; width: 62%; max-width: 11px; min-height: 3px; border-radius: 3px; background: var(--surface3); }
+.home-weekly-summary .summary-run-bar-track i.has-run { background: color-mix(in srgb, var(--summary-running) 55%, var(--surface3)); }
+.home-weekly-summary .summary-run-bar-track i.is-best { background: var(--summary-running); }
+.home-weekly-summary .summary-run-bar-col span { color: var(--text-tertiary); font-size: 11px; line-height: 1; }
+.home-weekly-summary .summary-run-bar-col span.is-best { color: var(--summary-running); font-weight: 700; }
+
+/* ── 이번 주 변화 ── */
+.home-weekly-summary .summary-change-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.home-weekly-summary .summary-change-metric { display: flex; min-width: 0; flex-direction: column; align-items: center; gap: 5px; padding: 0 8px; text-align: center; }
+.home-weekly-summary .summary-change-metric + .summary-change-metric { border-left: 1px solid var(--border); }
+.home-weekly-summary .summary-change-label { display: flex; align-items: center; gap: 4px; color: var(--text-secondary); font-size: 12px; line-height: 1.3; }
+.home-weekly-summary .summary-change-icon { font-size: 10px; line-height: 1; }
+.home-weekly-summary .summary-change-icon.is-positive { color: var(--summary-positive); }
+.home-weekly-summary .summary-change-icon.is-negative { color: var(--summary-negative); }
+.home-weekly-summary .summary-change-icon.is-strength { color: var(--summary-strength); }
+.home-weekly-summary .summary-change-icon.is-muted { color: var(--text-tertiary); }
+.home-weekly-summary .summary-change-metric small { color: var(--text-secondary); font-size: 12px; line-height: 1.3; }
+.home-weekly-summary .summary-change-metric strong { color: var(--text); font-family: var(--font-mono); font-size: 21px; line-height: 1.1; white-space: nowrap; }
+.home-weekly-summary .summary-change-metric strong.is-positive { color: var(--summary-positive); }
+.home-weekly-summary .summary-change-metric strong.is-negative { color: var(--summary-negative); }
+.home-weekly-summary .summary-change-metric strong.is-strength { color: var(--summary-strength); }
+.home-weekly-summary .summary-change-metric strong.is-muted { color: var(--text-tertiary); font-size: 15px; }
+
+/* ── empty state ── */
+.home-weekly-summary .summary-empty { display: flex; min-height: 118px; flex-direction: column; align-items: center; justify-content: center; gap: 7px; color: var(--text-secondary); font-size: 13px; line-height: 1.45; text-align: center; }
+.home-weekly-summary .summary-empty strong { color: var(--text); font-size: 14px; }
+.home-weekly-summary .summary-empty span { font-size: 12px; }
+.home-weekly-summary .summary-empty-action { min-height: 40px; padding: 9px 15px; font-size: 13px; font-weight: 700; }
+
+@media (max-width: 460px) {
+  .home-weekly-summary { gap: 12px; }
+  .home-weekly-summary .summary-card { padding: 15px; }
+  .home-weekly-summary .summary-diet-body { grid-template-columns: minmax(112px, .85fr) minmax(0, 1.15fr); gap: 12px; }
+  .home-weekly-summary .summary-calorie-ring { width: 116px; }
+  .home-weekly-summary .summary-calorie-ring-center strong { font-size: 24px; }
+  .home-weekly-summary .summary-split-grid { gap: 10px; }
+  .home-weekly-summary .summary-pace strong { font-size: 23px; }
+  .home-weekly-summary .summary-run-delta { font-size: 18px; }
+  .home-weekly-summary .summary-goal-name { font-size: 12px; }
+  .home-weekly-summary .summary-goal-target { font-size: 11px; }
+  .home-weekly-summary .summary-change-metric { padding: 0 4px; }
+  .home-weekly-summary .summary-change-label { font-size: 11px; }
+  .home-weekly-summary .summary-change-metric small { font-size: 11px; }
+  .home-weekly-summary .summary-change-metric strong { font-size: 17px; }
+}
+@media (max-width: 340px) { .home-weekly-summary .summary-split-grid { grid-template-columns: 1fr; } }
