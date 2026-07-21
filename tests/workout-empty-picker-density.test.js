@@ -35,11 +35,42 @@ test('running tab keeps only session tabs in the bottom bar while gym keeps its 
   assert.match(bar, /padding:\s*7px 18px/);
   assert.match(fab, /position:\s*absolute/);
   assert.match(fab, /right:\s*18px/);
-  assert.match(fab, /width:\s*48px/);
-  assert.match(fab, /height:\s*48px/);
+  assert.match(fab, /width:\s*44px/);
+  assert.match(fab, /height:\s*44px/);
   assert.match(ruleBody('.cal-workout-day-sheet .wt-day-fab'), /touch-action:\s*manipulation/);
   assert.match(ruleBody('.wt-running-upload-action'), /min-height:\s*44px/);
-  assert.match(ruleBody('.cal-workout-day-sheet .wt-day-sessionbar[data-running-actions="true"]'), /padding-right:\s*18px/);
+  assert.match(ruleBody('.cal-workout-day-sheet .wt-day-sessionbar[data-running-actions="true"]'), /padding-right:\s*72px/);
+});
+
+test('record export dock sits left of the add button on both gym and running tabs', () => {
+  const start = renderCalendar.indexOf('function _renderWorkoutDayExportDock');
+  const end = renderCalendar.indexOf('function _renderWorkoutDetailSummaryCard', start);
+  assert.ok(start >= 0 && end > start, 'export dock renderer should exist');
+  const dock = renderCalendar.slice(start, end);
+
+  assert.match(dock, /data-wt-sheet-card-action="toggle-export-menu"/);
+  assert.match(dock, /data-wt-sheet-card-action="export-day"[\s\S]*오늘기록추출/);
+  assert.match(dock, /data-wt-sheet-card-action="export-week"[\s\S]*이번주기록추출/);
+  assert.match(dock, /data-wt-day-export-menu hidden/);
+
+  const exportFab = ruleBody('.wt-day-fab--export');
+  const menu = ruleBody('.wt-day-export-menu');
+  // + 버튼(44px) + 오른쪽 여백(18px) + 간격(10px) 만큼 왼쪽에 선다.
+  assert.match(exportFab, /right:\s*72px/);
+  assert.match(ruleBody('.wt-day-fab--export.is-solo'), /right:\s*18px/);
+  assert.match(menu, /position:\s*absolute/);
+  assert.match(ruleBody('.wt-day-export-menu[hidden]'), /display:\s*none/);
+  assert.match(ruleBody('.wt-day-export-option'), /min-height:\s*42px/);
+});
+
+test('session tabs are compact enough to leave room for both floating buttons', () => {
+  const tabs = ruleBody('.wt-day-session-tabs');
+  const tabButton = ruleBody('.wt-day-session-tabs button');
+  assert.match(tabs, /max-width:\s*196px/);
+  assert.match(tabs, /grid-auto-columns:\s*minmax\(52px,\s*1fr\)/);
+  assert.match(tabButton, /min-height:\s*38px/);
+  assert.match(tabButton, /font-size:\s*14px/);
+  assert.match(ruleBody('.cal-workout-day-sheet .wt-day-sessionbar'), /padding:\s*7px 126px/);
 });
 
 test('empty running view offers upload and start with a route illustration', () => {

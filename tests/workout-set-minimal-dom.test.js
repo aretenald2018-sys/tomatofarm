@@ -65,6 +65,9 @@ function buildHarnessScript() {
     '_renderWorkoutExerciseDetailCard',
     '_clearWorkoutSetEditorsForExercise',
     '_runWorkoutHomeSheetCardAction',
+    '_workoutDayExportMenuParts',
+    '_toggleWorkoutDayExportMenu',
+    '_closeWorkoutDayExportMenu',
     '_clearWorkoutSetInputOnFocus',
     '_workoutSetKeyboardElement',
     '_workoutSetKeyboardSheet',
@@ -174,6 +177,7 @@ function buildHarnessScript() {
     function _toggleWorkoutDetailCard() { return false; }
     function _deleteWorkoutExercise() { return false; }
     function _deleteWorkoutActivity() { return false; }
+    function _exportWorkoutRecords() { return false; }
     function _isWorkoutExerciseCompletionStamped() { return false; }
     function _renderWorkoutTrackGraph() { return ''; }
     function activeWorkoutTrack() { return 'M'; }

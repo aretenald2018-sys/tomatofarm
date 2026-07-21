@@ -1,4 +1,4 @@
-import { cpSync, existsSync } from 'node:fs';
+import { cpSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -30,6 +30,20 @@ function run(command, args, cwd = root) {
   });
 }
 
+// 게시하는 APK는 항상 이전 것보다 versionCode가 커야 안드로이드가 설치본을
+// 교체(업데이트)한다. 같은 값으로 다시 올리면 기기에 따라 설치가 거부된다.
+function bumpVersionCode() {
+  const gradleFile = path.join(androidRoot, 'app', 'build.gradle');
+  const source = readFileSync(gradleFile, 'utf8');
+  const match = source.match(/versionCode\s+(\d+)/);
+  if (!match) throw new Error(`versionCode not found in ${gradleFile}`);
+  const next = Number(match[1]) + 1;
+  writeFileSync(gradleFile, source.replace(/versionCode\s+\d+/, `versionCode ${next}`));
+  console.log(`[build-mobile-apk] versionCode ${match[1]} → ${next}`);
+  return next;
+}
+
+bumpVersionCode();
 run(npm, ['run', 'cap:sync']);
 if (!gradle) throw new Error('Android Gradle wrapper is missing. Set TOMATO_GRADLE to a Gradle executable.');
 run(gradle, [':app:assembleDebug'], androidRoot);

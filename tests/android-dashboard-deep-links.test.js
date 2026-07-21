@@ -32,7 +32,10 @@ test('dashboard destinations open their exact TomatoFarm screens', () => {
   assert.doesNotMatch(app, /_takeWorkoutTargetSessionIndex/);
 });
 
-test('the distributable TomatoFarm APK version is bumped for deep links', () => {
-  assert.match(gradle, /versionCode 4/);
+test('the distributable TomatoFarm APK keeps an ever-increasing version', () => {
   assert.match(gradle, /versionName "1\.3"/);
+  // scripts/build-mobile-apk.mjs가 게시할 때마다 올린다. 값이 뒤로 가면 기기가
+  // 다운로드한 APK를 업데이트로 받아들이지 않는다.
+  const versionCode = Number(gradle.match(/versionCode (\d+)/)?.[1]);
+  assert.ok(versionCode >= 5, `versionCode must not regress below 5, got ${versionCode}`);
 });

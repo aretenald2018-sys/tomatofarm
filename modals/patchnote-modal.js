@@ -3,6 +3,7 @@
 // ================================================================
 
 import { getPatchnote, markPatchnoteRead } from '../data.js';
+import { isModalCloseGesture } from '../app/overlay-stack.js';
 
 export const MODAL_HTML = `
 <div class="modal-backdrop" id="patchnote-modal" data-action="patchnote:close" style="display:none;z-index:1003">
@@ -70,7 +71,8 @@ export async function openPatchnote(patchnoteId, fallback) {
 };
 
 export function closePatchnote(e) {
-  if (e && e.target && e.target !== document.getElementById('patchnote-modal')) return;
   const modal = document.getElementById('patchnote-modal');
-  if (modal) modal.style.display = 'none';
+  if (!modal) return;
+  if (e && !isModalCloseGesture(modal, e)) return;
+  modal.style.display = 'none';
 }

@@ -44,7 +44,10 @@ export function openStreakMilestone(type, days) {
 }
 
 export function closeStreakMilestone(e) {
-  if (e && e.target && e.target !== document.getElementById('streak-milestone-modal')) return;
-  document.getElementById('streak-milestone-modal').style.display = 'none';
+  const modal = document.getElementById('streak-milestone-modal');
+  if (!modal) return;
+  if (e && !isModalCloseGesture(modal, e)) return;
+  modal.style.display = 'none';
 }
 import { showConfetti } from '../home/utils.js';
+import { isModalCloseGesture } from '../app/overlay-stack.js';

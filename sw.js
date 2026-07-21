@@ -3,7 +3,7 @@
 
 // 캐시 버전: 타임스탬프 기반 자동 생성 — 파일 수정 시 SW 자동 업데이트
 // (SW 파일 내용이 1바이트라도 바뀌면 브라우저가 새 SW로 인식)
-const CACHE_VERSION = 'tomatofarm-v20260721z5-native-season-widget-and-wear-ack';
+const CACHE_VERSION = 'tomatofarm-v20260721z6-native-season-widget-and-wear-ack';
 const RUNTIME_CACHE = 'dashboard3-runtime';
 importScripts('./runtime-assets.js');
 const STATIC_ASSETS = self.TOMATO_STATIC_ASSETS;
@@ -68,6 +68,11 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
 
   if (request.method !== 'GET') return;
+
+  // 다운로드용 APK(수십 MB)는 서비스워커를 그대로 통과시킨다. respondWith로
+  // 프록시하면 브라우저 다운로드 매니저 대신 워커가 전체를 버퍼링해서
+  // 설치 파일 저장이 실패한다.
+  if (url.pathname.endsWith('.apk')) return;
 
   // HTML, CSS, JS (네트워크 우선)
   if (url.pathname.endsWith('.html') || url.pathname.endsWith('.css') || url.pathname.endsWith('.js') || url.pathname === '/' || url.pathname === '/tomatofarm/') {

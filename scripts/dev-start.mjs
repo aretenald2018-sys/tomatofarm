@@ -11,6 +11,14 @@ const root = path.resolve(scriptDir, '..');
 const serverScript = path.join(scriptDir, 'static-dev-server.mjs');
 const basePort = 5500;
 const maxPort = 5510;
+const expectedApp = (() => {
+  try {
+    const buildInfo = JSON.parse(fs.readFileSync(path.join(root, 'build-info.json'), 'utf8'));
+    return String(buildInfo?.app || '').trim();
+  } catch {
+    return '';
+  }
+})();
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -34,9 +42,20 @@ function fetchText(port, pathname = '/index.html', timeoutMs = 1500) {
   });
 }
 
+// 두 환경이 같은 포트 대역을 쓰기 때문에 앱 식별자까지 확인해야 한다. 확인하지
+// 않으면 TomatoDev 서버에 붙은 채로 production 변경을 검증하게 된다.
 async function isHealthyTomatoServer(port) {
-  const response = await fetchText(port);
-  return Boolean(response?.statusCode === 200 && response.body.includes('토마토 키우기'));
+  const [pageResponse, buildInfoResponse] = await Promise.all([
+    fetchText(port),
+    fetchText(port, '/build-info.json'),
+  ]);
+  if (pageResponse?.statusCode !== 200 || !pageResponse.body.includes('토마토 키우기')) return false;
+  try {
+    const servedApp = String(JSON.parse(buildInfoResponse?.body || '{}')?.app || '').trim();
+    return Boolean(expectedApp && servedApp === expectedApp);
+  } catch {
+    return false;
+  }
 }
 
 function isPortAvailable(port) {

@@ -2147,6 +2147,7 @@ function _renderWorkoutHomeDetailHtml({ cache, plan, checkins, key, includeHead 
         </div>
       ` : '';
   const fabAttrs = `data-wt-day-add-session data-date-key="${_esc(key)}" aria-label="운동 추가"`;
+  const exportDock = _renderWorkoutDayExportDock(key, { solo: runningActive });
   const headHtml = includeHead ? `
       <div class="wt-day-head">
         <button type="button" class="wt-day-back" data-wt-sheet-card-action="back-month" aria-label="캘린더로 돌아가기">⌄</button>
@@ -2175,9 +2176,24 @@ function _renderWorkoutHomeDetailHtml({ cache, plan, checkins, key, includeHead 
         <div class="wt-day-session-tabs">${sessionTabs}</div>
       </div>
       ${runningActive ? `<input type="file" accept="image/jpeg,image/png,image/webp" data-wt-running-upload-input data-date-key="${_esc(key)}" hidden>` : ''}
+      ${exportDock}
       ${runningActive ? '' : `<button type="button" class="wt-day-fab" ${fabAttrs}>＋</button>`}
     </div>
   `;
+}
+
+// 기록추출 도크는 + 버튼 왼쪽에 붙는다. 러닝 탭에는 + 버튼이 없으므로 도크가
+// 그 자리를 그대로 차지한다(is-solo).
+function _renderWorkoutDayExportDock(key, { solo = false } = {}) {
+  const dateAttr = `data-date-key="${_esc(key)}"`;
+  return `
+      <div class="wt-day-export-menu" data-wt-day-export-menu hidden role="menu" aria-label="기록 추출 범위">
+        <button type="button" class="wt-day-export-option" role="menuitem" data-wt-sheet-card-action="export-day" ${dateAttr}>오늘기록추출</button>
+        <button type="button" class="wt-day-export-option" role="menuitem" data-wt-sheet-card-action="export-week" ${dateAttr}>이번주기록추출</button>
+      </div>
+      <button type="button" class="wt-day-fab wt-day-fab--export${solo ? ' is-solo' : ''}" data-wt-sheet-card-action="toggle-export-menu" ${dateAttr} aria-haspopup="menu" aria-expanded="false" aria-label="기록 추출">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0 4-4m-4 4-4-4"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
+      </button>`;
 }
 
 function _renderWorkoutDetailSummaryCard(wx) {
@@ -3214,9 +3230,45 @@ function _runWorkoutHomeSheetCardAction(action, control) {
       return _deleteWorkoutExercise(key, sessionIndex, exerciseIndex);
     case 'delete-activity':
       return _deleteWorkoutActivity(key, sessionIndex, activityKey);
+    case 'toggle-export-menu':
+      _toggleWorkoutDayExportMenu(control);
+      return true;
+    case 'export-day':
+      _closeWorkoutDayExportMenu(control);
+      return _exportWorkoutRecords(key, 'day');
+    case 'export-week':
+      _closeWorkoutDayExportMenu(control);
+      return _exportWorkoutRecords(key, 'week');
     default:
       return false;
   }
+}
+
+function _workoutDayExportMenuParts(control) {
+  const root = control?.closest?.('[data-wt-day-sheet]')
+    || control?.closest?.('.wt-day-detail')
+    || (typeof document !== 'undefined' ? document : null);
+  return {
+    menu: root?.querySelector?.('[data-wt-day-export-menu]') || null,
+    trigger: root?.querySelector?.('[data-wt-sheet-card-action="toggle-export-menu"]') || null,
+  };
+}
+
+// 시트 전체를 다시 그리지 않고 메뉴만 여닫는다. 세트 입력 중 재렌더가 끼어들면
+// 포커스와 커서가 튀기 때문에 구조 변경이 없는 토글은 DOM에서 직접 처리한다.
+function _toggleWorkoutDayExportMenu(control) {
+  const { menu, trigger } = _workoutDayExportMenuParts(control);
+  if (!menu) return;
+  const open = menu.hasAttribute('hidden');
+  menu.toggleAttribute('hidden', !open);
+  trigger?.setAttribute?.('aria-expanded', open ? 'true' : 'false');
+}
+
+function _closeWorkoutDayExportMenu(control) {
+  const { menu, trigger } = _workoutDayExportMenuParts(control);
+  if (!menu) return;
+  menu.setAttribute('hidden', '');
+  trigger?.setAttribute?.('aria-expanded', 'false');
 }
 
 async function _importWorkoutRunningRecord(input, key) {
@@ -3374,6 +3426,9 @@ function _bindWorkoutHomeSheetActions(root) {
   }, true);
   sheet.addEventListener('click', (event) => {
     const target = event.target instanceof Element ? event.target : event.target?.parentElement;
+    if (!target?.closest?.('[data-wt-day-export-menu], [data-wt-sheet-card-action="toggle-export-menu"]')) {
+      _closeWorkoutDayExportMenu(sheet);
+    }
     const editField = target?.closest?.('[data-wt-set-edit-field]');
     if (editField && sheet.contains(editField)) {
       event.preventDefault();
@@ -4783,9 +4838,9 @@ async function _openWorkoutHomeRunning(key) {
   }
 }
 
-function _formatWorkoutExportText(key, sessionIndex, session, wx) {
+function _formatWorkoutExportText(key, sessionIndex, session, wx, { heading = null } = {}) {
   const lines = [
-    `${_dateTitle(key)} ${_sessionLabel(sessionIndex)}`,
+    heading || `${_dateTitle(key)} ${_sessionLabel(sessionIndex)}`,
     `운동시간: ${_formatDuration(wx.durationSec)}`,
   ];
   if (wx.setCount > 0) lines.push(`총 세트: ${wx.setCount}세트`);
@@ -4859,6 +4914,98 @@ async function _exportWorkoutHomeSession(key, sessionIndex = _workoutHomeSession
   } catch (e) {
     console.warn('[workout-calendar] export failed:', e);
     showToast('내보내기에 실패했어요', 2200, 'error');
+  }
+}
+
+// 하루치 기록을 회차별 + 러닝 블록으로 펼친다. 기록이 없는 회차는 건너뛴다.
+function _workoutDayExportBlocks(key, context) {
+  const { lookup, checkins, plan } = context;
+  const day = _workoutHomeDay(key);
+  const sessions = getWorkoutSessions(day, { minCount: WORKOUT_RUNNING_SESSION_INDEX + 1 });
+  const bodyWeight = _weightAt(checkins, key) ?? getLatestCheckinWeight() ?? plan?.weight ?? 70;
+  const blocks = [];
+
+  sessions.slice(0, WORKOUT_GYM_SESSION_COUNT).forEach((raw, index) => {
+    const session = clearRunningSessionFields(raw);
+    if (!hasWorkoutSessionData(session)) return;
+    const wx = _workoutMetrics(key, session, bodyWeight, lookup);
+    blocks.push(_formatWorkoutExportText(key, index, session, wx, { heading: `[${_sessionLabel(index)}]` }));
+  });
+
+  const runningInfo = runningTrackSessionInfo(sessions);
+  if (runningInfo.hasRecord) {
+    const stack = runningStackSession(
+      { session: runningInfo.session, activities: runningInfo.runningSessions },
+      _activityRows,
+    );
+    const wx = _workoutMetrics(key, stack.session, bodyWeight, lookup);
+    if (stack.rows.length) {
+      const activityDurationSec = stack.rows.reduce((sum, row) => sum + (row.durationSec || 0), 0);
+      wx.activities = stack.rows;
+      wx.durationSec = Math.max(wx.durationSec || 0, activityDurationSec);
+    }
+    blocks.push(_formatWorkoutExportText(key, WORKOUT_RUNNING_SESSION_INDEX, stack.session, wx, { heading: '[러닝]' }));
+  }
+
+  return blocks;
+}
+
+function _weekKeysFor(key) {
+  const parsed = _parseDateKey(key);
+  if (!parsed) return [];
+  const mondayOffset = (new Date(parsed.y, parsed.m, parsed.d).getDay() + 6) % 7;
+  const monday = _shiftDateKey(key, -mondayOffset);
+  return Array.from({ length: 7 }, (_, offset) => _shiftDateKey(monday, offset));
+}
+
+function _buildWorkoutRecordsExport(key, scope) {
+  const context = { lookup: _buildWorkoutLookup(), checkins: _sortedCheckins(), plan: getDietPlan() || null };
+  const keys = scope === 'week' ? _weekKeysFor(key) : [key];
+  const days = keys
+    .map(dayKey => ({ dayKey, blocks: _workoutDayExportBlocks(dayKey, context) }))
+    .filter(entry => entry.blocks.length);
+  if (!days.length) return null;
+
+  const heading = scope === 'week'
+    ? `${_dateTitle(keys[0])} ~ ${_dateTitle(keys[keys.length - 1])} 운동 기록`
+    : `${_dateTitle(key)} 운동 기록`;
+  const body = days
+    .map(entry => [`■ ${_dateTitle(entry.dayKey)}`, ...entry.blocks].join('\n\n'))
+    .join('\n\n');
+  return { title: heading, text: `${heading}\n\n${body}` };
+}
+
+async function _copyTextToClipboard(text) {
+  const clipboard = window.navigator?.clipboard;
+  if (clipboard?.writeText) {
+    await clipboard.writeText(text);
+    return;
+  }
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.setAttribute('readonly', '');
+  textarea.style.position = 'fixed';
+  textarea.style.left = '-9999px';
+  document.body.appendChild(textarea);
+  textarea.select();
+  const ok = document.execCommand('copy');
+  textarea.remove();
+  if (!ok) throw new Error('clipboard write failed');
+}
+
+async function _exportWorkoutRecords(key, scope) {
+  const targetKey = _parseDateKey(key) ? key : _workoutHomeSelectedKey;
+  const payload = _buildWorkoutRecordsExport(targetKey, scope);
+  if (!payload) {
+    showToast(scope === 'week' ? '이번 주 운동 기록이 없어요' : '이 날짜의 운동 기록이 없어요', 1800, 'info');
+    return;
+  }
+  try {
+    await _copyTextToClipboard(payload.text);
+    showToast(scope === 'week' ? '이번 주 기록을 복사했어요' : '오늘 기록을 복사했어요', 1800, 'success');
+  } catch (e) {
+    console.warn('[workout-calendar] record export failed:', e);
+    showToast('기록 복사에 실패했어요', 2200, 'error');
   }
 }
 

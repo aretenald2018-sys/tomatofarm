@@ -31,7 +31,7 @@ import { registerStaticActions } from './app/static-actions.js';
 import { loadLazyModule } from './app/lazy-loader.js';
 import { getTabDefinition, isRegisteredTab } from './app/tab-registry.js';
 import { initOverlayStack } from './app/overlay-stack.js';
-import { initBuildInfoSurface } from './utils/build-info.js';
+import { initBuildInfoSurface, requestTomatoApkInstall } from './utils/build-info.js';
 import {
   enableWorkoutPwaHistory,
   getWorkoutNavSnapshot,
@@ -314,11 +314,7 @@ function _runAppShellAction(action, control, event) {
       _closeMoreMenu();
       break;
     case 'install-apk':
-      if (typeof window.__requestTomatoApkInstall === 'function') {
-        void window.__requestTomatoApkInstall({ control, source: 'more-menu' });
-      } else {
-        window.location.assign(new URL('./public/downloads/tomato-mobile-debug.apk', window.location.href).href);
-      }
+      void requestTomatoApkInstall({ control, source: 'more-menu' });
       _closeMoreMenu();
       break;
     case 'open-letter-modal':

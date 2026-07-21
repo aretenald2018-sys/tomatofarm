@@ -9,6 +9,9 @@ const APP_SW_SCOPE = '/tomatofarm/';
 const WEAR_APP_REFRESH_TIMEOUT_MS = 1200;
 const TOMATO_MOBILE_APK_DOWNLOAD_PATH = '../public/downloads/tomato-mobile-debug.apk';
 const TOMATO_MOBILE_APK_DOWNLOAD_NAME = 'tomato-mobile-debug.apk';
+// APK 셸은 www/만 담고 있어 public/ 경로가 존재하지 않는다. 네이티브에서는
+// 배포된 절대 URL을 열어야 Capacitor가 외부 브라우저로 넘겨 설치가 시작된다.
+const TOMATO_MOBILE_APK_REMOTE_URL = 'https://aretenald2018-sys.github.io/tomatofarm/public/downloads/tomato-mobile-debug.apk';
 
 function _updateBannerState() {
   if (typeof window === 'undefined') {
@@ -287,7 +290,16 @@ function _toastAppRefresh(message, type = 'info') {
   } catch {}
 }
 
+function _isNativeAppShell() {
+  try {
+    return window.Capacitor?.isNativePlatform?.() === true;
+  } catch {
+    return false;
+  }
+}
+
 function _tomatoMobileApkDownloadUrl() {
+  if (_isNativeAppShell()) return TOMATO_MOBILE_APK_REMOTE_URL;
   return new URL(TOMATO_MOBILE_APK_DOWNLOAD_PATH, import.meta.url).href;
 }
 
@@ -295,6 +307,16 @@ function _startTomatoApkDownload() {
   const downloadUrl = _tomatoMobileApkDownloadUrl();
   if (typeof document === 'undefined') {
     return { started: false, reason: 'document-unavailable', downloadUrl };
+  }
+
+  // WebView는 download 속성을 무시한다. 앱 바깥 호스트로 여는 창은 Capacitor가
+  // ACTION_VIEW 인텐트로 넘겨서 안드로이드 다운로드 매니저가 처리한다.
+  if (_isNativeAppShell()) {
+    const opened = window.open(downloadUrl, '_blank');
+    if (opened === null && typeof window.location?.assign === 'function') {
+      window.location.assign(downloadUrl);
+    }
+    return { started: true, reason: 'native-browser-handoff', downloadUrl };
   }
 
   const link = document.createElement('a');

@@ -167,8 +167,16 @@ test('manual app refresh keeps native Wear bridge while APK button downloads mob
   assert.match(buildInfoJs, /requestTomatoApkInstall/);
   assert.match(buildInfoJs, /__requestTomatoApkInstall/);
   assert.match(buildInfoJs, /_startTomatoApkDownload/);
-  assert.match(appJs, /public\/downloads\/tomato-mobile-debug\.apk/);
+  // 다운로드 경로는 build-info.js 하나가 소유한다. app.js는 위임만 한다.
+  assert.match(buildInfoJs, /public\/downloads\/tomato-mobile-debug\.apk/);
+  assert.match(appJs, /case 'install-apk':\s*\n\s*void requestTomatoApkInstall\(\{ control, source: 'more-menu' \}\);/);
   assert.doesNotMatch(appJs, /public\/downloads\/tomato-wear-debug\.apk/);
+  // 네이티브 셸(www/)에는 public/이 없으므로 절대 URL로 외부 브라우저에 넘긴다.
+  assert.match(buildInfoJs, /TOMATO_MOBILE_APK_REMOTE_URL = 'https:\/\/aretenald2018-sys\.github\.io\/tomatofarm\/public\/downloads\/tomato-mobile-debug\.apk'/);
+  assert.match(buildInfoJs, /_isNativeAppShell/);
+  assert.match(buildInfoJs, /native-browser-handoff/);
+  // 대용량 APK가 서비스워커를 통과해야 다운로드 매니저가 저장한다.
+  assert.match(readProjectFile('sw.js'), /url\.pathname\.endsWith\('\.apk'\)\) return;/);
   assert.match(gitignore, /!public\/downloads\/\*\.apk/);
   assert.match(buildInfoJs, /갤럭시워치 설치 화면/);
   assert.match(buildInfoJs, /browser-download/);

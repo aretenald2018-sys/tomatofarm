@@ -50,10 +50,21 @@ export function openModal(id) {
   return true;
 }
 
+// 배경 클릭은 닫고 시트 내부 클릭은 유지하되, 시트 안의 명시적 닫기 컨트롤은
+// 닫아야 한다. action-router가 가장 가까운 [data-action]을 컨트롤로 넘기므로
+// 내부 여백 클릭은 backdrop 자신으로 해석되고, 닫기 버튼은 버튼으로 해석된다.
+export function isModalCloseGesture(element, event) {
+  const target = event.target?.nodeType === 1 ? event.target : event.target?.parentElement;
+  if (!target) return true;
+  if (target === element) return true;
+  const control = target.closest?.('[data-action], [data-app-action]');
+  return !!control && control !== element;
+}
+
 export function closeModal(id, event) {
   const element = document.getElementById(id);
-  if (event && event.target !== element) return false;
   if (!element) return false;
+  if (event && !isModalCloseGesture(element, event)) return false;
   element.classList.remove('open');
   element.setAttribute('aria-hidden', 'true');
   const index = openModalStack.lastIndexOf(id);
