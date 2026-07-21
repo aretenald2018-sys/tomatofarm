@@ -1,4 +1,5 @@
 import {
+  getDietPlan,
   getCache,
   getSeasonBundleForDate,
 } from '../data.js';
@@ -21,6 +22,7 @@ export function currentSeasonDashboardSnapshot(options = {}) {
     workoutPlan: bundle.workoutPlan || {},
     runningPlan: bundle.runningPlan || {},
     board: bundle.board,
+    dietPlan: getDietPlan(),
     generatedAt: options.generatedAt || Date.now(),
   });
 }

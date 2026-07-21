@@ -1289,6 +1289,25 @@ export function findExerciseProgramBenchmark(board, exercise = {}, { includeArch
   return candidates[0]?.bm || null;
 }
 
+function _isWendlerProgramValue(value) {
+  const p = String(value ?? '').trim().toLowerCase().replace(/\s+/g, '');
+  return p === 'wendler'
+    || p === 'w863'
+    || p === '863'
+    || p === '8/6/3'
+    || p === '8-6-3'
+    || p === '8_6_3'
+    || /^w?8[/_-]6[/_-]3$/.test(p);
+}
+
+export function isWendlerBenchmark(benchmark = {}) {
+  return _isWendlerProgramValue(benchmark.program)
+    || _isWendlerProgramValue(benchmark.scheme)
+    || _isWendlerProgramValue(benchmark.wendler?.scheme)
+    || benchmark.templateVersion === W863_ORIGINAL_VERSION
+    || benchmark.wendler?.templateVersion === W863_ORIGINAL_VERSION;
+}
+
 function _normalizeProgram(program) {
   const p = String(program || '').trim();
   if (p === 'none' || p === 'default' || p === 'off') return 'none';
@@ -1460,6 +1479,32 @@ function _activeCycleForProgram(board, groupId, todayKey) {
     board.cycles.push(cycle);
   }
   return cycle;
+}
+
+export function normalizeLegacyPrograms(board, { fallbackStartDate = null } = {}) {
+  if (!board || typeof board !== 'object') return { board, changed: false };
+  const before = JSON.stringify(board);
+  for (const bm of (Array.isArray(board.benchmarks) ? board.benchmarks : [])) {
+    if (!isWendlerBenchmark(bm)) continue;
+    bm.program = 'wendler';
+    bm.tracks = ['volume'];
+    if (bm.seed && typeof bm.seed === 'object') delete bm.seed.intensity;
+    if (bm.setsByTrack && typeof bm.setsByTrack === 'object') delete bm.setsByTrack.intensity;
+    if (bm.incrementKgByTrack && typeof bm.incrementKgByTrack === 'object') delete bm.incrementKgByTrack.intensity;
+    const raw = bm.wendler && typeof bm.wendler === 'object' ? bm.wendler : {};
+    bm.wendler = {
+      ...raw,
+      scheme: raw.scheme || 'w863',
+      ...(raw.templateVersion || raw.scheme === 'w531' || raw.scheme === 'custom'
+        ? {}
+        : { templateVersion: W863_ORIGINAL_VERSION }),
+    };
+    const cycle = (board.cycles || []).find(item => item.groupId === bm.groupId && item.status === 'active');
+    _normalizeWendlerBenchmark(board, bm, {
+      fallbackStartDate: fallbackStartDate || cycle?.startDate || bm.programStartDate || null,
+    });
+  }
+  return { board, changed: before !== JSON.stringify(board) };
 }
 
 function _stepHasLog(step = {}) {

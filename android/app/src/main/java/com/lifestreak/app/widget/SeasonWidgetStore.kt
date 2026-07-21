@@ -3,15 +3,18 @@ package com.lifestreak.app.widget
 import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import android.content.Context
+import org.json.JSONObject
 
 object SeasonWidgetStore {
     private const val PREFS = "season_dashboard_widget"
     private const val SNAPSHOT = "snapshot_json"
 
     fun save(context: Context, snapshotJson: String) {
+        val snapshot = JSONObject(snapshotJson)
+        require(snapshot.optInt("schemaVersion", 0) == 1) { "unsupported season widget snapshot" }
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
-            .putString(SNAPSHOT, snapshotJson)
+            .putString(SNAPSHOT, snapshot.toString())
             .apply()
         updateAll(context)
     }

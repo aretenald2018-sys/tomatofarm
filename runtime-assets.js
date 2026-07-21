@@ -250,6 +250,7 @@
   './data/season-selectors.js',
   './data/season-creation.js',
   './data/season-store.js',
+  './data/season-overview.js',
   './data/season-widget-snapshot.js',
   './data/data-functions.js',
   './data/data-admin.js',

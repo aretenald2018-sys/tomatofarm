@@ -7,6 +7,9 @@
     <color name="widget_muted">#FF9AA3AC</color>
     <color name="widget_accent">#FFD9574D</color>
     <color name="widget_success">#FF2F9A60</color>
+    <color name="widget_purple">#FF7455DC</color>
+    <color name="widget_blue">#FF398CF2</color>
+    <color name="widget_orange">#FFF47A3C</color>
     <color name="widget_track">#FFE5E9ED</color>
     <color name="widget_border">#FFDDE3E8</color>
 </resources>

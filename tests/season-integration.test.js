@@ -122,6 +122,11 @@ test('Android에는 신규 시즌 위젯만 남고 구형 REST 위젯과 API key
   const plugin = read('android/app/src/main/java/com/lifestreak/app/widget/SeasonWidgetPlugin.kt');
   assert.doesNotMatch(`${provider}\n${plugin}`, /firestore\.googleapis\.com|AIza/);
   assert.match(provider, /STALE_AFTER_MS/);
-  assert.match(provider, /widget_running_progress/);
-  assert.match(provider, /widget_strength_progress/);
+  // The season dashboard renders running as a paced trend chart and strength as
+  // a goal checklist, so assert those surfaces rather than the retired
+  // widget_running_progress / widget_strength_progress bars.
+  assert.match(provider, /widget_running_value/);
+  assert.match(provider, /widget_running_chart/);
+  assert.match(provider, /widget_strength_value/);
+  assert.match(provider, /widget_strength_check_1/);
 });
