@@ -199,6 +199,7 @@ test('published mobile APK contains current runtime and workout flow assets', ()
   const apkWelcomeBackJs = readApkEntryText('public/downloads/tomato-mobile-debug.apk', 'assets/public/home/welcome-back.js');
   const apkLifeZoneJs = readApkEntryText('public/downloads/tomato-mobile-debug.apk', 'assets/public/home/life-zone.js');
   const apkStyleCss = readApkEntryText('public/downloads/tomato-mobile-debug.apk', 'assets/public/styles/features/home-life-zone.css');
+  const apkWorkoutExercises = readApkEntryText('public/downloads/tomato-mobile-debug.apk', 'assets/public/workout/exercises.js');
   const workoutAssetPaths = [
     'render-calendar.js',
     'workout/sessions.js',
@@ -209,6 +210,8 @@ test('published mobile APK contains current runtime and workout flow assets', ()
   const expectedCacheVersion = cacheVersionFrom(rootSw);
 
   assert.equal(cacheVersionFrom(apkSw), expectedCacheVersion);
+  assert.equal(apkBuildInfo.app, 'tomatofarm');
+  assert.match(apkBuildInfo.cacheVersion, /^tomatofarm-/);
   assert.equal(apkBuildInfo.cacheVersion, expectedCacheVersion);
   assert.match(apkAppJs, /const APP_BOOT_AUXILIARY_TIMEOUT_MS = 2500;/);
   assert.match(apkAppJs, /void _showPostLoginExperience\(\{ previousLastLoginAt, runningSessionRestored \}\)/);
@@ -220,6 +223,9 @@ test('published mobile APK contains current runtime and workout flow assets', ()
   assert.match(apkStyleCss, /\.lz-speech-photo-btn\s*{[\s\S]*padding:\s*0/);
   assert.match(apkStyleCss, /\.lz-speech--photo \.lz-photo-like-btn\s*{[\s\S]*background:\s*transparent/);
   assert.match(apkStyleCss, /\.lz-speech--photo \.lz-photo-like-btn\s*{[\s\S]*box-shadow:\s*none/);
+  assert.match(apkWorkoutExercises, /_pendingWorkoutNumberInputTarget/);
+  assert.match(apkWorkoutExercises, /preserveNumberInputNode/);
+  assert.match(apkWorkoutExercises, /_syncWorkoutSetPresentation/);
   for (const assetPath of workoutAssetPaths) {
     assert.equal(
       normalizeTextEol(readApkEntryText('public/downloads/tomato-mobile-debug.apk', `assets/public/${assetPath}`)),

@@ -144,6 +144,7 @@ test('wear run save sources are reviewable and payload duration cannot underflow
     'android/wear/src/test/java/com/lifestreak/wear/workout/WearExerciseMetricAccumulatorTest.kt',
     'android/wear/src/test/java/com/lifestreak/wear/workout/WearRunPayloadTest.kt',
     'android/wear/src/test/java/com/lifestreak/wear/workout/WearRunUiStateTest.kt',
+    'android/wear/src/test/java/com/lifestreak/wear/workout/WearWorkoutDataLayerTest.kt',
   ];
 
   assert.deepEqual(reviewableFiles.filter(gitIgnored), []);

@@ -22,6 +22,8 @@ class WearWorkoutUiController(
     private val runState = WearRunUiState(nowMs)
     private var sessionStoreUnsubscribe: (() -> Unit)? = null
     private var runEndUnsubscribe: (() -> Unit)? = null
+    private var savedAckUnsubscribe: (() -> Unit)? = null
+    private var pendingTransferId: String? = null
     private var metricPagerAdapter: WearRunMetricPagerAdapter? = null
     private var metricPager: ViewPager2? = null
     private var metricPageCallback: ViewPager2.OnPageChangeCallback? = null
@@ -41,6 +43,7 @@ class WearWorkoutUiController(
         clearRunTick(v)
         bindAttachCleanup(v)
         bindExerciseStore(v)
+        bindSavedAck(v)
         initializeMetricPager(v)
 
         v.findViewById<View>(R.id.runStartButton)?.setOnClickListener {
@@ -58,6 +61,7 @@ class WearWorkoutUiController(
         v.findViewById<View>(R.id.runSummaryDoneButton)?.setOnClickListener {
             finishRequested = false
             ignoreExerciseUpdatesUntilStart = true
+            pendingTransferId = null
             runState.reset()
             WearExerciseSessionStore.reset()
             WearExerciseSessionPersistence.clear(v.context)
@@ -74,6 +78,9 @@ class WearWorkoutUiController(
         sessionStoreUnsubscribe = null
         runEndUnsubscribe?.invoke()
         runEndUnsubscribe = null
+        savedAckUnsubscribe?.invoke()
+        savedAckUnsubscribe = null
+        pendingTransferId = null
         metricPageCallback?.let { callback -> metricPager?.unregisterOnPageChangeCallback(callback) }
         metricPageCallback = null
         metricPager = null
@@ -136,6 +143,21 @@ class WearWorkoutUiController(
         }
     }
 
+    private fun bindSavedAck(v: View) {
+        savedAckUnsubscribe?.invoke()
+        savedAckUnsubscribe = WearWorkoutDataLayer.addSavedListener { transferId ->
+            if (transferId != pendingTransferId) return@addSavedListener
+            handler.post { showSavedAck(v, transferId) }
+        }
+    }
+
+    private fun showSavedAck(v: View, transferId: String) {
+        if (transferId != pendingTransferId) return
+        pendingTransferId = null
+        summarySyncStatus = "휴대폰에 저장했어요"
+        render(v)
+    }
+
     private fun bindAttachCleanup(v: View) {
         v.getTag(R.id.wear_run_attach_listener)?.let { existing ->
             v.removeOnAttachStateChangeListener(existing as View.OnAttachStateChangeListener)
@@ -166,6 +188,7 @@ class WearWorkoutUiController(
         runEndUnsubscribe = null
         finishRequested = false
         ignoreExerciseUpdatesUntilStart = false
+        pendingTransferId = null
         summarySyncStatus = ""
         gpsStatus = "경로 자동 기록"
         gpsStatusColor = Color.parseColor("#7C8499")
@@ -271,11 +294,20 @@ class WearWorkoutUiController(
         )
         session.toPayload()
             .onSuccess { payload ->
-                WearWorkoutDataLayer.sendRunComplete(v.context, payload) { result ->
+                val transferId = WearWorkoutDataLayer.sendRunComplete(v.context, payload) { result ->
                     handler.post {
+                        if (result.transferId != pendingTransferId) return@post
+                        if (result.success && WearWorkoutDataLayer.wasSaved(v.context, result.transferId)) {
+                            showSavedAck(v, result.transferId)
+                            return@post
+                        }
                         summarySyncStatus = result.message
                         render(v)
                     }
+                }
+                pendingTransferId = transferId
+                if (WearWorkoutDataLayer.wasSaved(v.context, transferId)) {
+                    showSavedAck(v, transferId)
                 }
             }
             .onFailure { error ->
