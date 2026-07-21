@@ -22,7 +22,6 @@ import { renderAdminOnboarding }                              from './admin-onbo
 import { applyHomeCardPersonalization }                       from './personalize.js';
 import { cheerSignature, hasPriorityHomeOverlay, homeCardVisibility } from './read-model.js';
 import { renderHomeChat }                                     from './chat.js';
-import { renderWeeklySummary }                                from './weekly-summary.js';
 
 let _lastCheerSignature = '';
 
@@ -62,7 +61,6 @@ export function renderHome(options = {}) {
     } else {
       renderHero().catch(err => console.warn('[hero] render error:', err));
     }
-    renderWeeklySummary();
     renderHomeChat();
     if (isAdmin() && shouldShow('homeCards', 'unit_goal'))  renderUnitGoal();
     if (shouldShow('homeCards', 'mini_memo'))  renderMiniMemo();
