@@ -1,8 +1,422 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/widget_root" android:layout_width="match_parent" android:layout_height="match_parent" android:background="@drawable/widget_bg" android:orientation="vertical" android:padding="9dp">
-<LinearLayout android:layout_width="match_parent" android:layout_height="26dp" android:gravity="center_vertical" android:orientation="horizontal"><LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical"><TextView android:id="@+id/widget_season_title" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="&#xc624;&#xb298;/&#xc774;&#xbc88; &#xc8fc; &#xc694;&#xc57d;" android:textColor="@color/widget_text" android:textSize="13sp" android:textStyle="bold"/><TextView android:id="@+id/widget_season_meta" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="&#xc6b4;&#xb3d9; &#xc2dc;&#xc98c; &#xb7; W1" android:textColor="@color/widget_secondary" android:textSize="8sp"/></LinearLayout><TextView android:id="@+id/widget_refresh" android:layout_width="32dp" android:layout_height="32dp" android:contentDescription="&#xc704;&#xc82f; &#xc0c8;&#xb85c;&#xace0;&#xce68;" android:gravity="center" android:text="&#x21bb;" android:textColor="@color/widget_secondary" android:textSize="18sp"/></LinearLayout>
-<LinearLayout android:id="@+id/widget_diet_card" android:layout_width="match_parent" android:layout_height="0dp" android:layout_marginTop="5dp" android:layout_weight="1.28" android:background="@drawable/widget_panel_bg" android:orientation="vertical" android:padding="9dp"><LinearLayout android:layout_width="match_parent" android:layout_height="18dp" android:gravity="center_vertical" android:orientation="horizontal"><TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="&#xc624;&#xb298; &#xc2dd;&#xb2e8;" android:textColor="@color/widget_text" android:textSize="10sp" android:textStyle="bold"/><TextView android:id="@+id/widget_diet_meals" android:layout_width="wrap_content" android:layout_height="wrap_content" android:background="@drawable/widget_pill_bg" android:paddingStart="7dp" android:paddingEnd="7dp" android:paddingTop="3dp" android:paddingBottom="3dp" android:text="&#xae30;&#xb85d;&#xd55c; &#xc2dd;&#xc0ac; 0&#xd68c;" android:textColor="@color/widget_secondary" android:textSize="7sp"/></LinearLayout><LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:gravity="center_vertical" android:orientation="horizontal"><FrameLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight=".92"><ProgressBar android:id="@+id/widget_diet_progress" style="?android:attr/progressBarStyle" android:layout_width="104dp" android:layout_height="104dp" android:layout_gravity="center" android:indeterminateOnly="false" android:max="100" android:progressDrawable="@drawable/widget_ring_progress"/><LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="center" android:gravity="center_horizontal" android:orientation="vertical"><TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="&#xc12d;&#xcde8; &#xce7c;&#xb85c;&#xb9ac;" android:textColor="@color/widget_secondary" android:textSize="8sp"/><TextView android:id="@+id/widget_diet_value" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="0" android:textColor="@color/widget_text" android:textSize="20sp" android:textStyle="bold"/><TextView android:id="@+id/widget_diet_kcal_target" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="/ 2,500 kcal" android:textColor="@color/widget_secondary" android:textSize="8sp"/><TextView android:id="@+id/widget_diet_kcal_percent" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="0%" android:textColor="@color/widget_success" android:textSize="11sp" android:textStyle="bold"/></LinearLayout><TextView android:id="@+id/widget_diet_macros" android:layout_width="1dp" android:layout_height="1dp" android:visibility="gone" android:text=""/></FrameLayout><LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1.4" android:orientation="vertical"><LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal"><TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="&#xd0c4;&#xc218;&#xd654;&#xbb3c;" android:textColor="@color/widget_text" android:textSize="8sp"/><TextView android:id="@+id/widget_diet_carbs_value" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="0 / 220 g" android:textColor="@color/widget_secondary" android:textSize="7sp"/><TextView android:id="@+id/widget_diet_carbs_percent" android:layout_width="28dp" android:layout_height="wrap_content" android:gravity="end" android:text="0%" android:textColor="@color/widget_success" android:textSize="8sp"/></LinearLayout><ProgressBar android:id="@+id/widget_diet_carbs_progress" style="?android:attr/progressBarStyleHorizontal" android:layout_width="match_parent" android:layout_height="4dp" android:layout_marginTop="3dp" android:max="100" android:progressBackgroundTint="@color/widget_track" android:progressTint="@color/widget_success"/><LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="9dp" android:orientation="horizontal"><TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="&#xb2e8;&#xbc31;&#xc9c8;" android:textColor="@color/widget_text" android:textSize="8sp"/><TextView android:id="@+id/widget_diet_protein_value" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="0 / 160 g" android:textColor="@color/widget_secondary" android:textSize="7sp"/><TextView android:id="@+id/widget_diet_protein_percent" android:layout_width="28dp" android:layout_height="wrap_content" android:gravity="end" android:text="0%" android:textColor="@color/widget_purple" android:textSize="8sp"/></LinearLayout><ProgressBar android:id="@+id/widget_diet_protein_progress" style="?android:attr/progressBarStyleHorizontal" android:layout_width="match_parent" android:layout_height="4dp" android:layout_marginTop="3dp" android:max="100" android:progressBackgroundTint="@color/widget_track" android:progressTint="@color/widget_purple"/><LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="9dp" android:orientation="horizontal"><TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="&#xc9c0;" android:textColor="@color/widget_text" android:textSize="8sp"/><TextView android:id="@+id/widget_diet_fat_value" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="0 / 60 g" android:textColor="@color/widget_secondary" android:textSize="7sp"/><TextView android:id="@+id/widget_diet_fat_percent" android:layout_width="28dp" android:layout_height="wrap_content" android:gravity="end" android:text="0%" android:textColor="@color/widget_orange" android:textSize="8sp"/></LinearLayout><ProgressBar android:id="@+id/widget_diet_fat_progress" style="?android:attr/progressBarStyleHorizontal" android:layout_width="match_parent" android:layout_height="4dp" android:layout_marginTop="3dp" android:max="100" android:progressBackgroundTint="@color/widget_track" android:progressTint="@color/widget_orange"/></LinearLayout></LinearLayout></LinearLayout>
-<LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_marginTop="6dp" android:layout_weight="1.34" android:orientation="horizontal"><LinearLayout android:id="@+id/widget_strength_card" android:layout_width="0dp" android:layout_height="match_parent" android:layout_marginEnd="3dp" android:layout_weight="1" android:background="@drawable/widget_panel_bg" android:orientation="vertical" android:padding="9dp"><LinearLayout android:layout_width="match_parent" android:layout_height="18dp" android:gravity="center_vertical" android:orientation="horizontal"><TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="&#xc774;&#xbc88; &#xc8fc; &#xadfc;&#xb825; &#xbaa9;&#xd45c;" android:textColor="@color/widget_text" android:textSize="9sp" android:textStyle="bold"/><TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="&#x203a;" android:textColor="@color/widget_muted" android:textSize="15sp"/></LinearLayout><TextView android:id="@+id/widget_strength_value" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="5dp" android:text="0 / 5 &#xbaa9;&#xd45c; &#xb2ec;&#xc131;" android:textColor="@color/widget_text" android:textSize="13sp" android:textStyle="bold"/><TextView android:id="@+id/widget_strength_check_1" android:layout_width="match_parent" android:layout_height="15dp" android:layout_marginTop="6dp" android:maxLines="1" android:text="&#x25cb; &#xb2e4;&#xc74c; &#xbaa9;&#xd45c;" android:textColor="@color/widget_muted" android:textSize="7sp"/><TextView android:id="@+id/widget_strength_check_2" android:layout_width="match_parent" android:layout_height="15dp" android:maxLines="1" android:text="&#x25cb; &#xb2e4;&#xc74c; &#xbaa9;&#xd45c;" android:textColor="@color/widget_muted" android:textSize="7sp"/><TextView android:id="@+id/widget_strength_check_3" android:layout_width="match_parent" android:layout_height="15dp" android:maxLines="1" android:text="&#x25cb; &#xb4e4;&#xc74c; &#xbaa9;&#xd45c;" android:textColor="@color/widget_muted" android:textSize="7sp"/><TextView android:id="@+id/widget_strength_check_4" android:layout_width="match_parent" android:layout_height="15dp" android:maxLines="1" android:text="&#x25cb; &#xb2e4;&#xc74c; &#xbaa9;&#xd45c;" android:textColor="@color/widget_muted" android:textSize="7sp"/><TextView android:id="@+id/widget_strength_check_5" android:layout_width="match_parent" android:layout_height="15dp" android:maxLines="1" android:text="&#x25cb; &#xb2e4;&#xc74c; &#xbaa9;&#xd45c;" android:textColor="@color/widget_muted" android:textSize="7sp"/><ProgressBar android:id="@+id/widget_strength_progress" android:layout_width="1dp" android:layout_height="1dp" android:visibility="gone"/><TextView android:id="@+id/widget_strength_detail" android:layout_width="1dp" android:layout_height="1dp" android:visibility="gone" android:text=""/></LinearLayout><FrameLayout android:id="@+id/widget_running_card" android:layout_width="0dp" android:layout_height="match_parent" android:layout_marginStart="3dp" android:layout_weight="1" android:background="@drawable/widget_panel_bg" android:padding="9dp"><LinearLayout android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical"><LinearLayout android:layout_width="match_parent" android:layout_height="18dp" android:gravity="center_vertical" android:orientation="horizontal"><TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="&#xc774;&#xbc88; &#xc8fc; &#xb7ec;&#xb2dd;" android:textColor="@color/widget_text" android:textSize="9sp" android:textStyle="bold"/><TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="&#x203a;" android:textColor="@color/widget_muted" android:textSize="15sp"/></LinearLayout><TextView android:id="@+id/widget_running_subtitle" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="&#xd3c9;&#xade0; &#xd398;&#xc774;&#xc2a4; (km&#xb2f9;)" android:textColor="@color/widget_secondary" android:textSize="7sp"/><TextView android:id="@+id/widget_running_period" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="&#xc774;&#xbc88; &#xc8fc;" android:textColor="@color/widget_secondary" android:textSize="7sp"/><TextView android:id="@+id/widget_running_value" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="1dp" android:text="7'44&quot;/km" android:textColor="@color/widget_blue" android:textSize="18sp" android:textStyle="bold"/><TextView android:id="@+id/widget_running_last" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="&#xc9c0;&#xb09c;&#xc8fc; 8'09&quot;/km" android:textColor="@color/widget_secondary" android:textSize="7sp"/></LinearLayout><TextView android:id="@+id/widget_running_improvement" android:layout_width="58dp" android:layout_height="61dp" android:layout_gravity="top|end" android:layout_marginTop="34dp" android:background="@drawable/widget_improvement_bg" android:gravity="center" android:padding="3dp" android:text="&#xd398;&#xc774;&#xc2a4; &#xac1c;&#xc120;&#xa;&#x2212;25&#xcd08;&#xa;/km&#xa;&#x2193;" android:textColor="@color/widget_success" android:textSize="8sp"/><ImageView android:id="@+id/widget_running_chart" android:layout_width="match_parent" android:layout_height="45dp" android:layout_gravity="bottom" android:contentDescription="&#xc8fc;&#xac04; &#xb7ec;&#xb2dd; &#xcc28;&#xd2b8;" android:scaleType="fitXY" android:src="@drawable/widget_run_chart"/><TextView android:id="@+id/widget_running_detail" android:layout_width="1dp" android:layout_height="1dp" android:visibility="gone"/><ProgressBar android:id="@+id/widget_running_progress" android:layout_width="1dp" android:layout_height="1dp" android:visibility="gone"/></FrameLayout></LinearLayout>
-<LinearLayout android:id="@+id/widget_change_card" android:layout_width="match_parent" android:layout_height="0dp" android:layout_marginTop="6dp" android:layout_weight=".86" android:background="@drawable/widget_panel_bg" android:orientation="vertical" android:padding="9dp"><LinearLayout android:layout_width="match_parent" android:layout_height="18dp" android:gravity="center_vertical" android:orientation="horizontal"><TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="&#xc774;&#xbc88; &#xc8fc; &#xbcc0;&#xd654;" android:textColor="@color/widget_text" android:textSize="9sp" android:textStyle="bold"/><TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="&#x203a;" android:textColor="@color/widget_muted" android:textSize="15sp"/></LinearLayout><LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal"><LinearLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:gravity="center_vertical" android:orientation="vertical"><TextView android:id="@+id/widget_change_protein_detail" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="&#xd0c4;&#xb2e8;&#xc9c8; &#xbaa9;&#xd45c; &#xcda9;&#xc871;&#xb960;" android:textColor="@color/widget_secondary" android:textSize="7sp"/><TextView android:id="@+id/widget_change_protein" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="+18%" android:textColor="@color/widget_success" android:textSize="15sp" android:textStyle="bold"/><TextView android:id="@+id/widget_change_protein_note" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="&#xc9c0;&#xb09c;&#xc8fc; &#xb300;&#xbe44;" android:textColor="@color/widget_muted" android:textSize="7sp"/></LinearLayout><ImageView android:layout_width="1dp" android:layout_height="match_parent" android:background="@color/widget_track"/><LinearLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:gravity="center_vertical" android:orientation="vertical"><TextView android:id="@+id/widget_change_strength_detail" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="&#xc2e0;&#xaddc; &#xc6b4;&#xb3d9; &#xbaa9;&#xd45c;" android:textColor="@color/widget_secondary" android:textSize="7sp"/><TextView android:id="@+id/widget_change_strength" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="3 / 5" android:textColor="@color/widget_purple" android:textSize="15sp" android:textStyle="bold"/><TextView android:id="@+id/widget_change_strength_note" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="&#xc9c0;&#xb09c;&#xc8fc; 2 / 5" android:textColor="@color/widget_muted" android:textSize="7sp"/></LinearLayout><ImageView android:layout_width="1dp" android:layout_height="match_parent" android:background="@color/widget_track"/><LinearLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:gravity="center_vertical" android:orientation="vertical"><TextView android:id="@+id/widget_change_running_detail" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="&#xd3c9;&#xade0; &#xd398;&#xc774;&#xc2a4; &#xac1c;&#xc120;" android:textColor="@color/widget_secondary" android:textSize="7sp"/><TextView android:id="@+id/widget_change_running" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="+5.1%" android:textColor="@color/widget_blue" android:textSize="15sp" android:textStyle="bold"/><TextView android:id="@+id/widget_change_running_note" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="&#xc9c0;&#xb09c;&#xc8fc; &#xb300;&#xbe44;" android:textColor="@color/widget_muted" android:textSize="7sp"/></LinearLayout></LinearLayout></LinearLayout>
-<TextView android:id="@+id/widget_sync_time" android:layout_width="match_parent" android:layout_height="9dp" android:gravity="end" android:text="&#xb3d9;&#xae30;&#xd654; &#xb300;&#xae30;" android:textColor="@color/widget_muted" android:textSize="6sp"/>
+<!-- 작게 붙였을 때(높이 300dp 미만) 쓰는 축약본. 글자 크기는 전체 레이아웃과
+     같은 기준(본문 10sp 이상)을 지키는 대신 근력 카드를 접고 식단/러닝만 남긴다.
+     접힌 뷰도 id는 남겨 둬야 SeasonDashboardWidget이 그대로 렌더링할 수 있다. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_bg"
+    android:orientation="vertical"
+    android:padding="8dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+            <TextView
+                android:id="@+id/widget_season_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:text="오늘/이번 주 요약"
+                android:textColor="@color/widget_text"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+            <TextView
+                android:id="@+id/widget_season_meta"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:text="운동 시즌 · W1"
+                android:textColor="@color/widget_secondary"
+                android:textSize="10sp" />
+        </LinearLayout>
+        <TextView
+            android:id="@+id/widget_refresh"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:contentDescription="위젯 새로고침"
+            android:gravity="center"
+            android:text="↻"
+            android:textColor="@color/widget_secondary"
+            android:textSize="20sp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/widget_diet_card"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="4dp"
+        android:layout_weight="1.35"
+        android:background="@drawable/widget_panel_bg"
+        android:orientation="vertical"
+        android:padding="8dp">
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="오늘 식단"
+                android:textColor="@color/widget_text"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+            <TextView
+                android:id="@+id/widget_diet_meals"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/widget_pill_bg"
+                android:paddingStart="7dp"
+                android:paddingTop="2dp"
+                android:paddingEnd="7dp"
+                android:paddingBottom="2dp"
+                android:text="기록한 식사 0회"
+                android:textColor="@color/widget_secondary"
+                android:textSize="10sp" />
+        </LinearLayout>
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+            <FrameLayout
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1">
+                <ProgressBar
+                    android:id="@+id/widget_diet_progress"
+                    style="?android:attr/progressBarStyle"
+                    android:layout_width="80dp"
+                    android:layout_height="80dp"
+                    android:layout_gravity="center"
+                    android:indeterminateOnly="false"
+                    android:max="100"
+                    android:progressDrawable="@drawable/widget_ring_progress" />
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:gravity="center_horizontal"
+                    android:orientation="vertical">
+                    <TextView
+                        android:id="@+id/widget_diet_value"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="0"
+                        android:textColor="@color/widget_text"
+                        android:textSize="20sp"
+                        android:textStyle="bold" />
+                    <TextView
+                        android:id="@+id/widget_diet_kcal_target"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="/ 2,500 kcal"
+                        android:textColor="@color/widget_secondary"
+                        android:textSize="10sp" />
+                    <TextView
+                        android:id="@+id/widget_diet_kcal_percent"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="0%"
+                        android:textColor="@color/widget_success"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+                <TextView
+                    android:id="@+id/widget_diet_macros"
+                    android:layout_width="1dp"
+                    android:layout_height="1dp"
+                    android:text=""
+                    android:visibility="gone" />
+            </FrameLayout>
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1.15"
+                android:orientation="vertical">
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="탄수화물"
+                        android:textColor="@color/widget_text"
+                        android:textSize="11sp" />
+                    <TextView
+                        android:id="@+id/widget_diet_carbs_value"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="0 / 220 g"
+                        android:textColor="@color/widget_secondary"
+                        android:textSize="10sp" />
+                    <TextView
+                        android:id="@+id/widget_diet_carbs_percent"
+                        android:layout_width="38dp"
+                        android:layout_height="wrap_content"
+                        android:gravity="end"
+                        android:text="0%"
+                        android:textColor="@color/widget_success"
+                        android:textSize="11sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+                <ProgressBar
+                    android:id="@+id/widget_diet_carbs_progress"
+                    style="?android:attr/progressBarStyleHorizontal"
+                    android:layout_width="match_parent"
+                    android:layout_height="5dp"
+                    android:layout_marginTop="3dp"
+                    android:max="100"
+                    android:progressBackgroundTint="@color/widget_track"
+                    android:progressTint="@color/widget_success" />
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:orientation="horizontal">
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="단백질"
+                        android:textColor="@color/widget_text"
+                        android:textSize="11sp" />
+                    <TextView
+                        android:id="@+id/widget_diet_protein_value"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="0 / 160 g"
+                        android:textColor="@color/widget_secondary"
+                        android:textSize="10sp" />
+                    <TextView
+                        android:id="@+id/widget_diet_protein_percent"
+                        android:layout_width="38dp"
+                        android:layout_height="wrap_content"
+                        android:gravity="end"
+                        android:text="0%"
+                        android:textColor="@color/widget_purple"
+                        android:textSize="11sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+                <ProgressBar
+                    android:id="@+id/widget_diet_protein_progress"
+                    style="?android:attr/progressBarStyleHorizontal"
+                    android:layout_width="match_parent"
+                    android:layout_height="5dp"
+                    android:layout_marginTop="3dp"
+                    android:max="100"
+                    android:progressBackgroundTint="@color/widget_track"
+                    android:progressTint="@color/widget_purple" />
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:orientation="horizontal">
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="지방"
+                        android:textColor="@color/widget_text"
+                        android:textSize="11sp" />
+                    <TextView
+                        android:id="@+id/widget_diet_fat_value"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="0 / 60 g"
+                        android:textColor="@color/widget_secondary"
+                        android:textSize="10sp" />
+                    <TextView
+                        android:id="@+id/widget_diet_fat_percent"
+                        android:layout_width="38dp"
+                        android:layout_height="wrap_content"
+                        android:gravity="end"
+                        android:text="0%"
+                        android:textColor="@color/widget_orange"
+                        android:textSize="11sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+                <ProgressBar
+                    android:id="@+id/widget_diet_fat_progress"
+                    style="?android:attr/progressBarStyleHorizontal"
+                    android:layout_width="match_parent"
+                    android:layout_height="5dp"
+                    android:layout_marginTop="3dp"
+                    android:max="100"
+                    android:progressBackgroundTint="@color/widget_track"
+                    android:progressTint="@color/widget_orange" />
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/widget_running_card"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="4dp"
+        android:layout_weight="1"
+        android:background="@drawable/widget_panel_bg"
+        android:orientation="vertical"
+        android:padding="8dp">
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="이번 주 러닝"
+                android:textColor="@color/widget_text"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+            <TextView
+                android:id="@+id/widget_running_improvement"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/widget_improvement_bg"
+                android:paddingStart="7dp"
+                android:paddingTop="2dp"
+                android:paddingEnd="7dp"
+                android:paddingBottom="2dp"
+                android:text="페이스 개선 —"
+                android:textColor="@color/widget_success"
+                android:textSize="10sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_marginTop="3dp"
+            android:layout_weight="1"
+            android:orientation="horizontal">
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:gravity="center_vertical"
+                android:orientation="vertical">
+                <TextView
+                    android:id="@+id/widget_running_subtitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:text="평균 페이스 (km당)"
+                    android:textColor="@color/widget_secondary"
+                    android:textSize="10sp" />
+                <TextView
+                    android:id="@+id/widget_running_value"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:text="7'44&quot;/km"
+                    android:textColor="@color/widget_blue"
+                    android:textSize="19sp"
+                    android:textStyle="bold" />
+                <TextView
+                    android:id="@+id/widget_running_last"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:text="이전 8'09&quot;/km"
+                    android:textColor="@color/widget_secondary"
+                    android:textSize="10sp" />
+            </LinearLayout>
+            <ImageView
+                android:id="@+id/widget_running_chart"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1.3"
+                android:contentDescription="최근 러닝 페이스 추이"
+                android:scaleType="fitXY"
+                android:src="@drawable/widget_run_chart" />
+        </LinearLayout>
+        <TextView
+            android:id="@+id/widget_running_detail"
+            android:layout_width="1dp"
+            android:layout_height="1dp"
+            android:text=""
+            android:visibility="gone" />
+        <ProgressBar
+            android:id="@+id/widget_running_progress"
+            android:layout_width="1dp"
+            android:layout_height="1dp"
+            android:visibility="gone" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/widget_strength_card"
+        android:layout_width="1dp"
+        android:layout_height="1dp"
+        android:orientation="vertical"
+        android:visibility="gone">
+        <TextView
+            android:id="@+id/widget_strength_value"
+            android:layout_width="1dp"
+            android:layout_height="1dp"
+            android:text="" />
+        <TextView
+            android:id="@+id/widget_strength_check_1"
+            android:layout_width="1dp"
+            android:layout_height="1dp"
+            android:text="" />
+        <TextView
+            android:id="@+id/widget_strength_check_2"
+            android:layout_width="1dp"
+            android:layout_height="1dp"
+            android:text="" />
+        <TextView
+            android:id="@+id/widget_strength_check_3"
+            android:layout_width="1dp"
+            android:layout_height="1dp"
+            android:text="" />
+        <TextView
+            android:id="@+id/widget_strength_check_4"
+            android:layout_width="1dp"
+            android:layout_height="1dp"
+            android:text="" />
+        <TextView
+            android:id="@+id/widget_strength_check_5"
+            android:layout_width="1dp"
+            android:layout_height="1dp"
+            android:text="" />
+        <ProgressBar
+            android:id="@+id/widget_strength_progress"
+            android:layout_width="1dp"
+            android:layout_height="1dp" />
+        <TextView
+            android:id="@+id/widget_strength_detail"
+            android:layout_width="1dp"
+            android:layout_height="1dp"
+            android:text="" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/widget_sync_time"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="3dp"
+        android:gravity="end"
+        android:text="동기화 대기"
+        android:textColor="@color/widget_muted"
+        android:textSize="10sp" />
 </LinearLayout>

@@ -130,3 +130,30 @@ test('Android에는 신규 시즌 위젯만 남고 구형 REST 위젯과 API key
   assert.match(provider, /widget_strength_value/);
   assert.match(provider, /widget_strength_check_1/);
 });
+
+test('시즌 위젯 레이아웃은 폰에서 읽히는 글자 크기만 쓴다', () => {
+  // 위젯을 폰에 붙였을 때 글자가 너무 작아 안 읽힌다는 문제를 다시 만들지 않도록,
+  // 본문 최소 크기를 10sp로 고정한다.
+  for (const layout of [
+    'android/app/src/main/res/layout/widget_season_dashboard.xml',
+    'android/app/src/main/res/layout/widget_season_dashboard_compact.xml',
+    // 아래 둘은 tomatodev에만 있는 보조 위젯이라 있을 때만 검사한다.
+    'android/app/src/main/res/layout/widget_tomato_status_dashboard.xml',
+    'android/app/src/main/res/layout/widget_tomato_metric.xml',
+  ]) {
+    if (!existsSync(new URL(`../${layout}`, import.meta.url))) continue;
+    const sizes = [...read(layout).matchAll(/android:textSize="(\d+)sp"/g)].map(match => Number(match[1]));
+    assert.ok(sizes.length > 0, `${layout}에 textSize가 없다`);
+    assert.ok(Math.min(...sizes) >= 10, `${layout}에 ${Math.min(...sizes)}sp 글자가 남아 있다`);
+  }
+});
+
+test('러닝 추이 그래프는 점마다 날짜와 평균 페이스를 함께 찍는다', () => {
+  const provider = read('android/app/src/main/java/com/lifestreak/app/widget/SeasonDashboardWidget.kt');
+  // 그래프 값은 거리(distanceKm)가 아니라 평균 페이스라야 카드의 페이스 수치와 맞는다.
+  assert.match(provider, /avgPaceSecPerKm/);
+  assert.doesNotMatch(provider, /distanceKm/);
+  assert.match(provider, /canvas\.drawText\(paceLabel/);
+  assert.match(provider, /canvas\.drawText\(dateLabel/);
+  assert.match(provider, /shortDate/);
+});
