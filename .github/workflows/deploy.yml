@@ -24,9 +24,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Reads the live owner registry and applies the client's own acceptance
+      # rule. No repository variable to set, and no way to attest past a record
+      # the app would actually reject.
       - name: Verify shared account SSOT release gate
-        env:
-          TOMATO_SHARED_OWNER_V2_READY: ${{ vars.TOMATO_SHARED_OWNER_V2_READY }}
         run: node scripts/verify-shared-owner-release-gate.mjs
 
       - name: Verify project governance

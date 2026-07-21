@@ -53,9 +53,12 @@ test('production deploy is locked to the Tomato Farm repository, branch, and Pag
   assert.equal(packageJson.scripts['deploy:dashboard3'], undefined);
 });
 
-test('production deploy fails closed until the server-decided v2 SSOT gate is attested', () => {
-  assert.match(sharedOwnerReleaseGate, /EXPECTED_GATE = 'decided-v2-rules-fenced'/);
-  assert.match(sharedOwnerReleaseGate, /shared-account SSOT release gate is closed/);
+test('production deploy fails closed until the server-decided v2 SSOT record verifies', () => {
+  // 게이트는 사람이 켜는 변수가 아니라 실제 레지스트리 문서를 읽는다.
+  assert.match(sharedOwnerReleaseGate, /shared-account owner release gate is closed/);
+  assert.match(sharedOwnerReleaseGate, /firestore\.googleapis\.com/);
+  assert.doesNotMatch(sharedOwnerReleaseGate, /decided-v2-rules-fenced/);
+  assert.doesNotMatch(deployWorkflow, /TOMATO_SHARED_OWNER_V2_READY/);
   assert.equal(
     packageJson.scripts['verify:ssot-release-gate'],
     'node scripts/verify-shared-owner-release-gate.mjs',
@@ -68,7 +71,6 @@ test('production deploy fails closed until the server-decided v2 SSOT gate is at
   const workflowGate = deployWorkflow.indexOf('node scripts/verify-shared-owner-release-gate.mjs');
   const workflowUpload = deployWorkflow.indexOf('uses: actions/upload-pages-artifact@');
   assert.ok(workflowGate >= 0 && workflowUpload > workflowGate, 'CI gate must run before Pages upload');
-  assert.match(deployWorkflow, /vars\.TOMATO_SHARED_OWNER_V2_READY/);
 });
 
 test('pre-push hook blocks cross-environment remotes', () => {

@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "test": "node --test",
-    "initialize:tomato-owner": "node scripts/initialize-tomato-data-owner.js"
+    "initialize:tomato-owner": "node scripts/initialize-tomato-data-owner.js",
+    "promote:tomato-owner-v2": "node scripts/promote-tomato-data-owner-v2.js"
   },
   "dependencies": {
     "@google-cloud/vision": "^4.3.2",
