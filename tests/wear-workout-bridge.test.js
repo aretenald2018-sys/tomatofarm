@@ -66,6 +66,8 @@ test('wear workout bridge uses Asset transfer and app-private file retry for ful
   const listener = await read('android/app/src/main/java/com/lifestreak/app/wear/TomatoWearWorkoutListenerService.kt');
   const mainActivity = await read('android/app/src/main/java/com/lifestreak/app/MainActivity.java');
   const webBridge = await read('workout/wear-bridge.js');
+  const wearManifest = await read('android/wear/src/main/AndroidManifest.xml');
+  const wearListener = await read('android/wear/src/main/java/com/lifestreak/wear/workout/WearAppRefreshListenerService.kt');
   const wearSender = await read('android/wear/src/main/java/com/lifestreak/wear/workout/WearWorkoutDataLayer.kt');
   const wearController = await read('android/wear/src/main/java/com/lifestreak/wear/workout/WearWorkoutUiController.kt');
   const wearLayout = await read('android/wear/src/main/res/layout/page_workout.xml');
@@ -109,6 +111,10 @@ test('wear workout bridge uses Asset transfer and app-private file retry for ful
   assert.match(phoneBridge, /ACK_TIMEOUT_MS\s*=\s*30_000L/);
   assert.match(phoneBridge, /PendingAckTracker/);
   assert.match(phoneBridge, /scheduleAckTimeout/);
+  assert.match(phoneBridge, /PATH_RUN_SAVED_ACK\s*=\s*"\/tomato\/workout\/run\/saved"/);
+  assert.match(phoneBridge, /PutDataMapRequest\.create\(savedAckPath\(id\)\)/);
+  assert.match(phoneBridge, /sendSavedAck\(activity, id, 0\)[\s\S]*private fun sendSavedAck[\s\S]*addOnSuccessListener[\s\S]*TomatoWearWorkoutFileQueue\.acknowledge/);
+  assert.match(phoneBridge, /SavedAckTracker/);
   assert.doesNotMatch(`${phoneBridge}\n${fileQueue}`, /sanitizePayloadForPrefs|sanitizeRouteForPrefs|MAX_PERSISTED_ROUTE_POINTS/);
   assert.match(webBridge, /saveFromNative\(raw\)\s*{\s*return saveWearWorkoutPayload\(raw\);\s*}/);
   assert.match(mainActivity, /TomatoWearWorkoutBridge\.registerActivity/);
@@ -124,8 +130,18 @@ test('wear workout bridge uses Asset transfer and app-private file retry for ful
   assert.match(wearSender, /\/tomato\/workout\/run\/complete/);
   assert.match(wearSender, /Wearable\.getDataClient/);
   assert.match(wearSender, /setUrgent/);
+  assert.match(wearSender, /MAX_SEND_ATTEMPTS\s*=\s*3/);
+  assert.match(wearSender, /휴대폰 저장 확인 중/);
+  assert.doesNotMatch(wearSender, /휴대폰에 자동 저장돼요/);
   assert.doesNotMatch(wearSender, /sendMessage|connectedNodes|getNodeClient|getMessageClient|MessageClient/);
+  assert.match(wearManifest, /android:pathPrefix="\/tomato\/workout\/run\/saved"/);
+  assert.match(wearManifest, /com\.google\.android\.gms\.wearable\.DATA_CHANGED/);
+  assert.match(wearListener, /onDataChanged/);
+  assert.match(wearListener, /WearWorkoutDataLayer\.transferIdFromSavedAck/);
+  assert.match(wearListener, /WearWorkoutDataLayer\.acceptSavedAck/);
   assert.match(wearController, /WearWorkoutDataLayer\.sendRunComplete/);
+  assert.match(wearController, /WearWorkoutDataLayer\.addSavedListener/);
+  assert.match(wearController, /휴대폰에 저장했어요/);
   assert.match(wearLayout, /@\+id\/runSummarySyncStatus/);
 });
 

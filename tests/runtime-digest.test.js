@@ -133,6 +133,9 @@ test('APK verifier compares normalized assets and embedded runtime digests', () 
   assert.match(verifier, /computeRuntimeDigestFromRoot/);
   assert.match(verifier, /apkBuildInfo\.runtimeDigest !== apkRuntimeDigest/);
   assert.match(verifier, /rootRuntimeDigest !== apkRuntimeDigest/);
+  assert.match(verifier, /EXPECTED_APP\s*=\s*'tomatofarm'/);
+  assert.match(verifier, /buildInfo\.app !== EXPECTED_APP/);
+  assert.match(verifier, /EXPECTED_CACHE_PREFIX\s*=\s*'tomatofarm-'/);
   assert.doesNotMatch(verifier, /source\.equals\(embedded\)/);
 });
 

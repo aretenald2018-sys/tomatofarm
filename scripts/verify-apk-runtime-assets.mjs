@@ -13,6 +13,8 @@ import {
 } from './runtime-digest.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const EXPECTED_APP = 'tomatofarm';
+const EXPECTED_CACHE_PREFIX = 'tomatofarm-';
 const apkArgumentIndex = process.argv.indexOf('--apk');
 const apkPath = path.resolve(
   root,
@@ -128,6 +130,12 @@ try {
     ['root build-info.json', rootBuildInfo],
     ['APK build-info.json', apkBuildInfo],
   ]) {
+    if (buildInfo.app !== EXPECTED_APP) {
+      failures.push(`${label} app must be ${EXPECTED_APP}`);
+    }
+    if (!String(buildInfo.cacheVersion || '').startsWith(EXPECTED_CACHE_PREFIX)) {
+      failures.push(`${label} cacheVersion must start with ${EXPECTED_CACHE_PREFIX}`);
+    }
     if (buildInfo.runtimeDigestAlgorithm !== RUNTIME_DIGEST_ALGORITHM) {
       failures.push(`${label} runtimeDigestAlgorithm is invalid`);
     }

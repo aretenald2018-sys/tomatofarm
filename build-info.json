@@ -1,10 +1,15 @@
 {
   "app": "tomatofarm",
-  "commit": "4f205959ed5d4cefbc4e03fa8cf7269666c5ff78",
-  "shortCommit": "4f205959ed5d",
-  "branch": "main",
-  "deployedAt": "2026-07-19T08:32:07.273Z",
-  "cacheVersion": "tomatofarm-v20260719z3-owner-day-journal-workout-inline-field-commit",
+  "commit": "local-dirty",
+  "shortCommit": "local-dirty",
+  "sourceBaseCommit": "04dea5bcde152d776dec28b0266bdab5950ddd1b",
+  "sourceDirty": true,
+  "branch": "codex/fix-watch-workout-input",
+  "deployedAt": "2026-07-21T01:10:24.535Z",
+  "cacheVersion": "tomatofarm-v20260721z1-owner-day-journal-workout-inline-field-commit",
+  "runtimeDigest": "811f3b66c4cf5d8489c12063aeb6d175d7b9763f87e1a065b7e19b28f32edb9a",
+  "runtimeDigestAlgorithm": "sha256",
+  "runtimeDigestVersion": 1,
   "runId": null,
   "runAttempt": null
 }

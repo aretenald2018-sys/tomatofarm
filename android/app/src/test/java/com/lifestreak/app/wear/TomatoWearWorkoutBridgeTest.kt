@@ -162,6 +162,22 @@ class TomatoWearWorkoutBridgeTest {
     }
 
     @Test
+    fun savedAckPathAndInFlightTrackerAreStableAndDeduplicated() {
+        val transferId = "1000-2000-${"a".repeat(64)}"
+        val tracker = TomatoWearWorkoutBridge.SavedAckTracker()
+
+        assertEquals(
+            "/tomato/workout/run/saved/$transferId",
+            TomatoWearWorkoutBridge.savedAckPathForTest(transferId),
+        )
+        assertTrue(tracker.start(transferId))
+        assertFalse(tracker.start(transferId))
+        assertTrue(tracker.isPending(transferId))
+        assertTrue(tracker.finish(transferId))
+        assertFalse(tracker.isPending(transferId))
+    }
+
+    @Test
     fun acknowledgedTombstoneCannotResurrectDuringReconciliation() = withFilesDir { filesDir ->
         val payload = writePayload(filesDir, "accepted.tmp", 120_000L, 121_000L, 37.46)
         val queue = requireNotNull(enqueue(filesDir, "[]", payload))
