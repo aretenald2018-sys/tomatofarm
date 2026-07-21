@@ -1,10 +1,15 @@
 {
   "app": "tomatofarm",
-  "commit": "4f205959ed5d4cefbc4e03fa8cf7269666c5ff78",
-  "shortCommit": "4f205959ed5d",
+  "commit": "local-dirty",
+  "shortCommit": "local-dirty",
+  "sourceBaseCommit": "bb410e95655d3f18401b14cf264cc547eae53d80",
+  "sourceDirty": true,
   "branch": "main",
-  "deployedAt": "2026-07-19T08:32:07.273Z",
-  "cacheVersion": "tomatofarm-v20260719z3-owner-day-journal-workout-inline-field-commit",
+  "deployedAt": "2026-07-21T02:10:17.774Z",
+  "cacheVersion": "tomatofarm-v20260721z2-home-weekly-summary-and-wear-ack",
+  "runtimeDigest": "d060e847d369d670b01de27bedbca354c6fc7d30716a4f74cc1e3db9568b7036",
+  "runtimeDigestAlgorithm": "sha256",
+  "runtimeDigestVersion": 1,
   "runId": null,
   "runAttempt": null
 }
