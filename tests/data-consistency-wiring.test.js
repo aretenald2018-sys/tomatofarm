@@ -2,7 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const read = (path) => readFileSync(new URL('../' + path, import.meta.url), 'utf8');
+// Normalize line endings: the source slices below anchor on "\n}\n\n" boundaries,
+// which never match on a Windows (CRLF) checkout even though the code is correct.
+const read = (path) => readFileSync(new URL('../' + path, import.meta.url), 'utf8')
+  .replace(/\r\n/g, '\n');
 
 const dataLoadSource = read('data/data-load.js');
 const dataApiSource = read('data/data-api.js');
