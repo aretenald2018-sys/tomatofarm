@@ -94,6 +94,28 @@ Capacitor WebView가 저장소를 공유하지 않아, 시드하지 않으면 "�
 없어 규칙에 신원 조건을 쓸 수 없기 때문이다. 자세한 내용과 해소 경로는
 [FIRESTORE_RULES.md](FIRESTORE_RULES.md)의 "남은 공백" 절에 있다.
 
+## 서버 스크립트 실행 준비
+
+`provision:admin-console`과 `audit:legacy-alias`는 Admin SDK로 Firestore에 직접
+접근하므로 자격증명이 필요하다. 없으면 스크립트가 무엇을 해야 하는지 출력하고
+exit code 1로 끝난다.
+
+`gcloud`가 설치돼 있지 않다면 서비스 계정 키가 가장 빠른 경로다.
+
+1. Firebase 콘솔 → `exercise-management` → 프로젝트 설정 → 서비스 계정 →
+   **새 비공개 키 생성**. 내려받은 JSON은 **저장소 밖**에 둔다.
+2. 경로를 환경변수로 지정한다.
+
+```powershell
+$env:GOOGLE_APPLICATION_CREDENTIALS = "C:\경로\service-account.json"
+```
+
+3. 저장소 루트에서 실행한다. `--prefix functions`는 현재 디렉터리 기준이라
+   다른 폴더에서 실행하면 `functions`를 찾지 못한다.
+
+프로젝트 id는 `.firebaserc`의 default에서 읽는다. 다른 프로젝트를 쓰려면
+`--project <id>`를 넘긴다.
+
 ## 배포 순서 (중요)
 
 **`관_리자` 계정을 먼저 만들고 배포한다.** 순서를 뒤집으면 계정이 생길 때까지

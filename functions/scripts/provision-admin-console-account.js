@@ -14,6 +14,7 @@
 //   npm run provision:admin-console -- --password '<새 비밀번호>' --commit --reset-password
 
 const admin = require("firebase-admin");
+const { initializeAdminApp, describeFirestoreError } = require("./lib/admin-app");
 
 const ADMIN_CONSOLE_ACCOUNT_ID = "관_리자";
 const ADMIN_CONSOLE_LAST_NAME = "관";
@@ -54,10 +55,16 @@ async function main() {
     throw new Error(`refusing a password shorter than ${MIN_PASSWORD_LENGTH} characters`);
   }
 
-  admin.initializeApp();
-  const db = admin.firestore();
+  const { db, projectId } = initializeAdminApp(argv);
+  console.log(`[admin-console] project=${projectId}`);
+
   const accountRef = db.doc(`${ACCOUNTS_COLLECTION}/${ADMIN_CONSOLE_ACCOUNT_ID}`);
-  const existing = await accountRef.get();
+  let existing;
+  try {
+    existing = await accountRef.get();
+  } catch (error) {
+    throw new Error(describeFirestoreError(error, projectId));
+  }
 
   if (existing.exists && !resetPassword) {
     console.log(`[admin-console] account already exists id=${ADMIN_CONSOLE_ACCOUNT_ID}`);
@@ -90,7 +97,11 @@ async function main() {
     updatedAt: now,
   };
 
-  await accountRef.set(account, { merge: true });
+  try {
+    await accountRef.set(account, { merge: true });
+  } catch (error) {
+    throw new Error(describeFirestoreError(error, projectId));
+  }
   console.log(`[admin-console] committed action=${action} id=${ADMIN_CONSOLE_ACCOUNT_ID}`);
 }
 

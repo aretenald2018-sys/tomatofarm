@@ -17,6 +17,7 @@
 // "레지스트리 폐기" 절을 따른다.
 
 const admin = require("firebase-admin");
+const { initializeAdminApp, describeFirestoreError } = require("./lib/admin-app");
 const {
   TOMATO_ADMIN_OWNER_ID,
   TOMATO_ADMIN_GUEST_OWNER_ID,
@@ -58,12 +59,17 @@ function describe(ownerId, counts) {
 }
 
 async function main() {
-  admin.initializeApp();
-  const db = admin.firestore();
+  const { db, projectId } = initializeAdminApp(process.argv.slice(2));
+  console.log(`[legacy-alias] project=${projectId}\n`);
 
-  const registrySnapshot = await db
-    .doc(`${TOMATO_DATA_OWNER_REGISTRY_COLLECTION}/${TOMATO_DATA_OWNER_REGISTRY_ID}`)
-    .get();
+  let registrySnapshot;
+  try {
+    registrySnapshot = await db
+      .doc(`${TOMATO_DATA_OWNER_REGISTRY_COLLECTION}/${TOMATO_DATA_OWNER_REGISTRY_ID}`)
+      .get();
+  } catch (error) {
+    throw new Error(describeFirestoreError(error, projectId));
+  }
   const registryData = registrySnapshot.data() || null;
   const decidedOwnerId = readTomatoDataOwnerRegistry(registryData);
 
@@ -77,10 +83,16 @@ async function main() {
     console.log(`  클라이언트 판정: ${decidedOwnerId || "거부됨 (v2/decided 아님)"}`);
   }
 
-  const [ownerCounts, aliasCounts] = await Promise.all([
-    countNamespace(db, TOMATO_ADMIN_OWNER_ID),
-    countNamespace(db, TOMATO_ADMIN_GUEST_OWNER_ID),
-  ]);
+  let ownerCounts;
+  let aliasCounts;
+  try {
+    [ownerCounts, aliasCounts] = await Promise.all([
+      countNamespace(db, TOMATO_ADMIN_OWNER_ID),
+      countNamespace(db, TOMATO_ADMIN_GUEST_OWNER_ID),
+    ]);
+  } catch (error) {
+    throw new Error(describeFirestoreError(error, projectId));
+  }
 
   console.log("\n[legacy-alias] 네임스페이스");
   console.log(describe(TOMATO_ADMIN_OWNER_ID, ownerCounts));
