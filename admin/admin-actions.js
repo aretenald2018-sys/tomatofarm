@@ -12,7 +12,7 @@ import {
 } from './admin-export.js';
 import { escapeHtml } from './admin-utils.js';
 import { confirmAction } from '../utils/confirm-modal.js';
-import { switchKimMode } from '../feature-login.js';
+import { signOutToLoginScreen } from '../feature-login.js';
 
 let _rerender = null;
 let _dietReportPeriod = 'weekly';
@@ -117,9 +117,9 @@ export function renderSettingsSection(container, data, rerender) {
       </div>
 
       <div class="hig-card">
-        <div class="hig-headline">Admin 모드 전환</div>
-        <div class="hig-subhead" style="color:var(--hig-gray1);margin-top:6px;">게스트 모드로 전환하려면 아래 버튼을 사용하세요.</div>
-        <button type="button" class="hig-btn-secondary" style="margin-top:10px;" data-admin-settings-action="guest-mode">게스트 모드로 전환</button>
+        <div class="hig-headline">계정 전환</div>
+        <div class="hig-subhead" style="color:var(--hig-gray1);margin-top:6px;">관리자 권한은 이 계정에만 있습니다. 개인 계정을 쓰려면 로그아웃 후 김태우 계정으로 로그인하세요.</div>
+        <button type="button" class="hig-btn-secondary" style="margin-top:10px;" data-admin-settings-action="sign-out">로그아웃</button>
       </div>
 
       <div class="hig-card-grouped">
@@ -143,7 +143,7 @@ export function renderSettingsSection(container, data, rerender) {
     if (action === 'set-period') { _dietReportPeriod = control.dataset.period === 'monthly' ? 'monthly' : 'weekly'; _rerender?.(); }
     if (action === 'publish-report') void _publishDietReport();
     if (action === 'export') _exportSettings(control.dataset.exportType);
-    if (action === 'guest-mode') void switchKimMode('Guest');
+    if (action === 'sign-out') void signOutToLoginScreen();
     if (action === 'delete-user') void _askDelete(control.dataset.uid, control.dataset.name);
   };
 

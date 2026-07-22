@@ -1,5 +1,5 @@
 import {
-  isAdmin, isAdminInstance, getAnalytics, getApiUsage, dateKey, TODAY,
+  isAdmin, isPersonalInstance, getAdminConsoleId, getAnalytics, getApiUsage, dateKey, TODAY,
   getAdminAccountRecords, getAdminSocialSnapshot,
   getAdminRecentWorkouts, getAdminRecentBodyCheckins,
 } from './data.js';
@@ -94,7 +94,7 @@ async function _fetchBase() {
     getApiUsage(30).catch(() => ({ daily: [], ocrMonthly: { monthKey: '', count: 0, limit: 990 } })),
   ]);
   const realAccs = accs.filter((a) => (
-    a.id && !a.id.includes('(guest)') && !isAdminInstance(a.id)
+    a.id && !a.id.includes('(guest)') && !isPersonalInstance(a.id) && a.id !== getAdminConsoleId()
   ));
   return { accs, realAccs, analytics, apiUsage };
 }

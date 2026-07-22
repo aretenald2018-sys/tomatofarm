@@ -36,9 +36,28 @@ $env:JAVA_HOME='C:\Program Files\Android\Android Studio\jbr'
 ## 구조와 규칙
 
 - 코드·데이터·이벤트 소유권: [ARCHITECTURE.md](ARCHITECTURE.md)
+- 계정과 관리자 권한: [docs/reference/ACCOUNT_MODEL.md](docs/reference/ACCOUNT_MODEL.md)
+- Firestore 보안 규칙: [docs/reference/FIRESTORE_RULES.md](docs/reference/FIRESTORE_RULES.md)
 - UI/CSS 소유권: [docs/DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md)
 - 호환 레이어: [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)
 - 생활존 아트: [docs/LIFE_ZONE_ASSETS.md](docs/LIFE_ZONE_ASSETS.md)
 - 작업·검증·릴리스 규칙: [AGENTS.md](AGENTS.md)
+
+## 관리자 계정
+
+관리자 권한은 `관_리자` 계정으로 로그인했을 때만 생깁니다. 이 계정은 가입 화면이나
+브라우저에서 만들 수 없고, Admin SDK 스크립트로만 만듭니다.
+
+```powershell
+# 자격증명 없이: 콘솔에 붙여넣을 문서를 출력 (Firestore 접속 안 함)
+npm.cmd --prefix functions run provision:admin-console -- --password "비밀번호" --print-document
+
+# 서비스 계정 키가 있으면 직접 쓰기
+npm.cmd --prefix functions run provision:admin-console -- --password "비밀번호"           # dry run
+npm.cmd --prefix functions run provision:admin-console -- --password "비밀번호" --commit  # 실제 생성
+```
+
+김태우(문정토마토) 계정은 일반 개인 계정이며 관리자 기능이 없습니다. 자세한 내용은
+[docs/reference/ACCOUNT_MODEL.md](docs/reference/ACCOUNT_MODEL.md).
 
 Production URL: `https://aretenald2018-sys.github.io/tomatofarm/`

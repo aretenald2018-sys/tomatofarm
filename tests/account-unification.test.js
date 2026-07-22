@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   ACCOUNT_DATA_COLLECTIONS,
-  ADMIN_ACCOUNT_ID,
-  ADMIN_GUEST_ACCOUNT_ID,
+  PERSONAL_ACCOUNT_ID,
+  PERSONAL_LEGACY_ALIAS_ID,
   LEGACY_ROOT_MIGRATION_COLLECTION,
   LEGACY_ROOT_MIGRATION_ID,
   LEGACY_ROOT_MIGRATION_VERSION,
@@ -22,15 +22,15 @@ import { mergeWorkoutDayRecords } from '../data/workout-day-merge.js';
 import { getLifeZoneActorReadCandidates } from '../home/life-zone-state.js';
 
 test('logical admin identity stays canonical while private data owner is separate', () => {
-  assert.equal(canonicalAccountOwnerId(ADMIN_GUEST_ACCOUNT_ID), ADMIN_ACCOUNT_ID);
-  assert.equal(resolveAccountDataOwnerId(ADMIN_ACCOUNT_ID, null), null);
+  assert.equal(canonicalAccountOwnerId(PERSONAL_LEGACY_ALIAS_ID), PERSONAL_ACCOUNT_ID);
+  assert.equal(resolveAccountDataOwnerId(PERSONAL_ACCOUNT_ID, null), null);
   assert.equal(
-    resolveAccountDataOwnerId(ADMIN_ACCOUNT_ID, ADMIN_GUEST_ACCOUNT_ID),
-    ADMIN_GUEST_ACCOUNT_ID,
+    resolveAccountDataOwnerId(PERSONAL_ACCOUNT_ID, PERSONAL_LEGACY_ALIAS_ID),
+    PERSONAL_LEGACY_ALIAS_ID,
   );
   assert.equal(
-    resolveAccountDataOwnerId(ADMIN_GUEST_ACCOUNT_ID, ADMIN_ACCOUNT_ID),
-    ADMIN_ACCOUNT_ID,
+    resolveAccountDataOwnerId(PERSONAL_LEGACY_ALIAS_ID, PERSONAL_ACCOUNT_ID),
+    PERSONAL_ACCOUNT_ID,
   );
   assert.equal(resolveAccountDataOwnerId('최_준수', null), '최_준수');
 });
@@ -42,28 +42,28 @@ test('the durable registry wins and accepts only the two shared owner ids', () =
   assert.equal(SHARED_ACCOUNT_OWNER_REGISTRY_STATUS, 'decided');
   assert.equal(normalizeSharedAccountDataOwnerId('invalid-owner'), null);
   assert.equal(readSharedAccountDataOwnerRegistry({
-    ownerId: ADMIN_GUEST_ACCOUNT_ID,
+    ownerId: PERSONAL_LEGACY_ALIAS_ID,
     version: 1,
     status: SHARED_ACCOUNT_OWNER_REGISTRY_STATUS,
   }), null);
   assert.equal(readSharedAccountDataOwnerRegistry({
-    ownerId: ADMIN_GUEST_ACCOUNT_ID,
+    ownerId: PERSONAL_LEGACY_ALIAS_ID,
     version: SHARED_ACCOUNT_OWNER_REGISTRY_VERSION,
     status: 'deciding',
   }), null);
   assert.equal(readSharedAccountDataOwnerRegistry({
-    ownerId: ADMIN_GUEST_ACCOUNT_ID,
+    ownerId: PERSONAL_LEGACY_ALIAS_ID,
     version: SHARED_ACCOUNT_OWNER_REGISTRY_VERSION,
     status: SHARED_ACCOUNT_OWNER_REGISTRY_STATUS,
-  }), ADMIN_GUEST_ACCOUNT_ID);
+  }), PERSONAL_LEGACY_ALIAS_ID);
   assert.equal(selectSharedAccountDataOwner({
-    registeredOwnerId: ADMIN_GUEST_ACCOUNT_ID,
+    registeredOwnerId: PERSONAL_LEGACY_ALIAS_ID,
     adminHasData: true,
-  }), ADMIN_GUEST_ACCOUNT_ID);
+  }), PERSONAL_LEGACY_ALIAS_ID);
   assert.equal(selectSharedAccountDataOwner({
-    registeredOwnerId: ADMIN_ACCOUNT_ID,
+    registeredOwnerId: PERSONAL_ACCOUNT_ID,
     adminHasData: false,
-  }), ADMIN_ACCOUNT_ID);
+  }), PERSONAL_ACCOUNT_ID);
 });
 
 test('legacy root migration uses a top-level owner-scoped completion marker', () => {
@@ -75,11 +75,11 @@ test('legacy root migration uses a top-level owner-scoped completion marker', ()
 test('admin data presence preserves admin; a literally empty namespace selects guest', () => {
   assert.equal(
     selectSharedAccountDataOwner({ adminHasData: true }),
-    ADMIN_ACCOUNT_ID,
+    PERSONAL_ACCOUNT_ID,
   );
   assert.equal(
     selectSharedAccountDataOwner({ adminHasData: false }),
-    ADMIN_GUEST_ACCOUNT_ID,
+    PERSONAL_LEGACY_ALIAS_ID,
   );
 });
 

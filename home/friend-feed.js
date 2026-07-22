@@ -6,7 +6,7 @@ import { TODAY, getCurrentUser, getMyFriends, getAccountList,
          getPendingRequests, getMyNotifications,
          getFriendWorkout, sendFriendRequest, acceptFriendRequest, removeFriend,
          toggleLike, getLikes, dateKey, getCheerStatus,
-         isAdmin, isAdminGuest, getAdminId, getAdminGuestId,
+         isAdmin,
          recordAction }  from '../data.js';
 import { isExerciseDaySuccess } from '../calc.js';
 import { mealDisplayText } from '../ai/meal-artifact-filter.js';
@@ -511,10 +511,9 @@ export async function openFriendManager() {
   let neighborHtml = '';
   try {
     const user = getCurrentUser();
-    const myId = isAdminGuest() ? getAdminId() : user?.id;
+    const myId = user?.id;
     const friendIds = new Set(friends.map(f => f.friendId));
     friendIds.add(myId);
-    if (isAdminGuest()) { friendIds.add(getAdminGuestId()); friendIds.add(getAdminId()); }
     const suggestList = accounts.filter(a => a.id && !friendIds.has(a.id) && !a.id.includes('(guest)'));
     if (suggestList.length > 0) {
       const rows = suggestList.map(a => {
@@ -565,7 +564,7 @@ export async function sendFriendReq() {
   const tid = (ln + '_' + fn).toLowerCase().replace(/\s/g, '');
   const user = getCurrentUser();
   if (!user) return;
-  const myId = isAdminGuest() ? getAdminId() : user.id;
+  const myId = user.id;
   if (tid === myId || tid === user.id) { st.innerHTML = '<span style="color:var(--text-tertiary);">본인에게는 요청할 수 없어요.</span>'; return; }
   const accs = await getAccountList();
   if (!accs.find(a => a.id === tid)) { st.innerHTML = '<span style="color:#ef4444;">해당 이름의 계정이 없어요.</span>'; return; }
@@ -600,7 +599,7 @@ export async function deleteFriend(id) {
 export async function quickAddNeighbor(targetId) {
   const user = getCurrentUser();
   if (!user) return;
-  const myId = isAdminGuest() ? getAdminId() : user.id;
+  const myId = user.id;
   const r = await sendFriendRequest(myId, targetId);
   if (r.error) { showToast(r.error, 2500, 'error'); }
   else { showToast('이웃 요청을 보냈어요!', 2500, 'success'); }

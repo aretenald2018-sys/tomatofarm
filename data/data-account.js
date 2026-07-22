@@ -4,17 +4,30 @@
 
 import {
   db, doc, setDoc, deleteDoc, getDocs, collection,
-  ADMIN_ID, ADMIN_GUEST_ID,
+  ADMIN_CONSOLE_ID, PERSONAL_ID, PERSONAL_LEGACY_ID,
 } from './data-core.js';
+import { isAdminConsoleAccount } from './account-unification.js';
 import { getCurrentUser, isAdmin, setCurrentUser } from './data-auth.js';
 
-export async function getAccountList() {
+async function _readAllAccounts() {
   try {
     const snap = await getDocs(collection(db, '_accounts'));
     const accounts = [];
     snap.forEach(d => accounts.push(d.data()));
     return accounts;
   } catch { return []; }
+}
+
+// 관리자 콘솔 계정은 사람이 아니라 운영 계정이다. 소셜·랭킹·길드·친구 목록은
+// 모두 이 함수를 지나가므로, 여기서 한 번 걸러 두면 화면마다 다시 거를 필요가 없다.
+export async function getAccountList() {
+  const accounts = await _readAllAccounts();
+  return accounts.filter((account) => !isAdminConsoleAccount(account?.id));
+}
+
+// 로그인 인증과 관리자 콘솔만 운영 계정을 포함한 원본 목록을 본다.
+export async function getAccountListIncludingAdminConsole() {
+  return _readAllAccounts();
 }
 
 export async function saveAccount(account) {
@@ -24,7 +37,7 @@ export async function saveAccount(account) {
 export async function refreshCurrentUserFromDB() {
   const expectedOwnerId = getCurrentUser()?.id;
   if (!expectedOwnerId) return;
-  const accounts = await getAccountList();
+  const accounts = await getAccountListIncludingAdminConsole();
   if (getCurrentUser()?.id !== expectedOwnerId) return;
   const fresh = accounts.find(a => a.id === expectedOwnerId);
   if (fresh) setCurrentUser(fresh);
@@ -32,7 +45,7 @@ export async function refreshCurrentUserFromDB() {
 
 export async function recoverDeletedAccounts() {
   try {
-    const existing = await getAccountList();
+    const existing = await getAccountListIncludingAdminConsole();
     const existingIds = new Set(existing.map(a => a.id));
     const missingIds = new Set();
 
@@ -68,8 +81,9 @@ export async function recoverDeletedAccounts() {
       if (data.to && !existingIds.has(data.to))     missingIds.add(data.to);
     });
 
-    missingIds.delete(ADMIN_ID);
-    missingIds.delete(ADMIN_GUEST_ID);
+    missingIds.delete(PERSONAL_ID);
+    missingIds.delete(PERSONAL_LEGACY_ID);
+    missingIds.delete(ADMIN_CONSOLE_ID);
 
     let recovered = 0;
     for (const id of missingIds) {
@@ -103,7 +117,8 @@ export async function recoverDeletedAccounts() {
 
 export async function deleteUserAccount(userId) {
   if (!isAdmin()) throw new Error('관리자만 삭제 가능');
-  if (userId === ADMIN_ID || userId === ADMIN_GUEST_ID) throw new Error('관리자 계정은 삭제 불가');
+  if (userId === ADMIN_CONSOLE_ID) throw new Error('관리자 콘솔 계정은 삭제 불가');
+  if (userId === PERSONAL_ID || userId === PERSONAL_LEGACY_ID) throw new Error('개인 계정은 삭제 불가');
 
   const USER_COLS = ['workouts','exercises','goals','quests','wines','cal_events','cooking',
     'body_checkins','nutrition_db','finance_benchmarks','finance_actuals','finance_loans',

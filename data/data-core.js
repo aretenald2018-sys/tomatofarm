@@ -15,9 +15,10 @@ import { CONFIG } from '../config.js';
 import { generateId } from '../utils/id.js';
 import { createFirestoreWithMultiTabCache } from './firestore-cache.js';
 import {
-  ADMIN_ACCOUNT_ID,
-  ADMIN_GUEST_ACCOUNT_ID,
-  isSharedAdminAccount,
+  ADMIN_CONSOLE_ACCOUNT_ID,
+  PERSONAL_ACCOUNT_ID,
+  PERSONAL_LEGACY_ALIAS_ID,
+  isPersonalSharedAccount,
   normalizeSharedAccountDataOwnerId,
   resolveAccountDataOwnerId,
   SHARED_ACCOUNT_OWNER_CACHE_KEY,
@@ -109,8 +110,9 @@ let _currentUser = null;
 export function getCurrentUserRef()  { return _currentUser; }
 export function setCurrentUserRef(u) { _currentUser = u; }
 
-export const ADMIN_ID       = ADMIN_ACCOUNT_ID;
-export const ADMIN_GUEST_ID = ADMIN_GUEST_ACCOUNT_ID;
+export const ADMIN_CONSOLE_ID = ADMIN_CONSOLE_ACCOUNT_ID;
+export const PERSONAL_ID      = PERSONAL_ACCOUNT_ID;
+export const PERSONAL_LEGACY_ID = PERSONAL_LEGACY_ALIAS_ID;
 
 let _cachedSharedAccountDataOwnerId = normalizeSharedAccountDataOwnerId(
   localStorage.getItem(SHARED_ACCOUNT_OWNER_CACHE_KEY),
@@ -143,13 +145,6 @@ export function resolveDataOwnerId(ownerId) {
   return resolveAccountDataOwnerId(ownerId, _sharedAccountDataOwnerId);
 }
 
-let _kimMode = localStorage.getItem('kimMode') || 'admin';
-export function getKimMode() { return _kimMode; }
-export function setKimMode(mode) {
-  _kimMode = mode === 'guest' ? 'guest' : 'admin';
-  localStorage.setItem('kimMode', _kimMode);
-}
-
 export function getDataOwnerId() {
   if (!_currentUser) return null;
   return resolveDataOwnerId(_currentUser.id);
@@ -159,7 +154,7 @@ export function getDataOwnerId() {
 export function _col(name) {
   const ownerId = getDataOwnerId();
   if (!ownerId) {
-    if (_currentUser && isSharedAdminAccount(_currentUser.id)) {
+    if (_currentUser && isPersonalSharedAccount(_currentUser.id)) {
       const error = new Error('shared account data owner is unresolved');
       error.code = 'SHARED_DATA_OWNER_UNRESOLVED';
       throw error;
@@ -173,7 +168,7 @@ export function _col(name) {
 export function _doc(name, id) {
   const ownerId = getDataOwnerId();
   if (!ownerId) {
-    if (_currentUser && isSharedAdminAccount(_currentUser.id)) {
+    if (_currentUser && isPersonalSharedAccount(_currentUser.id)) {
       const error = new Error('shared account data owner is unresolved');
       error.code = 'SHARED_DATA_OWNER_UNRESOLVED';
       throw error;

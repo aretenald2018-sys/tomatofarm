@@ -8,7 +8,7 @@ import { CONFIG, MUSCLES, MOVEMENTS } from '../config.js';
 import {
   db, doc, setDoc, deleteDoc, getDoc, collection, getDocs, query, where, runTransaction,
   getCurrentUserRef, setCurrentUserRef,
-  ADMIN_ID, getDataOwnerId,
+  ADMIN_CONSOLE_ID, getDataOwnerId,
   _col, _doc,
   _cache, _exList, _customMuscles, _goals, _quests, _cooking, _bodyCheckins, _nutritionDB,
   _setCache, _setExList, _setCustomMuscles, _setGoals, _setQuests, _setCooking, _setBodyCheckins, _setNutritionDB,
@@ -22,7 +22,7 @@ import { dateKey, TODAY } from './data-date.js';
 import { findSeasonForDate, selectSeasonDecisionCache } from './season-model.js';
 import { _getQuarterKeyNow, _sortExList } from './data-helpers.js';
 import { bodyCheckinSequence, getEffectiveDailyBodyCheckins } from './body-checkins.js';
-import { isAdmin, isAdminGuest } from './data-auth.js';
+import { isAdmin } from './data-auth.js';
 import { getAccountList, saveAccount } from './data-account.js';
 import { _socialId, _isMySocialId } from './data-social-friends.js';
 import { sendNotification } from './data-social-interact.js';
@@ -71,17 +71,18 @@ export { imageToBase64 } from './data-image.js';
 export { fetchExchangeRate, fetchFearGreed } from './data-external.js';
 // auth
 export {
-  getCurrentUser, getAdminId, getAdminGuestId,
-  isAdmin, isAdminGuest, isSameInstance, isAdminInstance,
+  getCurrentUser, getAdminConsoleId, getPersonalAccountId, getPersonalLegacyAliasId,
+  isAdmin, isSameInstance, isPersonalInstance,
   GUEST_CONFIG, shouldShow,
   setCurrentUser, loadSavedUser,
-  backupAdminAuth, clearAdminAuth, backupKimAuth, clearKimAuth,
+  markSessionUnlocked, clearSessionUnlock, isSessionUnlocked,
+  clearLegacySessionUnlockFlags, SESSION_UNLOCK_KEY,
   disableInstalledAppSessionFallback,
   restoreUserFromBackup, waitForAuthPersistence,
-  verifyPassword, hashPassword,
+  accountNeedsPassword, verifyPassword, hashPassword,
 } from './data-auth.js';
 // core
-export { getDataOwnerId, getKimMode, setKimMode } from './data-core.js';
+export { getDataOwnerId } from './data-core.js';
 export {
   saveRunningRoute,
   loadRunningRoute,
@@ -92,7 +93,7 @@ export {
 } from './data-running-route.js';
 // account
 export {
-  getAccountList, saveAccount, refreshCurrentUserFromDB,
+  getAccountList, getAccountListIncludingAdminConsole, saveAccount, refreshCurrentUserFromDB,
   recoverDeletedAccounts, deleteUserAccount,
 } from './data-account.js';
 // social
@@ -527,7 +528,6 @@ export async function saveNutritionItemFromOCR(parsedData, source = 'ocr') {
 export const getDietPlan = () => {
   const p = { ...DEFAULT_DIET_PLAN, ..._settings.diet_plan };
   p._userSet = !!(_settings.diet_plan && _settings.diet_plan.weight && _settings.diet_plan.height);
-  if (isAdminGuest() && p.weight && p.height) p._userSet = true;
   return p;
 };
 export const saveDietPlan = async (plan) => {
@@ -939,7 +939,7 @@ export async function sendDeveloperLetter(message) {
 
   await _fbOp('sendDeveloperLetter', async () => {
     await setDoc(doc(db, '_letters', id), letter);
-    await sendNotification(ADMIN_ID, {
+    await sendNotification(ADMIN_CONSOLE_ID, {
       type: 'letter',
       from: user.id,
       message: '개발자에게 편지를 보냈어요 ✉️',
