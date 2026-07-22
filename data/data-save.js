@@ -25,7 +25,16 @@ import {
 } from './pending-day-writes.js';
 
 const _pendingFlushByOwnerDate = new Map();
+const _inFlightRemoteDayWrites = new Map();
 let _pendingSyncListenersReady = false;
+
+// navigator.onLine 은 힌트일 뿐이다. Android WebView 와 일부 데스크톱 네트워크
+// 스택은 연결이 정상인데도 false 를 보고하므로, 이 값으로 서버 저장을 건너뛰면
+// 식단/운동이 기기에만 남는다. 항상 write 를 시도하되 아래 시간 안에 서버 ack
+// 가 오지 않으면 호출자에게 pending 으로 알린다. write 자체는 백그라운드에서
+// 계속 진행하고 확정되는 순간 복구 저널을 정리한다.
+const REMOTE_ACK_WINDOW_MS = 8000;
+const OFFLINE_HINT_ACK_WINDOW_MS = 1200;
 
 function _ownerDateQueueKey(ownerId, key) {
   return `${encodeURIComponent(ownerId)}:${key}`;
@@ -152,19 +161,63 @@ export function reassignPendingDayWritesToOwner(targetOwnerId, sourceOwnerIds = 
   return moved;
 }
 
-function _isDefinitelyOffline() {
-  return typeof navigator !== 'undefined' && navigator.onLine === false;
+function _remoteAckWindowMs() {
+  const offlineHint = typeof navigator !== 'undefined' && navigator.onLine === false;
+  return offlineHint ? OFFLINE_HINT_ACK_WINDOW_MS : REMOTE_ACK_WINDOW_MS;
+}
+
+// Firestore 는 오프라인 write 를 거부하지 않고 서버 ack 까지 promise 를 보류한다.
+// 복구 저널은 이미 durable 하므로 정해진 시간만 기다렸다가 제어를 돌려주고,
+// 실제 write 는 그대로 진행시킨다. 실패는 창 안에서만 호출자에게 전파한다.
+function _awaitRemoteAck(remoteWrite, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      resolve(false);
+    }, timeoutMs);
+    if (typeof timer?.unref === 'function') timer.unref();
+    remoteWrite.then(() => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(true);
+    }, (error) => {
+      if (settled) {
+        console.warn('[data] deferred day write failed:', error?.message || error);
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      reject(error);
+    });
+  });
+}
+
+function _trackInFlightRemoteDayWrite(queueKey, remoteWrite) {
+  _inFlightRemoteDayWrites.set(queueKey, remoteWrite);
+  const clear = () => {
+    if (_inFlightRemoteDayWrites.get(queueKey) === remoteWrite) {
+      _inFlightRemoteDayWrites.delete(queueKey);
+    }
+  };
+  remoteWrite.then(clear, clear);
 }
 
 async function _drainPendingDayWrites(ownerId, key, dayRef) {
-  if (_isDefinitelyOffline()) {
-    return { state: 'pending', ownerId, dateKey: key };
-  }
+  const queueKey = _ownerDateQueueKey(ownerId, key);
 
   while (true) {
     const storage = _pendingStorage();
     const entries = listPendingDayWrites(storage, { ownerId, dateKey: key });
     if (!entries.length) return { state: 'synced', ownerId, dateKey: key };
+
+    // 앞선 write 가 아직 확정되지 않았다면 같은 날짜에 write 를 겹쳐 쌓지 않는다.
+    // 그 write 가 끝나면 남은 저널을 이어서 보낸다.
+    if (_inFlightRemoteDayWrites.has(queueKey)) {
+      return { state: 'pending', ownerId, dateKey: key };
+    }
 
     const pendingCache = mergePendingDayWritesIntoCache({}, entries);
     const payload = pendingCache[key];
@@ -172,16 +225,35 @@ async function _drainPendingDayWrites(ownerId, key, dayRef) {
       throw _markPendingWriteError(new Error('pending day payload is invalid'), 'PENDING_DAY_INVALID');
     }
 
+    // 대상 ref는 호출 당시 canonical owner로 고정한다. await 뒤 현재 로그인
+    // 계정을 다시 읽지 않으므로 A 계정 저장이 B/_orphan으로 새지 않는다.
+    const remoteWrite = setDoc(dayRef, payload, { merge: true }).then(() => {
+      // 늦게 확정된 write 도 저널을 정리해야 다음 flush 가 같은 payload 를
+      // 다시 보내지 않는다. 저장소 접근 실패로 서버 성공을 실패로 바꾸지 않는다.
+      try {
+        acknowledgePendingDayWrites(_pendingStorage(), entries);
+      } catch (error) {
+        console.warn('[data] pending day acknowledgement skipped:', error?.message || error);
+      }
+    });
+    _trackInFlightRemoteDayWrite(queueKey, remoteWrite);
+
+    let acknowledged;
     try {
-      // 대상 ref는 호출 당시 canonical owner로 고정한다. await 뒤 현재 로그인
-      // 계정을 다시 읽지 않으므로 A 계정 저장이 B/_orphan으로 새지 않는다.
-      await setDoc(dayRef, payload, { merge: true });
+      acknowledged = await _awaitRemoteAck(remoteWrite, _remoteAckWindowMs());
     } catch (error) {
       const marked = _markPendingWriteError(error);
       marked.pendingDayStored = true;
       throw marked;
     }
-    acknowledgePendingDayWrites(storage, entries);
+
+    if (!acknowledged) {
+      remoteWrite.then(
+        () => { void _requestPendingDayFlush(ownerId, key, { dayRef }); },
+        () => {},
+      );
+      return { state: 'pending', ownerId, dateKey: key };
+    }
   }
 }
 

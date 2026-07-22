@@ -25,6 +25,10 @@
 const _handlers = new Map();
 let _initialized = false;
 
+// 식단 패널이 자기 버튼의 click 을 직접 처리했음을 표시하는 이벤트 플래그.
+// workout/render.js 의 bindDietFoodActions 가 같은 키를 세운다.
+export const DIET_FOOD_HANDLED_FLAG = '__tomatoDietFoodHandled';
+
 // 네임스페이스 prefix 검증 — `<word>:<word>` 형태만 허용.
 function _isNamespaced(name) {
   return typeof name === 'string' && /^[a-zA-Z][\w-]*:[\w-]+$/.test(name);
@@ -63,7 +67,10 @@ function _dispatch(e, attribute) {
   if (!el) return;
   const action = el.getAttribute(attribute);
   if (!action) return;
-  if ((action === 'diet:add-food' || action === 'diet:add-frequent-food') && el.closest?.('#tab-diet')) return;
+  // 식단 추가 버튼은 패널이 직접 소유한다. 다만 그 바인딩이 아직 안 붙은
+  // 시점(첫 날짜 하이드레이션 전)에도 버튼이 죽어 있으면 안 되므로, 위임을
+  // 무조건 포기하지 않고 패널 핸들러가 이미 처리한 이벤트만 건너뛴다.
+  if ((action === 'diet:add-food' || action === 'diet:add-frequent-food') && e[DIET_FOOD_HANDLED_FLAG]) return;
   // prefix 없는 액션은 라우터 통과 — 로컬 핸들러(querySelector 등) 영역 보장.
   if (!_isNamespaced(action)) return;
   const handler = _handlers.get(action);

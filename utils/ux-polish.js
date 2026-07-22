@@ -20,19 +20,27 @@ function _ensureOfflineBanner() {
   return el;
 }
 
+// navigator.onLine 은 힌트일 뿐이다. Android WebView 와 일부 데스크톱 네트워크
+// 스택은 연결이 정상인데도 false 를 보고한다. 마지막 서버 왕복이 성공했다면
+// 배너를 띄우지 않고, 실제로 실패했다면 onLine 이 true 여도 띄운다.
+let _lastSyncState = null;
+
 function _updateOnlineStatus() {
   const el = _ensureOfflineBanner();
-  if (navigator.onLine) {
-    el.classList.remove('visible');
-  } else {
-    el.classList.add('visible');
-  }
+  const offline = _lastSyncState === 'err' || (!navigator.onLine && _lastSyncState !== 'ok');
+  el.classList.toggle('visible', offline);
 }
 
 export function initOfflineBanner() {
   _ensureOfflineBanner();
   window.addEventListener('online', _updateOnlineStatus);
   window.addEventListener('offline', _updateOnlineStatus);
+  document.addEventListener('data:sync-status', (event) => {
+    const state = event?.detail?.state;
+    if (state !== 'ok' && state !== 'err') return;
+    _lastSyncState = state;
+    _updateOnlineStatus();
+  });
   _updateOnlineStatus(); // 초기 상태
 }
 

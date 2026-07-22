@@ -329,7 +329,56 @@ test('saveDay rejects a missing owner without creating an _orphan ref or journal
   }, { ownerId: null });
 });
 
-test('offline saves return pending and a fresh module restores both diet and workout', async () => {
+// Regression: Android WebView and some desktop network stacks report
+// navigator.onLine === false while the connection works. Skipping the remote
+// write on that hint left the day in the device journal only, so a reload that
+// could not restore the journal looked like "the diet I just added is gone".
+test('a false offline hint still writes the day to the server and clears the journal', async () => {
+  await withSaveDay(async ({ save, storage, surface }) => {
+    const dietResult = await save.saveDay(DATE_KEY, {
+      snack: 'greek yogurt',
+      sKcal: 190,
+    }, { rethrow: true });
+
+    assert.equal(dietResult.state, 'synced');
+    assert.equal(surface.setDocCalls.length, 1);
+    assert.deepEqual(surface.documents.get(DAY_PATH_A), {
+      snack: 'greek yogurt',
+      sKcal: 190,
+    });
+    assert.equal(pendingEntries(storage).length, 0);
+  }, { online: false });
+});
+
+test('an unacknowledged write reports pending without stacking a duplicate write per save', async () => {
+  await withSaveDay(async ({ save, storage, surface }) => {
+    // A real offline Firestore write never rejects — it stays unacknowledged
+    // until the backend is reachable again.
+    surface.nextSetDocGate = deferred();
+
+    const dietResult = await save.saveDay(DATE_KEY, {
+      snack: 'greek yogurt',
+      sKcal: 190,
+    }, { rethrow: true });
+    const workoutResult = await save.saveDay(DATE_KEY, {
+      exercises: [{ name: 'run', durationMin: 35 }],
+      runDistance: 6.2,
+    }, { rethrow: true });
+
+    assert.equal(dietResult.state, 'pending');
+    assert.equal(workoutResult.state, 'pending');
+    assert.equal(surface.setDocCalls.length, 1, 'an in-flight write must not be re-sent per save');
+    assert.deepEqual(surface.cacheFor('A')[DATE_KEY], {
+      snack: 'greek yogurt',
+      sKcal: 190,
+      exercises: [{ name: 'run', durationMin: 35 }],
+      runDistance: 6.2,
+    });
+    assert.equal(pendingEntries(storage).length, 1);
+  }, { online: false });
+});
+
+test('offline saves survive a reload and a fresh module restores both diet and workout', async () => {
   const storage = new MemoryStorage();
   const restoreStorage = installGlobal('localStorage', storage);
   const restoreNavigator = installGlobal('navigator', { onLine: false });
@@ -340,6 +389,7 @@ test('offline saves return pending and a fresh module restores both diet and wor
 
   try {
     firstLoad = await loadSaveDayModule(firstSurface);
+    firstSurface.nextSetDocGate = deferred();
     const dietResult = await firstLoad.module.saveDay(DATE_KEY, {
       snack: 'greek yogurt',
       sKcal: 190,
@@ -351,7 +401,6 @@ test('offline saves return pending and a fresh module restores both diet and wor
 
     assert.equal(dietResult.state, 'pending');
     assert.equal(workoutResult.state, 'pending');
-    assert.equal(firstSurface.setDocCalls.length, 0);
     assert.deepEqual(firstSurface.cacheFor('A')[DATE_KEY], {
       snack: 'greek yogurt',
       sKcal: 190,

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 칼로리 링 게이지. RemoteViews 는 setProgressBar 만 쓸 수 있으므로 진행률은
+     레이어 리스트 + rotate 로 그린다. 12시 방향에서 시작하도록 -90도 회전. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:id="@android:id/background">
+        <shape
+            android:innerRadiusRatio="3.2"
+            android:shape="ring"
+            android:thicknessRatio="9"
+            android:useLevel="false">
+            <solid android:color="@color/widget_track" />
+        </shape>
+    </item>
+    <item android:id="@android:id/progress">
+        <rotate
+            android:fromDegrees="-90"
+            android:pivotX="50%"
+            android:pivotY="50%"
+            android:toDegrees="-90">
+            <shape
+                android:innerRadiusRatio="3.2"
+                android:shape="ring"
+                android:thicknessRatio="9"
+                android:useLevel="true">
+                <solid android:color="@color/widget_accent" />
+            </shape>
+        </rotate>
+    </item>
+</layer-list>

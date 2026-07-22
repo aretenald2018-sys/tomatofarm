@@ -30,6 +30,18 @@ test('diet data actions leave the global router for their direct PWA owner', () 
   assert.match(actionRouterJs, /action === 'diet:add-food' \|\| action === 'diet:add-frequent-food'/);
 });
 
+// Regression: the router used to abdicate for every add-food click inside
+// #tab-diet. Before the first date hydration ran bindDietFoodActions(), no
+// handler owned the button at all and pressing it did nothing.
+test('an unbound add-food button still reaches the registered delegated handler', () => {
+  assert.match(actionRouterJs, /export const DIET_FOOD_HANDLED_FLAG = '__tomatoDietFoodHandled';/);
+  assert.match(actionRouterJs,
+    /action === 'diet:add-food' \|\| action === 'diet:add-frequent-food'\) && e\[DIET_FOOD_HANDLED_FLAG\]\) return;/);
+  assert.doesNotMatch(actionRouterJs, /el\.closest\?\.\('#tab-diet'\)/);
+  assert.match(workoutRenderJs, /import \{ DIET_FOOD_HANDLED_FLAG \} from '\.\.\/utils\/action-router\.js';/);
+  assert.match(workoutRenderJs, /event\[DIET_FOOD_HANDLED_FLAG\] = true;/);
+});
+
 test('diet panel directly owns add actions when PWA event delegation is unavailable', () => {
   assert.match(workoutRenderJs, /export function bindDietFoodActions\(\)/);
   assert.match(workoutRenderJs, /panel\.querySelectorAll\('\[data-action="diet:add-food"\], \[data-action="diet:add-frequent-food"\]'\)/);

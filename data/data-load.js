@@ -11,7 +11,7 @@
 import { CONFIG, MOVEMENTS } from '../config.js';
 import {
   db, doc, setDoc, collection, getDocFromServer, getDocs, getDocsFromServer, runTransaction, onSnapshot,
-  getCurrentUserRef, getDataOwnerId,
+  getCurrentUserRef, getDataOwnerId, getCachedSharedAccountDataOwnerId,
   _cache, _nutritionDB,
   _setCache, _setExList, _setCustomMuscles, _setGoals, _setQuests, _setCooking, _setBodyCheckins, _setNutritionDB,
   DEFAULT_TAB_ORDER, DEFAULT_DIET_PLAN, DEFAULT_EXPERT_PRESET,
@@ -71,6 +71,19 @@ function _changedWorkoutDateKeys(previousCache, nextCache) {
       return true;
     }
   });
+}
+
+// 소유자 해석이 실패해도 이 기기에만 있는 미동기 기록까지 지우면, 사용자는 방금
+// 입력한 식단이 새로고침으로 사라졌다고 본다. 복구 저널은 마지막으로 검증된 물리
+// 소유자 이름으로 이 기기가 직접 기록한 자기 데이터이므로 읽기 전용으로 되살린다.
+// 로그아웃 상태(사용자 없음)에서는 아무것도 복원하지 않는다.
+function _deviceJournalCacheForCurrentUser() {
+  const currentUser = getCurrentUserRef();
+  if (!currentUser) return {};
+  const ownerId = getDataOwnerId()
+    || (isSharedAdminAccount(currentUser.id) ? getCachedSharedAccountDataOwnerId() : null);
+  if (!ownerId) return {};
+  return restorePendingDayWritesForOwner(ownerId, {});
 }
 
 function _notifyWorkoutCacheChanged(ownerId, changedDateKeys, source) {
@@ -227,7 +240,7 @@ export async function loadAll() {
     } catch (error) {
       if (_loadAllGeneration !== loadGeneration) return;
       stopWorkoutRealtimeSync();
-      _setCache({});
+      _setCache(_deviceJournalCacheForCurrentUser());
       _setSyncStatus('err');
       console.warn('[data] shared account owner resolution failed:', error?.message || error);
       return;
@@ -235,9 +248,10 @@ export async function loadAll() {
   }
   const ownerId = getDataOwnerId();
   if (!ownerId) {
-    // 이전 계정 캐시를 로그인 화면이나 다음 계정에 노출하지 않는다.
+    // 이전 계정 캐시를 로그인 화면이나 다음 계정에 노출하지 않는다. 로그인된
+    // 계정의 미동기 기록만 기기 저널에서 되살린다.
     stopWorkoutRealtimeSync();
-    _setCache({});
+    _setCache(_deviceJournalCacheForCurrentUser());
     _setSyncStatus('err');
     return;
   }

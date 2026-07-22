@@ -287,6 +287,11 @@ export function _setTomatoCycles(v) { _tomatoCycles = v; }
 
 // ── 동기화 상태 UI ──────────────────────────────────────────────
 export function _setSyncStatus(state) {
+  // 실제 서버 왕복 결과를 UI 전역에 알린다. navigator.onLine 은 Android WebView
+  // 등에서 틀리게 보고되므로 오프라인 배너는 이 신호를 우선한다.
+  if (typeof document !== 'undefined' && typeof CustomEvent === 'function') {
+    document.dispatchEvent(new CustomEvent('data:sync-status', { detail: { state } }));
+  }
   const dot = document.getElementById('sync-dot');
   const txt = document.getElementById('sync-text');
   if (!dot || !txt) return;

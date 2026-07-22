@@ -65,6 +65,32 @@ test('loadAll resolves the physical owner before seeding pending data and captur
   }
 });
 
+// Regression: an unresolved or failed owner decision used to reset the day
+// cache to {}, which hid days that only existed in this device's recovery
+// journal. The user saw a just-entered meal vanish on the next reload.
+test('a failed owner decision keeps this device unsynced days instead of clearing them', () => {
+  const loadAll = sliceFrom(dataLoadSource, 'export async function loadAll()', 'loadAll');
+  assert.doesNotMatch(loadAll, /_setCache\(\{\}\);/,
+    'loadAll must not reset the day cache without restoring the device journal');
+  assert.equal((loadAll.match(/_setCache\(_deviceJournalCacheForCurrentUser\(\)\);/g) || []).length, 2,
+    'both owner-failure exits should restore the device journal');
+
+  const recovery = sliceBetween(
+    dataLoadSource,
+    'function _deviceJournalCacheForCurrentUser()',
+    'function _notifyWorkoutCacheChanged',
+    '_deviceJournalCacheForCurrentUser',
+  );
+  assertOrdered(recovery, [
+    'const currentUser = getCurrentUserRef();',
+    'if (!currentUser) return {};',
+    'getDataOwnerId()',
+    'isSharedAdminAccount(currentUser.id) ? getCachedSharedAccountDataOwnerId() : null',
+    'if (!ownerId) return {};',
+    'return restorePendingDayWritesForOwner(ownerId, {});',
+  ], 'signed-out sessions restore nothing and shared accounts fall back to the verified device owner');
+});
+
 test('loadAll discards stale-owner results and overlays remote data with pending writes', () => {
   const loadAll = sliceFrom(dataLoadSource, 'export async function loadAll()', 'loadAll');
 
@@ -265,12 +291,20 @@ test('a new session validates the remote registry before accepting an offline ow
   assert.match(dataCoreSource, /let _sharedAccountDataOwnerId = null;/);
 
   assertOrdered(sharedOwnerSource, [
-    'registrySnapshot = await getDocFromServer(registryRef);',
+    'registrySnapshot = await _readOwnerRegistrySnapshot(registryRef);',
     '} catch (error) {',
     'const cachedOwnerId = getCachedSharedAccountDataOwnerId();',
     'if (cachedOwnerId && _isRemoteRegistryUnavailable(error)) {',
     'return _adoptSharedAccountDataOwner(cachedOwnerId);',
   ], 'remote registry before offline cache');
+
+  // A hung registry read must not freeze bootstrap with an empty cache; it is
+  // classified exactly like any other network failure.
+  assertOrdered(sharedOwnerSource, [
+    'async function _readOwnerRegistrySnapshot(registryRef)',
+    'getDocFromServer(registryRef)',
+    "error.code = 'deadline-exceeded';",
+  ], 'bounded registry read before offline cache');
 
   const resolver = sliceFrom(
     sharedOwnerSource,

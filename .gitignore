@@ -5,6 +5,9 @@ node_modules/
 !public/downloads/*.apk
 .claude/
 .omo/
+# Discord/AI 요청 브리지가 체크아웃 안에 쓰는 로컬 이력 산출물.
+# check-project-governance.mjs 가 docs/ai/ 를 저장소 금지 경로로 강제한다.
+docs/ai/
 .codex-worktrees/
 .codex-remote-attachments/
 .test-results/
@@ -27,6 +30,23 @@ android/app/**
 !android/app/src/
 android/app/src/**
 !android/app/src/main/
+# 시즌 대시보드 위젯 리소스. 이 목록이 없으면 새 drawable 이 조용히 커밋에서
+# 빠지고, 레이아웃만 참조를 얻어 안드로이드 빌드가 aapt 링크 단계에서 깨진다.
+!android/app/src/main/res/
+!android/app/src/main/res/drawable/
+!android/app/src/main/res/drawable/widget_*.xml
+!android/app/src/main/res/drawable-v31/
+!android/app/src/main/res/drawable-v31/widget_*.xml
+!android/app/src/main/res/layout/
+!android/app/src/main/res/layout/widget_*.xml
+!android/app/src/main/res/values/
+!android/app/src/main/res/values/strings.xml
+!android/app/src/main/res/values/styles.xml
+!android/app/src/main/res/values/widget_colors.xml
+!android/app/src/main/res/values-night/
+!android/app/src/main/res/values-night/widget_colors.xml
+!android/app/src/main/res/xml/
+!android/app/src/main/res/xml/season_dashboard_widget_info.xml
 !android/app/src/main/java/
 !android/app/src/main/java/com/
 !android/app/src/main/java/com/lifestreak/

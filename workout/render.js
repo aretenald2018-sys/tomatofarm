@@ -25,6 +25,7 @@ import { openNutritionItemEditor, switchNutritionTab } from '../modals/nutrition
 import { ensureModal } from '../modal-manager.js';
 import { closeModal } from '../app/overlay-stack.js';
 import { openNutritionSearch } from '../feature-nutrition.js';
+import { DIET_FOOD_HANDLED_FLAG } from '../utils/action-router.js';
 
 // ── 날짜 라벨 ────────────────────────────────────────────────────
 export function _renderDateLabel() {
@@ -544,6 +545,9 @@ export function bindDietFoodActions() {
     control.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
+      // 전역 라우터가 같은 click 을 한 번 더 처리하지 않도록 표시한다.
+      // stopPropagation 이 통하지 않는 WebView 에서도 중복 실행을 막는다.
+      event[DIET_FOOD_HANDLED_FLAG] = true;
       if (control.dataset.action === 'diet:add-food') {
         void openNutritionSearch(control.dataset.meal).catch((error) => {
           console.error('[diet] nutrition search open failed:', error);
