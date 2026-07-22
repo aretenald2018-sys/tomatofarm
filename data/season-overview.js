@@ -37,14 +37,15 @@ function _strengthItems(board = {}, week, todayKey) {
     const wendler = isWendlerBenchmark(benchmark);
     const tracks = wendler ? ['volume'] : (Array.isArray(benchmark.tracks) && benchmark.tracks.length ? benchmark.tracks : ['volume']);
     return tracks.map(track => {
-      const step = (board.steps || [])
+      const step = wendler ? null : (board.steps || [])
         .filter(candidate => candidate.benchmarkId === benchmark.id && candidate.track === track)
         .find(candidate => {
           const start = candidate.weekStart || '';
           const end = start ? addSeasonDays(start, Math.max(1, Number(candidate.span) || 1) * 7 - 1) : '';
           return start <= week.goalWeekStart && week.goalWeekStart <= end;
         });
-      const log = step?.weekLog?.[week.goalWeekStart] || {};
+      // 웬들러 종목은 스텝을 만들지 않고 paintWeek이 benchmark.wendlerLog에 달성을 남긴다 (board-core 계약)
+      const log = (wendler ? benchmark.wendlerLog?.[week.goalWeekStart] : step?.weekLog?.[week.goalWeekStart]) || {};
       const future = week.goalWeekStart > todayKey;
       const state = future ? 'planned' : log.paintedAt || log.done ? 'achieved' : log.attempted ? 'attempted' : 'not-achieved';
       const program = wendler

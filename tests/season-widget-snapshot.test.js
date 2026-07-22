@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildSeasonDashboardSnapshot } from '../data/season-widget-snapshot.js';
-import { buildBoardFromOnboarding } from '../workout/test-v2/board-core.js';
+import { buildBoardFromOnboarding, paintWeek } from '../workout/test-v2/board-core.js';
 
 const registry = {
   schemaVersion: 2,
@@ -50,6 +50,33 @@ test('위젯 snapshot은 시즌 스트릭·러닝·헬스·주차를 한 계약�
   assert.equal(snapshot.strength.sessions.actual, 3);
   assert.equal(snapshot.strength.liftDeltaKg > 0, true);
   assert.match(snapshot.nextPlan.health, /스쿼트/);
+});
+
+test('웬들러 종목을 이번 주 달성하면 위젯 주간 목표가 달성으로 집계된다', () => {
+  const board = buildBoardFromOnboarding({
+    startDate: '2026-07-01',
+    selections: [{
+      exerciseId: 'squat_wide', movementId: 'back_squat', groupId: 'lower', label: '스쿼트(와이드)',
+      tracks: { volume: { kg: 90, reps: 8 } },
+      wendler: { scheme: 'w863', oneRmKg: 120 },
+    }],
+  });
+  const benchmark = board.benchmarks[0];
+  assert.equal(benchmark.program, 'wendler');
+  // 웬들러는 스텝을 만들지 않는다 — 달성 로그는 benchmark.wendlerLog에만 쌓인다
+  assert.equal((board.steps || []).some(step => step.benchmarkId === benchmark.id), false);
+  assert.equal(paintWeek(board, { benchmarkId: benchmark.id, weekStart: '2026-07-13', log: { at: 123, amrapReps: 7 } }), true);
+
+  const snapshot = buildSeasonDashboardSnapshot({
+    cache: {}, registry, todayKey: '2026-07-15', board,
+    runningPlan: { weeklyDistanceKm: 20, weeklySessions: 3 },
+    generatedAt: 123,
+  });
+  const strength = snapshot.weeklyGoal.items.filter(item => item.kind === 'strength');
+  assert.equal(strength.length, 1);
+  assert.equal(strength[0].label, '스쿼트(와이드)');
+  assert.equal(strength[0].state, 'achieved');
+  assert.equal(snapshot.weeklyGoal.achievedCount, 1);
 });
 
 test('현재 시즌이 없으면 위젯은 과거 수치를 섞지 않고 설정 안내 상태를 만든다', () => {
