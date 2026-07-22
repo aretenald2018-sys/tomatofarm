@@ -180,6 +180,9 @@ test('manual app refresh keeps native Wear bridge while APK button downloads mob
   assert.match(gitignore, /!public\/downloads\/\*\.apk/);
   assert.match(buildInfoJs, /갤럭시워치 설치 화면/);
   assert.match(buildInfoJs, /browser-download/);
+  // 받은 APK 파일명만 보고도 어느 배포본인지 알 수 있어야 한다.
+  assert.match(buildInfoJs, /_tomatoMobileApkDownloadName/);
+  assert.match(buildInfoJs, /link\.download = fileName;/);
   assert.doesNotMatch(buildInfoJs, /Android 앱에서 실행하거나 PC에서/);
   assert.doesNotMatch(appJs, /Android 앱에서 실행하거나 PC에서/);
   assert.equal(existsSync(new URL('../public/downloads/tomato-mobile-debug.apk', import.meta.url)), true);
@@ -243,9 +246,17 @@ test('published mobile APK contains current runtime and workout flow assets', ()
   }
 });
 
+function expectedApkDownloadName(deployedAt) {
+  const stamp = new Date(deployedAt);
+  const pad = value => String(value).padStart(2, '0');
+  const date = `${stamp.getFullYear()}-${pad(stamp.getMonth() + 1)}-${pad(stamp.getDate())}`;
+  return `tomato-mobile-${date}-${pad(stamp.getHours())}${pad(stamp.getMinutes())}.apk`;
+}
+
 test('browser APK fallback starts direct download without old warning toast', async () => {
   const previousWindow = globalThis.window;
   const previousDocument = globalThis.document;
+  const deployedAt = '2026-07-22T10:26:59.850Z';
   const toasts = [];
   const anchors = [];
   let nativeWearBridgeCalls = 0;
@@ -264,6 +275,7 @@ test('browser APK fallback starts direct download without old warning toast', as
   };
 
   globalThis.window = {
+    __BUILD_INFO: { deployedAt },
     showToast(message, duration, type) {
       toasts.push({ message, duration, type });
     },
@@ -317,7 +329,10 @@ test('browser APK fallback starts direct download without old warning toast', as
     assert.equal(result.reason, 'browser-download');
     assert.match(result.downloadUrl, /\/public\/downloads\/tomato-mobile-debug\.apk$/);
     assert.equal(anchors.length, 1);
-    assert.equal(anchors[0].download, 'tomato-mobile-debug.apk');
+    // 저장되는 파일명은 이 배포본이 푸시된 날짜/시간이어야 한다.
+    assert.match(anchors[0].download, /^tomato-mobile-\d{4}-\d{2}-\d{2}-\d{4}\.apk$/);
+    assert.equal(anchors[0].download, expectedApkDownloadName(deployedAt));
+    assert.equal(result.fileName, expectedApkDownloadName(deployedAt));
     assert.equal(anchors[0].clicked, true);
     assert.equal(anchors[0].removed, true);
     assert.equal(toasts.length, 0);
@@ -325,6 +340,41 @@ test('browser APK fallback starts direct download without old warning toast', as
     assert.equal(toasts.some(toast => String(toast.message).includes('Android 앱에서 실행하거나 PC에서')), false);
     assert.equal(control.disabled, false);
     assert.equal(control.attrs['aria-busy'], 'false');
+  } finally {
+    globalThis.window = previousWindow;
+    globalThis.document = previousDocument;
+  }
+});
+
+test('browser APK download keeps the plain file name when the deploy time is unknown', async () => {
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  const anchors = [];
+
+  globalThis.window = {
+    __BUILD_INFO: { deployedAt: 'unknown' },
+    showToast() {},
+  };
+  globalThis.document = {
+    getElementById() {
+      return null;
+    },
+    createElement() {
+      const anchor = { download: '', href: '', rel: '', style: {}, click() {}, remove() {} };
+      anchors.push(anchor);
+      return anchor;
+    },
+    body: { appendChild() {} },
+  };
+
+  try {
+    const moduleUrl = new URL(`../utils/build-info.js?apk-name-fallback=${Date.now()}`, import.meta.url);
+    const { requestTomatoApkInstall } = await import(moduleUrl.href);
+    const result = await requestTomatoApkInstall({ source: 'test' });
+
+    assert.equal(result.started, true);
+    assert.equal(anchors.length, 1);
+    assert.equal(anchors[0].download, 'tomato-mobile-debug.apk');
   } finally {
     globalThis.window = previousWindow;
     globalThis.document = previousDocument;

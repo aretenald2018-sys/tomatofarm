@@ -9,6 +9,7 @@ const APP_SW_SCOPE = '/tomatofarm/';
 const WEAR_APP_REFRESH_TIMEOUT_MS = 1200;
 const TOMATO_MOBILE_APK_DOWNLOAD_PATH = '../public/downloads/tomato-mobile-debug.apk';
 const TOMATO_MOBILE_APK_DOWNLOAD_NAME = 'tomato-mobile-debug.apk';
+const TOMATO_MOBILE_APK_DOWNLOAD_PREFIX = 'tomato-mobile';
 // APK 셸은 www/만 담고 있어 public/ 경로가 존재하지 않는다. 네이티브에서는
 // 배포된 절대 URL을 열어야 Capacitor가 외부 브라우저로 넘겨 설치가 시작된다.
 const TOMATO_MOBILE_APK_REMOTE_URL = 'https://aretenald2018-sys.github.io/tomatofarm/public/downloads/tomato-mobile-debug.apk';
@@ -303,7 +304,30 @@ function _tomatoMobileApkDownloadUrl() {
   return new URL(TOMATO_MOBILE_APK_DOWNLOAD_PATH, import.meta.url).href;
 }
 
-function _startTomatoApkDownload() {
+// 게시된 APK는 항상 그 배포본의 런타임 자산과 일치한다(verify-apk-runtime-assets).
+// 그래서 배포 시각이 곧 이 APK가 푸시된 시각이고, 받은 파일만 보고도 어느 배포본인지
+// 구분할 수 있다. 사용자가 보는 시각으로 읽히도록 로컬 타임존을 쓴다.
+function _apkDownloadStamp(value) {
+  if (!value || value === 'local' || value === 'unknown') return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
+}
+
+function _tomatoMobileApkDownloadName(info = null) {
+  const stamp = _apkDownloadStamp(info?.deployedAt);
+  return stamp ? `${TOMATO_MOBILE_APK_DOWNLOAD_PREFIX}-${stamp}.apk` : TOMATO_MOBILE_APK_DOWNLOAD_NAME;
+}
+
+async function _resolveApkDownloadBuildInfo() {
+  if (typeof window === 'undefined') return _buildInfoCache;
+  const cached = window.__BUILD_INFO || _buildInfoCache;
+  if (_apkDownloadStamp(cached?.deployedAt)) return cached;
+  return loadBuildInfo({ force: true });
+}
+
+function _startTomatoApkDownload({ fileName = TOMATO_MOBILE_APK_DOWNLOAD_NAME } = {}) {
   const downloadUrl = _tomatoMobileApkDownloadUrl();
   if (typeof document === 'undefined') {
     return { started: false, reason: 'document-unavailable', downloadUrl };
@@ -311,27 +335,29 @@ function _startTomatoApkDownload() {
 
   // WebView는 download 속성을 무시한다. 앱 바깥 호스트로 여는 창은 Capacitor가
   // ACTION_VIEW 인텐트로 넘겨서 안드로이드 다운로드 매니저가 처리한다.
+  // 안드로이드 다운로드 매니저는 URL 경로에서 파일명을 정하므로 네이티브 셸에서는
+  // 날짜 파일명을 붙일 수 없다.
   if (_isNativeAppShell()) {
     const opened = window.open(downloadUrl, '_blank');
     if (opened === null && typeof window.location?.assign === 'function') {
       window.location.assign(downloadUrl);
     }
-    return { started: true, reason: 'native-browser-handoff', downloadUrl };
+    return { started: true, reason: 'native-browser-handoff', downloadUrl, fileName: TOMATO_MOBILE_APK_DOWNLOAD_NAME };
   }
 
   const link = document.createElement('a');
   if (!link || typeof link.click !== 'function') {
-    return { started: false, reason: 'download-link-unavailable', downloadUrl };
+    return { started: false, reason: 'download-link-unavailable', downloadUrl, fileName };
   }
 
   link.href = downloadUrl;
-  link.download = TOMATO_MOBILE_APK_DOWNLOAD_NAME;
+  link.download = fileName;
   link.rel = 'noopener';
   link.style.display = 'none';
   document.body?.appendChild?.(link);
   link.click();
   link.remove?.();
-  return { started: true, downloadUrl };
+  return { started: true, downloadUrl, fileName };
 }
 
 function _wearAppRefreshPayload(source) {
@@ -394,12 +420,26 @@ export async function requestTomatoApkInstall({ control = null, source = 'manual
   _setRefreshControlBusy(button, true);
 
   try {
-    const download = _startTomatoApkDownload();
+    // 네이티브 셸은 파일명을 못 바꾸므로 build-info 조회로 창 열기를 지연시키지 않는다.
+    const info = _isNativeAppShell() ? null : await _resolveApkDownloadBuildInfo();
+    const download = _startTomatoApkDownload({ fileName: _tomatoMobileApkDownloadName(info) });
     if (download.started) {
-      return { started: true, reason: 'browser-download', downloadUrl: download.downloadUrl, source };
+      return {
+        started: true,
+        reason: 'browser-download',
+        downloadUrl: download.downloadUrl,
+        fileName: download.fileName,
+        source,
+      };
     }
     _toastAppRefresh('APK 다운로드를 시작하지 못했어요. 브라우저에서 다운로드를 허용해주세요.', 'warning');
-    return { started: false, reason: download.reason, downloadUrl: download.downloadUrl, source };
+    return {
+      started: false,
+      reason: download.reason,
+      downloadUrl: download.downloadUrl,
+      fileName: download.fileName,
+      source,
+    };
   } finally {
     _setRefreshControlBusy(button, false);
   }
