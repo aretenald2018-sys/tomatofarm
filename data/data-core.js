@@ -296,7 +296,12 @@ export function _setSyncStatus(state) {
   const txt = document.getElementById('sync-text');
   if (!dot || !txt) return;
   dot.className = 'sync-dot ' + state;
-  txt.textContent = { ok:'동기화됨', syncing:'저장 중...', err:'오프라인 — 로컬 저장 후 자동 재시도' }[state] || state;
+  txt.textContent = {
+    ok:'동기화됨',
+    syncing:'저장 중...',
+    pending:'기기에 보관됨 — 연결되면 자동 동기화',
+    err:'오프라인 — 로컬 저장 후 자동 재시도',
+  }[state] || state;
 }
 
 // 2026-04-20: dateKey 별 저장 직렬화 큐 — saveWorkoutDay + _autoSaveDiet 동시 호출 시

@@ -23,6 +23,11 @@ function _ensureOfflineBanner() {
 // navigator.onLine 은 힌트일 뿐이다. Android WebView 와 일부 데스크톱 네트워크
 // 스택은 연결이 정상인데도 false 를 보고한다. 마지막 서버 왕복이 성공했다면
 // 배너를 띄우지 않고, 실제로 실패했다면 onLine 이 true 여도 띄운다.
+//
+// 'pending' 은 서버 ack 를 못 받은 저장이다. 성공이 아니므로 이전 'ok' 증거를
+// 무효화한다. 이렇게 해야 부팅 때 한 번 성공한 세션이 그 뒤 실제로 오프라인이
+// 되어 기록이 기기에만 쌓이는 동안에도 사용자가 그 사실을 알 수 있다.
+const _SYNC_STATES = new Set(['ok', 'err', 'pending']);
 let _lastSyncState = null;
 
 function _updateOnlineStatus() {
@@ -37,7 +42,7 @@ export function initOfflineBanner() {
   window.addEventListener('offline', _updateOnlineStatus);
   document.addEventListener('data:sync-status', (event) => {
     const state = event?.detail?.state;
-    if (state !== 'ok' && state !== 'err') return;
+    if (!_SYNC_STATES.has(state)) return;
     _lastSyncState = state;
     _updateOnlineStatus();
   });

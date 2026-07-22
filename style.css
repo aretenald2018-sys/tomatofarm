@@ -999,6 +999,7 @@ body {
 .sync-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-secondary); flex-shrink: 0; }
 .sync-dot.ok { background: var(--streak); }
 .sync-dot.err { background: var(--diet-bad); }
+.sync-dot.pending { background: var(--bicep); }
 .sync-dot.syncing { background: var(--primary); animation: pulse 1s infinite; }
 @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: 0.3 } }
 

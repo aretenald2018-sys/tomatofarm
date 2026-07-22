@@ -135,6 +135,34 @@ test('connectivity events alone cannot override a proven working connection', as
   });
 });
 
+// Regression: a session that synced once at boot kept that proof forever, so a
+// device that later went offline kept saying everything was synced while meals
+// piled up in the local journal only.
+test('a pending write retires the earlier proof that the server was reachable', async () => {
+  await withBanner(async ({ isVisible, navigatorState, emitSyncStatus, emitConnectivity }) => {
+    emitSyncStatus('ok');
+    navigatorState.onLine = false;
+    emitConnectivity('offline');
+    assert.equal(isVisible(), false, 'a bare offline event is still not evidence');
+
+    emitSyncStatus('pending');
+    assert.equal(isVisible(), true,
+      'a save the server never acknowledged, on a browser reporting offline, must warn');
+
+    emitSyncStatus('ok');
+    assert.equal(isVisible(), false, 'the banner clears when the day finally lands');
+  });
+});
+
+test('a pending write on a working connection does not cry offline', async () => {
+  await withBanner(async ({ isVisible, emitSyncStatus }) => {
+    emitSyncStatus('ok');
+    emitSyncStatus('pending');
+    assert.equal(isVisible(), false,
+      'a slow but reachable server is not an offline device');
+  });
+});
+
 test('the intermediate syncing state never flips the banner on its own', async () => {
   await withBanner(async ({ isVisible, emitSyncStatus }) => {
     emitSyncStatus('err');

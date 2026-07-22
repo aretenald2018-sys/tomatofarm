@@ -13,7 +13,7 @@
 import {
   db, doc, setDoc, deleteDoc,
   getDataOwnerId,
-  _cache, _setCache, _fbOp,
+  _cache, _setCache, _fbOp, _setSyncStatus,
 } from './data-core.js';
 import {
   PENDING_DAY_WRITE_PREFIX,
@@ -262,10 +262,24 @@ function _requestPendingDayFlush(ownerId, key, { dayRef = null, rethrow = false 
   let state = _pendingFlushByOwnerDate.get(queueKey);
   if (!state) {
     const capturedRef = dayRef || doc(db, 'users', ownerId, 'workouts', key);
+    // _fbOp 의 기본 sync 처리는 "resolve = 서버 왕복 성공" 을 전제한다. 이 흐름은
+    // 서버 ack 를 못 받아도 pending 으로 정상 resolve 하므로, 그 전제를 그대로
+    // 두면 기기에만 남은 기록을 앱이 '동기화됨' 이라고 보고한다. 결과에 따라
+    // 직접 상태를 알린다.
     const promise = _fbOp(
       'flushPendingDayWrites',
-      () => _drainPendingDayWrites(ownerId, key, capturedRef),
-      { rethrow: true, dateKey: queueKey },
+      async () => {
+        _setSyncStatus('syncing');
+        try {
+          const result = await _drainPendingDayWrites(ownerId, key, capturedRef);
+          _setSyncStatus(result?.state === 'pending' ? 'pending' : 'ok');
+          return result;
+        } catch (error) {
+          _setSyncStatus('err');
+          throw error;
+        }
+      },
+      { rethrow: true, dateKey: queueKey, sync: false },
     ).finally(() => {
       if (_pendingFlushByOwnerDate.get(queueKey)?.promise === promise) {
         _pendingFlushByOwnerDate.delete(queueKey);

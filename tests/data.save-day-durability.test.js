@@ -61,6 +61,7 @@ class FakeDataCore {
     this.refCalls = [];
     this.setDocCalls = [];
     this.fbOpCalls = [];
+    this.syncStates = [];
     this.failNextSetDoc = null;
     this.nextSetDocGate = null;
     this.bindCoreCache = null;
@@ -112,6 +113,10 @@ class FakeDataCore {
 
   async deleteDoc(ref) {
     this.documents.delete(ref.path);
+  }
+
+  setSyncStatus(state) {
+    this.syncStates.push(state);
   }
 
   fbOp(label, operation, options) {
@@ -167,6 +172,7 @@ export function _setCache(value) {
   harness.acceptCache(value);
 }
 export const _fbOp = (...args) => harness.fbOp(...args);
+export const _setSyncStatus = (...args) => harness.setSyncStatus(...args);
 harness.bindCoreCache = value => {
   _cache = value;
   harness.acceptCache(value);
@@ -376,6 +382,56 @@ test('an unacknowledged write reports pending without stacking a duplicate write
     });
     assert.equal(pendingEntries(storage).length, 1);
   }, { online: false });
+});
+
+// Regression: the flush resolves normally when the server never acknowledges,
+// so the generic _fbOp wrapper reported it as a completed round trip. The shell
+// then said "동기화됨" and hid the offline banner while the day existed only on
+// this device — the same lie the user reported as "the record disappeared".
+test('an unacknowledged write is reported as pending, not as a completed sync', async () => {
+  await withSaveDay(async ({ save, surface }) => {
+    surface.nextSetDocGate = deferred();
+
+    const result = await save.saveDay(DATE_KEY, { snack: 'greek yogurt', sKcal: 190 }, { rethrow: true });
+
+    assert.equal(result.state, 'pending');
+    assert.deepEqual(surface.syncStates, ['syncing', 'pending']);
+    assert.equal(surface.syncStates.includes('ok'), false,
+      'a day that never reached the server must not be announced as synced');
+    assert.equal(surface.fbOpCalls.at(-1)?.options?.sync, false,
+      'the flush owns its own sync reporting instead of the resolve-means-ok default');
+  }, { online: false });
+});
+
+test('the sync status recovers to ok once the server acknowledges the day', async () => {
+  await withSaveDay(async ({ save, surface }) => {
+    const remoteGate = deferred();
+    surface.nextSetDocGate = remoteGate;
+
+    const pendingResult = await save.saveDay(DATE_KEY, { snack: 'greek yogurt' }, { rethrow: true });
+    assert.equal(pendingResult.state, 'pending');
+    assert.equal(surface.syncStates.at(-1), 'pending');
+
+    remoteGate.resolve();
+    // The deferred write re-requests a flush once it lands; that flush finds an
+    // empty journal and settles the status truthfully.
+    for (let tick = 0; tick < 12 && surface.syncStates.at(-1) !== 'ok'; tick += 1) {
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+    assert.equal(surface.syncStates.at(-1), 'ok');
+  }, { online: false });
+});
+
+test('a rejected day write reports the failure instead of a successful round trip', async () => {
+  await withSaveDay(async ({ save, surface }) => {
+    surface.failNextSetDoc = new Error('fake write failed');
+
+    await assert.rejects(
+      save.saveDay(DATE_KEY, { lunch: 'tofu salad' }, { rethrow: true }),
+      error => error.pendingDayWrite === true,
+    );
+    assert.equal(surface.syncStates.at(-1), 'err');
+  });
 });
 
 test('offline saves survive a reload and a fresh module restores both diet and workout', async () => {
