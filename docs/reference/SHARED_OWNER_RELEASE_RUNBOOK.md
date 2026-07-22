@@ -8,9 +8,9 @@ the client uses — accepts it. There is no repository variable to set.
 
 ## Why the fence exists
 
-The shared admin account and its `(guest)` alias are the same person, so exactly
-one of the two physical namespaces must hold the private data. Which one is a
-**server** decision recorded in the registry:
+`김_태우` and its `(guest)` alias are the same person, so exactly one of the two
+physical namespaces must hold the private data. Which one is a **server**
+decision recorded in the registry:
 
 ```json
 { "ownerId": "김_태우 | 김_태우(guest)", "version": 2, "status": "decided" }
@@ -23,9 +23,14 @@ throws `SHARED_DATA_OWNER_NOT_INITIALIZED`, and `app.js` answers with
 `window.__tomatoAppReady` stays `false`.
 
 So shipping the client before a valid record exists means **the app does not
-boot for the shared account**. The browser deliberately has no fallback: letting
-it pick a namespace is the data-splitting bug the registry was introduced to
-end.
+boot for that account**. The browser deliberately has no fallback: letting it
+pick a namespace is the data-splitting bug the registry was introduced to end.
+
+The alias exists because admin and guest were once two modes of one account and
+the guest mode wrote to its own namespace. That mode is gone — privilege now
+lives in a separate `관_리자` account ([ACCOUNT_MODEL.md](ACCOUNT_MODEL.md)) — so
+no **new** split can appear. The already-split history does not merge itself,
+which is why this machinery stays until the audit below says otherwise.
 
 ## Why the gate is a check, not an attestation
 
@@ -107,6 +112,68 @@ gate only speaks up if the registry regresses.
 
 ## Verification
 
-After the deploy, a cold load on the shared account should reach the app without
-the retry overlay. If the overlay appears, re-run the gate script locally — it
-prints the exact field values it found.
+After the deploy, a cold load on `김_태우` should reach the app without the retry
+overlay. If the overlay appears, re-run the gate script locally — it prints the
+exact field values it found.
+
+## 레지스트리 폐기
+
+이 기계장치 전체는 두 네임스페이스 중 어디에 데이터가 있는지 서버가 정해야
+했기 때문에 존재한다. 사용되지 않는 쪽이 완전히 비면 정할 것이 없어지므로 전부
+지울 수 있다.
+
+### 폐기 조건 확인 (읽기 전용)
+
+```bash
+npm --prefix functions run audit:legacy-alias
+```
+
+레지스트리 상태와 두 네임스페이스의 컬렉션별 문서 수를 출력하고, 결정된 소유자가
+아닌 쪽이 비어 있으면 `✓ 폐기 가능`을 낸다. 아무것도 쓰지 않으며, 조건을
+만족하지 못하면 exit code 1로 끝난다.
+
+남은 문서가 있다면 먼저 처리한다. 결정된 소유자 쪽으로 옮기거나, 버릴 데이터임을
+확인하고 지운다. **판정을 건너뛰고 폐기하면 그 문서들은 영구히 읽히지 않는다.**
+
+### 조건을 만족했을 때 지울 것
+
+한 커밋으로 묶어야 한다. 클라이언트가 레지스트리를 요구하는 동안 게이트만
+없애면 부팅이 막히고, 반대 순서는 검증 없는 배포가 된다.
+
+1. `data/shared-account-owner.js` — 파일 전체. `resolvePrivateDataOwnerId()`
+   호출부는 `resolveDataOwnerId()` 직접 호출로 바꾼다.
+2. `data/account-unification.js` — `PERSONAL_LEGACY_ALIAS_ID`,
+   `normalizeSharedAccountDataOwnerId`, `readSharedAccountDataOwnerRegistry`,
+   `selectSharedAccountDataOwner`, `getAccountOwnerAliases`,
+   `SHARED_ACCOUNT_OWNER_*` 상수. `canonicalAccountOwnerId()`는 별칭 매핑이
+   사라지면 항등 함수가 되므로 호출부와 함께 제거한다.
+3. `app.js` — `_showSharedOwnerRetryState()`와 `isPersonalInstance(user.id) &&
+   !getDataOwnerId()` 분기. 소유자가 늘 자기 id 이므로 미해결 상태가 없다.
+4. `data/data-core.js` — `getCachedSharedAccountDataOwnerId`,
+   `setSharedAccountDataOwnerId`, `SHARED_DATA_OWNER_UNRESOLVED` 분기.
+5. `scripts/verify-shared-owner-release-gate.mjs` 와
+   `.github/workflows/deploy.yml` 의 게이트 단계.
+6. `functions/dashboard/owner.js` — 별칭 관련 export
+   (`tomatoOwnerAliases`, `initializeTomatoDataOwnerId`,
+   `adminTomatoNamespaceHasData`, `readTomatoDataOwnerRegistry`,
+   `resolveTomatoDataOwnerId`). 소비자도 함께 고친다:
+   `functions/dashboard/service.js` 는 `resolveTomatoDataOwnerId()` 대신 계정
+   id 를 그대로 쓰고 `tomatoOwnerAliases()` 순회를 단일 소유자 조회로 바꾼다.
+   `functions/index.js` 도 같다.
+7. `functions/scripts/initialize-tomato-data-owner.js`,
+   `functions/scripts/promote-tomato-data-owner-v2.js`,
+   `functions/scripts/audit-legacy-alias-namespace.js` 와 각 npm 스크립트.
+8. `firestore.rules` — `_account_data_owners` 규칙. `users/{ownerId}/**` 는 남는다.
+9. 테스트 — `tests/account-unification.test.js` 의 레지스트리 항목,
+   `tests/shared-owner-release-gate.test.js`,
+   `tests/data-consistency-wiring.test.js` 의 소유자 해석 항목.
+10. 이 문서와 [ACCOUNT_MODEL.md](ACCOUNT_MODEL.md) 의 관련 절.
+
+마지막으로 Firestore 에서 `_account_data_owners/tomato_admin` 문서와 빈
+`users/김_태우(guest)` 네임스페이스를 지운다.
+
+### 폐기 후 확인
+
+`김_태우` 계정으로 콜드 로드해서 식단·운동 기록이 그대로 보이는지, 다른 기기에서
+같은 데이터가 보이는지 확인한다. 소유자 해석이 사라졌으므로 데이터 경로는
+`users/김_태우/**` 하나뿐이다.

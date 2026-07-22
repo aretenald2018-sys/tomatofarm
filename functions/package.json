@@ -7,7 +7,8 @@
     "test": "node --test",
     "initialize:tomato-owner": "node scripts/initialize-tomato-data-owner.js",
     "promote:tomato-owner-v2": "node scripts/promote-tomato-data-owner-v2.js",
-    "provision:admin-console": "node scripts/provision-admin-console-account.js"
+    "provision:admin-console": "node scripts/provision-admin-console-account.js",
+    "audit:legacy-alias": "node scripts/audit-legacy-alias-namespace.js"
   },
   "dependencies": {
     "@google-cloud/vision": "^4.3.2",
