@@ -21,3 +21,14 @@ The app has no runtime business-action compatibility bridge. New UI actions must
 - AI food-profile console globals; exported module functions remain available to code.
 - Weekly-streak and welcome-back inline handlers and their transient window state.
 - Query-string duplicates from the service-worker precache manifest.
+
+## Removed with the admin account split (2026-07-22)
+
+The admin/guest mode that lived inside one account is gone; privilege is the signed-in account. These names were **deleted rather than repointed**, so a stale branch fails at import instead of silently reading a new value. Do not add compatibility shims for them.
+
+- `kimMode`, `getKimMode`, `setKimMode`, `switchKimMode`, and the mode-switch UI in the account modal and admin settings card.
+- `isAdminGuest`, `isAdminInstance`, `getAdminId`, `getAdminGuestId`, `ADMIN_ID`, `ADMIN_GUEST_ID`, `ADMIN_ACCOUNT_ID`, `ADMIN_GUEST_ACCOUNT_ID`, `isSharedAdminAccount`. The replacements are `isAdmin`, `isPersonalInstance`, `getAdminConsoleId`, `getPersonalAccountId`, `getPersonalLegacyAliasId`, and `isPersonalSharedAccount`.
+- `backupAdminAuth`, `clearAdminAuth`, `backupKimAuth`, `clearKimAuth`, replaced by `markSessionUnlocked`/`clearSessionUnlock`/`isSessionUnlocked`.
+- The `admin_authenticated` and `kim_authenticated` localStorage keys. `tomatofarm:session-unlocked:v2` replaces them; the old keys are cleared on boot and never read, so a device holding one re-authenticates once instead of carrying the old meaning into the new privilege model.
+
+`김_태우(guest)` survives only as a data-namespace alias, not as a role. Its retirement path is in [reference/SHARED_OWNER_RELEASE_RUNBOOK.md](reference/SHARED_OWNER_RELEASE_RUNBOOK.md).

@@ -35,5 +35,12 @@ delete is mirrored without being bounced back.
    historical data by themselves.
 
 For the first initialization, the expected authority is the operating
-Moonjung Tomato guest data unless a reviewed diff identifies newer development
-records that must win. Do not run an automatic bulk copy without that review.
+Moonjung Tomato personal-account data unless a reviewed diff identifies newer
+development records that must win. Do not run an automatic bulk copy without
+that review.
+
+"Guest" no longer names a role — it survives only as the `김_태우(guest)` data
+namespace, and which namespace holds the personal data is a server decision.
+Resolve the owner before choosing an authority; see
+[ACCOUNT_MODEL.md](ACCOUNT_MODEL.md) and
+[SHARED_OWNER_RELEASE_RUNBOOK.md](SHARED_OWNER_RELEASE_RUNBOOK.md).

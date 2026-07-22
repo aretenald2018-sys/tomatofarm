@@ -94,6 +94,40 @@ Capacitor WebView가 저장소를 공유하지 않아, 시드하지 않으면 "�
 없어 규칙에 신원 조건을 쓸 수 없기 때문이다. 자세한 내용과 해소 경로는
 [FIRESTORE_RULES.md](FIRESTORE_RULES.md)의 "남은 공백" 절에 있다.
 
+## 배포 순서 (중요)
+
+**`관_리자` 계정을 먼저 만들고 배포한다.** 순서를 뒤집으면 계정이 생길 때까지
+아무도 관리자가 될 수 없다 — 관리자 탭에 도달할 방법이 없어진다.
+
+1. `npm --prefix functions run provision:admin-console -- --password '<비밀번호>' --commit`
+2. 계정이 생겼는지 확인한다 (`_accounts/관_리자` 문서, `passwordHash` 존재).
+3. `main` 병합 → Pages 배포.
+4. 배포 후 `관_리자`로 로그인해 관리자 탭이 열리는지, `김_태우`로 로그인해
+   관리자 탭이 보이지 않고 개인 기록이 그대로인지 확인한다.
+
+Firestore 규칙 배포는 별개다. [FIRESTORE_RULES.md](FIRESTORE_RULES.md)의 대조
+절차를 먼저 거친다.
+
+## tomatodev 미러 동기화 시 주의
+
+`tomatodev`는 이 저장소의 미러이고 개발계 격리 오버레이를 얹고 있는데, 그
+오버레이 안에 **자체 게스트 모드 장치**가 있다. `data/data-core.js`가
+`let _kimMode = 'guest'`로 시작해 매 부팅마다 저장된 모드를 게스트로 되돌리고,
+`tests/tomatodev-guest-entry.test.js`가 그 동작을 검증한다. 개발계에서 관리자
+모드가 새는 것을 막으려고 덧댄 층이며, 여기서 모드 자체가 사라졌으므로 존재
+이유도 사라졌다.
+
+다음 동기화 때 그대로 병합하면 `tests/admin-console-account.test.js`의 폐기
+심볼 검사가 tomatodev에서 실패한다. 의도된 실패다 — 미러에 남은 모드 장치를
+같이 걷어내라는 신호다. 최소 작업:
+
+- `data/data-core.js`의 `_kimMode`/`getKimMode`/`setKimMode`와 부팅 시 게스트
+  강제 로직 제거.
+- `tests/tomatodev-guest-entry.test.js` 삭제. 게스트 진입이라는 개념이 없다.
+- `tests/tomatodev-auth-boundary.test.js`에서 모드 관련 단언만 제거하고,
+  Firebase 앱 이름·인증 저장소 격리 단언은 유지한다. 그쪽은 계정 모델과 무관한
+  진짜 격리 경계다.
+
 ## 회귀 방벽
 
 `tests/admin-console-account.test.js`가 폐기된 이름(`kimMode`, `isAdminGuest`,
