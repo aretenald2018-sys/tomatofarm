@@ -1,0 +1,98 @@
+rules_version = '2';
+
+// Tomato Farm Firestore 보안 규칙.
+//
+// ⚠️ 이 파일은 아직 라이브 콘솔 규칙과 대조되지 않았다. 처음 배포하기 전에
+//    docs/reference/FIRESTORE_RULES.md 의 "라이브 규칙과 대조" 절차를 반드시
+//    거쳐야 한다. 여기 빠진 컬렉션이 있으면 배포 즉시 그 기능이 죽는다.
+//
+// 이 앱은 Firebase Auth 를 쓰지 않는다. 계정은 `_accounts` 컬렉션의 문서이고
+// 비밀번호 검증은 클라이언트가 한다. 그래서 규칙에는 request.auth 가 없고,
+// "관리자만 읽을 수 있다" 같은 신원 기반 조건은 여기서 표현할 수 없다.
+// 규칙이 실제로 강제할 수 있는 것은 경로 단위 금지뿐이며, 이 파일은 그중
+// 권한 경계에 해당하는 두 가지를 닫는다:
+//
+//   1. `_accounts/관_리자` — 관리자 콘솔 계정을 클라이언트가 만들거나 고칠 수
+//      없게 한다. 권한이 "어느 계정으로 로그인했는가"로 결정되므로, 그 계정을
+//      누가 만들 수 있는지가 곧 권한 경계다. 생성은 서버 스크립트
+//      functions/scripts/provision-admin-console-account.js 만 할 수 있다
+//      (Admin SDK 는 규칙을 우회한다).
+//
+//   2. `_account_data_owners/**` — 개인 계정의 물리 네임스페이스를 정하는
+//      레지스트리. 브라우저가 네임스페이스를 고르면 데이터가 둘로 갈리는,
+//      이 레지스트리가 존재하는 이유인 그 버그가 되돌아온다.
+//
+// 나머지 컬렉션은 현재 앱이 실제로 하는 접근을 그대로 허용한다. 규칙을
+// 조이는 것과 신원을 도입하는 것은 별개의 작업이고, 후자 없이는 여기서 더
+// 좁힐 수 없다.
+//
+// 허용형 catch-all(`match /{document=**} { allow read, write: if true; }`)을
+// 두면 안 된다. Firestore 규칙은 OR 로 합쳐지므로 catch-all 하나가 위의 금지를
+// 전부 무효로 만든다. 그래서 컬렉션을 일일이 적는다. 새 컬렉션을 쓰기 시작하면
+// 여기에도 추가해야 하고, tests/firestore-rules-coverage.test.js 가 그것을
+// 강제한다.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── 권한 경계 ────────────────────────────────────────────────
+    match /_accounts/{accountId} {
+      allow read: if true;
+      allow write: if accountId != '관_리자';
+    }
+
+    match /_account_data_owners/{documentId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // 레거시 루트 데이터 이전 완료 표시. 클라이언트가 남기지만, 되돌리거나
+    // 버전을 낮출 수는 없다.
+    match /_account_data_migrations/{documentId} {
+      allow read: if true;
+      allow create: if request.resource.data.version is int;
+      allow update: if request.resource.data.version is int
+                    && request.resource.data.version >= resource.data.version;
+      allow delete: if false;
+    }
+
+    // `_col()`/`_doc()` 이 소유자를 못 구했을 때만 닿는 경로다. 여기 쓰기가
+    // 성공하면 데이터가 조용히 미아가 된다. 실패해서 드러나는 편이 낫다.
+    match /_orphan/{documentId=**} {
+      allow read, write: if false;
+    }
+
+    // ── 개인/사용자 데이터 ───────────────────────────────────────
+    match /users/{ownerId}/{documentId=**} {
+      allow read, write: if true;
+    }
+
+    // ── 소셜 ─────────────────────────────────────────────────────
+    match /_friend_requests/{documentId} { allow read, write: if true; }
+    match /_guestbook/{documentId}       { allow read, write: if true; }
+    match /_comments/{documentId}        { allow read, write: if true; }
+    match /_likes/{documentId}           { allow read, write: if true; }
+    match /_notifications/{documentId}   { allow read, write: if true; }
+    match /_chat_messages/{documentId}   { allow read, write: if true; }
+    match /_hero_messages/{documentId}   { allow read, write: if true; }
+    match /_tomato_gifts/{documentId}    { allow read, write: if true; }
+    match /_cheers_custom/{documentId}   { allow read, write: if true; }
+
+    // ── 길드 / 랭킹 ──────────────────────────────────────────────
+    match /_guilds/{documentId}               { allow read, write: if true; }
+    match /_guild_requests/{documentId}       { allow read, write: if true; }
+    match /_weekly_ranking/{documentId}       { allow read, write: if true; }
+    match /_weekly_guild_ranking/{documentId} { allow read, write: if true; }
+
+    // ── 공지 / 편지 / 설정 ───────────────────────────────────────
+    match /_patchnotes/{documentId} { allow read, write: if true; }
+    match /_letters/{documentId}    { allow read, write: if true; }
+    match /_settings/{documentId}   { allow read, write: if true; }
+
+    // ── 계측 ─────────────────────────────────────────────────────
+    match /_analytics/{documentId}  { allow read, write: if true; }
+    match /_apiUsage/{documentId}   { allow read, write: if true; }
+    match /_ocrQuota/{documentId}   { allow read, write: if true; }
+    match /_fcm_tokens/{documentId} { allow read, write: if true; }
+  }
+}
