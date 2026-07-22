@@ -148,16 +148,44 @@ test('late IndexedDB restore cannot replace a user selected after restore began'
   }
 });
 
-test('a fresh installed app restores the shared admin owner in Guest mode', async () => {
+test('a fresh installed app seeds the shared owner without authenticating it', async () => {
   const loaded = await loadAuthModule({ installedApp: true });
 
   try {
     const restored = loaded.auth.loadSavedUser();
     assert.equal(restored.id, 'admin');
-    assert.equal(loaded.harness.kimMode, 'guest');
-    assert.equal(loaded.storage.getItem('kim_authenticated'), 'true');
+    // The password lock screen is the only thing standing between an installed
+    // surface and the owner's account, and switchKimMode() needs no password.
+    // Seeding must never pre-authenticate the session.
+    assert.equal(loaded.storage.getItem('kim_authenticated'), null);
+    assert.equal(loaded.storage.getItem('admin_authenticated'), null);
+    assert.notEqual(loaded.harness.kimMode, 'guest');
     await loaded.auth.waitForAuthPersistence();
-    assert.equal(loaded.harness.idb.get('admin_authenticated'), true);
+    assert.equal(loaded.harness.idb.has('admin_authenticated'), false);
+  } finally {
+    loaded.cleanup();
+  }
+});
+
+test('an ordinary browser session is never seeded with the shared owner', async () => {
+  const loaded = await loadAuthModule({ installedApp: false });
+
+  try {
+    assert.equal(loaded.auth.loadSavedUser(), null);
+    assert.equal(loaded.harness.currentUser, null);
+  } finally {
+    loaded.cleanup();
+  }
+});
+
+test('choosing another account keeps the installed-app seed off on reload', async () => {
+  const loaded = await loadAuthModule({ installedApp: true });
+
+  try {
+    assert.equal(loaded.auth.loadSavedUser().id, 'admin');
+    loaded.auth.setCurrentUser(null);
+    loaded.auth.disableInstalledAppSessionFallback();
+    assert.equal(loaded.auth.loadSavedUser(), null);
   } finally {
     loaded.cleanup();
   }

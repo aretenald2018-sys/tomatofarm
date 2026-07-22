@@ -92,26 +92,26 @@ export function loadSavedUser() {
       return getCurrentUserRef();
     }
 
-    // Chrome, an installed PWA, and the Capacitor WebView do not share
-    // localStorage/IndexedDB. The native widget is nevertheless backed by the
-    // shared tomato admin owner, so a fresh installed surface must enter that
-    // owner in its restricted Guest mode instead of booting with no user and
-    // rendering an empty cache. Normal Chrome sessions still use explicit login.
+    // Chrome, an installed home-screen PWA, and the Capacitor WebView do not
+    // share localStorage/IndexedDB — the APK runs on its own https://localhost
+    // origin. A fresh installed surface therefore has no session, the shared
+    // owner never resolves, and the app renders an empty cache that reads as
+    // "my diet records are gone". Seed the shared owner so the surface knows
+    // whose account it is; it stays UNauthenticated so the existing password
+    // lock still runs. Never authenticate here: kim_authenticated would skip
+    // that lock, and switchKimMode() would then hand out admin without a
+    // password on any device that installed the app.
     if (
       isInstalledAppSurface()
       && localStorage.getItem(INSTALLED_APP_SESSION_DISABLED_KEY) !== '1'
     ) {
-      const installedGuest = {
+      setCurrentUser({
         id: ADMIN_ID,
         lastName: '김',
         firstName: '태우',
         nickname: '김태우',
         createdAt: 0,
-      };
-      setKimMode('guest');
-      setCurrentUser(installedGuest);
-      localStorage.setItem('kim_authenticated', 'true');
-      backupAdminAuth();
+      });
       return getCurrentUserRef();
     }
   } catch {}
