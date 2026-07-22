@@ -54,20 +54,18 @@ export function isPersonalInstance(id) {
   return isPersonalSharedAccount(id);
 }
 
-// 권한과는 다른 축이다. isAdmin() 은 "관리 화면을 열 수 있는가"이고, 이쪽은
-// "이 앱 주인의 계정인가"이다. 홈의 목표·퀘스트·메모 같은 카드는 주인의 개인
-// 기능이라 가입한 다른 사용자에게는 보이지 않는다. 예전에는 그 구분도
-// isAdmin() 이 겸했는데, 관리자를 별도 계정으로 뺀 뒤에도 개인 계정은 자기
-// 카드를 계속 봐야 한다.
-export function isOwnerAccount() {
-  const id = getCurrentUserRef()?.id;
-  return isAdminConsoleAccount(id) || isPersonalSharedAccount(id);
-}
-
-export const GUEST_CONFIG = {
+// 홈 카드 구성은 **모든 계정이 같다.** 계정별 우회로가 없어야 하는 표다.
+//
+// 2026-04 토마토 리뉴얼이 홈을 토마토/생활존 화면으로 바꾸면서 단위목표·미니
+// 메모·목표·퀘스트 카드를 홈에서 내렸다. 그 뒤 이 표에 `isAdmin()` 우회로가
+// 남아 있었고, 2026-07-22 관리자 계정 분리 후속 수정(`dbd6bd4`)이 그 우회로를
+// `isOwnerAccount()` 로 넓히면서 내려둔 카드 네 개가 개인 계정 홈에 통째로
+// 되살아났다. 권한 축(`isAdmin()`)으로 화면 구성을 가르면 권한 모델을 손댈
+// 때마다 홈이 따라 움직인다. 그래서 여기에는 계정을 보는 분기를 두지 않는다.
+export const HOME_CARD_CONFIG = {
   homeCards: {
     hero: true,
-    unit_goal: true,
+    unit_goal: false,
     mini_memo: false,
     goals: false,
     quests: false,
@@ -78,8 +76,7 @@ export const GUEST_CONFIG = {
 };
 
 export function shouldShow(section, key) {
-  if (isOwnerAccount()) return true;
-  return GUEST_CONFIG[section]?.[key] !== false;
+  return HOME_CARD_CONFIG[section]?.[key] !== false;
 }
 
 export function setCurrentUser(user) {
