@@ -73,9 +73,14 @@ async function loadAuthModule(overrides = {}) {
     'export function _idbRemove(key) { return harness.idbRemove(key); }',
   ].join('\n');
   const coreUrl = 'data:text/javascript;base64,' + Buffer.from(coreSource).toString('base64');
+  const platformSource = `export function isInstalledAppSurface() { return ${overrides.installedApp === true ? 'true' : 'false'}; }`;
+  const platformUrl = 'data:text/javascript;base64,' + Buffer.from(platformSource).toString('base64');
   const moduleSource = AUTH_SOURCE.replace(
     "from './data-core.js';",
     'from ' + JSON.stringify(coreUrl) + ';',
+  ).replace(
+    "from '../utils/platform-session.js';",
+    'from ' + JSON.stringify(platformUrl) + ';',
   );
   assert.notEqual(moduleSource, AUTH_SOURCE, 'data-auth core import should be replaced');
 
@@ -138,6 +143,21 @@ test('late IndexedDB restore cannot replace a user selected after restore began'
     assert.equal(loaded.harness.currentUser, selectedUser);
     assert.equal(JSON.parse(loaded.storage.getItem('currentUser')).id, 'owner-b');
     assert.deepEqual(writes, ['currentUser:owner-b']);
+  } finally {
+    loaded.cleanup();
+  }
+});
+
+test('a fresh installed app restores the shared admin owner in Guest mode', async () => {
+  const loaded = await loadAuthModule({ installedApp: true });
+
+  try {
+    const restored = loaded.auth.loadSavedUser();
+    assert.equal(restored.id, 'admin');
+    assert.equal(loaded.harness.kimMode, 'guest');
+    assert.equal(loaded.storage.getItem('kim_authenticated'), 'true');
+    await loaded.auth.waitForAuthPersistence();
+    assert.equal(loaded.harness.idb.get('admin_authenticated'), true);
   } finally {
     loaded.cleanup();
   }
@@ -213,6 +233,7 @@ test('both account-exit flows delay reload until auth persistence is cleared', a
       assert.equal(user, null);
       events.push('clear-user');
     },
+    disableInstalledAppSessionFallback() {},
     clearAdminAuth() { events.push('clear-admin'); },
     async waitForAuthPersistence() {
       events.push('wait-start');
@@ -256,11 +277,12 @@ test('both account-exit flows delay reload until auth persistence is cleared', a
     "setTimeout(() => document.getElementById('kim-lock-pw')",
   )
     .replace("document.getElementById('kim-lock-other')", 'target')
-    .replace(AUTH_DATA_IMPORT_MARKER, 'Promise.resolve(__data)');
+    .replaceAll(AUTH_DATA_IMPORT_MARKER, 'Promise.resolve(__data)');
   const target = {};
   const lockDiv = { remove() { events.push('remove-lock'); } };
   const otherWaitGate = deferred();
   const otherAuth = {
+    disableInstalledAppSessionFallback() {},
     async waitForAuthPersistence() {
       events.push('other-wait-start');
       await otherWaitGate.promise;

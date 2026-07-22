@@ -189,7 +189,9 @@ async function initLoginScreen() {
         if (event.key === 'Enter') document.getElementById('kim-lock-btn').click();
       });
       document.getElementById('kim-lock-other').onclick = async () => {
+        const { disableInstalledAppSessionFallback } = await import('./data.js');
         setCurrentUser(null);
+        disableInstalledAppSessionFallback();
         localStorage.removeItem('admin_authenticated');
         localStorage.removeItem('kim_authenticated');
         const { waitForAuthPersistence } = await import('./data.js');
@@ -867,8 +869,9 @@ export async function logoutAccount() {
 }
 
 async function confirmLogout() {
-  const { setCurrentUser, clearAdminAuth } = await import('./data.js');
+  const { setCurrentUser, clearAdminAuth, disableInstalledAppSessionFallback } = await import('./data.js');
   setCurrentUser(null);
+  disableInstalledAppSessionFallback();
   localStorage.removeItem('admin_authenticated');
   localStorage.removeItem('kim_authenticated');
   clearAdminAuth();

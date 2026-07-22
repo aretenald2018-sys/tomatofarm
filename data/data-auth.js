@@ -7,9 +7,11 @@ import {
   ADMIN_ID, ADMIN_GUEST_ID, getKimMode, setKimMode,
   _idbSet, _idbGet, _idbRemove,
 } from './data-core.js';
+import { isInstalledAppSurface } from '../utils/platform-session.js';
 
 let _authSessionGeneration = 0;
 let _authPersistence = Promise.resolve();
+export const INSTALLED_APP_SESSION_DISABLED_KEY = 'tomatofarm:installed-app-session-disabled:v1';
 
 function _queueAuthPersistence(operation) {
   const next = _authPersistence.then(operation, operation);
@@ -69,6 +71,7 @@ export function setCurrentUser(user) {
   const normalizedUser = _normalizeKimUser(user);
   setCurrentUserRef(normalizedUser);
   if (normalizedUser) {
+    localStorage.removeItem(INSTALLED_APP_SESSION_DISABLED_KEY);
     localStorage.setItem('currentUser', JSON.stringify(normalizedUser));
     _queueAuthPersistence(() => _idbSet('currentUser', normalizedUser));
   } else {
@@ -88,8 +91,35 @@ export function loadSavedUser() {
       setCurrentUser(_normalizeKimUser(JSON.parse(saved)));
       return getCurrentUserRef();
     }
+
+    // Chrome, an installed PWA, and the Capacitor WebView do not share
+    // localStorage/IndexedDB. The native widget is nevertheless backed by the
+    // shared tomato admin owner, so a fresh installed surface must enter that
+    // owner in its restricted Guest mode instead of booting with no user and
+    // rendering an empty cache. Normal Chrome sessions still use explicit login.
+    if (
+      isInstalledAppSurface()
+      && localStorage.getItem(INSTALLED_APP_SESSION_DISABLED_KEY) !== '1'
+    ) {
+      const installedGuest = {
+        id: ADMIN_ID,
+        lastName: '김',
+        firstName: '태우',
+        nickname: '김태우',
+        createdAt: 0,
+      };
+      setKimMode('guest');
+      setCurrentUser(installedGuest);
+      localStorage.setItem('kim_authenticated', 'true');
+      backupAdminAuth();
+      return getCurrentUserRef();
+    }
   } catch {}
   return null;
+}
+
+export function disableInstalledAppSessionFallback() {
+  localStorage.setItem(INSTALLED_APP_SESSION_DISABLED_KEY, '1');
 }
 
 export function backupAdminAuth() {

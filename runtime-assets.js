@@ -236,6 +236,7 @@
   './utils/action-router.js',
   './utils/build-info.js',
   './utils/id.js',
+  './utils/platform-session.js',
   './home/personalize.js',
   './home/streak-warning.js',
   './home/admin-onboarding.js',

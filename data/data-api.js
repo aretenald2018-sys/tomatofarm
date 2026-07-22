@@ -76,6 +76,7 @@ export {
   GUEST_CONFIG, shouldShow,
   setCurrentUser, loadSavedUser,
   backupAdminAuth, clearAdminAuth, backupKimAuth, clearKimAuth,
+  disableInstalledAppSessionFallback,
   restoreUserFromBackup, waitForAuthPersistence,
   verifyPassword, hashPassword,
 } from './data-auth.js';
