@@ -79,6 +79,41 @@ test('웬들러 종목을 이번 주 달성하면 위젯 주간 목표가 달성
   assert.equal(snapshot.weeklyGoal.achievedCount, 1);
 });
 
+test('월요일이 아닌 요일(일요일)에 시작한 시즌도 이번 주 달성이 위젯에 잡힌다', () => {
+  // 리그레션: paintWeek는 달성을 항상 월요일(mondayOf) 키로 저장한다.
+  // 과거 season-overview는 주를 '시즌 시작 요일' 기준 7일씩 끊어, 시즌이 일요일에
+  // 시작하면 이번 주 달성 주(월요일)와 어긋나 체크(✓)가 사라졌다.
+  const sundayRegistry = {
+    schemaVersion: 2,
+    seasons: [{ id: 'sun', name: '일요일 시즌', startDate: '2026-07-05', endDate: '2026-08-31' }],
+  };
+  const board = buildBoardFromOnboarding({
+    startDate: '2026-07-05', // 일요일
+    selections: [{
+      exerciseId: 'squat_wide', movementId: 'back_squat', groupId: 'lower', label: '스쿼트(와이드)',
+      tracks: { volume: { kg: 90, reps: 8 } },
+      wendler: { scheme: 'w863', oneRmKg: 120 },
+    }],
+  });
+  const benchmark = board.benchmarks[0];
+  // 사용자가 오늘(목, 2026-07-23)이 속한 주에 달성 → mondayOf = 2026-07-20에 저장
+  assert.equal(paintWeek(board, { benchmarkId: benchmark.id, weekStart: '2026-07-23', log: { at: 123, amrapReps: 7 } }), true);
+  assert.deepEqual(Object.keys(benchmark.wendlerLog), ['2026-07-20']);
+
+  const snapshot = buildSeasonDashboardSnapshot({
+    cache: {}, registry: sundayRegistry, todayKey: '2026-07-23', board,
+    runningPlan: { weeklyDistanceKm: 20, weeklySessions: 3 },
+    generatedAt: 123,
+  });
+  const strength = snapshot.weeklyGoal.items.filter(item => item.kind === 'strength');
+  assert.equal(strength[0].label, '스쿼트(와이드)');
+  assert.equal(strength[0].state, 'achieved');
+  assert.equal(snapshot.weeklyGoal.achievedCount, 1);
+  // 위젯이 고른 주 경계도 월요일 정렬(오늘이 속한 ISO 주)이어야 한다
+  assert.equal(snapshot.weeklyGoal.startDate, '2026-07-20');
+  assert.equal(snapshot.weeklyGoal.endDate, '2026-07-26');
+});
+
 test('현재 시즌이 없으면 위젯은 과거 수치를 섞지 않고 설정 안내 상태를 만든다', () => {
   const snapshot = buildSeasonDashboardSnapshot({
     cache: { '2026-06-30': workoutDay(100) },

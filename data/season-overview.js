@@ -20,16 +20,24 @@ function _number(value) {
   return Number.isFinite(number) ? number : 0;
 }
 
-function _weekCount(season) {
-  return Math.max(1, Math.ceil((_number(Date.parse(`${season.endDate}T00:00:00Z`)) - _number(Date.parse(`${season.startDate}T00:00:00Z`)) + 86400000) / (7 * 86400000)));
-}
-
+// 시즌 주는 '월요일 정렬' ISO 주(월~일)로 끊는다. 달성 로그(paintWeek)는 언제나
+// mondayOf 기준으로 저장되므로, 주 경계도 같은 월요일에 맞춰야 이번 주 달성이 위젯에
+// 정확히 잡힌다. 시즌 시작 요일 기준으로 7일씩 끊으면(과거 방식) 시즌이 월요일이
+// 아닌 요일에 시작할 때 goalWeekStart가 실제 달성 주와 어긋나 체크(✓)가 사라진다.
+// (season-selectors의 startOfSeasonWeek 규약과 동일)
 function _weekRanges(season) {
-  return Array.from({ length: _weekCount(season) }, (_, index) => {
-    const startDate = addSeasonDays(season.startDate, index * 7);
-    const endDate = startDate > season.endDate ? season.endDate : addSeasonDays(startDate, 6) > season.endDate ? season.endDate : addSeasonDays(startDate, 6);
-    return { index: index + 1, startDate, endDate, goalWeekStart: mondayOf(startDate) };
-  }).filter(range => range.startDate <= season.endDate);
+  const ranges = [];
+  let cursor = season.startDate;
+  let index = 1;
+  while (cursor <= season.endDate) {
+    const goalWeekStart = mondayOf(cursor);
+    const weekEnd = addSeasonDays(goalWeekStart, 6);
+    const endDate = weekEnd > season.endDate ? season.endDate : weekEnd;
+    ranges.push({ index, startDate: cursor, endDate, goalWeekStart });
+    cursor = addSeasonDays(weekEnd, 1);
+    index += 1;
+  }
+  return ranges;
 }
 
 function _strengthItems(board = {}, week, todayKey) {
