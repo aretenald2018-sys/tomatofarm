@@ -2,7 +2,7 @@
 // home/index.js — 홈 탭 오케스트레이터
 // ================================================================
 
-import { shouldShow, isOwnerAccount, getCheerLastSeen, getUnseenCheers } from '../data.js';
+import { shouldShow, getCheerLastSeen, getUnseenCheers } from '../data.js';
 
 // 서브 모듈 import
 import { showToast, showConfetti }                           from './utils.js';
@@ -55,16 +55,15 @@ export function renderHome(options = {}) {
     try { renderAdminOnboarding(); } catch(e) { console.warn('[admin-onboarding]', e); }
     // 토마토 정산은 모든 사용자에게 실행
     try { settleTomatoCycleIfNeeded(); } catch(e) { console.warn('[tomato] settle error:', e); }
-    // 토마토 카드 경로는 홈 레이아웃을 통째로 바꾼다 — 단위목표 카드를 숨기고
-    // 식사/체중/생활존 카드를 걷어낸 뒤 자기 히어로를 세운다. 주인 계정은 그
-    // 재배치를 받지 않는 홈을 써 왔으므로 계속 그대로 둔다. 권한이 아니라
-    // 화면 구성의 문제라 isAdmin() 이 아니라 isOwnerAccount() 로 가른다.
-    if (!isOwnerAccount()) {
-      try { renderTomatoCard(); } catch(e) { console.warn('[tomato] card error:', e); }
-    }
+    // renderTomatoCard() 는 카드 하나가 아니라 **홈 본체**다 — 생활존 카드와
+    // 식사/체중 요약 카드를 만들어 붙인다. 앞머리의 remove() 들은 재렌더 전
+    // 정리이지 카드를 걷어내는 코드가 아니다. 계정으로 이 호출을 가르면 그
+    // 계정만 2026-04 이전의 카드 스택 홈으로 되돌아간다. 홈은 모든 계정이
+    // 같은 화면을 쓴다.
+    try { renderTomatoCard(); } catch(e) { console.warn('[tomato] card error:', e); }
     renderHero().catch(err => console.warn('[hero] render error:', err));
     renderHomeChat();
-    if (isOwnerAccount() && shouldShow('homeCards', 'unit_goal'))  renderUnitGoal();
+    if (shouldShow('homeCards', 'unit_goal'))  renderUnitGoal();
     if (shouldShow('homeCards', 'mini_memo'))  renderMiniMemo();
     applyAllSectionTitles();
     if (shouldShow('homeCards', 'goals'))      renderGoals();

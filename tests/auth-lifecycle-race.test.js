@@ -244,32 +244,32 @@ test('admin is decided by the signed-in account, not by any client-held mode', a
   }
 });
 
-test('the personal account keeps its own home cards after losing admin', async () => {
-  // 관리자와 게스트가 한 계정이던 시절 기본 모드는 'admin' 이었다. 그래서 개인
-  // 계정은 목표·퀘스트·메모 카드를 보고 있었고, 권한을 계정으로 옮기면서
-  // shouldShow 가 isAdmin() 만 보면 그 카드들이 조용히 사라진다. 자기 데이터다.
+test('the home card set does not depend on which account is signed in', async () => {
+  // 2026-04 토마토 리뉴얼이 단위목표·미니메모·목표·퀘스트를 홈에서 내렸다.
+  // 그 뒤 shouldShow 에 계정 우회로가 남아 있었고, 관리자 계정 분리 후속
+  // 수정이 그 우회로를 넓히자 내려둔 카드 네 개가 개인 계정 홈에 되살아났다
+  // (`dbd6bd4`). 권한 모델을 손대도 홈이 따라 움직이지 않도록 못박는다.
   const loaded = await loadAuthModule();
+  const retired = ['unit_goal', 'mini_memo', 'goals', 'quests'];
 
   try {
-    loaded.auth.setCurrentUser({ id: PERSONAL_ID });
-    assert.equal(loaded.auth.isAdmin(), false, 'the personal account is not an admin');
-    assert.equal(loaded.auth.isOwnerAccount(), true);
-    for (const card of ['goals', 'quests', 'mini_memo', 'unit_goal']) {
-      assert.equal(loaded.auth.shouldShow('homeCards', card), true, `${card} should stay visible`);
+    for (const id of [PERSONAL_ID, ADMIN_CONSOLE_ID, '최_준수']) {
+      loaded.auth.setCurrentUser({ id });
+      for (const card of retired) {
+        assert.equal(
+          loaded.auth.shouldShow('homeCards', card), false,
+          `${card} must stay off the home tab for ${id}`,
+        );
+      }
+      assert.equal(loaded.auth.shouldShow('homeCards', 'friends'), true);
+      assert.equal(loaded.auth.shouldShow('homeCards', 'tomato_basket'), true);
     }
 
-    // 관리자 콘솔 계정도 주인이다.
+    // 관리 권한은 여전히 계정으로 결정된다 — 홈 구성과는 별개 축이다.
     loaded.auth.setCurrentUser({ id: ADMIN_CONSOLE_ID });
-    assert.equal(loaded.auth.isOwnerAccount(), true);
-    assert.equal(loaded.auth.shouldShow('homeCards', 'goals'), true);
-
-    // 가입한 다른 사용자는 축소된 홈을 그대로 본다.
-    loaded.auth.setCurrentUser({ id: '최_준수' });
-    assert.equal(loaded.auth.isOwnerAccount(), false);
-    assert.equal(loaded.auth.shouldShow('homeCards', 'goals'), false);
-    assert.equal(loaded.auth.shouldShow('homeCards', 'quests'), false);
-    assert.equal(loaded.auth.shouldShow('homeCards', 'mini_memo'), false);
-    assert.equal(loaded.auth.shouldShow('homeCards', 'friends'), true);
+    assert.equal(loaded.auth.isAdmin(), true);
+    loaded.auth.setCurrentUser({ id: PERSONAL_ID });
+    assert.equal(loaded.auth.isAdmin(), false);
   } finally {
     loaded.cleanup();
   }
