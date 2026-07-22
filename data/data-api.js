@@ -72,7 +72,7 @@ export { fetchExchangeRate, fetchFearGreed } from './data-external.js';
 // auth
 export {
   getCurrentUser, getAdminConsoleId, getPersonalAccountId, getPersonalLegacyAliasId,
-  isAdmin, isSameInstance, isPersonalInstance,
+  isAdmin, isOwnerAccount, isSameInstance, isPersonalInstance,
   GUEST_CONFIG, shouldShow,
   setCurrentUser, loadSavedUser,
   markSessionUnlocked, clearSessionUnlock, isSessionUnlocked,

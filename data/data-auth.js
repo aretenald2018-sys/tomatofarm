@@ -54,6 +54,16 @@ export function isPersonalInstance(id) {
   return isPersonalSharedAccount(id);
 }
 
+// 권한과는 다른 축이다. isAdmin() 은 "관리 화면을 열 수 있는가"이고, 이쪽은
+// "이 앱 주인의 계정인가"이다. 홈의 목표·퀘스트·메모 같은 카드는 주인의 개인
+// 기능이라 가입한 다른 사용자에게는 보이지 않는다. 예전에는 그 구분도
+// isAdmin() 이 겸했는데, 관리자를 별도 계정으로 뺀 뒤에도 개인 계정은 자기
+// 카드를 계속 봐야 한다.
+export function isOwnerAccount() {
+  const id = getCurrentUserRef()?.id;
+  return isAdminConsoleAccount(id) || isPersonalSharedAccount(id);
+}
+
 export const GUEST_CONFIG = {
   homeCards: {
     hero: true,
@@ -68,7 +78,7 @@ export const GUEST_CONFIG = {
 };
 
 export function shouldShow(section, key) {
-  if (isAdmin()) return true;
+  if (isOwnerAccount()) return true;
   return GUEST_CONFIG[section]?.[key] !== false;
 }
 

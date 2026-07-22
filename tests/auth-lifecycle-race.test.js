@@ -244,6 +244,37 @@ test('admin is decided by the signed-in account, not by any client-held mode', a
   }
 });
 
+test('the personal account keeps its own home cards after losing admin', async () => {
+  // 관리자와 게스트가 한 계정이던 시절 기본 모드는 'admin' 이었다. 그래서 개인
+  // 계정은 목표·퀘스트·메모 카드를 보고 있었고, 권한을 계정으로 옮기면서
+  // shouldShow 가 isAdmin() 만 보면 그 카드들이 조용히 사라진다. 자기 데이터다.
+  const loaded = await loadAuthModule();
+
+  try {
+    loaded.auth.setCurrentUser({ id: PERSONAL_ID });
+    assert.equal(loaded.auth.isAdmin(), false, 'the personal account is not an admin');
+    assert.equal(loaded.auth.isOwnerAccount(), true);
+    for (const card of ['goals', 'quests', 'mini_memo', 'unit_goal']) {
+      assert.equal(loaded.auth.shouldShow('homeCards', card), true, `${card} should stay visible`);
+    }
+
+    // 관리자 콘솔 계정도 주인이다.
+    loaded.auth.setCurrentUser({ id: ADMIN_CONSOLE_ID });
+    assert.equal(loaded.auth.isOwnerAccount(), true);
+    assert.equal(loaded.auth.shouldShow('homeCards', 'goals'), true);
+
+    // 가입한 다른 사용자는 축소된 홈을 그대로 본다.
+    loaded.auth.setCurrentUser({ id: '최_준수' });
+    assert.equal(loaded.auth.isOwnerAccount(), false);
+    assert.equal(loaded.auth.shouldShow('homeCards', 'goals'), false);
+    assert.equal(loaded.auth.shouldShow('homeCards', 'quests'), false);
+    assert.equal(loaded.auth.shouldShow('homeCards', 'mini_memo'), false);
+    assert.equal(loaded.auth.shouldShow('homeCards', 'friends'), true);
+  } finally {
+    loaded.cleanup();
+  }
+});
+
 test('a legacy unlock flag cannot unlock a session under the new key', async () => {
   const loaded = await loadAuthModule();
 
