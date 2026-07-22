@@ -5,22 +5,21 @@
 import {
   db, doc, setDoc, deleteDoc, getDoc, collection, getDocs,
   query, orderBy, limit,
-  getCurrentUserRef, ADMIN_ID,
+  getCurrentUserRef,
 } from './data-core.js';
-import { isAdminGuest } from './data-auth.js';
+import { isSameInstance } from './data-auth.js';
 import { resolvePrivateDataOwnerId } from './shared-account-owner.js';
 
+// 세션 사용자의 id 는 setCurrentUser() 에서 이미 정규화된다. 소셜 정체성은
+// 그 id 하나뿐이고, 모드에 따라 갈라지지 않는다.
 export function _socialId() {
-  if (!getCurrentUserRef()) return null;
-  if (isAdminGuest()) return ADMIN_ID;
-  return getCurrentUserRef().id;
+  return getCurrentUserRef()?.id ?? null;
 }
 
 export function _isMySocialId(id) {
-  if (!getCurrentUserRef()) return false;
-  if (id === getCurrentUserRef().id) return true;
-  if (isAdminGuest() && id === ADMIN_ID) return true;
-  return false;
+  const myId = getCurrentUserRef()?.id;
+  if (!myId) return false;
+  return isSameInstance(id, myId);
 }
 
 async function _getFriendDoc(reqId) {

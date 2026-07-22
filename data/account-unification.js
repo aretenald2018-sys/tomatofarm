@@ -3,8 +3,15 @@ import { buildWorkoutDayUnificationPlan } from './workout-day-merge.js';
 // Account ownership helpers deliberately contain no Firebase dependency so the
 // same precedence rules can be exercised in tests and reused by every view.
 
-export const ADMIN_ACCOUNT_ID = '김_태우';
-export const ADMIN_GUEST_ACCOUNT_ID = '김_태우(guest)';
+// 관리 권한은 별도 계정이 가진다. 한 계정 안에서 모드를 토글하던 구조는
+// 토글 하나가 곧 권한 상승이라 방어 장치를 계속 덧대야 했다. 권한은 이제
+// "어느 계정으로 로그인했는가" 하나로만 결정된다.
+export const ADMIN_CONSOLE_ACCOUNT_ID = '관_리자';
+
+// 김태우 개인 계정. 과거 admin/guest 두 모드를 겸하던 계정이며, 개인 데이터의
+// 물리 네임스페이스는 아래 legacy alias 와 함께 owner registry 가 결정한다.
+export const PERSONAL_ACCOUNT_ID = '김_태우';
+export const PERSONAL_LEGACY_ALIAS_ID = '김_태우(guest)';
 export const ACCOUNT_UNIFICATION_MARKER_ID = 'account_data_unification_v2';
 export const ACCOUNT_UNIFICATION_VERSION = 2;
 export const SHARED_ACCOUNT_OWNER_REGISTRY_COLLECTION = '_account_data_owners';
@@ -28,16 +35,20 @@ export const ACCOUNT_DATA_COLLECTIONS = Object.freeze([
 
 export function canonicalAccountOwnerId(ownerId) {
   const normalized = String(ownerId || '').trim();
-  return normalized === ADMIN_GUEST_ACCOUNT_ID ? ADMIN_ACCOUNT_ID : normalized;
+  return normalized === PERSONAL_LEGACY_ALIAS_ID ? PERSONAL_ACCOUNT_ID : normalized;
 }
 
-export function isSharedAdminAccount(ownerId) {
-  return canonicalAccountOwnerId(ownerId) === ADMIN_ACCOUNT_ID;
+export function isPersonalSharedAccount(ownerId) {
+  return canonicalAccountOwnerId(ownerId) === PERSONAL_ACCOUNT_ID;
+}
+
+export function isAdminConsoleAccount(ownerId) {
+  return String(ownerId || '').trim() === ADMIN_CONSOLE_ACCOUNT_ID;
 }
 
 export function normalizeSharedAccountDataOwnerId(ownerId) {
   const normalized = String(ownerId || '').trim();
-  return normalized === ADMIN_ACCOUNT_ID || normalized === ADMIN_GUEST_ACCOUNT_ID
+  return normalized === PERSONAL_ACCOUNT_ID || normalized === PERSONAL_LEGACY_ALIAS_ID
     ? normalized
     : null;
 }
@@ -50,27 +61,27 @@ export function readSharedAccountDataOwnerRegistry(registry = null) {
 }
 
 // A remote registry decision is authoritative. Before that one-time decision,
-// any document in users/{admin}/** counts as data, even false/0/[] tombstones.
-// Only a literally empty admin namespace may select the historical guest store.
+// any document in users/{personal}/** counts as data, even false/0/[] tombstones.
+// Only a literally empty personal namespace may select the historical alias store.
 export function selectSharedAccountDataOwner({ registeredOwnerId = null, adminHasData = false } = {}) {
   return normalizeSharedAccountDataOwnerId(registeredOwnerId)
-    || (adminHasData ? ADMIN_ACCOUNT_ID : ADMIN_GUEST_ACCOUNT_ID);
+    || (adminHasData ? PERSONAL_ACCOUNT_ID : PERSONAL_LEGACY_ALIAS_ID);
 }
 
-// Logical/social identity remains ADMIN_ACCOUNT_ID. Private data paths use the
+// Logical/social identity remains PERSONAL_ACCOUNT_ID. Private data paths use the
 // separately resolved physical owner, preventing two writable SSOTs.
 export function resolveAccountDataOwnerId(ownerId, sharedAccountDataOwnerId = null) {
   const canonical = canonicalAccountOwnerId(ownerId);
   if (!canonical) return null;
-  if (canonical !== ADMIN_ACCOUNT_ID) return canonical;
+  if (canonical !== PERSONAL_ACCOUNT_ID) return canonical;
   return normalizeSharedAccountDataOwnerId(sharedAccountDataOwnerId);
 }
 
 export function getAccountOwnerAliases(ownerId) {
   const canonical = canonicalAccountOwnerId(ownerId);
   if (!canonical) return [];
-  return canonical === ADMIN_ACCOUNT_ID
-    ? [ADMIN_ACCOUNT_ID, ADMIN_GUEST_ACCOUNT_ID]
+  return canonical === PERSONAL_ACCOUNT_ID
+    ? [PERSONAL_ACCOUNT_ID, PERSONAL_LEGACY_ALIAS_ID]
     : [canonical];
 }
 

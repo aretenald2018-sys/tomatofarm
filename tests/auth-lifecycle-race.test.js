@@ -8,6 +8,10 @@ const DATA_ACCOUNT_SOURCE = readFileSync(new URL('../data/data-account.js', impo
 const DATA_API_SOURCE = readFileSync(new URL('../data/data-api.js', import.meta.url), 'utf8');
 const AUTH_DATA_IMPORT_MARKER = "import('./" + "data.js')";
 
+const ADMIN_CONSOLE_ID = 'console-admin';
+const PERSONAL_ID = 'personal';
+const PERSONAL_LEGACY_ID = 'personal(guest)';
+
 class MemoryStorage {
   constructor() {
     this.values = new Map();
@@ -37,6 +41,10 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
+function inlineModule(source) {
+  return 'data:text/javascript;base64,' + Buffer.from(source).toString('base64');
+}
+
 let authModuleSequence = 0;
 
 async function loadAuthModule(overrides = {}) {
@@ -45,7 +53,6 @@ async function loadAuthModule(overrides = {}) {
   const idb = new Map();
   const harness = {
     currentUser: null,
-    kimMode: 'admin',
     idb,
     async idbSet(key, value) {
       idb.set(key, value);
@@ -60,35 +67,48 @@ async function loadAuthModule(overrides = {}) {
   };
   globalThis[harnessKey] = harness;
 
-  const coreSource = [
+  const coreUrl = inlineModule([
     'const harness = globalThis[' + JSON.stringify(harnessKey) + '];',
-    "export const ADMIN_ID = 'admin';",
-    "export const ADMIN_GUEST_ID = 'admin(guest)';",
+    'export const ADMIN_CONSOLE_ID = ' + JSON.stringify(ADMIN_CONSOLE_ID) + ';',
+    'export const PERSONAL_ID = ' + JSON.stringify(PERSONAL_ID) + ';',
+    'export const PERSONAL_LEGACY_ID = ' + JSON.stringify(PERSONAL_LEGACY_ID) + ';',
     'export function getCurrentUserRef() { return harness.currentUser; }',
     'export function setCurrentUserRef(user) { harness.currentUser = user; }',
-    'export function getKimMode() { return harness.kimMode; }',
-    'export function setKimMode(mode) { harness.kimMode = mode; }',
     'export function _idbSet(key, value) { return harness.idbSet(key, value); }',
     'export function _idbGet(key) { return harness.idbGet(key); }',
     'export function _idbRemove(key) { return harness.idbRemove(key); }',
-  ].join('\n');
-  const coreUrl = 'data:text/javascript;base64,' + Buffer.from(coreSource).toString('base64');
-  const platformSource = `export function isInstalledAppSurface() { return ${overrides.installedApp === true ? 'true' : 'false'}; }`;
-  const platformUrl = 'data:text/javascript;base64,' + Buffer.from(platformSource).toString('base64');
+  ].join('\n'));
+  const unificationUrl = inlineModule([
+    'const ADMIN_CONSOLE_ID = ' + JSON.stringify(ADMIN_CONSOLE_ID) + ';',
+    'const PERSONAL_ID = ' + JSON.stringify(PERSONAL_ID) + ';',
+    'const PERSONAL_LEGACY_ID = ' + JSON.stringify(PERSONAL_LEGACY_ID) + ';',
+    'export function isAdminConsoleAccount(id) {',
+    "  return String(id || '').trim() === ADMIN_CONSOLE_ID;",
+    '}',
+    'export function isPersonalSharedAccount(id) {',
+    "  const value = String(id || '').trim();",
+    '  return value === PERSONAL_ID || value === PERSONAL_LEGACY_ID;',
+    '}',
+  ].join('\n'));
+  const platformUrl = inlineModule(
+    `export function isInstalledAppSurface() { return ${overrides.installedApp === true ? 'true' : 'false'}; }`,
+  );
   const moduleSource = AUTH_SOURCE.replace(
     "from './data-core.js';",
     'from ' + JSON.stringify(coreUrl) + ';',
+  ).replace(
+    "from './account-unification.js';",
+    'from ' + JSON.stringify(unificationUrl) + ';',
   ).replace(
     "from '../utils/platform-session.js';",
     'from ' + JSON.stringify(platformUrl) + ';',
   );
   assert.notEqual(moduleSource, AUTH_SOURCE, 'data-auth core import should be replaced');
+  assert.equal(moduleSource.includes("from './"), false, 'every relative import should be inlined');
 
   const previousStorage = globalThis.localStorage;
   globalThis.localStorage = storage;
-  const moduleUrl = 'data:text/javascript;base64,' +
-    Buffer.from(moduleSource).toString('base64') + '#' + authModuleSequence;
-  const auth = await import(moduleUrl);
+  const auth = await import(inlineModule(moduleSource) + '#' + authModuleSequence);
 
   return {
     auth,
@@ -148,26 +168,37 @@ test('late IndexedDB restore cannot replace a user selected after restore began'
   }
 });
 
-test('a fresh installed app seeds the shared owner without authenticating it', async () => {
+test('a fresh installed app seeds the personal account without authenticating it', async () => {
   const loaded = await loadAuthModule({ installedApp: true });
 
   try {
     const restored = loaded.auth.loadSavedUser();
-    assert.equal(restored.id, 'admin');
+    assert.equal(restored.id, PERSONAL_ID);
     // The password lock screen is the only thing standing between an installed
-    // surface and the owner's account, and switchKimMode() needs no password.
-    // Seeding must never pre-authenticate the session.
-    assert.equal(loaded.storage.getItem('kim_authenticated'), null);
-    assert.equal(loaded.storage.getItem('admin_authenticated'), null);
-    assert.notEqual(loaded.harness.kimMode, 'guest');
+    // surface and the account. Seeding must never pre-authenticate the session.
+    assert.equal(loaded.auth.isSessionUnlocked(), false);
+    assert.equal(loaded.storage.getItem(loaded.auth.SESSION_UNLOCK_KEY), null);
+    // 관리자 권한은 seeding 으로 넘어오지 않는다.
+    assert.equal(loaded.auth.isAdmin(), false);
     await loaded.auth.waitForAuthPersistence();
-    assert.equal(loaded.harness.idb.has('admin_authenticated'), false);
+    assert.equal(loaded.harness.idb.has('session_unlocked'), false);
   } finally {
     loaded.cleanup();
   }
 });
 
-test('an ordinary browser session is never seeded with the shared owner', async () => {
+test('an installed surface never seeds the admin console account', async () => {
+  const loaded = await loadAuthModule({ installedApp: true });
+
+  try {
+    assert.notEqual(loaded.auth.loadSavedUser().id, ADMIN_CONSOLE_ID);
+    assert.equal(loaded.auth.isAdmin(), false);
+  } finally {
+    loaded.cleanup();
+  }
+});
+
+test('an ordinary browser session is never seeded with the personal account', async () => {
   const loaded = await loadAuthModule({ installedApp: false });
 
   try {
@@ -182,10 +213,78 @@ test('choosing another account keeps the installed-app seed off on reload', asyn
   const loaded = await loadAuthModule({ installedApp: true });
 
   try {
-    assert.equal(loaded.auth.loadSavedUser().id, 'admin');
+    assert.equal(loaded.auth.loadSavedUser().id, PERSONAL_ID);
     loaded.auth.setCurrentUser(null);
     loaded.auth.disableInstalledAppSessionFallback();
     assert.equal(loaded.auth.loadSavedUser(), null);
+  } finally {
+    loaded.cleanup();
+  }
+});
+
+test('admin is decided by the signed-in account, not by any client-held mode', async () => {
+  const loaded = await loadAuthModule();
+
+  try {
+    loaded.auth.setCurrentUser({ id: PERSONAL_ID });
+    assert.equal(loaded.auth.isAdmin(), false);
+
+    // 예전 모드 플래그를 되살려도 권한은 올라가지 않는다.
+    loaded.storage.setItem('kimMode', 'admin');
+    loaded.storage.setItem('admin_authenticated', 'true');
+    assert.equal(loaded.auth.isAdmin(), false);
+
+    loaded.auth.setCurrentUser({ id: ADMIN_CONSOLE_ID });
+    assert.equal(loaded.auth.isAdmin(), true);
+
+    loaded.auth.setCurrentUser(null);
+    assert.equal(loaded.auth.isAdmin(), false);
+  } finally {
+    loaded.cleanup();
+  }
+});
+
+test('a legacy unlock flag cannot unlock a session under the new key', async () => {
+  const loaded = await loadAuthModule();
+
+  try {
+    loaded.storage.setItem('admin_authenticated', 'true');
+    loaded.storage.setItem('kim_authenticated', 'true');
+    assert.equal(loaded.auth.isSessionUnlocked(), false);
+
+    loaded.auth.clearLegacySessionUnlockFlags();
+    assert.equal(loaded.storage.getItem('admin_authenticated'), null);
+    assert.equal(loaded.storage.getItem('kim_authenticated'), null);
+
+    loaded.auth.markSessionUnlocked();
+    assert.equal(loaded.auth.isSessionUnlocked(), true);
+    loaded.auth.clearSessionUnlock();
+    assert.equal(loaded.auth.isSessionUnlocked(), false);
+  } finally {
+    loaded.cleanup();
+  }
+});
+
+test('the admin console account cannot be entered without a stored password', async () => {
+  const loaded = await loadAuthModule();
+
+  try {
+    const passwordless = { id: ADMIN_CONSOLE_ID, hasPassword: false, passwordHash: null };
+    assert.equal(loaded.auth.accountNeedsPassword(passwordless), true);
+    assert.equal(loaded.auth.verifyPassword(passwordless, ''), false);
+    assert.equal(loaded.auth.verifyPassword(passwordless, 'anything'), false);
+
+    const guarded = {
+      id: ADMIN_CONSOLE_ID,
+      hasPassword: true,
+      passwordHash: loaded.auth.hashPassword('correct-horse'),
+    };
+    assert.equal(loaded.auth.verifyPassword(guarded, 'wrong'), false);
+    assert.equal(loaded.auth.verifyPassword(guarded, 'correct-horse'), true);
+
+    // 다른 계정의 "비밀번호 없음 = 바로 로그인" 동작은 그대로 유지된다.
+    const openAccount = { id: 'other_user', hasPassword: false, passwordHash: null };
+    assert.equal(loaded.auth.verifyPassword(openAccount, ''), true);
   } finally {
     loaded.cleanup();
   }
@@ -221,10 +320,10 @@ test('auth IndexedDB writes and removals run on one ordered promise chain', asyn
 
   try {
     assert.equal(loaded.auth.setCurrentUser({ id: 'owner-a' }), undefined);
-    loaded.auth.backupAdminAuth();
+    loaded.auth.markSessionUnlocked();
     loaded.auth.setCurrentUser(null);
     loaded.auth.setCurrentUser({ id: 'owner-b' });
-    loaded.auth.clearAdminAuth();
+    loaded.auth.clearSessionUnlock();
 
     assert.equal(loaded.harness.currentUser.id, 'owner-b');
     await loaded.auth.waitForAuthPersistence();
@@ -232,16 +331,14 @@ test('auth IndexedDB writes and removals run on one ordered promise chain', asyn
     assert.equal(maxActiveOperations, 1);
     assert.deepEqual(operations, [
       'set:currentUser:owner-a',
-      'set:admin_authenticated:true',
+      'set:session_unlocked:true',
       'remove:currentUser',
-      'remove:admin_authenticated',
-      'remove:kim_authenticated',
+      'remove:session_unlocked',
       'set:currentUser:owner-b',
-      'remove:admin_authenticated',
+      'remove:session_unlocked',
     ]);
     assert.equal(idb.get('currentUser').id, 'owner-b');
-    assert.equal(idb.has('admin_authenticated'), false);
-    assert.equal(idb.has('kim_authenticated'), false);
+    assert.equal(idb.has('session_unlocked'), false);
   } finally {
     loaded.cleanup();
   }
@@ -262,7 +359,7 @@ test('both account-exit flows delay reload until auth persistence is cleared', a
       events.push('clear-user');
     },
     disableInstalledAppSessionFallback() {},
-    clearAdminAuth() { events.push('clear-admin'); },
+    clearSessionUnlock() { events.push('clear-unlock'); },
     async waitForAuthPersistence() {
       events.push('wait-start');
       await waitGate.promise;
@@ -270,33 +367,31 @@ test('both account-exit flows delay reload until auth persistence is cleared', a
     },
   };
 
-  const confirmLogoutSource = sliceBetween(
+  const signOutSource = sliceBetween(
     FEATURE_LOGIN_SOURCE,
-    'async function confirmLogout()',
-    'export async function switchKimMode',
+    'export async function signOutToLoginScreen()',
+    'const confirmLogout = signOutToLoginScreen;',
   )
-    .replace('async function confirmLogout()', 'async function confirmLogout(__data)')
+    .replace('export async function signOutToLoginScreen()', 'async function signOutToLoginScreen(__data)')
     .replaceAll(AUTH_DATA_IMPORT_MARKER, 'Promise.resolve(__data)');
-  const confirmLogout = new Function(
+  const signOutToLoginScreen = new Function(
     'localStorage',
     'location',
-    confirmLogoutSource + '\nreturn confirmLogout;',
+    signOutSource + '\nreturn signOutToLoginScreen;',
   )(storage, location);
 
-  const confirmPromise = confirmLogout(auth);
+  const signOutPromise = signOutToLoginScreen(auth);
   await Promise.resolve();
   await Promise.resolve();
   assert.deepEqual(events, [
     'clear-user',
-    'storage:admin_authenticated',
-    'storage:kim_authenticated',
-    'clear-admin',
+    'clear-unlock',
     'wait-start',
   ]);
   assert.equal(events.includes('reload'), false);
 
   waitGate.resolve();
-  await confirmPromise;
+  await signOutPromise;
   assert.deepEqual(events.slice(-2), ['wait-done', 'reload']);
 
   const otherAccountSource = sliceBetween(
@@ -311,6 +406,7 @@ test('both account-exit flows delay reload until auth persistence is cleared', a
   const otherWaitGate = deferred();
   const otherAuth = {
     disableInstalledAppSessionFallback() {},
+    clearSessionUnlock() { events.push('clear-unlock'); },
     async waitForAuthPersistence() {
       events.push('other-wait-start');
       await otherWaitGate.promise;
@@ -340,8 +436,7 @@ test('both account-exit flows delay reload until auth persistence is cleared', a
   await Promise.resolve();
   assert.deepEqual(events.slice(eventStart), [
     'clear-user',
-    'storage:admin_authenticated',
-    'storage:kim_authenticated',
+    'clear-unlock',
     'other-wait-start',
   ]);
   otherWaitGate.resolve();
@@ -351,6 +446,17 @@ test('both account-exit flows delay reload until auth persistence is cleared', a
 
 test('auth persistence wait is exported through the public data facade', () => {
   assert.match(DATA_API_SOURCE, /restoreUserFromBackup, waitForAuthPersistence,/);
+});
+
+test('the social account list hides the admin console account', () => {
+  // 소셜/랭킹/길드 화면은 모두 getAccountList() 를 지난다. 필터가 여기 한 곳에
+  // 있어야 화면마다 다시 거르지 않는다.
+  const listSource = sliceBetween(
+    DATA_ACCOUNT_SOURCE,
+    'export async function getAccountList()',
+    'export async function getAccountListIncludingAdminConsole()',
+  );
+  assert.match(listSource, /filter\(\(account\) => !isAdminConsoleAccount\(account\?\.id\)\)/);
 });
 
 test('account refresh cannot overwrite a user selected while its fetch is pending', async () => {
@@ -365,7 +471,7 @@ test('account refresh cannot overwrite a user selected while its fetch is pendin
   const appliedUsers = [];
   const refreshCurrentUserFromDB = new Function(
     'getCurrentUser',
-    'getAccountList',
+    'getAccountListIncludingAdminConsole',
     'setCurrentUser',
     refreshSource + '\nreturn refreshCurrentUserFromDB;',
   )(

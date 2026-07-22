@@ -85,7 +85,7 @@ test('a failed owner decision keeps this device unsynced days instead of clearin
     'const currentUser = getCurrentUserRef();',
     'if (!currentUser) return {};',
     'getDataOwnerId()',
-    'isSharedAdminAccount(currentUser.id) ? getCachedSharedAccountDataOwnerId() : null',
+    'isPersonalSharedAccount(currentUser.id) ? getCachedSharedAccountDataOwnerId() : null',
     'if (!ownerId) return {};',
     'return restorePendingDayWritesForOwner(ownerId, {});',
   ], 'signed-out sessions restore nothing and shared accounts fall back to the verified device owner');
@@ -259,7 +259,7 @@ test('shared admin data uses a durable one-owner registry and never field-merges
   assert.doesNotMatch(dataLoadSource,
     /unifySharedAccountData|buildMissingWorkoutFieldPatch|_mergeWorkoutTwinCache|_backfillSharedAccountWorkoutFields/);
   assert.match(dataCoreSource,
-    /if \(_currentUser && isSharedAdminAccount\(_currentUser\.id\)\)[\s\S]*SHARED_DATA_OWNER_UNRESOLVED/);
+    /if \(_currentUser && isPersonalSharedAccount\(_currentUser\.id\)\)[\s\S]*SHARED_DATA_OWNER_UNRESOLVED/);
 
   const adopter = sliceBetween(
     sharedOwnerSource,
@@ -346,12 +346,12 @@ test('legacy root data migrates copy-only to the selected owner before shared pr
     'await runTransaction(db, async (transaction) => {',
     'transaction.set(markerRef, {',
   ], 'copy all root data before completion marker');
-  assert.doesNotMatch(migrate, /ADMIN_GUEST_ACCOUNT_ID|guestUserId|guestDocuments/);
+  assert.doesNotMatch(migrate, /PERSONAL_LEGACY_ALIAS_ID|guestUserId|guestDocuments/);
   assert.match(dataLoadSource,
     /getDocsFromServer\(collection\(db, 'users', targetUserId, collectionName\)\)[\s\S]*getDocsFromServer\(collection\(db, collectionName\)\)/);
   assertOrdered(loadAll, [
     'await resolvePrivateDataOwnerId(getCurrentUserRef().id);',
-    'if (isSharedAdminAccount(getCurrentUserRef()?.id)) {',
+    'if (isPersonalSharedAccount(getCurrentUserRef()?.id)) {',
     'await migrateDataToUser(getCurrentUserRef().id);',
     'const [snap, exSnap, goalSnap, questSnap,',
   ], 'shared root migration before selected-owner load');
@@ -359,7 +359,7 @@ test('legacy root data migrates copy-only to the selected owner before shared pr
 
 test('shared owner timeout keeps the app fail-closed behind an explicit retry action', () => {
   assert.match(appSource,
-    /if \(isAdminInstance\(user\.id\) && !getDataOwnerId\(\)\) \{\s*_showSharedOwnerRetryState\(\);\s*return false;/);
+    /if \(isPersonalInstance\(user\.id\) && !getDataOwnerId\(\)\) \{\s*_showSharedOwnerRetryState\(\);\s*return false;/);
   assert.match(appSource, /id="shared-owner-retry-btn"/);
   assert.match(appSource, /확인되기 전에는 기록을 저장하지 않습니다/);
   assert.match(appSource, /retryButton\?\.addEventListener\('click',[\s\S]*Promise\.resolve\(\)\.then\(\(\) => init\(\)\)/);

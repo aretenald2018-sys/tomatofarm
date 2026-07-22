@@ -8,11 +8,11 @@ import {
   resolveDataOwnerId,
 } from './data-core.js';
 import {
-  ADMIN_ACCOUNT_ID,
-  ADMIN_GUEST_ACCOUNT_ID,
+  PERSONAL_ACCOUNT_ID,
+  PERSONAL_LEGACY_ALIAS_ID,
   SHARED_ACCOUNT_OWNER_REGISTRY_COLLECTION,
   SHARED_ACCOUNT_OWNER_REGISTRY_ID,
-  isSharedAdminAccount,
+  isPersonalSharedAccount,
   normalizeSharedAccountDataOwnerId,
   readSharedAccountDataOwnerRegistry,
 } from './account-unification.js';
@@ -56,8 +56,8 @@ function _adoptSharedAccountDataOwner(ownerId) {
   const selectedOwnerId = normalizeSharedAccountDataOwnerId(ownerId);
   if (!selectedOwnerId) throw new TypeError('shared account data owner must be an admin alias');
   reassignPendingDayWritesToOwner(selectedOwnerId, [
-    ADMIN_ACCOUNT_ID,
-    ADMIN_GUEST_ACCOUNT_ID,
+    PERSONAL_ACCOUNT_ID,
+    PERSONAL_LEGACY_ALIAS_ID,
   ]);
   return setSharedAccountDataOwnerId(selectedOwnerId);
 }
@@ -101,7 +101,7 @@ export async function ensureSharedAccountDataOwner() {
 }
 
 export async function resolvePrivateDataOwnerId(ownerId) {
-  if (!isSharedAdminAccount(ownerId)) return resolveDataOwnerId(ownerId);
+  if (!isPersonalSharedAccount(ownerId)) return resolveDataOwnerId(ownerId);
   const selectedOwnerId = await ensureSharedAccountDataOwner();
   if (!selectedOwnerId) {
     throw new Error('shared account data owner is unresolved');

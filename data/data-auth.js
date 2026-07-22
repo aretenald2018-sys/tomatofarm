@@ -4,14 +4,22 @@
 
 import {
   getCurrentUserRef, setCurrentUserRef,
-  ADMIN_ID, ADMIN_GUEST_ID, getKimMode, setKimMode,
+  ADMIN_CONSOLE_ID, PERSONAL_ID, PERSONAL_LEGACY_ID,
   _idbSet, _idbGet, _idbRemove,
 } from './data-core.js';
+import { isAdminConsoleAccount, isPersonalSharedAccount } from './account-unification.js';
 import { isInstalledAppSurface } from '../utils/platform-session.js';
 
 let _authSessionGeneration = 0;
 let _authPersistence = Promise.resolve();
 export const INSTALLED_APP_SESSION_DISABLED_KEY = 'tomatofarm:installed-app-session-disabled:v1';
+
+// 관리자/게스트를 한 계정의 모드로 나누던 시절의 세션 플래그. 그 플래그가 서 있으면
+// 잠금 화면을 건너뛰었고, 모드 전환은 비밀번호를 묻지 않았다. 키를 갈아끼워서
+// 예전 플래그가 새 권한 모델로 넘어오지 못하게 한다.
+export const SESSION_UNLOCK_KEY = 'tomatofarm:session-unlocked:v2';
+const LEGACY_SESSION_UNLOCK_KEYS = Object.freeze(['admin_authenticated', 'kim_authenticated']);
+const SESSION_UNLOCK_IDB_KEY = 'session_unlocked';
 
 function _queueAuthPersistence(operation) {
   const next = _authPersistence.then(operation, operation);
@@ -27,25 +35,23 @@ export async function waitForAuthPersistence() {
 }
 
 export function getCurrentUser() { return getCurrentUserRef(); }
-export function getAdminId() { return ADMIN_ID; }
-export function getAdminGuestId() { return ADMIN_GUEST_ID; }
+export function getAdminConsoleId() { return ADMIN_CONSOLE_ID; }
+export function getPersonalAccountId() { return PERSONAL_ID; }
+export function getPersonalLegacyAliasId() { return PERSONAL_LEGACY_ID; }
 
+// 권한은 로그인한 계정 하나로 결정된다. 모드 토글도, 클라이언트 플래그도 없다.
 export function isAdmin() {
-  return getCurrentUserRef()?.id === ADMIN_ID && getKimMode() === 'admin';
-}
-
-export function isAdminGuest() {
-  return getCurrentUserRef()?.id === ADMIN_ID && getKimMode() === 'guest';
+  return isAdminConsoleAccount(getCurrentUserRef()?.id);
 }
 
 export function isSameInstance(id1, id2) {
   if (id1 === id2) return true;
-  const normalize = (id) => (id === ADMIN_GUEST_ID ? ADMIN_ID : id);
+  const normalize = (id) => (id === PERSONAL_LEGACY_ID ? PERSONAL_ID : id);
   return normalize(id1) === normalize(id2);
 }
 
-export function isAdminInstance(id) {
-  return id === ADMIN_ID || id === ADMIN_GUEST_ID;
+export function isPersonalInstance(id) {
+  return isPersonalSharedAccount(id);
 }
 
 export const GUEST_CONFIG = {
@@ -68,7 +74,7 @@ export function shouldShow(section, key) {
 
 export function setCurrentUser(user) {
   _authSessionGeneration += 1;
-  const normalizedUser = _normalizeKimUser(user);
+  const normalizedUser = _normalizePersonalUser(user);
   setCurrentUserRef(normalizedUser);
   if (normalizedUser) {
     localStorage.removeItem(INSTALLED_APP_SESSION_DISABLED_KEY);
@@ -78,8 +84,7 @@ export function setCurrentUser(user) {
     localStorage.removeItem('currentUser');
     _queueAuthPersistence(async () => {
       await _idbRemove('currentUser');
-      await _idbRemove('admin_authenticated');
-      await _idbRemove('kim_authenticated');
+      await _idbRemove(SESSION_UNLOCK_IDB_KEY);
     });
   }
 }
@@ -88,7 +93,7 @@ export function loadSavedUser() {
   try {
     const saved = localStorage.getItem('currentUser');
     if (saved) {
-      setCurrentUser(_normalizeKimUser(JSON.parse(saved)));
+      setCurrentUser(_normalizePersonalUser(JSON.parse(saved)));
       return getCurrentUserRef();
     }
 
@@ -96,17 +101,16 @@ export function loadSavedUser() {
     // share localStorage/IndexedDB — the APK runs on its own https://localhost
     // origin. A fresh installed surface therefore has no session, the shared
     // owner never resolves, and the app renders an empty cache that reads as
-    // "my diet records are gone". Seed the shared owner so the surface knows
+    // "my diet records are gone". Seed the personal account so the surface knows
     // whose account it is; it stays UNauthenticated so the existing password
-    // lock still runs. Never authenticate here: kim_authenticated would skip
-    // that lock, and switchKimMode() would then hand out admin without a
-    // password on any device that installed the app.
+    // lock still runs. The admin console account is never seeded — an installed
+    // surface must not hand out admin without a password.
     if (
       isInstalledAppSurface()
       && localStorage.getItem(INSTALLED_APP_SESSION_DISABLED_KEY) !== '1'
     ) {
       setCurrentUser({
-        id: ADMIN_ID,
+        id: PERSONAL_ID,
         lastName: '김',
         firstName: '태우',
         nickname: '김태우',
@@ -122,14 +126,24 @@ export function disableInstalledAppSessionFallback() {
   localStorage.setItem(INSTALLED_APP_SESSION_DISABLED_KEY, '1');
 }
 
-export function backupAdminAuth() {
-  _queueAuthPersistence(() => _idbSet('admin_authenticated', true));
+export function markSessionUnlocked() {
+  localStorage.setItem(SESSION_UNLOCK_KEY, 'true');
+  _queueAuthPersistence(() => _idbSet(SESSION_UNLOCK_IDB_KEY, true));
 }
-export function clearAdminAuth() {
-  _queueAuthPersistence(() => _idbRemove('admin_authenticated'));
+
+export function clearSessionUnlock() {
+  localStorage.removeItem(SESSION_UNLOCK_KEY);
+  clearLegacySessionUnlockFlags();
+  _queueAuthPersistence(() => _idbRemove(SESSION_UNLOCK_IDB_KEY));
 }
-export const backupKimAuth = backupAdminAuth;
-export const clearKimAuth = clearAdminAuth;
+
+export function isSessionUnlocked() {
+  return localStorage.getItem(SESSION_UNLOCK_KEY) === 'true';
+}
+
+export function clearLegacySessionUnlockFlags() {
+  for (const key of LEGACY_SESSION_UNLOCK_KEYS) localStorage.removeItem(key);
+}
 
 export async function restoreUserFromBackup() {
   const restoreGeneration = _authSessionGeneration;
@@ -147,29 +161,24 @@ export async function restoreUserFromBackup() {
     }
     if (!backup) return null;
 
-    const [adminAuth, kimAuth] = await Promise.all([
-      _idbGet('admin_authenticated'),
-      _idbGet('kim_authenticated'),
-    ]);
+    const unlocked = await _idbGet(SESSION_UNLOCK_IDB_KEY);
     if (_authSessionGeneration !== restoreGeneration || getCurrentUserRef()) {
       return getCurrentUserRef();
     }
 
-    const normalizedBackup = _normalizeKimUser(backup);
-    setCurrentUser(normalizedBackup);
-    if (adminAuth || kimAuth) localStorage.setItem('admin_authenticated', 'true');
+    setCurrentUser(_normalizePersonalUser(backup));
+    if (unlocked) localStorage.setItem(SESSION_UNLOCK_KEY, 'true');
     return getCurrentUserRef();
   } catch {}
   return null;
 }
 
-function _normalizeKimUser(user) {
-  if (!user || user.id !== ADMIN_GUEST_ID) return user;
-  setKimMode('guest');
+function _normalizePersonalUser(user) {
+  if (!user || user.id !== PERSONAL_LEGACY_ID) return user;
   const normalizedFirstName = typeof user.firstName === 'string'
     ? user.firstName.replace(/\(guest\)/i, '').replace(/\(Guest\)/g, '').trim()
     : user.firstName;
-  return { ...user, id: ADMIN_ID, firstName: normalizedFirstName };
+  return { ...user, id: PERSONAL_ID, firstName: normalizedFirstName };
 }
 
 // ── 비밀번호 (단순 해시) ────────────────────────────────────────
@@ -191,8 +200,17 @@ function _accountNeedsPassword(account) {
   return !!account.passwordHash;
 }
 
+export function accountNeedsPassword(account) {
+  // 관리자 콘솔 계정은 비밀번호 없이 열리는 경로가 있어서는 안 된다.
+  if (isAdminConsoleAccount(account?.id)) return true;
+  return _accountNeedsPassword(account);
+}
+
 export function verifyPassword(account, input) {
-  if (!_accountNeedsPassword(account) || !account.passwordHash) return true;
+  // 비밀번호가 등록되지 않은 관리자 콘솔 계정은 통과시키지 않는다. 다른 계정의
+  // "비밀번호 없음 = 바로 로그인" 동작은 그대로 둔다.
+  if (isAdminConsoleAccount(account?.id) && !account?.passwordHash) return false;
+  if (!_accountNeedsPassword(account) || !account?.passwordHash) return true;
 
   const rawInput = String(input ?? '');
   const inputHash = _simpleHash(rawInput);

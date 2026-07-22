@@ -4,8 +4,8 @@
 
 import { loadAll, TODAY, getTabOrder,
          getRawVisibleTabs, DEFAULT_VIS_TABS,
-         isAdmin, isAdminGuest, trackEvent,
-         getCurrentUser, getDataOwnerId, isAdminInstance,
+         isAdmin, trackEvent,
+         getCurrentUser, getDataOwnerId, isPersonalInstance,
          loadSavedUser, refreshCurrentUserFromDB } from './data.js';
 import { loadCSVDatabase } from './fatsecret-api.js';
 // ── 분리된 모듈 ──
@@ -860,7 +860,7 @@ async function _initializeAppSession() {
       _withTimeout(loadAndInjectModals(), 8000, 'modal load'),
       _withTimeout(dashboardDataLoad, 10000, 'data load'),
     ]);
-    if (isAdminInstance(user.id) && !getDataOwnerId()) {
+    if (isPersonalInstance(user.id) && !getDataOwnerId()) {
       _showSharedOwnerRetryState();
       return false;
     }
@@ -884,11 +884,8 @@ async function _initializeAppSession() {
     applyTabOrder(getTabOrder());
 
     // 하단 탭 가시성 적용
-    // 김태우(Guest)는 게스트 디폴트 강제 적용 (admin 설정 공유 무시)
     let visTabs;
-    if (isAdminGuest()) {
-      visTabs = DEFAULT_VIS_TABS;
-    } else if (isAdmin()) {
+    if (isAdmin()) {
       visTabs = getRawVisibleTabs() || ['home','diet','workout','stats'];
     } else {
       visTabs = getRawVisibleTabs() || DEFAULT_VIS_TABS;

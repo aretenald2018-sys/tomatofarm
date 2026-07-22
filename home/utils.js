@@ -3,7 +3,7 @@
 // ================================================================
 
 import { dateKey } from '../data.js';
-import { getAdminId, getAdminGuestId } from '../data.js';
+import { getPersonalAccountId, getPersonalLegacyAliasId } from '../data.js';
 export { showToast, showCenterToast } from '../ui/toast.js';
 
 // ── 날짜 유틸 ────────────────────────────────────────────────────
@@ -54,8 +54,8 @@ export function formatTimeAgo(ts) {
 // ── 이웃 별명 해석 ───────────────────────────────────────────────
 export function resolveNickname(a, accounts) {
   let _raw = a.nickname || '';
-  if (a.id === getAdminId()) {
-    const _gst = accounts.find(x => x.id === getAdminGuestId());
+  if (a.id === getPersonalAccountId()) {
+    const _gst = accounts.find(x => x.id === getPersonalLegacyAliasId());
     const baseFull = a.lastName + a.firstName;
     const _isReal = (n) => !n || n === baseFull || n === baseFull + '(Admin)' || n === baseFull + '(Guest)';
     if (_isReal(_raw) && _gst && !_isReal(_gst.nickname)) _raw = _gst.nickname;

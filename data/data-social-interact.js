@@ -6,7 +6,7 @@ import {
   db, doc, setDoc, deleteDoc, getDoc, collection, getDocs,
   query, orderBy, onSnapshot, getCurrentUserRef, _fbOp,
 } from './data-core.js';
-import { isAdmin, isAdminGuest, _simpleHash } from './data-auth.js';
+import { isAdmin, _simpleHash } from './data-auth.js';
 import { _socialId, _isMySocialId } from './data-social-friends.js';
 import { resolvePrivateDataOwnerId } from './shared-account-owner.js';
 

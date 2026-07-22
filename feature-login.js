@@ -1,6 +1,11 @@
 import { showToast } from './ui/toast.js';
 import { confirmAction } from './utils/confirm-modal.js';
 import { openFriendProfile } from './home/friend-profile.js';
+import {
+  PERSONAL_ACCOUNT_ID,
+  isAdminConsoleAccount,
+  isPersonalSharedAccount,
+} from './data/account-unification.js';
 // ================================================================
 // feature-login.js — 로그인/가입/잠금/길드 온보딩 흐름
 // ================================================================
@@ -52,8 +57,7 @@ function _runDeferredLoginMaintenance() {
   // 로그인 화면은 원격 계정 정리와 무관하게 즉시 사용할 수 있어야 한다.
   // 특히 APK의 느린 네트워크에서 이 작업이 로그인 진입을 막으면 안 된다.
   Promise.resolve().then(async () => {
-    const { hashPassword, saveAccount, getAccountList, recoverDeletedAccounts } = await import('./data.js');
-    const { getAdminId } = await import('./data.js');
+    const { hashPassword, saveAccount, getAccountList, recoverDeletedAccounts, getPersonalAccountId } = await import('./data.js');
 
     if (!localStorage.getItem('accounts_recovered_v1')) {
       const cnt = await recoverDeletedAccounts();
@@ -61,18 +65,30 @@ function _runDeferredLoginMaintenance() {
       localStorage.setItem('accounts_recovered_v1', 'done');
     }
 
+    // 개인 계정이 비밀번호 없이 남아 있으면 잠금 화면이 무의미해진다. 없을 때만
+    // 심고, 이미 설정된 비밀번호는 덮어쓰지 않는다. 관리자 콘솔 계정은
+    // getAccountList() 에서 제외되므로 이 경로가 건드릴 수 없다.
     const freshAccounts = await getAccountList();
-    const adminAcc = freshAccounts.find(a => a.id === getAdminId());
-    if (adminAcc) {
-      adminAcc.hasPassword = true;
-      adminAcc.passwordHash = hashPassword('kimtw100');
-      await saveAccount(adminAcc);
+    const personalAcc = freshAccounts.find(a => a.id === getPersonalAccountId());
+    if (personalAcc && !personalAcc.passwordHash) {
+      personalAcc.hasPassword = true;
+      personalAcc.passwordHash = hashPassword('kimtw100');
+      await saveAccount(personalAcc);
     }
   }).catch((error) => console.warn('[login] deferred account maintenance failed:', error));
 }
 
+// 입력한 성/이름을 계정 id 로 바꾼다. 레거시 `(guest)` 별칭으로 입력해도
+// 개인 계정 하나로 모인다.
+function _normalizeLoginId(lastName, firstName) {
+  const rawId = `${lastName}_${firstName}`.toLowerCase().replace(/\s/g, '');
+  return isPersonalSharedAccount(rawId) ? PERSONAL_ACCOUNT_ID : rawId;
+}
+
 function _needsPassword(account) {
   if (!account) return false;
+  // 관리자 콘솔 계정은 비밀번호 없이 열리는 경로가 없어야 한다.
+  if (isAdminConsoleAccount(account.id)) return true;
   const flag = account.hasPassword;
   if (flag === true || flag === 'true' || flag === 1 || flag === '1') return true;
   if (flag === false || flag === 'false' || flag === 0 || flag === '0') return false;
@@ -138,21 +154,31 @@ async function initLoginScreen() {
     'IndexedDB session restore'
   );
   if (saved) {
-    const { isAdminInstance, getAdminId } = await import('./data.js');
-    const isKimSaved = isAdminInstance(saved.id);
-    if (isKimSaved) {
+    const { getPersonalAccountId, isSessionUnlocked, clearLegacySessionUnlockFlags } = await import('./data.js');
+    // 예전 모드 전환 시절의 플래그는 새 권한 모델에서 아무 의미도 갖지 않는다.
+    clearLegacySessionUnlockFlags();
+    const needsLockScreen = isPersonalSharedAccount(saved.id) || isAdminConsoleAccount(saved.id);
+    if (needsLockScreen) {
       // 이미 이 세션에서 인증 완료했으면 바로 진입
-      if (localStorage.getItem('admin_authenticated') || localStorage.getItem('kim_authenticated')) {
+      if (isSessionUnlocked()) {
         const { recordLogin: rlAuto } = await import('./data.js');
         rlAuto();
         void _continueToAppAfterLogin();
         return;
       }
-      // 김태우 잠금 화면
-      const { setCurrentUser, hashPassword, verifyPassword, getAccountList, saveAccount, backupAdminAuth } = await import('./data.js');
-      const accounts = await getAccountList();
-      let kimAcc = accounts.find(a => a.id === getAdminId()) || accounts.find(a => a.id === saved.id);
-      if (kimAcc && (!kimAcc.hasPassword || !kimAcc.passwordHash)) {
+      // 잠금 화면
+      const {
+        setCurrentUser, hashPassword, verifyPassword, saveAccount,
+        markSessionUnlocked, getAccountListIncludingAdminConsole,
+      } = await import('./data.js');
+      const accounts = await getAccountListIncludingAdminConsole();
+      let kimAcc = accounts.find(a => a.id === saved.id)
+        || (isPersonalSharedAccount(saved.id)
+          ? accounts.find(a => a.id === getPersonalAccountId())
+          : null);
+      // 개인 계정만 자가 복구한다. 관리자 콘솔 계정의 비밀번호를 클라이언트가
+      // 심을 수 있으면 계정을 나눈 의미가 없어진다.
+      if (kimAcc && isPersonalSharedAccount(kimAcc.id) && !kimAcc.passwordHash) {
         kimAcc.hasPassword = true;
         kimAcc.passwordHash = hashPassword('kimtw100');
         await saveAccount(kimAcc);
@@ -164,7 +190,7 @@ async function initLoginScreen() {
       lockDiv.style.cssText = 'position:fixed;inset:0;z-index:9999;background:var(--bg);display:flex;align-items:center;justify-content:center;';
       lockDiv.innerHTML = `<div style="text-align:center;padding:24px;max-width:300px;width:100%;">
         <div style="width:56px;height:56px;border-radius:50%;background:#fff3e0;display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 12px;">🍅</div>
-        <div style="font-size:16px;font-weight:600;color:var(--text);margin-bottom:4px;">${saved.nickname || '김태우'}</div>
+        <div style="font-size:16px;font-weight:600;color:var(--text);margin-bottom:4px;">${saved.nickname || (isAdminConsoleAccount(saved.id) ? '관리자' : '김태우')}</div>
         <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:16px;">비밀번호를 입력해주세요</div>
         <input type="password" id="kim-lock-pw" style="width:100%;padding:12px;border:1px solid var(--border);border-radius:999px;font-size:14px;text-align:center;background:var(--surface);color:var(--text);outline:none;" placeholder="비밀번호" autofocus>
         <div id="kim-lock-error" style="font-size:12px;color:#e53935;margin-top:6px;min-height:18px;"></div>
@@ -176,8 +202,7 @@ async function initLoginScreen() {
         const pw = document.getElementById('kim-lock-pw').value;
         if (kimAcc && verifyPassword(kimAcc, pw)) {
           setCurrentUser(kimAcc);
-          localStorage.setItem('admin_authenticated', 'true');
-          backupAdminAuth();
+          markSessionUnlocked();
           import('./data.js').then(m => m.recordLogin());
           lockDiv.remove();
           void _continueToAppAfterLogin();
@@ -189,11 +214,10 @@ async function initLoginScreen() {
         if (event.key === 'Enter') document.getElementById('kim-lock-btn').click();
       });
       document.getElementById('kim-lock-other').onclick = async () => {
-        const { disableInstalledAppSessionFallback } = await import('./data.js');
+        const { disableInstalledAppSessionFallback, clearSessionUnlock } = await import('./data.js');
         setCurrentUser(null);
         disableInstalledAppSessionFallback();
-        localStorage.removeItem('admin_authenticated');
-        localStorage.removeItem('kim_authenticated');
+        clearSessionUnlock();
         const { waitForAuthPersistence } = await import('./data.js');
         await waitForAuthPersistence();
         lockDiv.remove();
@@ -314,16 +338,16 @@ async function initLoginScreen() {
       return;
     }
     try {
-      const { getAdminId, isAdminInstance, getAccountList } = await import('./data.js');
-      const rawId = `${ln}_${fn}`.toLowerCase().replace(/\s/g, '');
-      const id = (isAdminInstance(rawId) || rawId === getAdminId()) ? getAdminId() : rawId;
-      const accounts = await getAccountList();
+      const { getAccountListIncludingAdminConsole } = await import('./data.js');
+      const id = _normalizeLoginId(ln, fn);
+      const accounts = await getAccountListIncludingAdminConsole();
       const found = accounts.find(a => a.id === id);
 
-      // 김/태우 입력 시 비밀번호만 (Guest UX 기본)
       const modeSection = document.getElementById('login-mode-section');
       if (modeSection) modeSection.style.display = 'none';
-      if (ln === '김' && fn === '태우') {
+      // 개인 계정과 관리자 콘솔 계정은 계정 존재 여부를 노출하지 않고 항상
+      // 비밀번호를 묻는다.
+      if (isPersonalSharedAccount(id) || isAdminConsoleAccount(id)) {
         pwSection.style.display = 'block';
         statusEl.innerHTML = '<span style="color:var(--primary);">비밀번호를 입력해주세요.</span>';
         return;
@@ -459,9 +483,6 @@ function _runLoginAction(action, control, event = null) {
       break;
     case 'remove-guild-chip':
       result = removeGuildChip(control.dataset.guildName || '', control.dataset.containerId || '');
-      break;
-    case 'switch-kim-mode':
-      result = switchKimMode(control.dataset.mode || '');
       break;
     case 'close-dynamic-modal':
       if (!event || event.target === control) document.getElementById('dynamic-modal')?.remove();
@@ -606,15 +627,18 @@ async function createAccountFromSignup() {
   const firstName = document.getElementById('signup-first-name').value.trim();
   if (!lastName || !firstName) { showToast('성과 이름을 입력해주세요', 2500, 'warning'); return; }
 
-  const { saveAccount, setCurrentUser, hashPassword, getAccountList } = await import('./data.js');
-  const { getAdminId: _gAI, isAdminInstance: _isAI } = await import('./data.js');
+  const { saveAccount, setCurrentUser, hashPassword, getAccountListIncludingAdminConsole } = await import('./data.js');
 
-  let newId;
-  const _tryId = `${lastName}_${firstName}`.toLowerCase().replace(/\s/g, '');
-  if (_isAI(_tryId) || _tryId === _gAI()) { newId = _gAI(); }
-  else { newId = _tryId; }
+  const newId = _normalizeLoginId(lastName, firstName);
 
-  const existing = await getAccountList();
+  // 관리자 콘솔 계정은 서버 스크립트로만 만든다. 가입 화면에서 선점할 수 있으면
+  // 아무나 관리자가 된다.
+  if (isAdminConsoleAccount(newId)) {
+    document.getElementById('signup-status').innerHTML = '<span style="color:#ef4444;">사용할 수 없는 이름이에요.</span>';
+    return;
+  }
+
+  const existing = await getAccountListIncludingAdminConsole();
   const found = existing.find(a => a.id === newId);
   if (found) {
     document.getElementById('signup-status').innerHTML = '<span style="color:#ef4444;">이미 존재하는 계정이에요. 로그인해주세요.</span>';
@@ -780,15 +804,13 @@ async function createAccountAndLogin() {
   const firstName = document.getElementById('login-first-name').value.trim();
   if (!lastName || !firstName) { showToast('성과 이름을 입력해주세요', 2500, 'warning'); return; }
 
-  const { setCurrentUser, getAccountList, verifyPassword } = await import('./data.js');
-  const { getAdminId: _gAI, isAdminInstance: _isAI } = await import('./data.js');
+  const {
+    setCurrentUser, getAccountListIncludingAdminConsole, verifyPassword,
+    markSessionUnlocked, clearSessionUnlock,
+  } = await import('./data.js');
 
-  let newId;
-  const _tryId = `${lastName}_${firstName}`.toLowerCase().replace(/\s/g, '');
-  if (_isAI(_tryId) || _tryId === _gAI()) { newId = _gAI(); }
-  else { newId = _tryId; }
-
-  const existing = await getAccountList();
+  const newId = _normalizeLoginId(lastName, firstName);
+  const existing = await getAccountListIncludingAdminConsole();
   const found = existing.find(a => a.id === newId);
 
   if (!found) {
@@ -804,19 +826,18 @@ async function createAccountAndLogin() {
       return;
     }
     setCurrentUser(found);
-    const { backupAdminAuth: bkAuth, recordLogin: rl1 } = await import('./data.js');
-    if (found.id === _gAI() || _isAI(found.id)) {
-      localStorage.setItem('admin_authenticated', 'true');
-      bkAuth();
+    // 잠금 화면이 붙는 계정만 세션 해제를 기록한다. 다른 계정에는 잠금이 없으니
+    // 남겨둘 상태도 없다.
+    if (isPersonalSharedAccount(found.id) || isAdminConsoleAccount(found.id)) {
+      markSessionUnlocked();
     } else {
-      localStorage.removeItem('admin_authenticated');
-      localStorage.removeItem('kim_authenticated');
+      clearSessionUnlock();
     }
+    const { recordLogin: rl1 } = await import('./data.js');
     rl1();
   } else {
     setCurrentUser(found);
-    localStorage.removeItem('admin_authenticated');
-    localStorage.removeItem('kim_authenticated');
+    clearSessionUnlock();
     const { recordLogin: rl2 } = await import('./data.js');
     rl2();
   }
@@ -825,24 +846,9 @@ async function createAccountAndLogin() {
 }
 
 export async function logoutAccount() {
-  const { getCurrentUser, setCurrentUser, isAdmin, isAdminGuest, getAccountList } = await import('./data.js');
+  const { getCurrentUser } = await import('./data.js');
   const user = getCurrentUser();
   const name = user ? `${user.lastName}${user.firstName}`.replace(/\(.*\)/, '') : '';
-  const isKimTaewoo = isAdmin() || isAdminGuest();
-
-  // 김태우 계정이면 모드 전환 옵션 추가
-  let modeSwitch = '';
-  if (isKimTaewoo) {
-    const currentMode = isAdmin() ? 'Admin' : 'Guest';
-    const otherMode = isAdmin() ? 'Guest' : 'Admin';
-    const otherLabel = isAdmin() ? '게스트 모드로 전환' : '어드민 모드로 전환';
-    modeSwitch = `
-      <div style="border-top:1px solid var(--border);margin:16px -24px 0;padding:16px 24px 0;">
-        <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:8px;">현재: ${currentMode} 모드</div>
-        <button data-login-action="switch-kim-mode" data-mode="${otherMode}" style="width:100%;padding:12px;border-radius:var(--radius-md);border:1px solid var(--primary);background:var(--primary-bg);color:var(--primary);font-size:14px;font-weight:600;cursor:pointer;margin-bottom:8px;">${otherLabel}</button>
-      </div>
-    `;
-  }
 
   document.getElementById('dynamic-modal')?.remove();
   const modal = document.createElement('div'); modal.id = 'dynamic-modal'; document.body.appendChild(modal);
@@ -858,7 +864,6 @@ export async function logoutAccount() {
         <div style="display:flex;gap:6px;margin-bottom:8px;">
           <button data-login-action="open-own-profile" data-user-id="${user?.id || ''}" data-user-name="${name.replace(/"/g, '&quot;')}" style="width:100%;padding:9px;border:1px solid var(--border);border-radius:999px;background:var(--surface);color:var(--text);font-size:12px;font-weight:500;cursor:pointer;">🏡 내 프로필</button>
         </div>
-        ${modeSwitch}
         <div style="display:flex;gap:8px;margin-top:12px;">
           <button data-login-action="close-dynamic-modal" style="flex:1;padding:12px;border-radius:999px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:14px;font-weight:600;cursor:pointer;">닫기</button>
           <button data-login-action="confirm-logout" style="flex:1;padding:12px;border-radius:999px;border:none;background:var(--surface2);color:var(--text-secondary);font-size:14px;font-weight:600;cursor:pointer;">계정 전환</button>
@@ -868,23 +873,17 @@ export async function logoutAccount() {
   `;
 }
 
-async function confirmLogout() {
-  const { setCurrentUser, clearAdminAuth, disableInstalledAppSessionFallback } = await import('./data.js');
+export async function signOutToLoginScreen() {
+  const { setCurrentUser, clearSessionUnlock, disableInstalledAppSessionFallback } = await import('./data.js');
   setCurrentUser(null);
   disableInstalledAppSessionFallback();
-  localStorage.removeItem('admin_authenticated');
-  localStorage.removeItem('kim_authenticated');
-  clearAdminAuth();
+  clearSessionUnlock();
   const { waitForAuthPersistence } = await import('./data.js');
   await waitForAuthPersistence();
   location.reload();
 }
 
-export async function switchKimMode(mode) {
-  const { setKimMode } = await import('./data.js');
-  setKimMode(mode === 'Admin' ? 'admin' : 'guest');
-  location.reload();
-}
+const confirmLogout = signOutToLoginScreen;
 
 async function openNicknameEdit() {
   const { getCurrentUser, saveAccount, setCurrentUser } = await import('./data.js');
@@ -918,11 +917,11 @@ function _isMyGuildLeader(guildName) {
 }
 
 export async function openGuildModal() {
-  const { getCurrentUser, getAllGuilds, isAdminGuest, getAdminId } = await import('./data.js');
+  const { getCurrentUser, getAllGuilds } = await import('./data.js');
   const user = getCurrentUser();
   if (!user) return;
   _guildModalUserId = user.id;
-  _guildModalSocialId = isAdminGuest() ? getAdminId() : user.id;
+  _guildModalSocialId = user.id;
 
   _allGuildsCache = await getAllGuilds();
   _guildIconMap = {};

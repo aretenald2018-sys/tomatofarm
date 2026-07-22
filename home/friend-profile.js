@@ -8,8 +8,8 @@ import { TODAY, getCurrentUser, getMyFriends, getAccountList,
          getGuestbook, writeGuestbook, deleteGuestbookEntry,
          getComments, writeComment, editComment, deleteComment,
          introduceFriend, markNotificationRead,
-         isAdmin, isAdminGuest, getAdminId, getAdminGuestId,
-         isAdminInstance, isSameInstance, getDataOwnerId,
+         isAdmin, getPersonalAccountId, getPersonalLegacyAliasId,
+         isPersonalInstance, isSameInstance, getDataOwnerId,
          getTomatoState, dateKey, recordAction, getAllMuscles,
          getAllGuilds }  from '../data.js';
 import { CONFIG } from '../config.js';
@@ -187,7 +187,7 @@ export async function openFriendProfile(friendId, friendName, scrollToSection, o
   const user = getCurrentUser();
   const myDataId = getDataOwnerId();
 
-  const normalizedFriendId = isAdminInstance(friendId) ? getAdminId() : friendId;
+  const normalizedFriendId = isPersonalInstance(friendId) ? getPersonalAccountId() : friendId;
 
   const isMyProfile = friendId === user?.id || friendId === myDataId || normalizedFriendId === myDataId;
   const myFriends = await getMyFriends();
@@ -195,14 +195,14 @@ export async function openFriendProfile(friendId, friendName, scrollToSection, o
   const DOW = ['일','월','화','수','목','금','토'];
 
   const allAccounts = await getAccountList();
-  const friendAcc = isAdminInstance(friendId)
-    ? (allAccounts.find(a => a.id === getAdminId()) || allAccounts.find(a => a.id === friendId))
+  const friendAcc = isPersonalInstance(friendId)
+    ? (allAccounts.find(a => a.id === getPersonalAccountId()) || allAccounts.find(a => a.id === friendId))
     : allAccounts.find(a => a.id === friendId);
   let rawNick = friendAcc?.nickname || '';
-  if (isAdminInstance(friendId)) {
+  if (isPersonalInstance(friendId)) {
     const adminBaseName = friendAcc ? friendAcc.lastName + friendAcc.firstName.replace(/\(.*\)/, '') : '';
-    const guestAcc = allAccounts.find(a => a.id === getAdminGuestId());
-    const adminAcc2 = allAccounts.find(a => a.id === getAdminId());
+    const guestAcc = allAccounts.find(a => a.id === getPersonalLegacyAliasId());
+    const adminAcc2 = allAccounts.find(a => a.id === getPersonalAccountId());
     const gNick = guestAcc?.nickname || '';
     const aNick = adminAcc2?.nickname || '';
     const isReal = (n) => !n || n === adminBaseName || n === adminBaseName + '(Admin)' || n === adminBaseName + '(Guest)';
@@ -670,7 +670,7 @@ export async function openIntroduceFriend(friendId, friendName) {
 export async function sendFriendFromIntro(targetId, notifId) {
   const user = getCurrentUser();
   if (!user) return;
-  const myId = isAdminGuest() ? getAdminId() : user.id;
+  const myId = user.id;
   const r = await sendFriendRequest(myId, targetId);
   if (r.error) { showToast(r.error, 2500, 'error'); }
   else { showToast('이웃 요청을 보냈어요!', 2500, 'success'); }
@@ -723,7 +723,7 @@ export async function confirmGuildInvite(friendId, friendName, guildName) {
   const myName = user.nickname || (user.lastName + user.firstName);
   await sn(friendId, {
     type: 'guild_invite',
-    from: isAdminGuest() ? getAdminId() : user.id,
+    from: user.id,
     guildId: guildName,
     guildName,
     message: `${myName}님이 ${guildName} 모임에 초대했어요! 프로필에서 가입할 수 있어요.`,
@@ -781,7 +781,7 @@ export async function quickJoinGuild(guildName) {
     setCurrentUser(user);
     showToast(`${guildName}을(를) 대표길드로 설정했어요!`, 2500, 'success');
     document.getElementById('dynamic-modal')?.remove();
-    openFriendProfile(isAdminGuest() ? getAdminId() : user.id);
+    openFriendProfile(user.id);
     return;
   }
 
@@ -793,7 +793,7 @@ export async function quickJoinGuild(guildName) {
     await withdrawGuildJoinRequest(guildName, user.id);
     showToast(`${guildName} 가입신청을 철회했어요.`, 2500, 'info');
     document.getElementById('dynamic-modal')?.remove();
-    openFriendProfile(isAdminGuest() ? getAdminId() : user.id);
+    openFriendProfile(user.id);
     return;
   }
 
@@ -825,13 +825,13 @@ export async function quickJoinGuild(guildName) {
   }
   // 프로필 모달 닫고 새로고침
   document.getElementById('dynamic-modal')?.remove();
-  openFriendProfile(isAdminGuest() ? getAdminId() : user.id);
+  openFriendProfile(user.id);
 };
 
 export async function openMyGuestbook() {
   const user = getCurrentUser();
   if (!user) return;
-  const myId = isAdminGuest() ? getAdminId() : user.id;
+  const myId = user.id;
   const allEntries = await getGuestbook(myId);
   const todayStart = new Date(); todayStart.setHours(0,0,0,0);
   const entries = allEntries.filter(e => e.createdAt >= todayStart.getTime());

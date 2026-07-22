@@ -19,18 +19,18 @@ import {
   _setTomatoCycles,
   _setSyncStatus, _migrateFromLS,
 } from './data-core.js';
-import { isAdmin, isAdminGuest } from './data-auth.js';
 import { _sortExList } from './data-helpers.js';
 import { loadGyms, loadRoutineTemplates } from './data-workout-equipment.js';
 import { loadEquipmentPool } from './data-equipment-pool.js';
 import {
   ACCOUNT_DATA_COLLECTIONS,
-  ADMIN_ACCOUNT_ID,
+  PERSONAL_ACCOUNT_ID,
   LEGACY_ROOT_MIGRATION_COLLECTION,
   LEGACY_ROOT_MIGRATION_ID,
   LEGACY_ROOT_MIGRATION_VERSION,
   buildAccountUnificationPlan,
-  isSharedAdminAccount,
+  isAdminConsoleAccount,
+  isPersonalSharedAccount,
 } from './account-unification.js';
 import { mergeWorkoutDayRecords, workoutDayRecordsEqual } from './workout-day-merge.js';
 import {
@@ -81,7 +81,7 @@ function _deviceJournalCacheForCurrentUser() {
   const currentUser = getCurrentUserRef();
   if (!currentUser) return {};
   const ownerId = getDataOwnerId()
-    || (isSharedAdminAccount(currentUser.id) ? getCachedSharedAccountDataOwnerId() : null);
+    || (isPersonalSharedAccount(currentUser.id) ? getCachedSharedAccountDataOwnerId() : null);
   if (!ownerId) return {};
   return restorePendingDayWritesForOwner(ownerId, {});
 }
@@ -184,7 +184,7 @@ async function _copyMissingDocuments({ targetUserId, collectionName }) {
 // a user document that may have been written by another app session.
 export async function migrateDataToUser(userId) {
   const targetUserId = await resolvePrivateDataOwnerId(userId);
-  if (!isSharedAdminAccount(userId)) {
+  if (!isPersonalSharedAccount(userId)) {
     let copied = 0;
     for (const collectionName of ACCOUNT_DATA_COLLECTIONS) {
       copied += await _copyMissingDocuments({ targetUserId, collectionName });
@@ -277,7 +277,7 @@ export async function loadAll() {
   _setCache(pendingSeed);
 
   try {
-    if (isSharedAdminAccount(getCurrentUserRef()?.id)) {
+    if (isPersonalSharedAccount(getCurrentUserRef()?.id)) {
       try {
         await migrateDataToUser(getCurrentUserRef().id);
       } catch (error) {
@@ -354,8 +354,11 @@ export async function loadAll() {
     { const bc = []; checkinSnap.forEach(d => bc.push(d.data())); _setBodyCheckins(bc); }
     { const ndb = []; nutritionSnap.forEach(d => ndb.push(d.data())); _setNutritionDB(ndb); }
 
-    if (_nutritionDB.length === 0 && !isAdmin() && !isAdminGuest()) {
-      resolvePrivateDataOwnerId(ADMIN_ACCOUNT_ID)
+    const currentAccountId = getCurrentUserRef()?.id;
+    const seedsFromPersonalNutritionDb = !isPersonalSharedAccount(currentAccountId)
+      && !isAdminConsoleAccount(currentAccountId);
+    if (_nutritionDB.length === 0 && seedsFromPersonalNutritionDb) {
+      resolvePrivateDataOwnerId(PERSONAL_ACCOUNT_ID)
         .then(sharedOwnerId => getDocs(collection(db, 'users', sharedOwnerId, 'nutrition_db')))
         .then(sharedSnap => {
           if (!isCurrentLoad()) return;
@@ -366,7 +369,7 @@ export async function loadAll() {
             Promise.all(sharedItems.map(item => setDoc(ownerDoc('nutrition_db', item.id), item)))
               .catch(e => console.warn('[data] 영양DB 복사 실패:', e.message));
           }
-        }).catch(e => console.warn('[data] 관리자 영양DB 로드 실패:', e.message));
+        }).catch(e => console.warn('[data] 공용 영양DB 로드 실패:', e.message));
     }
 
     { const tc = []; tomatoSnap.forEach(d => tc.push(d.data())); _setTomatoCycles(tc); }
@@ -378,8 +381,8 @@ export async function loadAll() {
     _settings.tab_order      = _sanitizeTabList(fbMap.tab_order ?? DEFAULT_TAB_ORDER);
     _settings.visible_tabs   = fbMap.visible_tabs ? _sanitizeTabList(fbMap.visible_tabs) : null;
     _settings.diet_plan = fbMap.diet_plan ?? null;
-    if ((isAdmin() || isAdminGuest()) && !_settings.diet_plan) {
-      // B3: diet_restored_admin 플래그를 Firestore에서 관리 (localStorage 기기 단위 → 유저별 Firestore)
+    if (isPersonalSharedAccount(currentAccountId) && !_settings.diet_plan) {
+      // B3: diet_restored 플래그를 Firestore에서 관리 (localStorage 기기 단위 → 유저별 Firestore)
       const dietRestored = fbMap.admin_diet_restored;
       if (!dietRestored) {
         _settings.diet_plan = {
