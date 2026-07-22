@@ -7,11 +7,15 @@
 // 로그인한 계정 하나로 결정되는 이상, 그 계정을 누가 만들 수 있는지가 곧 권한
 // 경계다.
 //
-//   npm run provision:admin-console -- --password '<비밀번호>'            # dry run
-//   npm run provision:admin-console -- --password '<비밀번호>' --commit   # 실제 생성
+//   npm run provision:admin-console -- --password "비밀번호"            # dry run
+//   npm run provision:admin-console -- --password "비밀번호" --commit   # 실제 생성
 //
 // 비밀번호 재설정도 같은 스크립트로 한다:
-//   npm run provision:admin-console -- --password '<새 비밀번호>' --commit --reset-password
+//   npm run provision:admin-console -- --password "새비밀번호" --commit --reset-password
+//
+// 서비스 계정 키가 없을 때는 콘솔에 붙여넣을 문서를 대신 출력한다. 이쪽은
+// Firestore 에 접속하지 않으므로 자격증명이 필요 없다:
+//   npm run provision:admin-console -- --password "비밀번호" --print-document
 
 const admin = require("firebase-admin");
 const { initializeAdminApp, describeFirestoreError } = require("./lib/admin-app");
@@ -41,6 +45,30 @@ function readPasswordArg(argv) {
   return argv[flagIndex + 1] ?? null;
 }
 
+function printConsoleDocument(password) {
+  const fields = [
+    ["id", "문자열", ADMIN_CONSOLE_ACCOUNT_ID],
+    ["lastName", "문자열", ADMIN_CONSOLE_LAST_NAME],
+    ["firstName", "문자열", ADMIN_CONSOLE_FIRST_NAME],
+    ["nickname", "문자열", "관리자"],
+    ["hasPassword", "부울", "true"],
+    ["passwordHash", "문자열", simpleHash(password)],
+    ["isAdminConsole", "부울", "true"],
+    ["createdAt", "숫자", String(Date.now())],
+  ];
+  const width = Math.max(...fields.map(([name]) => name.length));
+
+  console.log("Firebase 콘솔 → Firestore Database 에서 아래 문서를 만드세요.\n");
+  console.log(`  컬렉션 ID : ${ACCOUNTS_COLLECTION}`);
+  console.log(`  문서 ID   : ${ADMIN_CONSOLE_ACCOUNT_ID}   (자동 ID 아님, 그대로 입력)\n`);
+  console.log("  필드:");
+  for (const [name, type, value] of fields) {
+    console.log(`    ${name.padEnd(width)}  ${type.padEnd(4)}  ${value}`);
+  }
+  console.log("\n  passwordHash 는 입력한 비밀번호에서 계산한 값입니다.");
+  console.log("  비밀번호 자체는 어디에도 저장되지 않으니 따로 기억해 두세요.");
+}
+
 async function main() {
   const argv = process.argv.slice(2);
   const args = new Set(argv);
@@ -53,6 +81,13 @@ async function main() {
   }
   if (password.length < MIN_PASSWORD_LENGTH) {
     throw new Error(`refusing a password shorter than ${MIN_PASSWORD_LENGTH} characters`);
+  }
+
+  // 자격증명 없이 쓸 수 있는 경로. 문서 하나를 손으로 만드는 편이 서비스 계정
+  // 키를 발급받는 것보다 빠른 경우가 있고, 비밀번호는 이 PC 밖으로 나가지 않는다.
+  if (args.has("--print-document")) {
+    printConsoleDocument(password);
+    return;
   }
 
   const { db, projectId } = initializeAdminApp(argv);

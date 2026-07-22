@@ -94,11 +94,26 @@ Capacitor WebView가 저장소를 공유하지 않아, 시드하지 않으면 "�
 없어 규칙에 신원 조건을 쓸 수 없기 때문이다. 자세한 내용과 해소 경로는
 [FIRESTORE_RULES.md](FIRESTORE_RULES.md)의 "남은 공백" 절에 있다.
 
-## 서버 스크립트 실행 준비
+## 계정을 만드는 두 가지 방법
 
-`provision:admin-console`과 `audit:legacy-alias`는 Admin SDK로 Firestore에 직접
-접근하므로 자격증명이 필요하다. 없으면 스크립트가 무엇을 해야 하는지 출력하고
-exit code 1로 끝난다.
+### A. 콘솔에서 직접 (자격증명 불필요)
+
+문서 하나를 만드는 일이므로, 서비스 계정 키를 발급받는 것보다 빠를 때가 많다.
+붙여넣을 문서를 스크립트가 출력해 준다. 이 모드는 Firestore에 접속하지 않고,
+비밀번호는 실행한 PC 밖으로 나가지 않는다.
+
+```bash
+npm --prefix functions run provision:admin-console -- --password "비밀번호" --print-document
+```
+
+출력된 컬렉션 ID / 문서 ID / 필드를 Firebase 콘솔 → Firestore Database에서 그대로
+만든다. 문서 ID는 자동 생성이 아니라 `관_리자`를 직접 입력해야 한다.
+
+### B. 스크립트로 쓰기 (자격증명 필요)
+
+`audit:legacy-alias`도 같은 자격증명을 쓰므로, registry 폐기 판정까지 할 계획이면
+이쪽을 한 번 갖춰 두는 편이 낫다. 자격증명이 없으면 스크립트가 무엇을 해야 하는지
+출력하고 exit code 1로 끝난다.
 
 `gcloud`가 설치돼 있지 않다면 서비스 계정 키가 가장 빠른 경로다.
 
@@ -121,7 +136,7 @@ $env:GOOGLE_APPLICATION_CREDENTIALS = "C:\경로\service-account.json"
 **`관_리자` 계정을 먼저 만들고 배포한다.** 순서를 뒤집으면 계정이 생길 때까지
 아무도 관리자가 될 수 없다 — 관리자 탭에 도달할 방법이 없어진다.
 
-1. `npm --prefix functions run provision:admin-console -- --password '<비밀번호>' --commit`
+1. 위 A 또는 B 방법으로 `관_리자` 계정을 만든다.
 2. 계정이 생겼는지 확인한다 (`_accounts/관_리자` 문서, `passwordHash` 존재).
 3. `main` 병합 → Pages 배포.
 4. 배포 후 `관_리자`로 로그인해 관리자 탭이 열리는지, `김_태우`로 로그인해

@@ -49,8 +49,12 @@ $env:JAVA_HOME='C:\Program Files\Android\Android Studio\jbr'
 브라우저에서 만들 수 없고, Admin SDK 스크립트로만 만듭니다.
 
 ```powershell
-npm.cmd --prefix functions run provision:admin-console -- --password '<비밀번호>'           # dry run
-npm.cmd --prefix functions run provision:admin-console -- --password '<비밀번호>' --commit  # 실제 생성
+# 자격증명 없이: 콘솔에 붙여넣을 문서를 출력 (Firestore 접속 안 함)
+npm.cmd --prefix functions run provision:admin-console -- --password "비밀번호" --print-document
+
+# 서비스 계정 키가 있으면 직접 쓰기
+npm.cmd --prefix functions run provision:admin-console -- --password "비밀번호"           # dry run
+npm.cmd --prefix functions run provision:admin-console -- --password "비밀번호" --commit  # 실제 생성
 ```
 
 김태우(문정토마토) 계정은 일반 개인 계정이며 관리자 기능이 없습니다. 자세한 내용은

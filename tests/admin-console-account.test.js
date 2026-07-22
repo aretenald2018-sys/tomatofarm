@@ -85,6 +85,26 @@ test('the provisioning script hashes passwords exactly like the client verifier'
   }
 });
 
+test('the console-document mode returns before touching Firestore', () => {
+  // 자격증명 없이 쓰는 경로다. 이 분기가 initializeAdminApp() 뒤로 밀리면
+  // 자격증명이 없는 사람에게는 쓸 수 없는 기능이 된다.
+  const printIndex = PROVISION_SOURCE.indexOf('args.has("--print-document")');
+  const initIndex = PROVISION_SOURCE.indexOf('initializeAdminApp(argv)');
+  assert.notEqual(printIndex, -1, 'a --print-document branch should exist');
+  assert.notEqual(initIndex, -1, 'the admin app should still be initialized for the write path');
+  assert.ok(printIndex < initIndex, '--print-document must return before any credential is required');
+});
+
+test('the printed document carries every field the login path reads', () => {
+  const block = PROVISION_SOURCE.match(/function printConsoleDocument\(password\) \{[\s\S]*?\n\}/);
+  assert.notEqual(block, null, 'printConsoleDocument should exist');
+  // 이 중 하나라도 빠지면 콘솔로 만든 계정이 로그인되지 않거나 이름이 깨진다.
+  for (const field of ['id', 'lastName', 'firstName', 'nickname', 'hasPassword', 'passwordHash']) {
+    assert.match(block[0], new RegExp(`"${field}"`), `printed document should include ${field}`);
+  }
+  assert.match(block[0], /simpleHash\(password\)/, 'the hash must come from the shared function');
+});
+
 test('the provisioning script refuses weak passwords and never writes on a dry run', () => {
   assert.match(PROVISION_SOURCE, /MIN_PASSWORD_LENGTH = 10/);
   assert.match(PROVISION_SOURCE, /refusing a password shorter than/);
