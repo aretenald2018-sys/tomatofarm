@@ -285,6 +285,15 @@ test('the admin console account cannot be entered without a stored password', as
     // 다른 계정의 "비밀번호 없음 = 바로 로그인" 동작은 그대로 유지된다.
     const openAccount = { id: 'other_user', hasPassword: false, passwordHash: null };
     assert.equal(loaded.auth.verifyPassword(openAccount, ''), true);
+
+    // 저장된 해시 문자열 자체를 입력해도 관리자로는 들어갈 수 없다.
+    // passwordHash 오기입 하나가 알려진 비밀번호가 되면 안 된다.
+    const misconfigured = { id: ADMIN_CONSOLE_ID, hasPassword: true, passwordHash: 'h_xxxxxx' };
+    assert.equal(loaded.auth.verifyPassword(misconfigured, 'h_xxxxxx'), false);
+
+    // 평문 저장 시절의 일반 계정은 여전히 그 값으로 로그인된다.
+    const legacyPlaintext = { id: 'legacy_user', hasPassword: true, passwordHash: 'plain-secret' };
+    assert.equal(loaded.auth.verifyPassword(legacyPlaintext, 'plain-secret'), true);
   } finally {
     loaded.cleanup();
   }

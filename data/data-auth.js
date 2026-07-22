@@ -214,10 +214,16 @@ export function verifyPassword(account, input) {
 
   const rawInput = String(input ?? '');
   const inputHash = _simpleHash(rawInput);
-  const storedHash = account.passwordHash;
+  const storedHash = String(account.passwordHash);
 
-  if (String(storedHash) === inputHash) return true;
-  if (String(storedHash) === rawInput) return true;
+  if (storedHash === inputHash) return true;
+
+  // 평문 대조 폴백. 해시 이전에 비밀번호를 그대로 저장한 오래된 계정을 위한
+  // 것이라, 저장된 값 자체가 곧 유효한 비밀번호가 된다는 뜻이기도 하다.
+  // 관리자 콘솔 계정에는 적용하지 않는다 — passwordHash 를 잘못 채워 넣으면
+  // 그 값을 아는 사람이 곧 관리자가 되기 때문이다.
+  if (isAdminConsoleAccount(account?.id)) return false;
+  if (storedHash === rawInput) return true;
 
   return false;
 }

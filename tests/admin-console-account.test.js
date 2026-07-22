@@ -85,6 +85,24 @@ test('the provisioning script hashes passwords exactly like the client verifier'
   }
 });
 
+test('a stored admin hash is never accepted as the literal password', () => {
+  // verifyPassword 는 해시 이전 계정을 위해 평문 대조 폴백을 갖고 있다. 그래서
+  // 저장된 값 자체가 유효한 비밀번호가 된다. 관리자 콘솔 계정에서 이게 살아
+  // 있으면 passwordHash 오기입 하나가 곧 알려진 비밀번호가 된다.
+  const [, authSource] = REPO_SOURCES.find(([path]) => path.endsWith('data-auth.js'));
+  const verifySource = authSource.slice(
+    authSource.indexOf('export function verifyPassword(account, input)'),
+  );
+  const adminGuard = verifySource.indexOf('if (isAdminConsoleAccount(account?.id)) return false;');
+  const plaintextFallback = verifySource.indexOf('storedHash === rawInput');
+  assert.notEqual(adminGuard, -1, 'the admin console account must skip the plaintext fallback');
+  assert.notEqual(plaintextFallback, -1, 'the plaintext fallback should still exist for legacy accounts');
+  assert.ok(
+    adminGuard < plaintextFallback,
+    'the admin guard must come before the plaintext fallback, or it does nothing',
+  );
+});
+
 test('the console-document mode returns before touching Firestore', () => {
   // 자격증명 없이 쓰는 경로다. 이 분기가 initializeAdminApp() 뒤로 밀리면
   // 자격증명이 없는 사람에게는 쓸 수 없는 기능이 된다.
