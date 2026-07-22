@@ -41,6 +41,29 @@ test('the retirement audit never writes', () => {
   }
 });
 
+test('a denied read is never counted as an empty namespace', () => {
+  // REST 경로는 보안 규칙을 통과해야 한다. 거부를 0 으로 세면 "비어 있으니
+  // 폐기해도 된다"는 판정이 나오고, 그 판정대로 지우면 데이터가 사라진다.
+  const restSource = readFileSync(
+    path.join(repoRoot, 'functions/scripts/lib/firestore-rest.js'),
+    'utf8',
+  );
+  assert.match(restSource, /status === 401 \|\| response\.status === 403/);
+  assert.match(restSource, /throw new Error\(/);
+  assert.match(restSource, /거부를 '문서 없음'으로 오해하면 안 되므로/);
+});
+
+test('the audit counts past the first page', () => {
+  // Firestore 의 목록 API 는 pageSize 미만을 돌려주면서도 nextPageToken 을 줄 수
+  // 있다. 첫 페이지만 세면 조용히 적게 세고, 폐기 판정에서는 그게 곧 오판이다.
+  const restSource = readFileSync(
+    path.join(repoRoot, 'functions/scripts/lib/firestore-rest.js'),
+    'utf8',
+  );
+  assert.match(restSource, /nextPageToken/);
+  assert.match(restSource, /do \{[\s\S]*\} while \(pageToken\)/);
+});
+
 test('the audit refuses to bless retirement while the stale namespace holds data', () => {
   assert.match(AUDIT_SOURCE, /if \(staleCounts\.total === 0\)/);
   assert.match(AUDIT_SOURCE, /✓ 폐기 가능/);

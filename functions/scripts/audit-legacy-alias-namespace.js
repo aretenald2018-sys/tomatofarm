@@ -11,13 +11,19 @@
 // 완전히 비어 있을 것.** 이 스크립트는 두 네임스페이스의 문서 수를 컬렉션별로
 // 세어 그 조건을 판정한다. 아무것도 쓰지 않는다.
 //
+// 기본값은 자격증명이 필요 없는 REST 읽기다. 릴리스 게이트가 CI 에서 쓰는 것과
+// 같은 공개 경로이고, 이 앱은 Firebase Auth 를 쓰지 않아 클라이언트 읽기와
+// 동등하다. 읽기가 규칙에 막히면 0 으로 세지 않고 판정을 중단한다.
+//
 //   npm --prefix functions run audit:legacy-alias
+//   npm --prefix functions run audit:legacy-alias -- --admin-sdk   # 서비스 계정 키 사용
 //
 // 절차 전체는 docs/reference/SHARED_OWNER_RELEASE_RUNBOOK.md 의
 // "레지스트리 폐기" 절을 따른다.
 
 const admin = require("firebase-admin");
 const { initializeAdminApp, describeFirestoreError } = require("./lib/admin-app");
+const { countCollection, readDocument, readWebConfig } = require("./lib/firestore-rest");
 const {
   TOMATO_ADMIN_OWNER_ID,
   TOMATO_ADMIN_GUEST_OWNER_ID,
@@ -26,28 +32,6 @@ const {
   TOMATO_DATA_OWNER_REGISTRY_ID,
   readTomatoDataOwnerRegistry,
 } = require("../dashboard/owner");
-
-// 문서 수를 정확히 세되, 한 컬렉션이 비정상적으로 크면 거기서 멈춘다. 판정에
-// 필요한 것은 "0인가 아닌가"이지 정확한 총합이 아니다.
-const COUNT_LIMIT = 500;
-
-async function countNamespace(db, ownerId) {
-  const perCollection = {};
-  let total = 0;
-  await Promise.all(TOMATO_ACCOUNT_DATA_COLLECTIONS.map(async (collectionName) => {
-    const snapshot = await db
-      .collection(`users/${ownerId}/${collectionName}`)
-      .limit(COUNT_LIMIT)
-      .get();
-    if (snapshot.size > 0) {
-      perCollection[collectionName] = snapshot.size === COUNT_LIMIT
-        ? `${COUNT_LIMIT}+`
-        : snapshot.size;
-      total += snapshot.size;
-    }
-  }));
-  return { perCollection, total };
-}
 
 function describe(ownerId, counts) {
   const entries = Object.entries(counts.perCollection);
@@ -58,19 +42,71 @@ function describe(ownerId, counts) {
   return `  ${ownerId}: 문서 ${counts.total}개\n${lines.join("\n")}`;
 }
 
-async function main() {
-  const { db, projectId } = initializeAdminApp(process.argv.slice(2));
-  console.log(`[legacy-alias] project=${projectId}\n`);
-
-  let registrySnapshot;
-  try {
-    registrySnapshot = await db
-      .doc(`${TOMATO_DATA_OWNER_REGISTRY_COLLECTION}/${TOMATO_DATA_OWNER_REGISTRY_ID}`)
-      .get();
-  } catch (error) {
-    throw new Error(describeFirestoreError(error, projectId));
+// 두 읽기 경로를 같은 모양으로 감싼다. 판정 로직은 어느 쪽으로 읽었는지 몰라도 된다.
+function createReader(argv) {
+  if (argv.includes("--admin-sdk")) {
+    const { db, projectId } = initializeAdminApp(argv);
+    return {
+      mode: "admin-sdk",
+      projectId,
+      async readRegistry() {
+        try {
+          const snapshot = await db
+            .doc(`${TOMATO_DATA_OWNER_REGISTRY_COLLECTION}/${TOMATO_DATA_OWNER_REGISTRY_ID}`)
+            .get();
+          return snapshot.data() || null;
+        } catch (error) {
+          throw new Error(describeFirestoreError(error, projectId));
+        }
+      },
+      async countCollection(ownerId, collectionName) {
+        try {
+          const snapshot = await db.collection(`users/${ownerId}/${collectionName}`).get();
+          return snapshot.size;
+        } catch (error) {
+          throw new Error(describeFirestoreError(error, projectId));
+        }
+      },
+    };
   }
-  const registryData = registrySnapshot.data() || null;
+
+  const config = readWebConfig();
+  return {
+    mode: "rest",
+    projectId: config.projectId,
+    readRegistry() {
+      return readDocument(
+        config,
+        `${TOMATO_DATA_OWNER_REGISTRY_COLLECTION}/${TOMATO_DATA_OWNER_REGISTRY_ID}`,
+      );
+    },
+    countCollection(ownerId, collectionName) {
+      return countCollection(config, `users/${ownerId}/${collectionName}`);
+    },
+  };
+}
+
+async function countNamespaceWith(reader, ownerId) {
+  const perCollection = {};
+  let total = 0;
+  const counts = await Promise.all(TOMATO_ACCOUNT_DATA_COLLECTIONS.map(
+    async (collectionName) => [collectionName, await reader.countCollection(ownerId, collectionName)],
+  ));
+  for (const [collectionName, size] of counts) {
+    if (size > 0) {
+      perCollection[collectionName] = size;
+      total += size;
+    }
+  }
+  return { perCollection, total };
+}
+
+async function main() {
+  const argv = process.argv.slice(2);
+  const reader = createReader(argv);
+  console.log(`[legacy-alias] project=${reader.projectId} mode=${reader.mode}\n`);
+
+  const registryData = await reader.readRegistry();
   const decidedOwnerId = readTomatoDataOwnerRegistry(registryData);
 
   console.log("[legacy-alias] 레지스트리");
@@ -83,16 +119,10 @@ async function main() {
     console.log(`  클라이언트 판정: ${decidedOwnerId || "거부됨 (v2/decided 아님)"}`);
   }
 
-  let ownerCounts;
-  let aliasCounts;
-  try {
-    [ownerCounts, aliasCounts] = await Promise.all([
-      countNamespace(db, TOMATO_ADMIN_OWNER_ID),
-      countNamespace(db, TOMATO_ADMIN_GUEST_OWNER_ID),
-    ]);
-  } catch (error) {
-    throw new Error(describeFirestoreError(error, projectId));
-  }
+  const [ownerCounts, aliasCounts] = await Promise.all([
+    countNamespaceWith(reader, TOMATO_ADMIN_OWNER_ID),
+    countNamespaceWith(reader, TOMATO_ADMIN_GUEST_OWNER_ID),
+  ]);
 
   console.log("\n[legacy-alias] 네임스페이스");
   console.log(describe(TOMATO_ADMIN_OWNER_ID, ownerCounts));

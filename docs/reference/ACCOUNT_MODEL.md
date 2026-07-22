@@ -111,9 +111,8 @@ npm --prefix functions run provision:admin-console -- --password "비밀번호" 
 
 ### B. 스크립트로 쓰기 (자격증명 필요)
 
-`audit:legacy-alias`도 같은 자격증명을 쓰므로, registry 폐기 판정까지 할 계획이면
-이쪽을 한 번 갖춰 두는 편이 낫다. 자격증명이 없으면 스크립트가 무엇을 해야 하는지
-출력하고 exit code 1로 끝난다.
+자격증명이 없으면 스크립트가 무엇을 해야 하는지 출력하고 exit code 1로 끝난다.
+(`audit:legacy-alias`는 자격증명 없이 공개 REST 경로로 도는 별개 스크립트다.)
 
 `gcloud`가 설치돼 있지 않다면 서비스 계정 키가 가장 빠른 경로다.
 
