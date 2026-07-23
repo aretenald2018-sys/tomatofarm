@@ -76,6 +76,93 @@ test('웬들러 종목을 이번 주 달성하면 위젯 주간 목표가 달성
   assert.equal(strength.length, 1);
   assert.equal(strength[0].label, '스쿼트(와이드)');
   assert.equal(strength[0].state, 'achieved');
+  assert.equal(strength[0].achievementSource, 'board-log');
+  assert.equal(snapshot.weeklyGoal.achievedCount, 1);
+});
+
+test('일반 운동 저장 기록이 처방을 충족하면 별도 완료 도장 없이 위젯에 체크된다', () => {
+  const board = buildBoardFromOnboarding({
+    startDate: '2026-07-01',
+    selections: [{
+      exerciseId: 'bench', movementId: 'barbell_bench', groupId: 'chest', label: '바벨 벤치프레스',
+      tracks: {
+        volume: { kg: 90, reps: 12 },
+        intensity: { kg: 105, reps: 8 },
+      },
+    }],
+  });
+  const cache = {
+    '2026-07-15': {
+      exercises: [{
+        exerciseId: 'bench',
+        movementId: 'barbell_bench',
+        name: '바벨 벤치프레스',
+        recommendationMeta: { track: 'M' },
+        sets: [{ kg: 90, reps: 12, done: true, setType: 'main' }],
+      }],
+    },
+  };
+
+  const snapshot = buildSeasonDashboardSnapshot({
+    cache, registry, todayKey: '2026-07-15', board,
+    runningPlan: { weeklyDistanceKm: 20, weeklySessions: 3 },
+    generatedAt: 123,
+  });
+  const strength = snapshot.weeklyGoal.items.filter(item => item.kind === 'strength');
+  const volume = strength.find(item => item.detail.startsWith('볼륨'));
+  const intensity = strength.find(item => item.detail.startsWith('강도'));
+
+  assert.equal(volume.state, 'achieved');
+  assert.equal(volume.achievementSource, 'workout-record');
+  assert.equal(volume.achievementDate, '2026-07-15');
+  assert.equal(intensity.state, 'not-achieved');
+  assert.equal(snapshot.weeklyGoal.achievedCount, 1);
+});
+
+test('일반 웬들러 운동 기록도 톱세트 무게·횟수를 채우면 별도 완료 도장 없이 체크된다', () => {
+  const board = buildBoardFromOnboarding({
+    startDate: '2026-07-01',
+    selections: [{
+      exerciseId: 'squat_wide', movementId: 'back_squat', groupId: 'lower', label: '스쿼트(와이드)',
+      tracks: { volume: { kg: 90, reps: 8 } },
+      wendler: { scheme: 'w863', oneRmKg: 120 },
+    }],
+  });
+  const benchmark = board.benchmarks[0];
+  const emptySnapshot = buildSeasonDashboardSnapshot({
+    cache: {}, registry, todayKey: '2026-07-15', board,
+    runningPlan: { weeklyDistanceKm: 20, weeklySessions: 3 },
+    generatedAt: 123,
+  });
+  const target = emptySnapshot.weeklyGoal.items.find(item => item.kind === 'strength');
+  const match = target.detail.match(/([0-9.]+)kg x ([0-9]+)/);
+  assert.ok(match, `웬들러 목표를 읽을 수 있어야 함: ${target.detail}`);
+
+  const cache = {
+    '2026-07-15': {
+      exercises: [{
+        exerciseId: benchmark.exerciseId,
+        movementId: benchmark.movementId,
+        name: benchmark.label,
+        sets: [{
+          kg: Number(match[1]),
+          reps: Number(match[2]),
+          done: true,
+          setType: 'main',
+        }],
+      }],
+    },
+  };
+  const snapshot = buildSeasonDashboardSnapshot({
+    cache, registry, todayKey: '2026-07-15', board,
+    runningPlan: { weeklyDistanceKm: 20, weeklySessions: 3 },
+    generatedAt: 123,
+  });
+  const strength = snapshot.weeklyGoal.items.filter(item => item.kind === 'strength');
+
+  assert.equal(strength[0].state, 'achieved');
+  assert.equal(strength[0].achievementSource, 'workout-record');
+  assert.equal(strength[0].achievementDate, '2026-07-15');
   assert.equal(snapshot.weeklyGoal.achievedCount, 1);
 });
 

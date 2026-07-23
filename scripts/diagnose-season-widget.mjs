@@ -118,7 +118,14 @@ function main() {
 
   console.log('\n[요청 1] 이번 주 달성한 근력목표 종목:');
   if (achievedStrength.length) {
-    achievedStrength.forEach(item => console.log(`  ✓ ${item.label} — ${item.detail || ''}`));
+    achievedStrength.forEach(item => {
+      const evidence = item.achievementSource === 'workout-record'
+        ? `실제 운동기록${item.achievementDate ? ` ${item.achievementDate}` : ''}`
+        : item.achievementSource === 'board-log'
+          ? '성장보드 완료 도장'
+          : '달성 근거 미표시';
+      console.log(`  ✓ ${item.label} — ${item.detail || ''} [${evidence}]`);
+    });
   } else {
     console.log('  (달성 상태로 집계된 근력목표 없음)');
   }

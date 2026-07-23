@@ -183,6 +183,8 @@ function _weeklyGoal(cache, season, board, runningPlan, todayKey) {
       label: item.label,
       detail: item.detail,
       state: item.state,
+      ...(item.achievementSource ? { achievementSource: item.achievementSource } : {}),
+      ...(item.achievementDate ? { achievementDate: item.achievementDate } : {}),
     })),
   };
 }
