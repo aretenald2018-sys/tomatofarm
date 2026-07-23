@@ -114,6 +114,41 @@ test('월요일이 아닌 요일(일요일)에 시작한 시즌도 이번 주 �
   assert.equal(snapshot.weeklyGoal.endDate, '2026-07-26');
 });
 
+test('달성한 근력목표는 종목이 많아도 위젯이 그리는 5칸 안에 노출된다', () => {
+  // 리그레션: 위젯은 근력 칸을 5개(widget_strength_check_1..5)만 렌더한다. 종목이 여러
+  // 개일 때 달성(✓)한 종목이 벤치마크 순서상 6번째 이후로 밀리면, 잘라내기가 상태를 보지
+  // 않아 달성 목표가 위젯에서 통째로 사라졌다. 스냅샷은 잘라내기 전에 달성 목표를 앞으로
+  // 정렬해야 한다.
+  const selections = Array.from({ length: 6 }, (_, i) => ({
+    exerciseId: `lift_${i}`,
+    movementId: 'back_squat',
+    groupId: 'lower',
+    label: `리프트${i + 1}`,
+    tracks: { volume: { kg: 80, reps: 8 } },
+    wendler: { scheme: 'w863', oneRmKg: 100 + i },
+  }));
+  const board = buildBoardFromOnboarding({ startDate: '2026-07-01', selections });
+  assert.equal(board.benchmarks.length, 6);
+  // 마지막(6번째) 종목만 이번 주 달성 → 정렬 없이는 위젯 5칸 밖(6번째)이라 안 보인다.
+  const achievedBenchmark = board.benchmarks[board.benchmarks.length - 1];
+  assert.equal(
+    paintWeek(board, { benchmarkId: achievedBenchmark.id, weekStart: '2026-07-15', log: { at: 123, amrapReps: 7 } }),
+    true,
+  );
+
+  const snapshot = buildSeasonDashboardSnapshot({
+    cache: {}, registry, todayKey: '2026-07-15', board,
+    runningPlan: { weeklyDistanceKm: 20, weeklySessions: 3 },
+    generatedAt: 123,
+  });
+
+  assert.equal(snapshot.weeklyGoal.achievedCount, 1);
+  const visible = snapshot.weeklyGoal.items.slice(0, 5); // 위젯이 실제로 그리는 칸
+  const achievedVisible = visible.find(item => item.kind === 'strength' && item.state === 'achieved');
+  assert.ok(achievedVisible, '달성한 근력목표가 위젯 5칸 안에 들어와야 한다');
+  assert.equal(achievedVisible.label, achievedBenchmark.label);
+});
+
 test('현재 시즌이 없으면 위젯은 과거 수치를 섞지 않고 설정 안내 상태를 만든다', () => {
   const snapshot = buildSeasonDashboardSnapshot({
     cache: { '2026-06-30': workoutDay(100) },

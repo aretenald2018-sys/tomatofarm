@@ -69,6 +69,19 @@ function _number(value) {
   return Number.isFinite(numeric) ? numeric : 0;
 }
 
+// 위젯은 근력 목표를 5칸(widget_strength_check_1..5)까지만 그린다. 종목이 여러 개면
+// (온보딩은 종목마다 volume+intensity 두 트랙을 만든다) 항목이 5개를 넘겨, 벤치마크
+// 나열 순서대로 자르던 기존 방식에서는 달성(✓)한 종목이 6번째 이후로 밀릴 때 위젯에서
+// 통째로 사라졌다 — "달성한 근력목표가 위젯에서 렌더링되지 않음"의 표시-선택 원인.
+// 잘라내기 전에 상태 우선순위(달성>시도>미달>예정)로 정렬해 달성한 목표가 항상 보이는
+// 칸 안으로 들어오게 한다. 정렬은 노출 순서만 바꾸며, achievedCount/totalCount(전체
+// 항목으로 buildSeasonOverview에서 이미 계산)에는 영향을 주지 않는다.
+const _ITEM_VISIBILITY_RANK = { achieved: 3, attempted: 2, 'not-achieved': 1, planned: 0 };
+function _itemVisibilityRank(state) {
+  const rank = _ITEM_VISIBILITY_RANK[state];
+  return Number.isFinite(rank) ? rank : 0;
+}
+
 function _foodSnapshot(cache, todayKey, dietPlan) {
   const day = cache?.[todayKey] || {};
   const actualKcal = Math.round(['bKcal', 'lKcal', 'dKcal', 'sKcal']
@@ -149,6 +162,15 @@ function _weeklyGoal(cache, season, board, runningPlan, todayKey) {
     || overview.weeks.find(item => item.startDate >= todayKey)
     || overview.weeks.at(-1);
   if (!week) return { state: 'missing', items: [] };
+  // 달성한 목표를 위젯의 보이는 칸(최대 5개) 안으로 끌어올린다. Array.sort는 안정
+  // 정렬이라 같은 상태끼리는 기존 벤치마크 순서를 유지한다.
+  const orderedItems = week.items
+    .map((item, index) => ({ item, index }))
+    .sort((left, right) => (
+      _itemVisibilityRank(right.item.state) - _itemVisibilityRank(left.item.state)
+      || left.index - right.index
+    ))
+    .map(({ item }) => item);
   return {
     state: week.state,
     index: week.index,
@@ -156,7 +178,7 @@ function _weeklyGoal(cache, season, board, runningPlan, todayKey) {
     endDate: week.endDate,
     achievedCount: week.achievedCount,
     totalCount: week.totalCount,
-    items: week.items.slice(0, 8).map(item => ({
+    items: orderedItems.slice(0, 8).map(item => ({
       kind: item.kind,
       label: item.label,
       detail: item.detail,
