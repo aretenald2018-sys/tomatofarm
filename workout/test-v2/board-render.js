@@ -25,7 +25,7 @@ import {
   activeBenchmarks, activeCycleOf, settledCyclesOf, benchmarkById, currentKgOf,
   groupIdForPart, visibleGroupIdsForSelectedParts,
   trackSetsOf,
-  expandColumnCells, projectFutureCells, paintWeek, recordMiss, previewAdjust,
+  expandColumnCells, projectFutureCells, paintWeek, recordMiss, previewAdjust, resolveTopSetHit,
   isSettleDue, buildSettleRows, applySettle,
   archiveBenchmark, addBenchmark, buildOnboardingCandidates, buildRecentMap,
   mergeSessionExercises, sessionRecentMap, resolveSessionEntryGroupId,
@@ -1339,14 +1339,18 @@ async function _commitWorkoutCard() {
     // 2) 목표 달성 판정 → 색칠 or 조정 (채워진 본세트 기준)
     const working = doneSets.filter(s => s.setType !== 'warmup' && filled(s));
     const best = working.reduce((m, s) => (!m || Number(s.kg) > Number(m.kg) || (Number(s.kg) === Number(m.kg) && Number(s.reps) > Number(m.reps))) ? s : m, null);
-    const hit = !!best && Number(best.kg) >= plan.kg && Number(best.reps) >= plan.reps;
+    // 달성 판정은 '가장 무거운 세트' 하나가 아니라, 톱세트 목표(무게·횟수)를 함께 충족한
+    // 본세트가 있는지로 본다. 원본 8/6/3 웬들러의 헤비싱글(톱세트보다 무겁고 1회)이
+    // best가 되면 1회 < 목표횟수라 톱세트를 실제로 친 주도 미달로 처리되던 버그를 막는다.
+    const hitSet = resolveTopSetHit(working, plan);
+    const hit = !!hitSet;
 
     if (hit) {
       if (!_isCompletionStamped(bm, track, weekStart)) {
         const beforeBoard = JSON.parse(JSON.stringify(S.board));
         const ok = paintWeek(S.board, {
           benchmarkId: bmId, track, weekStart,
-          log: { at: Date.now(), actualReps: working.map(s => s.reps).join(' · '), rir: best.rir === '' ? null : best.rir, amrapReps: best.reps, note: '' },
+          log: { at: Date.now(), actualReps: working.map(s => s.reps).join(' · '), rir: hitSet.rir === '' ? null : hitSet.rir, amrapReps: hitSet.reps, note: '' },
         });
         if (!ok) { _toast('색칠할 칸을 찾지 못했어요', 'error'); return; }
         const saved = await _persistRequired('완료 도장 저장 실패 — 네트워크를 확인해 주세요');
@@ -1354,6 +1358,8 @@ async function _commitWorkoutCard() {
           S.board = beforeBoard;
           return;
         }
+        // 저장된 보드 기준으로 홈스크린 시즌 위젯 스냅샷을 즉시 재동기화
+        document.dispatchEvent(new CustomEvent('sheet:saved'));
       }
       closeSheet();
       renderBoard();
@@ -2237,6 +2243,8 @@ async function _paintCurrent() {
     S.board = beforeBoard;
     return;
   }
+  // 수동 '완료 도장'도 홈스크린 시즌 위젯 스냅샷을 즉시 재동기화 (운동기록 저장 경로가 아니라 누락됐던 지점)
+  document.dispatchEvent(new CustomEvent('sheet:saved'));
   closeSheet();
   renderBoard();
   _toast('성공! 칸을 색칠했어요 🟩', 'success');

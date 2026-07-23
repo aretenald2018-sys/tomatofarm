@@ -903,6 +903,27 @@ export function projectFutureCells(board, benchmarkId, track, minAheadWeeks = 12
 // 색칠 / 못 채움 (계약 4·5)
 // ----------------------------------------------------------------
 
+/**
+ * 오늘 카드 완료 판정 — 목표(무게·횟수)를 **동시에** 충족한 본세트 중 '최다 반복' 세트를
+ * 실적(=이번 주 톱세트 AMRAP)으로 고른다. 충족 세트가 없으면 null(미달).
+ *
+ * '가장 무거운 세트 하나'만 보면 안 되는 이유: 원본 8/6/3 웬들러 프리셋에는 톱세트보다
+ * 무거운 헤비싱글(1회)이 섞여 있다. 헤비싱글이 '가장 무거운 세트'가 되면 그 1회를
+ * 톱세트 목표 횟수(예: 6회)와 비교하게 되어 톱세트를 실제로 친 주도 영원히 미달로
+ * 처리된다(토마토팜 위젯 '이번 주 근력 달성 ✓' 소실의 진짜 원인). 그래서 무게·횟수를
+ * 함께 만족한 세트 중에서 고른다.
+ */
+export function resolveTopSetHit(workingSets = [], plan = {}) {
+  const targetKg = Number(plan?.kg) || 0;
+  const targetReps = Number(plan?.reps) || 0;
+  return (Array.isArray(workingSets) ? workingSets : []).reduce((best, set) => {
+    const kg = Number(set?.kg) || 0;
+    const reps = Number(set?.reps) || 0;
+    if (kg < targetKg || reps < targetReps) return best;
+    return (!best || reps > (Number(best?.reps) || 0)) ? set : best;
+  }, null);
+}
+
 /** 달성 색칠 — 유저의 명시적 액션. log: { at, actualReps, rir, note, amrapReps, suppDone } */
 export function paintWeek(board, { benchmarkId, track = 'volume', weekStart, log = {} }) {
   const bm = benchmarkById(board, benchmarkId);

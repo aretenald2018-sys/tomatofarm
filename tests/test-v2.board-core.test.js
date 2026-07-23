@@ -15,7 +15,7 @@ import {
   mergeSessionExercises, sessionRecentMap, sortCandidatesByRecent,
   buildOnboardingCandidates, buildBoardFromOnboarding,
   activeBenchmarks, activeCycleOf, benchmarkById, currentKgOf,
-  expandColumnCells, projectFutureCells, paintWeek, recordMiss, previewAdjust,
+  expandColumnCells, projectFutureCells, paintWeek, recordMiss, previewAdjust, resolveTopSetHit,
   workoutRecordsForBenchmarkWeek,
   getLineup, toggleLineup,
   isSettleDue, buildSettleRows, applySettle,
@@ -948,4 +948,58 @@ test('보드는 JSON 직렬화 가능(Firestore 저장 안전) + cloneBoard 독�
   const c = cloneBoard(b);
   c.benchmarks[0].seed.volume.kg = 999;
   assert.notEqual(b.benchmarks[0].seed.volume.kg, 999);
+});
+
+// ----------------------------------------------------------------
+// 완료 판정: 톱세트 달성 판별 (헤비싱글 함정 방어)
+// 리그레션: 8/6/3 원본 웬들러는 프리셋에 톱세트보다 무거운 헤비싱글(1회)이 들어있다.
+// '가장 무거운 세트'만 보면 그 1회가 톱세트 목표횟수(6회)에 못 미쳐 항상 미달로
+// 처리되어, 토마토팜 위젯 '이번 주 근력 달성 ✓'이 영원히 안 뜨던 버그(4회차)다.
+// ----------------------------------------------------------------
+
+test('resolveTopSetHit: 8/6/3 원본 웬들러 톱세트를 치면 헤비싱글이 있어도 달성으로 잡는다', () => {
+  // 스쿼트(와이드) 8/6/3 원본, W2 — 위젯 표시 톱세트 97.5kg × 6+
+  const rx = wendlerWeekPrescription({
+    scheme: 'w863', templateVersion: 'w863-original-v1', profileId: 'squat',
+    oneRmKg: 126, roundKg: 2.5, cycleNo: 1, startWeek: 1,
+  }, 2);
+  const plan = { kg: rx.topSet.kg, reps: rx.topSet.reps };
+  assert.equal(plan.kg, 97.5);
+  assert.equal(plan.reps, 6);
+
+  // 운동 카드가 프리셋으로 채우는 본세트(워밍업 제외) — 전부 수행한 것으로 간주됨
+  const working = (rx.requiredSets || [])
+    .filter(s => s.role !== 'warmup')
+    .map(s => ({ kg: s.kg, reps: s.reps, role: s.role }));
+
+  // 함정: 가장 무거운 세트는 헤비싱글(1회)이라 무게는 톱세트 이상이지만 횟수가 부족하다
+  const heaviest = working.reduce((m, s) => (!m || s.kg > m.kg) ? s : m, null);
+  assert.equal(heaviest.role, 'heavy_single');
+  assert.equal(heaviest.reps, 1);
+  assert.equal(heaviest.kg >= plan.kg, true);
+  // 과거 '가장 무거운 세트' 방식이면 미달로 처리됐을 것
+  assert.equal(heaviest.reps >= plan.reps, false);
+
+  // 수정: 톱세트(무게·횟수)를 함께 충족한 본세트를 실적으로 잡아 달성 처리
+  const hitSet = resolveTopSetHit(working, plan);
+  assert.ok(hitSet, '톱세트를 친 주는 달성으로 잡혀야 한다');
+  assert.equal(hitSet.kg, plan.kg);
+  assert.equal(hitSet.reps, plan.reps);
+});
+
+test('resolveTopSetHit: 톱세트 무게 미달이면 헤비싱글만 있어도 null(미달)', () => {
+  const plan = { kg: 97.5, reps: 6 };
+  // 톱세트 무게에 못 미친 본세트들만 있으면 달성 아님
+  const under = [
+    { kg: 80, reps: 6 }, { kg: 92.5, reps: 6 }, { kg: 95, reps: 5 },
+  ];
+  assert.equal(resolveTopSetHit(under, plan), null);
+
+  // 톱세트 무게는 넘겼지만 횟수가 부족한 세트(헤비싱글)만 있으면 달성 아님
+  const singlesOnly = [{ kg: 102.5, reps: 1 }, { kg: 115, reps: 1 }, { kg: 120, reps: 1 }];
+  assert.equal(resolveTopSetHit(singlesOnly, plan), null);
+
+  // 무게·횟수 모두 충족하는 세트가 하나라도 있으면 그 중 최다 반복을 실적으로 잡는다
+  const mixed = [{ kg: 97.5, reps: 6 }, { kg: 97.5, reps: 8 }, { kg: 120, reps: 1 }];
+  assert.equal(resolveTopSetHit(mixed, plan).reps, 8);
 });
