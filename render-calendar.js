@@ -1381,11 +1381,22 @@ function _workoutEntryName(entry = {}) {
   return String(entry?.name || entry?.exerciseName || entry?.exerciseId || '').trim();
 }
 
+// 2026-07-25: '지난 기록'은 종목(기구) 단위 기억이어야 한다. movementId는 동작 카탈로그
+//   (chest_fly 등)라 같은 헬스장의 아스날 플라이/매트릭스 플라이가 모두 같은 값을 갖는다.
+//   이전 구현은 exerciseId가 서로 달라도 movementId 폴백으로 내려가 다른 기구 기록을
+//   집어왔다(아스날 카드에 매트릭스 41kg×15 4세트 노출). 양쪽 모두 exerciseId를 가지면
+//   그 비교 결과가 곧 결론이고, 폴백은 exerciseId가 없는 레거시 기록에만 적용한다.
+//   트랙 그래프(getTrackMetricHistory)와 동일한 exerciseId 기준 정체성이다.
 function _workoutEntryMatchesRow(entry = {}, row = {}) {
-  if (row.exerciseId && entry?.exerciseId && String(row.exerciseId) === String(entry.exerciseId)) return true;
-  if (row.movementId && entry?.movementId && String(row.movementId) === String(entry.movementId)) return true;
-  const rowName = String(row.name || '').trim();
-  return !!rowName && rowName === _workoutEntryName(entry);
+  const rowExerciseId = String(row?.exerciseId || '').trim();
+  const entryExerciseId = String(entry?.exerciseId || '').trim();
+  if (rowExerciseId && entryExerciseId) return rowExerciseId === entryExerciseId;
+  const rowName = String(row?.name || '').trim();
+  const entryName = _workoutEntryName(entry);
+  if (rowName && entryName) return rowName === entryName;
+  const rowMovementId = String(row?.movementId || '').trim();
+  const entryMovementId = String(entry?.movementId || '').trim();
+  return !!rowMovementId && rowMovementId === entryMovementId;
 }
 
 function _workoutRecordFromEntry(key, entry = {}) {
