@@ -7,7 +7,9 @@
 //   - 포커스 관리: 열 때 취소 버튼 포커스(파괴적일수록 보수적), 닫을 때 트리거 복귀
 // ================================================================
 
-let _openCount = 0; // 중첩 대비
+import { closeModal, openModal } from '../app/overlay-stack.js';
+
+let _confirmModalSequence = 0;
 
 /**
  * 확인 모달을 띄우고 사용자 선택을 Promise로 반환.
@@ -32,8 +34,9 @@ export function confirmAction(opts = {}) {
   } = opts;
 
   return new Promise((resolve) => {
-    const prevFocus = document.activeElement;
+    const modalId = `confirm-modal-${++_confirmModalSequence}`;
     const overlay = document.createElement('div');
+    overlay.id = modalId;
     overlay.className = 'tds-modal-overlay confirm-modal-overlay';
     overlay.setAttribute('role', 'dialog');
     overlay.setAttribute('aria-modal', 'true');
@@ -53,23 +56,16 @@ export function confirmAction(opts = {}) {
       </div>
     `;
     document.body.appendChild(overlay);
-    _openCount++;
-    document.body.style.overflow = 'hidden';
-
-    // 다음 프레임에 open 클래스 → 애니메이션
-    requestAnimationFrame(() => overlay.classList.add('open'));
+    openModal(modalId);
 
     let settled = false;
     const cleanup = (result) => {
       if (settled) return;
       settled = true;
-      overlay.classList.remove('open');
+      closeModal(modalId);
       document.removeEventListener('keydown', onKey, true);
       setTimeout(() => {
         overlay.remove();
-        _openCount = Math.max(0, _openCount - 1);
-        if (_openCount === 0) document.body.style.overflow = '';
-        try { prevFocus && prevFocus.focus && prevFocus.focus(); } catch {}
       }, 150);
       resolve(result);
     };

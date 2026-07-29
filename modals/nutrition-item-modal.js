@@ -71,7 +71,7 @@ export const MODAL_HTML = `
           <button class="tds-btn cancel-btn ghost md" data-nutrition-item-action="clear-photo" style="width:100%">사진 변경</button>
         </div>
         <div id="ni-photo-analyzing" style="display:none;text-align:center;padding:20px;color:var(--muted)">
-          <div style="width:24px;height:24px;border:3px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto 8px;"></div>
+          <div style="width:24px;height:24px;border:3px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:ni-spin 0.8s linear infinite;margin:0 auto 8px;"></div>
           <div>OCR 분석 중...</div>
         </div>
         <div id="ni-photo-result" style="display:none;border:1px solid var(--border);border-radius:8px;padding:12px;margin-top:12px;background:var(--bg-secondary)">
@@ -96,7 +96,7 @@ export const MODAL_HTML = `
         <button style="width:100%;margin-top:8px;padding:10px;border:none;border-radius:12px;background:var(--primary);color:#fff;font-size:14px;font-weight:600;cursor:pointer;" data-nutrition-item-action="analyze-text">분석하기</button>
 
         <div id="ni-text-analyzing" style="display:none;text-align:center;padding:20px;color:var(--muted)">
-          <div style="width:24px;height:24px;border:3px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto 8px;"></div>
+          <div style="width:24px;height:24px;border:3px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:ni-spin 0.8s linear infinite;margin:0 auto 8px;"></div>
           <div>텍스트 분석 중...</div>
         </div>
         <div id="ni-text-result" style="display:none;border:1px solid var(--border);border-radius:8px;padding:12px;margin-top:12px;background:var(--bg-secondary)">
@@ -117,97 +117,6 @@ export const MODAL_HTML = `
   </div>
 </div>
 
-<style>
-@keyframes spin { to { transform: rotate(360deg); } }
-
-.ni-tabs {
-  display: flex;
-  gap: 4px;
-  margin-bottom: 12px;
-  border-bottom: 1px solid var(--border);
-  padding: 0 12px;
-}
-
-.ni-tab-btn {
-  flex: 1;
-  padding: 12px 8px;
-  border: none;
-  background: transparent;
-  color: var(--text-tertiary);
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  transition: all 0.15s ease;
-  white-space: nowrap;
-  user-select: none;
-  -webkit-user-select: none;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.ni-tab-btn:active { opacity: 0.7; }
-
-.ni-tab-btn.active {
-  color: var(--primary);
-  border-bottom-color: var(--primary);
-  font-weight: 700;
-}
-
-@media (max-width: 480px) {
-  .ni-tabs {
-    gap: 2px;
-    padding: 0 4px;
-  }
-
-  .ni-tab-btn {
-    padding: 12px 4px;
-    font-size: 11px;
-    min-height: 44px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-}
-
-.ni-tab-content {
-  display: none;
-  padding: 12px;
-}
-
-.ni-tab-content.active {
-  display: block;
-}
-
-.ni-upload-zone {
-  border: 1.5px dashed var(--border);
-  border-radius: 12px;
-  padding: 20px 16px;
-  text-align: center;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  background: var(--surface2);
-}
-
-.ni-upload-zone:hover, .ni-upload-zone:active {
-  border-color: var(--primary);
-  background: rgba(49,130,246,0.04);
-}
-
-.ni-upload-zone.dragover {
-  border-color: var(--primary);
-  background: rgba(49,130,246,0.06);
-}
-
-@media (max-width: 480px) {
-  .ni-upload-zone {
-    padding: 16px 12px;
-  }
-}
-
-#ni-photo-preview {
-  text-align: center;
-}
-</style>
 `;
 
 // ═════════════════════════════════════════════════════════════

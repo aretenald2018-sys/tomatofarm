@@ -96,6 +96,11 @@ export async function loadAndInjectModals(ids = null) {
     const loadedCount = results.filter((result) => result.status === 'fulfilled').length;
     _modalsLoaded = loadedCount === MODALS.length;
     console.log('[modal-manager] 모달 로드 완료 (' + loadedCount + '/' + MODALS.length + ')');
+    // 실패를 이름 없이 삼키면 "이 버튼만 무반응"인 증상의 원인을 찾을 수 없다.
+    results.forEach((result, index) => {
+      if (result.status !== 'rejected') return;
+      console.warn(`[modal-manager] ${MODALS[index].id} 로드 실패:`, result.reason?.message || result.reason);
+    });
   })();
 
   try {
@@ -103,11 +108,4 @@ export async function loadAndInjectModals(ids = null) {
   } finally {
     if (!_modalsLoaded) _modalsLoadPromise = null;
   }
-}
-
-/**
- * 모달이 로드되었는지 확인 (nutrition-weight-modal의 함수들을 위해)
- */
-export function areModalsLoaded() {
-  return _modalsLoaded;
 }

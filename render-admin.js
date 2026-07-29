@@ -1,3 +1,4 @@
+import { hasPositiveDayNutrient } from './diet/day-nutrition.js';
 import {
   isAdmin, isPersonalInstance, getAdminConsoleId, getAnalytics, getApiUsage, dateKey, TODAY,
   getAdminAccountRecords, getAdminSocialSnapshot,
@@ -82,7 +83,7 @@ function _hasDiet(w) {
   if (!w) return false;
   if (w.bFoods?.length || w.lFoods?.length || w.dFoods?.length || w.sFoods?.length) return true;
   if (w.breakfast || w.lunch || w.dinner || w.snack) return true;
-  if ((w.bKcal || 0) > 0 || (w.lKcal || 0) > 0 || (w.dKcal || 0) > 0 || (w.sKcal || 0) > 0) return true;
+  if (hasPositiveDayNutrient(w, 'kcal')) return true;
   if (w.breakfast_skipped || w.lunch_skipped || w.dinner_skipped) return true;
   return false;
 }

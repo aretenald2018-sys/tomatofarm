@@ -1,3 +1,4 @@
+import { escapeHtml as _esc } from '../utils/escape-html.js';
 // ================================================================
 // modals/ai-estimate-banner.js
 // AI 추정 배너 (pending / preview / error 3단계)
@@ -12,7 +13,7 @@
 // ================================================================
 
 import { applyPortionScale, excludeItems, runAIEstimate } from '../workout/ai-estimate.js';
-import { showToast } from '../home/utils.js';
+import { showToast } from '../ui/toast.js';
 import { removeDietPhoto } from '../diet/photo-store.js';
 
 // 상태 보관 — meal별
@@ -36,12 +37,6 @@ async function _exactDateKey() {
     const { y, m, d } = S.shared.date;
     return `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
   } catch { return _currentDateKey(); }
-}
-
-function _esc(s) {
-  return String(s || '').replace(/[&<>"']/g, c =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])
-  );
 }
 
 function _friendlyAIError(message, code) {

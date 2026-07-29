@@ -2,6 +2,7 @@
 // ai/diet-rec.js — 오늘의 식단/운동 추천 (말풍선 UI)
 // ================================================================
 
+import { hasPositiveDayNutrient } from '../diet/day-nutrition.js';
 import { TODAY, getMemo, getExercises, getDiet, getExList } from '../data.js';
 import { callGemini } from './llm-core.js';
 
@@ -23,7 +24,7 @@ export async function getDietRec() {
     };
     const hasText = dt.breakfast || dt.lunch || dt.dinner || dt.snack;
     const hasFoods = (dt.bFoods?.length || 0) + (dt.lFoods?.length || 0) + (dt.dFoods?.length || 0) + (dt.sFoods?.length || 0) > 0;
-    const hasKcal = ((dt.bKcal||0) + (dt.lKcal||0) + (dt.dKcal||0) + (dt.sKcal||0)) > 0;
+    const hasKcal = hasPositiveDayNutrient(dt, 'kcal');
     if (hasText || hasFoods || hasKcal) {
       const snackPart = (dt.snack || (dt.sFoods?.length > 0)) ? ` 간식(${foodsOrText('s', dt.snack)})` : '';
       recentMeals.push(`${i===0?'오늘':i+'일전'}: 아침(${foodsOrText('b', dt.breakfast)}) 점심(${foodsOrText('l', dt.lunch)}) 저녁(${foodsOrText('d', dt.dinner)})${snackPart}`);

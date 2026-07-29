@@ -1,3 +1,9 @@
+import { toFiniteNumber as _num } from '../utils/number.js';
+import { escapeHtml as _escapeHtml } from '../utils/escape-html.js';
+import {
+  formatRunningDuration,
+  formatRunningPace,
+} from '../workout/running-presentation.js';
 // ================================================================
 // modals/trainer-running-stats.js
 // Trainer quest의 러닝 전용 활동 목록과 Nike Run Club형 상세 기록 화면
@@ -8,23 +14,9 @@ import { listRunningActivities } from '../workout/running-analytics.js';
 
 const WEEKDAYS = ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'];
 
-function _num(value, fallback = 0) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
-}
-
 function _positive(value) {
   const parsed = _num(value);
   return parsed > 0 ? parsed : null;
-}
-
-function _escapeHtml(value) {
-  return String(value ?? '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;');
 }
 
 function _dateForActivity(activity = {}) {
@@ -41,20 +33,12 @@ function _todayKey() {
 }
 
 function _formatDuration(value) {
-  const seconds = Math.max(0, Math.round(_num(value)));
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const remainder = seconds % 60;
-  return hours > 0
-    ? `${hours}:${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`
-    : `${minutes}:${String(remainder).padStart(2, '0')}`;
+  return formatRunningDuration(value, { padMinutes: false, rounding: 'round' });
 }
 
 function _formatPace(value) {
   const seconds = _positive(value);
-  if (seconds == null) return '—';
-  const rounded = Math.round(seconds);
-  return `${Math.floor(rounded / 60)}'${String(rounded % 60).padStart(2, '0')}"`;
+  return formatRunningPace(seconds, { empty: '—', secondsMark: '"' });
 }
 
 function _formatDistance(value) {

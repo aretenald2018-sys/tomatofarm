@@ -62,7 +62,7 @@ export async function analyzeGoalFeasibilityHandler(id) {
   try {
     const result = await analyzeGoalFeasibility(goal);
     await saveGoal({ ...goal, aiAnalysis: result });
-    renderAll();
+    requestAppRender('goal:ai-analysis');
   } catch(e) {
     showToast('분석 실패: ' + e.message, 3500, 'error');
     btns.forEach(b => { b.disabled=false; b.textContent='✨ AI 실현가능성 분석'; });

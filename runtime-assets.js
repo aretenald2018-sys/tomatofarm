@@ -26,6 +26,7 @@
   './styles/features/workout-picker-overrides.css',
   './styles/features/workout-flow.css',
   './styles/features/diet-tab.css',
+  './styles/features/nutrition-item-modal.css',
   './styles/features/home-life-zone.css',
   './styles/features/shared-feedback.css',
   './styles/features/social-home.css',

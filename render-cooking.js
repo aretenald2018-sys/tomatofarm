@@ -22,6 +22,7 @@ const RESULT_COLOR = { success:'var(--diet-ok)', partial:'var(--accent)', fail:'
 let _editingId   = null;
 let _ingredients = [];        // 현재 편집 중인 재료 목록
 let _selectedIngredient = null; // 드롭다운에서 선택한 재료 (확정 전)
+let _ingredientSearchResults = { db: [], csv: [] };
 let _cookingActionsBound = false;
 
 function _bindCookingActions(root = document) {
@@ -203,6 +204,8 @@ function _searchCookingIngredient() {
 
     let html = '';
 
+    _ingredientSearchResults = { db: dbResults, csv: dedupedCsv };
+
     dbResults.forEach((item, i) => {
       const kcal = item.nutrition?.kcal || 0;
       const ss   = item.servingSize || 100;
@@ -211,7 +214,6 @@ function _searchCookingIngredient() {
         <div style="font-weight:500">${item.name}</div>
         <div style="color:var(--muted);font-size:11px">${ss}g 기준 ${kcal}kcal</div>
       </div>`;
-      window[`_cookIngDB_${i}`] = item;
     });
 
     dedupedCsv.forEach((item, i) => {
@@ -220,7 +222,6 @@ function _searchCookingIngredient() {
         <div style="font-weight:500">📊 ${item.name}</div>
         <div style="color:var(--muted);font-size:11px">100g 기준 ${item.energy||0}kcal</div>
       </div>`;
-      window[`_cookIngCSV_${i}`] = item;
     });
 
     if (!html) html = `<div style="padding:12px;font-size:12px;color:var(--muted);text-align:center">검색 결과 없음</div>`;
@@ -237,9 +238,9 @@ function _searchCookingIngredient() {
 }
 
 function _selectCookingIngredient(source, idx) {
-  let item;
+  const item = _ingredientSearchResults[source]?.[idx];
+  if (!item) return;
   if (source === 'db') {
-    item = window[`_cookIngDB_${idx}`];
     _selectedIngredient = {
       id:   item.id,
       name: item.name,
@@ -250,7 +251,6 @@ function _selectCookingIngredient(source, idx) {
       fat:     item.nutrition?.fat || 0,
     };
   } else {
-    item = window[`_cookIngCSV_${idx}`];
     _selectedIngredient = {
       id:   item.id,
       name: item.name,

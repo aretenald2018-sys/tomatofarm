@@ -1,0 +1,91 @@
+/* Nutrition item editor tabs and upload states. */
+@keyframes ni-spin {
+  to { transform: rotate(360deg); }
+}
+
+.ni-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+  padding: 0 12px;
+}
+
+.ni-tab-btn {
+  flex: 1;
+  padding: 12px 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.ni-tab-btn:active { opacity: 0.7; }
+
+.ni-tab-btn.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+  font-weight: 700;
+}
+
+.ni-tab-content {
+  display: none;
+  padding: 12px;
+}
+
+.ni-tab-content.active {
+  display: block;
+}
+
+.ni-upload-zone {
+  border: 1.5px dashed var(--border);
+  border-radius: 12px;
+  padding: 20px 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  background: var(--surface2);
+}
+
+.ni-upload-zone:hover,
+.ni-upload-zone:active {
+  border-color: var(--primary);
+  background: rgba(49,130,246,0.04);
+}
+
+.ni-upload-zone.dragover {
+  border-color: var(--primary);
+  background: rgba(49,130,246,0.06);
+}
+
+#ni-photo-preview {
+  text-align: center;
+}
+
+@media (max-width: 480px) {
+  .ni-tabs {
+    gap: 2px;
+    padding: 0 4px;
+  }
+
+  .ni-tab-btn {
+    padding: 12px 4px;
+    font-size: 11px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .ni-upload-zone {
+    padding: 16px 12px;
+  }
+}

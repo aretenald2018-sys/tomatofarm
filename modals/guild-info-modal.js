@@ -1,3 +1,4 @@
+import { escapeHtml as _escapeHtml } from '../utils/escape-html.js';
 import { showToast } from '../ui/toast.js';
 import { openGuildModal } from '../feature-login.js';
 export const MODAL_HTML = `
@@ -11,15 +12,6 @@ export const MODAL_HTML = `
 
 let _guildInviteAccounts = [];
 let _guildInfoName = '';
-
-function _escapeHtml(value) {
-  return String(value || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
 
 function _displayName(account) {
   if (!account) return '미정';
