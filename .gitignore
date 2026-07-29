@@ -46,13 +46,15 @@ android/app/src/**
 !android/app/src/main/res/values-night/
 !android/app/src/main/res/values-night/widget_colors.xml
 !android/app/src/main/res/xml/
-!android/app/src/main/res/xml/season_dashboard_widget_info.xml
+!android/app/src/main/res/xml/*_widget_info.xml
 !android/app/src/main/java/
 !android/app/src/main/java/com/
 !android/app/src/main/java/com/lifestreak/
 !android/app/src/main/java/com/lifestreak/app/
 android/app/src/main/java/com/lifestreak/app/**
 !android/app/src/main/java/com/lifestreak/app/MainActivity.java
+!android/app/src/main/java/com/lifestreak/app/widget/
+!android/app/src/main/java/com/lifestreak/app/widget/*.kt
 !android/app/src/main/java/com/lifestreak/app/wear/
 android/app/src/main/java/com/lifestreak/app/wear/**
 !android/app/src/main/java/com/lifestreak/app/wear/TomatoWearAppUpdatePlugin.kt
