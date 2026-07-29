@@ -19,6 +19,10 @@ if (remotes.length !== 1 || remotes[0] !== TOMATOFARM_REMOTE) {
   );
 }
 
-const remoteUrl = git(['remote', 'get-url', TOMATOFARM_REMOTE]);
-assertTomatofarmPushTarget(TOMATOFARM_REMOTE, remoteUrl);
-console.log(`[repository-boundary] ok ${TOMATOFARM_REMOTE} ${remoteUrl}`);
+// A remote can carry a separate pushurl, so validating only the fetch URL would
+// let a cross-environment push target through this guard unnoticed.
+const fetchUrl = git(['remote', 'get-url', TOMATOFARM_REMOTE]);
+const pushUrl = git(['remote', 'get-url', '--push', TOMATOFARM_REMOTE]);
+assertTomatofarmPushTarget(TOMATOFARM_REMOTE, fetchUrl);
+assertTomatofarmPushTarget(TOMATOFARM_REMOTE, pushUrl);
+console.log(`[repository-boundary] ok ${TOMATOFARM_REMOTE} fetch=${fetchUrl} push=${pushUrl}`);

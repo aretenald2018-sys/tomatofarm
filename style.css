@@ -24150,41 +24150,6 @@ body.lz-running-record-modal-open {
   }
 }
 
-/* SOURCE: styles/accessibility.css */
-/* Last-loaded accessibility layer: focus, touch, motion, and assistive text. */
-:where(button, [href], input, select, textarea, [tabindex]):focus-visible {
-  outline: var(--focus-ring-width) solid var(--focus-ring-color);
-  outline-offset: 2px;
-}
-
-:where(.tds-btn, .tds-icon-btn.touchable, .tds-list-row, .tds-segmented-item, .tds-touch-target) {
-  min-width: var(--touch-target-min);
-  min-height: var(--touch-target-min);
-}
-
-.tds-sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-
-[aria-busy="true"] { cursor: progress; }
-
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    scroll-behavior: auto;
-    animation-duration: 0.01ms;
-    animation-iteration-count: 1;
-    transition-duration: 0.01ms;
-  }
-}
-
 /* SOURCE: test-mode-v2.css */
 /* ================================================================
    test-mode-v2.css — 테스트모드 v2 "성장 보드" 전용 스타일 (tm2-)
@@ -24994,5 +24959,40 @@ body:has(#tm2-sheets.tm2-open) #tm2-sheets .tm2-sheet {
   .tm2-card-sets .ex-max-v2-rom {
     grid-template-columns: 30px minmax(0, 1fr) 44px 10px;
     gap: 5px;
+  }
+}
+
+/* SOURCE: styles/accessibility.css */
+/* Last-loaded accessibility layer: focus, touch, motion, and assistive text. */
+:where(button, [href], input, select, textarea, [tabindex]):focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: 2px;
+}
+
+:where(.tds-btn, .tds-icon-btn.touchable, .tds-list-row, .tds-segmented-item, .tds-touch-target) {
+  min-width: var(--touch-target-min);
+  min-height: var(--touch-target-min);
+}
+
+.tds-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+[aria-busy="true"] { cursor: progress; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto;
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+    transition-duration: 0.01ms;
   }
 }

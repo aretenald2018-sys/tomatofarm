@@ -43,6 +43,7 @@ function resolveJavaHome() {
   const candidates = [
     'C:\\Program Files\\Android\\Android Studio\\jbr',
     'C:\\Program Files\\Android\\Android Studio\\jre',
+    'C:\\Program Files\\Android\\Android Studio Preview\\jbr',
     path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Android Studio', 'jbr'),
   ];
   return candidates.find((candidate) => candidate && existsSync(path.join(candidate, 'bin', 'java.exe'))) || '';

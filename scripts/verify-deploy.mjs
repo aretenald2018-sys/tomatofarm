@@ -7,6 +7,9 @@ const expectedCommitInput = process.argv[3] || '';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const deployRetries = Number(process.env.VERIFY_DEPLOY_RETRIES || 36);
 const deployDelayMs = Number(process.env.VERIFY_DEPLOY_DELAY_MS || 5000);
+// 두 환경이 같은 자산 구조를 공유하기 때문에, 배포본이 실제로 이 앱인지까지
+// 확인해야 한다. 확인하지 않으면 다른 환경의 Pages 배포를 통과시킬 수 있다.
+const EXPECTED_APP = 'tomatofarm';
 
 if (!baseArg) {
   console.error('Usage: node scripts/verify-deploy.mjs <base-url> [expected-commit]');
@@ -95,6 +98,10 @@ async function waitForDeploySnapshot() {
       assertOk(
         commitMatches(deployedCommit, expectedCommit),
         `deployed commit mismatch: expected ${expectedCommitInput || expectedCommit}, got ${deployedCommit}`,
+      );
+      assertOk(
+        buildInfo.app === EXPECTED_APP,
+        `deployed app mismatch: expected ${EXPECTED_APP}, got ${buildInfo.app || '(missing)'}`,
       );
       assertOk(buildInfo.cacheVersion === swCacheVersion, `cacheVersion mismatch: build-info=${buildInfo.cacheVersion}, sw=${swCacheVersion}`);
       return { buildInfo, swText, runtimeAssetsText };

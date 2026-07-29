@@ -4,6 +4,12 @@ import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
+// CRLF 체크아웃에서도 생성 결과가 같아야 한다. 정규화하지 않으면 --check 가
+// 내용이 아니라 줄바꿈 차이만으로 stale 을 보고한다.
+function normalizeLineEndings(source) {
+  return source.replace(/\r\n?/g, '\n');
+}
+
 function rebaseCssUrls(source, sourcePath) {
   const sourceDir = posix.dirname(sourcePath.replaceAll('\\', '/'));
   return source.replace(/url\(\s*(['"]?)([^'"\)]+)\1\s*\)/g, (match, quote, rawUrl) => {
@@ -62,12 +68,13 @@ export const STYLE_ENTRY_SOURCES = Object.freeze([
   'styles/features/app-status.css',
   'admin/admin-hig.css',
   'styles/workout/expert-mode.css',
-  'styles/accessibility.css',
   'test-mode-v2.css',
+  // docs/DESIGN_SYSTEM.md 계약대로 접근성 레이어가 마지막에 와야 한다.
+  'styles/accessibility.css',
 ]);
 
 const parts = await Promise.all(STYLE_ENTRY_SOURCES.map(async (path) => {
-  const source = await readFile(resolve(root, path), 'utf8');
+  const source = normalizeLineEndings(await readFile(resolve(root, path), 'utf8'));
   return `/* SOURCE: ${path} */\n${rebaseCssUrls(source, path).trimEnd()}\n`;
 }));
 
@@ -79,7 +86,7 @@ const entry = [
 
 const outputPath = resolve(root, 'style.css');
 if (process.argv.includes('--check')) {
-  const current = await readFile(outputPath, 'utf8').catch(() => '');
+  const current = normalizeLineEndings(await readFile(outputPath, 'utf8').catch(() => ''));
   if (current !== entry) {
     throw new Error('style.css is stale; run node scripts/generate-style-entry.mjs and commit the result');
   }
