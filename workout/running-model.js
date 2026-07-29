@@ -1,3 +1,4 @@
+import { toFiniteNumber as _num } from '../utils/number.js';
 import {
   RUNNING_SESSION_ID,
   WORKOUT_RUNNING_SESSION_INDEX,
@@ -5,10 +6,6 @@ import {
   runningWorkoutSessionId,
 } from './session-policy.js';
 
-function _num(value, fallback = 0) {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : fallback;
-}
 function _clone(value, fallback = null) {
   if (value == null) return fallback;
   try { return JSON.parse(JSON.stringify(value)); }

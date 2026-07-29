@@ -1,3 +1,4 @@
+import { toFiniteNumber as _num } from '../utils/number.js';
 // ================================================================
 // workout/sessions.js — 날짜별 운동 회차 호환 레이어
 // ================================================================
@@ -20,11 +21,6 @@ function _clone(value) {
   if (value == null) return value;
   try { return JSON.parse(JSON.stringify(value)); }
   catch { return value; }
-}
-
-function _num(value) {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : 0;
 }
 
 function _str(value) {

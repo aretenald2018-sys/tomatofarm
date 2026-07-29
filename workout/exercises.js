@@ -1,3 +1,4 @@
+import { KOREAN_WEEKDAYS } from '../utils/weekdays.js';
 import { showToast } from '../ui/toast.js';
 import { confirmAction } from '../utils/confirm-modal.js';
 // ================================================================
@@ -343,9 +344,11 @@ function _setExerciseEditorReturnMode(options = {}) {
   _exerciseEditorReturnToPicker = options?.returnToPicker !== false;
 }
 
-function _finishExerciseEditorReturn() {
+function _finishExerciseEditorReturn(options = {}) {
   const returnToPicker = _exerciseEditorReturnToPicker !== false;
   _exerciseEditorReturnToPicker = true;
+  // 새 종목을 그날 기록에 바로 담는 경로는 피커를 다시 열지 않는다.
+  if (options?.reopenPicker === false) return;
   if (returnToPicker) wtOpenExercisePicker();
 }
 
@@ -2550,7 +2553,7 @@ function _renderProgramStartCalendar(monthKey, selectedKey) {
       <button type="button" class="ex-program-cal-nav" data-ex-program-calendar-next aria-label="다음 달">&gt;</button>
     </div>
     <div class="ex-program-cal-grid ex-program-cal-weekdays" aria-hidden="true">
-      ${['일', '월', '화', '수', '목', '금', '토'].map(d => `<span>${d}</span>`).join('')}
+      ${KOREAN_WEEKDAYS.map(d => `<span>${d}</span>`).join('')}
     </div>
     <div class="ex-program-cal-grid">
       ${blanks}${dayButtons}
@@ -2962,7 +2965,7 @@ function _runPickerRowAction(action, ex) {
   switch (action) {
     case 'edit':
     case 'delete-via-editor':
-      wtOpenExerciseEditor(ex.id, null);
+      void _openExerciseEditorEnsured(ex.id, null);
       return true;
     case 'delete':
       return _deletePickerExercise(ex);
@@ -3563,8 +3566,28 @@ export function wtHandleExercisePickerBack() {
   return true;
 }
 
+// 모달 템플릿은 지연 주입된다. 하나만 골라 보장하고, 실패는 이름과 함께 남긴다.
+async function _ensureWorkoutModal(id) {
+  const existing = document.getElementById(id);
+  if (existing) return existing;
+  try {
+    const { ensureModal } = await import('../modal-manager.js');
+    return await ensureModal(id);
+  } catch (error) {
+    console.error(`[workout] ${id} load failed:`, error);
+    return document.getElementById(id);
+  }
+}
+
+// 편집기를 여는 모든 경로는 자기 템플릿을 먼저 확보한다. 없으면 아래에서
+// muscleSelect.parentElement 접근이 onclick 안에서 조용히 터진다.
+async function _openExerciseEditorEnsured(exId, defaultMuscleId, options = {}) {
+  await _ensureWorkoutModal('ex-editor-modal');
+  wtOpenExerciseEditor(exId, defaultMuscleId, options);
+}
+
 function _openPickerEditorFromHeader() {
-  wtOpenExerciseEditor(null, _pickerMuscleFilter || null);
+  void _openExerciseEditorEnsured(null, _pickerMuscleFilter || null);
 }
 
 function _syncPickerDoneButton() {
@@ -3764,6 +3787,27 @@ function _selectedPickerManagerGymId(gymId = null) {
   if (_isConcretePickerGymFilter(gymId)) return gymId;
   if (_isConcretePickerGymFilter(_pickerGymFilter)) return _pickerGymFilter;
   return _currentPickerGymId() || (getGyms?.() || [])[0]?.id || null;
+}
+
+// 헬스장 추가는 프로 모드 캐러셀에만 있어서, 피커에서는 등록된 헬스장을 고르는
+// 것만 가능했다. 같은 바텀시트 폼을 피커 레일에서도 열고, 저장되면 새 헬스장을
+// 그 자리에서 활성 범위로 선택한다(기구 등록 위저드는 띄우지 않는다).
+async function _openPickerGymCreate() {
+  try {
+    const mod = await import('./expert.js');
+    if (typeof mod.wtExcAddNewGym !== 'function') throw new Error('wtExcAddNewGym is unavailable');
+    mod.wtExcAddNewGym({
+      startEquipmentSetup: false,
+      // 새 헬스장은 기구가 0개다. 그걸 활성 범위로 바꾸면 종목이 전부 사라져
+      // 또 다른 고장처럼 보인다. 범위는 그대로 두고 레일만 다시 그린다.
+      // wtExcAddNewGym이 현재 헬스장을 새 헬스장으로 옮겨 두므로, 이어서 누르는
+      // '헬스장 관리'는 방금 만든 헬스장의 기구 화면을 연다.
+      afterSave: () => _renderPickerList(),
+    });
+  } catch (err) {
+    console.warn('[picker.openGymCreate]:', err);
+    showToast('헬스장 추가 화면을 열 수 없어요', 2400, 'error');
+  }
 }
 
 async function _openPickerEquipmentManager(gymId = null) {
@@ -4052,6 +4096,7 @@ function _renderPickerCategory(container, ctx) {
           <span>전체</span><b>${totalCount}</b>
         </button>
         ${gymRail}
+        <button type="button" class="ex-picker-rail-action" data-picker-action="add-gym">＋ 헬스장 추가</button>
         <button type="button" class="ex-picker-rail-action" data-picker-action="manage-gyms" data-picker-gym-manage="${_escPicker(manageGymId || '')}">헬스장 관리</button>
       </aside>
       <section class="ex-picker-muscle-panel" aria-label="부위 분류">
@@ -4061,6 +4106,9 @@ function _renderPickerCategory(container, ctx) {
   `;
   container.querySelectorAll('[data-picker-gym]').forEach(btn => {
     btn.addEventListener('click', () => _wtSetPickerGymCategoryFilter(btn.getAttribute('data-picker-gym')));
+  });
+  container.querySelector('[data-picker-action="add-gym"]')?.addEventListener('click', () => {
+    void _openPickerGymCreate();
   });
   container.querySelector('[data-picker-action="manage-gyms"]')?.addEventListener('click', event => {
     _openPickerEquipmentManager(event.currentTarget?.getAttribute('data-picker-gym-manage') || null);
@@ -4174,7 +4222,7 @@ export function _renderPickerList() {
       const addBtn = document.createElement('button');
       addBtn.className = 'ex-picker-add';
       addBtn.textContent = `+ ${muscle.name} 종목 추가(선택)`;
-      addBtn.addEventListener('click', () => wtOpenExerciseEditor(null, muscle.id));
+      addBtn.addEventListener('click', () => { void _openExerciseEditorEnsured(null, muscle.id); });
       group.appendChild(addBtn);
     }
     container.appendChild(group);
@@ -4208,13 +4256,18 @@ export async function wtOpenExercisePicker(options = {}) {
   if (Object.prototype.hasOwnProperty.call(options || {}, 'afterSelect')) {
     _setPickerAfterSelect(options.afterSelect);
   }
-  let modal = document.getElementById('ex-picker-modal');
+  // 필요한 템플릿만 개별로 보장한다. 전체 모달 로더는 실패를 allSettled로 삼켜서
+  // 피커 템플릿이 빠져도 조용히 넘어가고, + 버튼이 무반응으로 죽는다.
+  // 편집기 템플릿도 함께 준비한다. 피커 헤더의 ＋가 곧바로 그 모달을 연다.
+  const [modal] = await Promise.all([
+    _ensureWorkoutModal('ex-picker-modal'),
+    _ensureWorkoutModal('ex-editor-modal'),
+  ]);
   if (!modal) {
-    const { loadAndInjectModals } = await import('../modal-manager.js');
-    await loadAndInjectModals();
-    modal = document.getElementById('ex-picker-modal');
+    // 조용한 무반응은 "버튼이 고장났다"로만 보인다. 원인을 사용자에게 알린다.
+    showToast('종목 추가 화면을 불러오지 못했어요. 네트워크 확인 후 다시 시도해주세요', 2600, 'error');
+    return;
   }
-  if (!modal) { console.error('[workout] ex-picker-modal not found'); return; }
   // 피커 열 때마다 부위/검색은 초기화하되, 헬스장 필터는 그날 세션 동안 유지한다.
   _bindPickerChrome();
   _pickerView = 'category';
@@ -4235,6 +4288,13 @@ export function wtOpenExerciseEditor(exId, defaultMuscleId, options = {}) {
   _bindExerciseEditorChrome(editor);
   const nameInput    = document.getElementById('ex-editor-name');
   const muscleSelect = document.getElementById('ex-editor-muscle');
+  // 편집 템플릿이 주입되지 않았으면 아래에서 muscleSelect.parentElement 접근이
+  // TypeError로 터진다. onclick 안에서 조용히 죽어 버튼 고장으로만 보인다.
+  if (!editor || !nameInput || !muscleSelect) {
+    console.error('[workout] ex-editor-modal is not available');
+    showToast('종목 편집 화면을 불러오지 못했어요. 네트워크 확인 후 다시 시도해주세요', 2600, 'error');
+    return;
+  }
   const deleteBtn    = document.getElementById('ex-editor-delete') || document.getElementById('tds-btn danger sm');
   const titleEl      = document.getElementById('ex-editor-title');
   const allMuscles = getMuscleParts();
@@ -4345,6 +4405,8 @@ export async function wtSaveExerciseFromEditor() {
     return;
   }
   const record = built.record;
+  const isNewExercise = !editingId;
+  let savedRecord = null;
   try {
     if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '저장 중...'; }
     await saveExercise(record);
@@ -4354,6 +4416,7 @@ export async function wtSaveExerciseFromEditor() {
       throw new Error('saveExercise verification failed');
     }
     const programRecord = verified.record;
+    savedRecord = saved || programRecord;
     await _saveExerciseProgramFromEditor(programRecord);
   } catch (e) {
     console.warn('[wtSaveExerciseFromEditor]:', e);
@@ -4364,6 +4427,15 @@ export async function wtSaveExerciseFromEditor() {
   }
   editor.classList.remove('open');
   _setWorkoutModalLock(false);
+  // 새로 만든 종목은 카탈로그에만 남기고 끝내면, 사용자가 피커에서 그 종목을
+  // 다시 찾아 골라야 한다. 선택과 같은 경로로 그날 기록에 세트 1개짜리 카드까지
+  // 만들어 준다. 기존 종목 편집은 지금처럼 피커로 돌아간다.
+  if (isNewExercise && savedRecord?.id) {
+    _finishExerciseEditorReturn({ reopenPicker: false });
+    showToast('종목을 추가했어요', 1600, 'success');
+    await _selectPickerExercise(savedRecord);
+    return;
+  }
   _finishExerciseEditorReturn();
   showToast('종목 저장 완료', 1600, 'success');
 }

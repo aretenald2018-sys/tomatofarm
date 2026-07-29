@@ -1,3 +1,5 @@
+import { escapeHtml as _escapeHtml } from '../utils/escape-html.js';
+import { sumDayNutrient } from '../diet/day-nutrition.js';
 import { showToast } from '../ui/toast.js';
 // ================================================================
 // workout/render.js — UI 렌더링 (상태 표시, 칼로리 트래커, 식단)
@@ -96,15 +98,6 @@ function _ageDaysFromKey(currentKey, historyKey) {
   const history = _dateKeyToUtc(historyKey);
   if (current == null || history == null) return null;
   return Math.round((current - history) / 86400000);
-}
-
-function _escapeHtml(value) {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
 }
 
 function _normalizeFoodName(name) {
@@ -413,7 +406,7 @@ function _renderCalorieTracker() {
   const exerciseCredit = calcExerciseCalorieCredit(plan, dayData);
   const adjustedGoalKcal = dayTarget.kcal + exerciseCredit;
 
-  const currentKcal = (S.diet.bKcal || 0) + (S.diet.lKcal || 0) + (S.diet.dKcal || 0) + (S.diet.sKcal || 0);
+  const currentKcal = sumDayNutrient(S.diet, 'kcal');
   const hasAnalysis = currentKcal > 0;
 
   tracker.style.display = 'block';
@@ -459,7 +452,7 @@ function _renderCalorieTracker() {
 
   const macroEl = document.getElementById('wt-macro-bars');
   if (!macroEl) return;
-  const curProtein = (S.diet.bProtein||0) + (S.diet.lProtein||0) + (S.diet.dProtein||0) + (S.diet.sProtein||0);
+  const curProtein = sumDayNutrient(S.diet, 'protein');
   const curCarbs   = (S.diet.bCarbs  ||0) + (S.diet.lCarbs  ||0) + (S.diet.dCarbs  ||0) + (S.diet.sCarbs||0);
   const curFat     = (S.diet.bFat    ||0) + (S.diet.lFat    ||0) + (S.diet.dFat    ||0) + (S.diet.sFat||0);
   const macroScale = exerciseCredit > 0 && dayTarget.kcal > 0 ? adjustedGoalKcal / dayTarget.kcal : 1;

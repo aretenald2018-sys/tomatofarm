@@ -1,3 +1,5 @@
+import { escapeHtml as _esc } from '../../utils/escape-html.js';
+import { dateFromKey as _dateFromKey } from '../../utils/date-key.js';
 import { requestAppRender } from '../../app/render-events.js';
 import { showToast } from '../../ui/toast.js';
 // ================================================================
@@ -84,7 +86,6 @@ import {
 
 export { buildMaxPrescription, detectMaxFixedMovements } from './max-prescription.js';
 
-function _esc(s) { return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function _toast(msg, type='info') {
   if (typeof showToast === 'function') showToast(msg, 2200, type);
 }
@@ -1521,12 +1522,6 @@ function _formatShortDate(key) {
   const m = /^\d{4}-(\d{2})-(\d{2})$/.exec(key);
   if (!m) return key;
   return `${parseInt(m[1],10)}/${parseInt(m[2],10)}`;
-}
-
-function _dateFromKey(key) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(key || '');
-  if (!m) return null;
-  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
 }
 
 function _keyFromDate(d) {

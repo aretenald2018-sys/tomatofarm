@@ -1,13 +1,9 @@
+import { toFiniteNumber as _num } from '../utils/number.js';
 import {
   estimateSet1RM,
   getTrackMetricHistory,
   normalizeWorkoutTrack,
 } from '../calc.js';
-
-function _num(value) {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : 0;
-}
 
 function _fmtNum(value, digits = 1) {
   const number = _num(value);

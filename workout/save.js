@@ -1,4 +1,4 @@
-import { showToast } from '../ui/toast.js';
+import { showCenterToast, showToast } from '../ui/toast.js';
 // ================================================================
 // workout/save.js — 저장 로직 (saveWorkoutDay + _autoSaveDiet)
 // ================================================================
@@ -11,7 +11,6 @@ import { showToast } from '../ui/toast.js';
 // ================================================================
 
 import { S }                        from './state.js';
-import { showCenterToast }          from '../home/utils.js';
 import { saveDay, saveRunningRoute, dateKey, isFuture, trackEvent, getExList, getDay } from '../data.js';
 import { WORKOUT_PAYLOAD_KEYS, DIET_PAYLOAD_KEYS } from './save-schema.js';
 import { deriveActivityFlagsFromDetails, deriveDietSuccessFromWorkout } from './cross-domain.js';

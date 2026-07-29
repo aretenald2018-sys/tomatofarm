@@ -14,6 +14,7 @@
 //   - 반환값만 사용. 부수 효과로 state 를 변이시키지 않음.
 // ================================================================
 
+import { sumDayNutrient } from '../diet/day-nutrition.js';
 import { getDietPlan, getDayTargetKcal, isDietDaySuccess } from '../data.js';
 
 /**
@@ -58,7 +59,7 @@ export function deriveDietSuccessFromWorkout(workout, diet, date, cleanEx) {
     runRouteSummary: workout?.runData?.routeSummary || null,
   };
   const dayTarget = getDayTargetKcal(plan, y, m, d, dayData);
-  const totalKcal = (diet?.bKcal||0) + (diet?.lKcal||0) + (diet?.dKcal||0) + (diet?.sKcal||0);
+  const totalKcal = sumDayNutrient(diet, 'kcal');
   const tol = plan.advancedMode ? (plan.dietTolerance ?? 50) : 50;
   return isDietDaySuccess(totalKcal, dayTarget, tol);
 }

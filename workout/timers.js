@@ -4,7 +4,7 @@
 
 import { S }                from './state.js';
 import { saveWorkoutDay }   from './save.js';
-import { showToast, showCenterToast } from '../home/utils.js';
+import { showToast, showCenterToast } from '../ui/toast.js';
 import { confirmAction }    from '../utils/confirm-modal.js';
 import { getActiveTimer, saveActiveTimer, clearActiveTimer, getCurrentUser } from '../data.js';
 import {

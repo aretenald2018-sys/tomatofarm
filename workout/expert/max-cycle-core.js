@@ -1,3 +1,5 @@
+export { escapeHtml as _esc } from '../../utils/escape-html.js';
+import { KOREAN_WEEKDAYS } from '../../utils/weekdays.js';
 // ================================================================
 // workout/expert/max-cycle.js
 // 테스트모드 v2 — 6주 성장판 렌더/사이클 helper
@@ -6,8 +8,6 @@
 import { inferEquipmentMovementIds, inferExerciseMovementId, normalizeEquipmentCategory } from '../../data/data-pure.js';
 import { normalizeWendlerConfig } from './max-wendler.js';
 import { W863_ORIGINAL_VERSION } from '../w863-original.js';
-
-export function _esc(s) { return String(s || '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c])); }
 
 export const MAJOR_LABEL = {
   chest: '가슴',
@@ -186,7 +186,7 @@ export function selectPersistedMaxCycle(presetCycle = null, settingCycle = null)
 export function _shortDate(key) {
   const d = new Date(`${key}T00:00:00`);
   if (Number.isNaN(d.getTime())) return key || '';
-  const day = ['일', '월', '화', '수', '목', '금', '토'][d.getDay()];
+  const day = KOREAN_WEEKDAYS[d.getDay()];
   return `${d.getMonth() + 1}월 ${d.getDate()}일 ${day}`;
 }
 

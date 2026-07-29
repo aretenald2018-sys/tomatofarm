@@ -1,3 +1,4 @@
+import { escapeHtml as _esc } from '../utils/escape-html.js';
 import {
   createWorkoutSeason,
   getCache,
@@ -44,12 +45,6 @@ const RUNNING_GOALS = Object.freeze({
   marathon: { label: '풀 대회', distanceKm: 42.195, weeklyDistanceKm: 42, weeklySessions: 5, longestRunKm: 28 },
 });
 let _state = null;
-
-function _esc(value) {
-  return String(value ?? '').replace(/[&<>'"]/g, char => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;',
-  })[char]);
-}
 
 function _todayKey() {
   const now = new Date();

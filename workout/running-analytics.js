@@ -1,3 +1,4 @@
+import { toFiniteNumber as _num } from '../utils/number.js';
 import { getWorkoutSessions } from './sessions.js';
 import { hasRunningSessionRecord } from './running-model.js';
 import {
@@ -7,11 +8,6 @@ import {
 } from './running-route-policy.js';
 
 const KM_IN_METERS = 1000;
-
-function _num(value, fallback = 0) {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : fallback;
-}
 
 function _round(value, digits = 2) {
   const power = 10 ** digits;

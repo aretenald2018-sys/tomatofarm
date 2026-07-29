@@ -125,7 +125,6 @@ export function trackEvent() {}
 export function getExList() { return []; }
 export function getDay() { return globalThis.__routeExistingDay; }
 `);
-    const utilsStub = await writeModule(tempDir, 'utils.js', 'export function showCenterToast() {}\n');
     const crossDomainStub = await writeModule(tempDir, 'cross-domain.js', `
 export function deriveActivityFlagsFromDetails(workout) {
   return { cf: !!workout.cf, running: !!workout.running, swimming: !!workout.swimming, stretching: !!workout.stretching };
@@ -145,12 +144,12 @@ export function normalizeSetCompletedAt(value) { return value ?? null; }
 `);
     const toastStub = await writeModule(tempDir, 'toast.js', `
 export function showToast(...args) { return globalThis.window?.showToast?.(...args); }
+export function showCenterToast() {}
 `);
 
     let saveSource = readFileSync(path.join(repoRoot, 'workout/save.js'), 'utf8');
     const replacements = [
       ['./state.js', stateStub],
-      ['../home/utils.js', utilsStub],
       ['../data.js', dataStub],
       ['./save-schema.js', repoUrl('workout/save-schema.js')],
       ['./cross-domain.js', crossDomainStub],

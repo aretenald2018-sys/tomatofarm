@@ -13,16 +13,20 @@ async function read(path) {
 
 async function writeWearBridgeModule(tmp) {
   const modulePath = join(tmp, 'wear-bridge-under-test.mjs');
-  const source = (await read('workout/wear-bridge.js')).replace("'../ui/toast.js'", "'./toast.js'");
+  const rewriteImports = source => source.replaceAll("'../utils/number.js'", "'./number.js'");
+  const source = rewriteImports(
+    (await read('workout/wear-bridge.js')).replace("'../ui/toast.js'", "'./toast.js'"),
+  );
   await Promise.all([
     writeFile(modulePath, source, 'utf8'),
     writeFile(join(tmp, 'toast.js'), 'export function showToast(...args) { return globalThis.window?.showToast?.(...args); }\n', 'utf8'),
+    writeFile(join(tmp, 'number.js'), await read('utils/number.js'), 'utf8'),
     writeFile(join(tmp, 'running-route-store.js'), await read('workout/running-route-store.js'), 'utf8'),
     writeFile(join(tmp, 'running-route-policy.js'), await read('workout/running-route-policy.js'), 'utf8'),
-    writeFile(join(tmp, 'running-analytics.js'), await read('workout/running-analytics.js'), 'utf8'),
-    writeFile(join(tmp, 'sessions.js'), await read('workout/sessions.js'), 'utf8'),
+    writeFile(join(tmp, 'running-analytics.js'), rewriteImports(await read('workout/running-analytics.js')), 'utf8'),
+    writeFile(join(tmp, 'sessions.js'), rewriteImports(await read('workout/sessions.js')), 'utf8'),
     writeFile(join(tmp, 'session-policy.js'), await read('workout/session-policy.js'), 'utf8'),
-    writeFile(join(tmp, 'running-model.js'), await read('workout/running-model.js'), 'utf8'),
+    writeFile(join(tmp, 'running-model.js'), rewriteImports(await read('workout/running-model.js')), 'utf8'),
     writeFile(join(tmp, 'running-input.js'), await read('workout/running-input.js'), 'utf8'),
     writeFile(join(tmp, 'wear-payload-contract.js'), await read('workout/wear-payload-contract.js'), 'utf8'),
     writeFile(join(tmp, 'package.json'), '{"type":"module"}\n', 'utf8'),

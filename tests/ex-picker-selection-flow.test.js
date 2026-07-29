@@ -86,16 +86,18 @@ test('exercise editor can close without reopening the picker for calendar goal i
   assert.match(exercisesJs, /let _exerciseEditorReturnToPicker = true/);
   assert.match(exercisesJs, /function _setExerciseEditorReturnMode\(options = \{\}\)/);
   assert.match(exercisesJs, /_exerciseEditorReturnToPicker = options\?\.returnToPicker !== false/);
-  assert.match(exercisesJs, /function _finishExerciseEditorReturn\(\)/);
+  assert.match(exercisesJs, /function _finishExerciseEditorReturn\(options = \{\}\)/);
   assert.match(exercisesJs, /export function wtOpenExerciseEditor\(exId, defaultMuscleId, options = \{\}\)/);
 
-  const returnStart = exercisesJs.indexOf('function _finishExerciseEditorReturn()');
+  const returnStart = exercisesJs.indexOf('function _finishExerciseEditorReturn(options = {})');
   const returnEnd = exercisesJs.indexOf('export function wtOpenExerciseEditor', returnStart);
   assert.ok(returnStart >= 0 && returnEnd > returnStart, 'editor return helper should exist before editor open');
   const returnHelper = exercisesJs.slice(returnStart, returnEnd);
   assert.match(returnHelper, /const returnToPicker = _exerciseEditorReturnToPicker !== false/);
   assert.match(returnHelper, /_exerciseEditorReturnToPicker = true/);
   assert.match(returnHelper, /if \(returnToPicker\) wtOpenExercisePicker\(\)/);
+  // 새 종목을 그날 기록에 바로 담는 경로만 피커 재오픈을 건너뛴다.
+  assert.match(returnHelper, /if \(options\?\.reopenPicker === false\) return;/);
 
   const closeStart = exercisesJs.indexOf('export function wtCloseExerciseEditor');
   const closeEnd = exercisesJs.indexOf('export async function wtSaveExerciseFromEditor', closeStart);
@@ -107,7 +109,8 @@ test('exercise editor can close without reopening the picker for calendar goal i
   const saveEnd = exercisesJs.indexOf('export async function wtDeleteExerciseFromEditor', saveStart);
   assert.ok(saveStart >= 0 && saveEnd > saveStart, 'editor save function should exist');
   const saveFn = exercisesJs.slice(saveStart, saveEnd);
-  assert.match(saveFn, /_finishExerciseEditorReturn\(\)/);
+  assert.match(saveFn, /_finishExerciseEditorReturn\(\);/);
+  assert.match(saveFn, /_finishExerciseEditorReturn\(\{ reopenPicker: false \}\)/);
 
   const deleteStart = exercisesJs.indexOf('export async function wtDeleteExerciseFromEditor');
   assert.ok(deleteStart >= 0, 'editor delete function should exist');

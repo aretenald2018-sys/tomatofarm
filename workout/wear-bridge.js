@@ -1,3 +1,4 @@
+import { toFiniteNumber as _num } from '../utils/number.js';
 import { showToast } from '../ui/toast.js';
 import {
   MAX_RUNNING_ROUTE_POINTS,
@@ -27,11 +28,6 @@ let deps = {
   getRunningWeightKg: null,
 };
 let _volatileWearQueue = [];
-
-function _num(value, fallback = 0) {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : fallback;
-}
 
 function _round(value, digits = 2) {
   const n = _num(value, 0);

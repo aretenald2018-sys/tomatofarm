@@ -1,3 +1,4 @@
+import { escapeHtml as _esc } from '../../utils/escape-html.js';
 import { showToast } from '../../ui/toast.js';
 import { confirmAction } from '../../utils/confirm-modal.js';
 // ================================================================
@@ -45,7 +46,6 @@ const OB = {
   scopedGroupId: null,
 };
 
-const _esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const _toast = (msg, type = 'info') => { if (typeof showToast === 'function') showToast(msg, 2200, type); };
 const _todayKey = () => toKey(new Date());
 const _wndKey = (c) => candKey(c);

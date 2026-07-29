@@ -1,3 +1,5 @@
+import { toFiniteNumber as _num } from '../utils/number.js';
+import { escapeHtml as _escapeHtml } from '../utils/escape-html.js';
 // ================================================================
 // workout/running-session.js — inline running session card flow
 // ================================================================
@@ -23,6 +25,8 @@ import {
   WORKOUT_RUNNING_SESSION_INDEX,
 } from './session-policy.js';
 import { applyRunningDataToWorkout } from './running-model.js';
+import { formatRunningDuration, formatRunningPace } from './running-presentation.js';
+import { parseDateKey } from '../utils/date-key.js';
 import { runningInputFromPhoneSummary } from './running-input.js';
 import { RunningLiveAccumulator } from './running-live-accumulator.js';
 import { buildRunningActivityAnalytics, isValidRunningWeightKg } from './running-analytics.js';
@@ -42,6 +46,7 @@ export {
   runningDistanceMeters,
   runningRouteDistanceMeters,
 } from './running-route-policy.js';
+export { formatRunningDuration, formatRunningPace } from './running-presentation.js';
 
 const RUNNING_ROUTE_PREVIEW_POINTS = 240;
 const RUNNING_DRAFT_ROUTE_WRITE_INTERVAL_MS = 30_000;
@@ -107,31 +112,17 @@ function _now() {
   return Date.now();
 }
 
-function _showToast(message, duration = 1800, type = 'info') {
-  void import('../home/utils.js')
-    .then(mod => mod.showToast?.(message, duration, type))
-    .catch(() => {});
-}
-
-function _num(value, fallback = 0) {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : fallback;
+async function _showToast(message, duration = 1800, type = 'info') {
+  try {
+    const mod = await import('../ui/toast.js');
+    mod.showToast?.(message, duration, type);
+  } catch {}
 }
 
 function _round(value, digits = 2) {
   const n = _num(value, 0);
   const p = 10 ** digits;
   return Math.round(n * p) / p;
-}
-
-function _escapeHtml(value) {
-  return String(value ?? '').replace(/[&<>"']/g, ch => ({
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#39;',
-  })[ch]);
 }
 
 function _cloneRunningGoal(goal = DEFAULT_RUNNING_GOAL) {
@@ -451,23 +442,6 @@ export function summarizeRunningRoute(points = [], options = {}) {
   return buildRunningActivityAnalytics(points, { source: 'gps', ...options });
 }
 
-export function formatRunningDuration(sec) {
-  const total = Math.max(0, Math.floor(_num(sec, 0)));
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const s = total % 60;
-  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-}
-
-export function formatRunningPace(secPerKm) {
-  const sec = Math.round(_num(secPerKm, 0));
-  if (sec <= 0) return "--'--''";
-  const m = Math.floor(sec / 60);
-  const s = sec % 60;
-  return `${m}'${String(s).padStart(2, '0')}''`;
-}
-
 function _elapsedSec() {
   if (!_session.startedAt) return 0;
   const end = _session.phase === 'paused' && _session.pausedAt ? _session.pausedAt : (_session.endedAt || _now());
@@ -511,16 +485,8 @@ function _workoutDateKeyFromState() {
 }
 
 function _datePartsFromKey(key) {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(key || ''));
-  if (!match) return null;
-  const y = Number(match[1]);
-  const month = Number(match[2]);
-  const d = Number(match[3]);
-  if (!Number.isInteger(y) || !Number.isInteger(month) || !Number.isInteger(d)) return null;
-  if (month < 1 || month > 12 || d < 1 || d > 31) return null;
-  const parsed = new Date(y, month - 1, d);
-  if (parsed.getFullYear() !== y || parsed.getMonth() !== month - 1 || parsed.getDate() !== d) return null;
-  return { y, m: month - 1, d };
+  const parsed = parseDateKey(key);
+  return parsed ? { y: parsed.y, m: parsed.m, d: parsed.d } : null;
 }
 
 function _applyRunningDraftDate(dateKey) {

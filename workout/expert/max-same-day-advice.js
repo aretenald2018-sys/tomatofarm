@@ -1,3 +1,4 @@
+import { escapeHtml as _esc } from '../../utils/escape-html.js';
 // ================================================================
 // workout/expert/max-same-day-advice.js
 // 동일 대근육 다음 Day 코칭 문구/세부 보완 분석
@@ -12,8 +13,6 @@ import {
   WEAK_LABEL,
 } from './max-config.js';
 import { renderMaxBenchmarkPlanPreview } from './max-cycle-render.js';
-
-function _esc(s) { return String(s || '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c])); }
 
 function _normalizeMaxMajor(id) {
   if (!id) return null;

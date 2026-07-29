@@ -1,3 +1,4 @@
+import { toFiniteNumber as _num } from '../utils/number.js';
 import {
   RUNNING_ROUTE_POLICY,
   isConfidentRunningMovement,
@@ -11,10 +12,6 @@ import {
   RUNNING_CALORIE_METHOD,
 } from './running-analytics.js';
 
-function _num(value, fallback = 0) {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : fallback;
-}
 function _round(value, digits = 2) {
   const power = 10 ** digits;
   return Math.round(_num(value) * power) / power;

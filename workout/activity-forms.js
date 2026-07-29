@@ -5,7 +5,7 @@
 import { S }              from './state.js';
 import { saveWorkoutDay } from './save.js';
 import { dateKey, getLastActivitySession } from '../data.js';
-import { showToast }      from '../home/utils.js';
+import { showToast }      from '../ui/toast.js';
 
 // 복사 후 저장 + Undo 토스트 공통 처리 (C-1 — 헬스 종목 세트 복사와 일관성 확보).
 // stateKey: 'runData'|'cfData'|'stretchData'|'swimData'

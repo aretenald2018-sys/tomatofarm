@@ -1,3 +1,4 @@
+import { toFiniteNumber as _num } from '../utils/number.js';
 // ================================================================
 // workout/timeline.js — set-completion workout duration timeline
 // ================================================================
@@ -5,11 +6,6 @@
 export const WORKOUT_TIMELINE_MODE = 'set-completion';
 export const MAX_WORKOUT_TIMELINE_SPAN_SEC = 8 * 60 * 60;
 export const MAX_WORKOUT_REST_GAP_SEC = 15 * 60;
-
-function _num(value) {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : 0;
-}
 
 export function normalizeSetCompletedAt(value) {
   const n = _num(value);

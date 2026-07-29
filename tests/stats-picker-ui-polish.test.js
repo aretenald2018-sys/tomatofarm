@@ -44,7 +44,8 @@ test('exercise picker exposes visible create actions for CRUD', () => {
   assert.match(toolbar, /\+ 종목 추가/);
   assert.match(toolbar, /addEventListener\('click', _openPickerEditorFromHeader\)/);
   assert.match(exercisesJs, /data-picker-empty-create/);
-  assert.match(exercisesJs, /wtOpenExerciseEditor\(null, _pickerMuscleFilter \|\| null\)/);
+  // 편집기 템플릿을 먼저 확보한 뒤 연다.
+  assert.match(exercisesJs, /_openExerciseEditorEnsured\(null, _pickerMuscleFilter \|\| null\)/);
   assert.match(exercisesJs, /export async function wtSaveExerciseFromEditor/);
   assert.match(exercisesJs, /export async function wtDeleteExerciseFromEditor/);
   assert.match(styleCss, /\.ex-picker-toolbar-row\s*\{[\s\S]*justify-content:\s*space-between/);
