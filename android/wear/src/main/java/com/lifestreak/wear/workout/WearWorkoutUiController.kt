@@ -252,7 +252,11 @@ class WearWorkoutUiController(
 
     private fun render(v: View) {
         val snapshot = runState.snapshot()
-        v.keepScreenOn = false
+        // Keep the display awake only while an active run is visible. The
+        // foreground exercise service keeps tracking alive when the watch
+        // enters ambient/background, while this gate avoids draining the
+        // battery during setup, pause, or the summary screen.
+        v.keepScreenOn = hostInteractive && snapshot.screen == WearRunUiScreen.ACTIVE
         v.findViewById<View>(R.id.runReadyScreen)?.visibility =
             if (snapshot.screen == WearRunUiScreen.READY) View.VISIBLE else View.GONE
         v.findViewById<View>(R.id.runActiveScreen)?.visibility =
