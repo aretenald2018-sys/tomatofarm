@@ -6,4 +6,8 @@
     <string name="custom_url_scheme">com.lifestreak.app</string>
     <string name="widget_description">시즌 운동 대시보드</string>
     <string name="season_dashboard_widget_desc">시즌 스트릭과 러닝·헬스 주간 목표 대시보드</string>
+    <string name="food_intake_widget_desc">일일 음식 섭취 위젯</string>
+    <string name="health_goal_widget_desc">주간 헬스 목표 위젯</string>
+    <string name="running_trend_widget_desc">러닝 추이 위젯</string>
+    <string name="status_dashboard_widget_desc">오늘 상태 통합 대시보드</string>
 </resources>

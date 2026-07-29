@@ -90,6 +90,54 @@
                 android:resource="@xml/season_dashboard_widget_info" />
         </receiver>
 
+        <receiver
+            android:name=".widget.FoodIntakeWidget"
+            android:exported="true"
+            android:label="@string/food_intake_widget_desc">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/food_intake_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.HealthGoalWidget"
+            android:exported="true"
+            android:label="@string/health_goal_widget_desc">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/health_goal_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.RunningTrendWidget"
+            android:exported="true"
+            android:label="@string/running_trend_widget_desc">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/running_trend_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.TomatoStatusDashboardWidget"
+            android:exported="true"
+            android:label="@string/status_dashboard_widget_desc">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/tomato_status_dashboard_widget_info" />
+        </receiver>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

@@ -17,6 +17,7 @@ object SeasonWidgetStore {
             .putString(SNAPSHOT, snapshot.toString())
             .apply()
         updateAll(context)
+        TomatoMetricWidgetStore.updateAll(context)
     }
 
     fun read(context: Context): String? =

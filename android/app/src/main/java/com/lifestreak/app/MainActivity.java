@@ -95,7 +95,10 @@ public class MainActivity extends BridgeActivity {
 
     private boolean isAllowedWidgetAction(String action) {
         return "diet".equals(action)
+            || "diet-input".equals(action)
+            || "workout-goal".equals(action)
             || "season".equals(action)
+            || "season-overview".equals(action)
             || "running".equals(action)
             || "workout".equals(action)
             || "refresh".equals(action);

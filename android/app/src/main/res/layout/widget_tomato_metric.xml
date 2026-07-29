@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/tomato_metric_widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_bg"
+    android:orientation="vertical"
+    android:padding="16dp">
+    <TextView
+        android:id="@+id/tomato_metric_widget_kicker"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="운동 시즌"
+        android:textColor="@color/widget_accent"
+        android:textSize="11sp"
+        android:textStyle="bold" />
+    <TextView
+        android:id="@+id/tomato_metric_widget_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="3dp"
+        android:text="일일 음식 섭취"
+        android:textColor="@color/widget_text"
+        android:textSize="17sp"
+        android:textStyle="bold" />
+    <TextView
+        android:id="@+id/tomato_metric_widget_meta"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:text="오늘"
+        android:textColor="@color/widget_secondary"
+        android:textSize="12sp" />
+    <TextView
+        android:id="@+id/tomato_metric_widget_value"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="0 kcal"
+        android:textColor="@color/widget_text"
+        android:textSize="25sp"
+        android:textStyle="bold" />
+    <ProgressBar
+        android:id="@+id/tomato_metric_widget_progress"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="6dp"
+        android:layout_marginTop="9dp"
+        android:max="100"
+        android:progress="0"
+        android:progressBackgroundTint="@color/widget_track"
+        android:progressTint="@color/widget_accent" />
+    <TextView
+        android:id="@+id/tomato_metric_widget_detail"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="9dp"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:text="앱 기록을 기다리는 중"
+        android:textColor="@color/widget_secondary"
+        android:textSize="11sp" />
+    <TextView
+        android:id="@+id/tomato_metric_widget_secondary"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:text=""
+        android:textColor="@color/widget_muted"
+        android:textSize="12sp" />
+    <TextView
+        android:id="@+id/tomato_metric_widget_sync"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:gravity="end"
+        android:text="동기화 대기"
+        android:textColor="@color/widget_muted"
+        android:textSize="10sp" />
+</LinearLayout>
