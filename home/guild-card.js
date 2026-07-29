@@ -1,16 +1,8 @@
+import { escapeHtml as _escapeHtml } from '../utils/escape-html.js';
 import { getCurrentUser, countLocalWeeklyActiveDays, computeGuildStats } from '../data.js';
 
 const PAGE_SIZE = 7;
 let _guildCardPage = 0;
-
-function _escapeHtml(value) {
-  return String(value || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
 
 function _renderPager(total) {
   if (total <= PAGE_SIZE) return '';

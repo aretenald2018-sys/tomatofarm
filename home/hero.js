@@ -9,6 +9,7 @@ import { TODAY, calcStreaks, countLocalWeeklyActiveDays,
          getFriendWorkout, getFriendData, dateKey, isAdmin, _isMySocialId, isActiveWorkoutDayData,
          getAllDateKeys, getDay, getHeroMessage, markHeroMessageRead }  from '../data.js';
 import { setText, showToast, haptic, resolveNickname } from './utils.js';
+import { escapeHtml as _escapeHtml } from '../utils/escape-html.js';
 import { confirmSimple } from '../utils/confirm-modal.js';
 import { openFriendProfile } from './friend-profile.js';
 import { openStreakMilestone } from '../modals/streak-milestone-modal.js';
@@ -300,15 +301,6 @@ async function _buildWeeklyBoard(user) {
       .sort((a, b) => b.days - a.days),
     updatedAt: null,
   };
-}
-
-function _escapeHtml(value) {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
 }
 
 function _escapeJsSingle(value) {

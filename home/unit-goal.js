@@ -2,6 +2,8 @@
 // home/unit-goal.js — 단위 목표달성 (3일 사이클)
 // ================================================================
 
+import { sumDayNutrient } from '../diet/day-nutrition.js';
+import { KOREAN_WEEKDAYS } from '../utils/weekdays.js';
 import { TODAY, getDiet, getDietPlan, calcDietMetrics, getBodyCheckins,
          getUnitGoalStart, saveUnitGoalStart, getDayTargetKcal,
          dateKey, isFuture, isToday }  from '../data.js';
@@ -50,7 +52,7 @@ export function renderUnitGoal() {
     const y = d.getFullYear(), m = d.getMonth(), dd = d.getDate();
     const future = isFuture(y, m, dd);
     const diet = getDiet(y, m, dd);
-    const intake = (diet.bKcal || 0) + (diet.lKcal || 0) + (diet.dKcal || 0) + (diet.sKcal || 0);
+    const intake = sumDayNutrient(diet, 'kcal');
     const target = getDayTargetKcal(plan, y, m, dd);
 
     const mealMacro = (prefix, prop) => {
@@ -86,7 +88,7 @@ export function renderUnitGoal() {
   };
 
   const fmt = d => `${d.getMonth()+1}/${d.getDate()}`;
-  const DOW = ['일','월','화','수','목','금','토'];
+  const DOW = KOREAN_WEEKDAYS;
   const rangeStr = `${fmt(days[0])}(${DOW[days[0].getDay()]}) ~ ${fmt(days[2])}(${DOW[days[2].getDay()]})`;
 
   const totalSuccess = recordedDays.length > 0 ? calcSuccess(totalIntake, totalTarget) : null;

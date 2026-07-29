@@ -5,6 +5,7 @@
 //   - ack: _settings.streak_warning_ack_date (Firebase, CLAUDE.md 규칙)
 // ================================================================
 
+import { hasPositiveDayNutrient } from '../diet/day-nutrition.js';
 import {
   TODAY, dateKey, getMuscles, getCF, getDay,
   getStreakWarningAck, saveStreakWarningAck,
@@ -66,8 +67,7 @@ function _shouldShow() {
   const hasWorkout = muscles.length > 0 || getCF(y, m, d)
     || !!day.stretching || !!day.swimming || !!day.running;
   const hasMeal = !!(day.breakfast || day.lunch || day.dinner || day.snack)
-    || (day.bKcal || 0) > 0 || (day.lKcal || 0) > 0
-    || (day.dKcal || 0) > 0 || (day.sKcal || 0) > 0
+    || hasPositiveDayNutrient(day, 'kcal')
     || !!day.breakfast_skipped || !!day.lunch_skipped || !!day.dinner_skipped;
   return !hasWorkout && !hasMeal;
 }

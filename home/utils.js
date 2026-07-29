@@ -5,6 +5,7 @@
 import { dateKey } from '../data.js';
 import { getPersonalAccountId, getPersonalLegacyAliasId } from '../data.js';
 export { showToast, showCenterToast } from '../ui/toast.js';
+export { escapeHtml } from '../utils/escape-html.js';
 
 // ── 날짜 유틸 ────────────────────────────────────────────────────
 export function getMonday(date) {
@@ -27,15 +28,7 @@ export function quarterEnd(date) {
   return dateKey(date.getFullYear(), endMonth, endDay);
 }
 
-// ── HTML 이스케이프 ───────────────────────────────────────────────
-export function escapeHtml(value) {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
+// ── HTML 이스케이프는 ../utils/escape-html.js 의 정본을 그대로 재수출한다 ──
 
 // ── 시간 포맷 ────────────────────────────────────────────────────
 export function formatTimeAgo(ts) {

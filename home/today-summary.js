@@ -2,6 +2,7 @@
 // home/today-summary.js — 다이어트 목표, 오늘 식단/운동 요약
 // ================================================================
 
+import { sumDayNutrient } from '../diet/day-nutrition.js';
 import { TODAY, getMuscles, getCF, getDiet, dietDayOk,
          getExercises, getExList, getDay,
          getDietPlan, calcDietMetrics, getBodyCheckins,
@@ -106,7 +107,7 @@ export function renderTodayDiet() {
     return;
   }
 
-  const totalKcal = (diet.bKcal || 0) + (diet.lKcal || 0) + (diet.dKcal || 0) + (diet.sKcal || 0);
+  const totalKcal = sumDayNutrient(diet, 'kcal');
   const badge = ok === true
     ? '<span class="diet-badge ok" style="font-size:11px">✓ OK</span>'
     : ok === false
