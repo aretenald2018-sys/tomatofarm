@@ -16,6 +16,34 @@ function _formatDurationShort(seconds) {
   return `${Math.round(secondsRounded / 60)}분`;
 }
 
+export function formatRunningDuration(seconds, {
+  padMinutes = true,
+  rounding = 'floor',
+} = {}) {
+  const numeric = _number(seconds);
+  const total = Math.max(0, rounding === 'round' ? Math.round(numeric) : Math.floor(numeric));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const remainder = total % 60;
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`;
+  }
+  const minuteText = padMinutes ? String(minutes).padStart(2, '0') : String(minutes);
+  return `${minuteText}:${String(remainder).padStart(2, '0')}`;
+}
+
+export function formatRunningPace(secondsPerKilometer, {
+  empty = "--'--''",
+  secondsMark = "''",
+  suffix = '',
+} = {}) {
+  const seconds = Math.round(_number(secondsPerKilometer));
+  if (seconds <= 0) return empty;
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  return `${minutes}'${String(remainder).padStart(2, '0')}${secondsMark}${suffix}`;
+}
+
 export function formatRunningDistance(value) {
   const kilometers = _number(value);
   if (kilometers <= 0) return '';
@@ -23,11 +51,7 @@ export function formatRunningDistance(value) {
 }
 
 export function formatRunningPaceCard(secondsPerKilometer) {
-  const seconds = Math.round(_number(secondsPerKilometer));
-  if (seconds <= 0) return '';
-  const minutes = Math.floor(seconds / 60);
-  const remainder = seconds % 60;
-  return `${minutes}'${String(remainder).padStart(2, '0')}''/km`;
+  return formatRunningPace(secondsPerKilometer, { empty: '', suffix: '/km' });
 }
 
 export function formatRunningClock(timestamp) {

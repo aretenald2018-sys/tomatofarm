@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 
 const indexHtml = readFileSync('index.html', 'utf8');
 const statsJs = readFileSync('render-stats.js', 'utf8');
+const statsWeeklySeriesJs = readFileSync('stats/weekly-series.js', 'utf8');
 const styleCss = readAppCssSync();
 const swJs = readFileSync('sw.js', 'utf8') + readFileSync('runtime-assets.js', 'utf8');
 
@@ -33,12 +34,12 @@ test('stats health report uses one chart and compact monthly calorie summary', (
   assert.match(statsJs, /const _kcalWeightCharts = new WeakMap\(\)/);
   assert.match(statsJs, /_renderKcalWeightChart\(scope\);[\s\S]*_renderCalorieReport\(scope\);/);
   assert.match(statsJs, /getDayTargetKcal/);
-  assert.match(statsJs, /function _buildWeeklyKcalWeightSeries/);
-  assert.match(statsJs, /_weeklyDateBuckets\(_dateRange\(range\.fromKey, range\.toKey\)\)/);
+  assert.match(statsWeeklySeriesJs, /export function _buildWeeklyKcalWeightSeries/);
+  assert.match(statsWeeklySeriesJs, /_weeklyDateBuckets\(_dateRange\(range\.fromKey, range\.toKey\)\)/);
   assert.match(statsJs, /label:\s*'체중'/);
   assert.match(statsJs, /label:\s*'주간 누적 섭취칼로리'/);
   assert.match(statsJs, /label:\s*'주간 누적 운동칼로리'/);
-  assert.match(statsJs, /const dietDay = _statsDietDayFromKey\(cache, key\);[\s\S]*const workoutDay = _statsWorkoutDayFromKey\(cache, key\);[\s\S]*const intake = _dayKcal\(dietDay\);[\s\S]*calcBurnedKcal\(workoutDay, weightForBurn\)\.total/);
+  assert.match(statsWeeklySeriesJs, /const dietDay = _statsDietDayFromKey\(cache, key\);[\s\S]*const workoutDay = _statsWorkoutDayFromKey\(cache, key\);[\s\S]*const intake = _dayKcal\(dietDay\);[\s\S]*calcBurnedKcal\(workoutDay, weightForBurn\)\.total/);
   assert.match(statsJs, /const workoutDay = cache\[key\] \|\| \{\};[\s\S]*const exerciseKcal = calcBurnedKcal\(workoutDay, weight\)\.total/);
   assert.doesNotMatch(statsJs, /data-stats-id="calorie-month-chart"/);
   assert.doesNotMatch(statsJs, /_calorieMonthCharts/);

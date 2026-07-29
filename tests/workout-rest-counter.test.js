@@ -96,7 +96,7 @@ test('idle-limit recovery runs after workout hydration, same-day reopen, and nat
 test('raw statistics export can include set rest intervals', () => {
   const save = read('workout/save.js');
   const schema = read('workout/save-schema.js');
-  const stats = read('render-stats.js');
+  const stats = read('stats/raw-export.js');
 
   assert.match(save, /function _buildRestBetweenSets/);
   assert.match(save, /restBetweenSets:\s*_buildRestBetweenSets\(cleanEx\)/);
@@ -401,6 +401,7 @@ export function normalizeSetCompletedAt(value) { return value ?? null; }
     const stubCalcUrl = await writeStub(tempDir, 'stub-calc.js', `
 export const SUBPATTERN_TO_MAJOR = {};
 export function calcBurnedKcal() { return { total: 0 }; }
+export function calcVolume() { return 0; }
 `);
     const importMap = {
       imports: {

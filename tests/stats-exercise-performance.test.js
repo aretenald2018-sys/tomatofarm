@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 
 const indexHtml = readFileSync('index.html', 'utf8');
 const statsJs = readFileSync('render-stats.js', 'utf8');
+const statsFormatJs = readFileSync('stats/format.js', 'utf8');
 const statsSelectorsJs = readFileSync('stats/selectors.js', 'utf8');
 const styleCss = readAppCssSync();
 const swJs = readFileSync('sw.js', 'utf8') + readFileSync('runtime-assets.js', 'utf8');
@@ -29,9 +30,9 @@ test('exercise performance trend uses period-scoped volume and estimated 1rm sig
 });
 
 test('stats renders workout volume as kg or t rather than an opaque vol unit', () => {
-  assert.match(statsJs, /function _formatVolumeMass\(value\)/);
-  assert.match(statsJs, /return `\$\{_fmt\(Math\.round\(volume\)\)\}kg`/);
-  assert.match(statsJs, /return `\$\{_fmt\(tons, Number\.isInteger\(tons\) \? 0 : 1\)\}t`/);
+  assert.match(statsFormatJs, /export function formatVolumeMass\(value\)/);
+  assert.match(statsFormatJs, /return `\$\{formatNumber\(Math\.round\(volume\)\)\}kg`/);
+  assert.match(statsFormatJs, /return `\$\{formatNumber\(tons, Number\.isInteger\(tons\) \? 0 : 1\)\}t`/);
   assert.match(statsJs, /총 볼륨<\/span><b>\$\{_formatVolumeMass\(state\.totalVolume\)\}/);
   assert.match(statsJs, /_formatVolumeMass\(row\.totalVolume\)/);
   assert.match(statsJs, /_formatVolumeMass\(h\.volume\)/);

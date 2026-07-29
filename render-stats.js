@@ -1,8 +1,11 @@
+import { toFiniteNumber as _num } from './utils/number.js';
+import { escapeHtml as _esc } from './utils/escape-html.js';
+import { sumDayNutrient } from './diet/day-nutrition.js';
 import { showToast } from './ui/toast.js';
 // ================================================================
 // render-stats.js
 // 의존성: config.js, data.js
-// 변경: 13번 CSV 내보내기 추가
+// 통계 화면 및 raw JSON 내보내기
 // ================================================================
 
 import { MOVEMENTS }                                 from './config.js';
@@ -10,23 +13,70 @@ import { TODAY, getMuscles, getCF, getDiet, dietDayOk,
          daysInMonth, isFuture, getExList, getAllMuscles,
          getVolumeHistory, getCache, calcVolume,
          getExercises, dateKey, getBodyCheckins, getDietPlan, getDayTargetKcal,
-         hasExerciseRecord, hasDietRecord, getRawBodyCheckins }    from './data.js';
+         hasExerciseRecord, getRawBodyCheckins }                  from './data.js';
 import { SUBPATTERN_TO_MAJOR, calcBurnedKcal }       from './calc.js';
 import { getWorkoutSessions }                        from './workout/sessions.js';
 import { WORKOUT_PAYLOAD_KEYS, DIET_PAYLOAD_KEYS, SHARED_PAYLOAD_KEYS } from './workout/save-schema.js';
 import { listRunningActivities, summarizeRunningActivities } from './workout/running-analytics.js';
+import {
+  formatRunningDuration,
+  formatRunningPace,
+} from './workout/running-presentation.js';
 import { exercisePerformanceStatus, lastRecordedValue, normalizeHealthValues, seriesDelta as selectSeriesDelta } from './stats/selectors.js';
+import {
+  STATS_ANALYSIS_PERIODS,
+  analysisPeriodConfig as _analysisPeriodConfig,
+  dateRange as _dateRange,
+  daysBetween as _daysBetween,
+  keyFromDate as _keyFromDate,
+  keyOffset as _keyOffset,
+  linearSlope as _linearSlope,
+  statsAnalysisRange as _buildStatsAnalysisRange,
+  weekStartKey as _weekStartKey,
+} from './stats/analysis-range.js';
+import {
+  dayKcal as _dayKcal,
+  dayProtein as _dayProtein,
+  joinedMetrics as _joinedMetrics,
+  weightOnOrBefore as _weightOnOrBefore,
+} from './stats/day-aggregates.js';
+import {
+  clamp as _clamp,
+  formatDateShort as _fmtDateShort,
+  formatNumber as _fmt,
+  formatSigned as _fmtSigned,
+  formatVolumeDelta as _formatVolumeDelta,
+  formatVolumeMass as _formatVolumeMass,
+  maybeNumber as _maybeNum,
+} from './stats/format.js';
+import { buildStatsRawExport } from './stats/raw-export.js';
+import {
+  LANDMARKS,
+  MAJOR_LABELS,
+  _buildMuscleFatigue,
+  _entryMajor,
+  _isHardSet,
+  _progressView,
+  _topSetE1rm,
+} from './stats/fatigue-model.js';
+import { _buildWeeklyKcalWeightSeries } from './stats/weekly-series.js';
+import {
+  HEALTH_CHART_SERIES,
+  _buildHealthChartData,
+  _formatHealthTooltip,
+  _healthChartKeys,
+  _healthChartSeriesWithData,
+  _healthDataset,
+  _healthLegendHtml,
+  _lastHealthValue,
+} from './stats/health-series.js';
+import { buildStatsPeriodSummary } from './stats/summary-model.js';
+
+export { buildStatsRawExport } from './stats/raw-export.js';
 
 let _selectedExerciseId = null;
 let _selectedVolumeDate = null;
 let _statsAnalysisPeriod = '90';
-const STATS_ANALYSIS_PERIODS = {
-  week: { label: '이번주', days: 0, kind: 'week' },
-  '30': { label: '30일', days: 30 },
-  '90': { label: '90일', days: 90 },
-  '180': { label: '180일', days: 180 },
-  all: { label: '전체', days: 0 },
-};
 
 const _healthMetricsCharts = new WeakMap();
 const _kcalWeightCharts = new WeakMap();
@@ -112,91 +162,16 @@ export function renderTrainerQuestStats(root) {
 }
 
 export function buildTrainerQuestStatsExport() {
-  const cache = getCache();
   const analysisRange = _statsAnalysisRange();
-  const entries = _dateEntries().filter(([key]) => key >= analysisRange.fromKey && key <= analysisRange.toKey);
-  const checkins = getBodyCheckins()
-    .filter(c => (c?.date || '') <= analysisRange.toKey)
-    .sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
-  const periodCheckins = checkins.filter(c => (c?.date || '') >= analysisRange.fromKey && (c?.date || '') <= analysisRange.toKey);
-  const plan = getDietPlan();
+  const summary = buildStatsPeriodSummary(analysisRange);
+  const {
+    cache,
+    checkinsToDate: checkins,
+    periodCheckins,
+    recordedEntries: entries,
+  } = summary;
   const ny = TODAY.getFullYear();
   const todayKey = _keyOffset(0);
-  const foodsByName = new Map();
-  const macro = { carbs: 0, protein: 0, fat: 0, days: 0 };
-  const sugar = { total: 0, days: 0 };
-  const sodium = { total: 0, days: 0 };
-  let topFoodDay = null;
-  let topExerciseDay = null;
-  let recordDays = 0;
-  let exerciseDays = 0;
-  let okDays = 0;
-  let ngDays = 0;
-  let yearFoodKcalTotal = 0;
-  let yearFoodKcalDays = 0;
-  let yearExerciseKcalTotal = 0;
-  let yearExerciseKcalDays = 0;
-
-  entries.forEach(([key, day]) => {
-    const kcal = _dayKcal(day);
-    if (kcal > 0 && (!topFoodDay || kcal > topFoodDay.kcal)) topFoodDay = { date: key, kcal };
-    _foodItems(day).forEach(food => {
-      const name = _foodName(food);
-      if (!name) return;
-      const next = foodsByName.get(name) || { name, count: 0, kcalTotal: 0 };
-      next.count += 1;
-      next.kcalTotal += _foodKcal(food);
-      foodsByName.set(name, next);
-    });
-    const weight = _weightOnOrBefore(checkins, key) ?? _maybeNum(plan?.weight) ?? 70;
-    const burned = calcBurnedKcal(day, weight).total;
-    if (burned > 0 && (!topExerciseDay || burned > topExerciseDay.kcal)) topExerciseDay = { date: key, kcal: burned };
-    const carbs = _dayCarbs(day), protein = _dayProtein(day), fat = _dayFat(day);
-    if (carbs + protein + fat > 0) {
-      macro.carbs += carbs;
-      macro.protein += protein;
-      macro.fat += fat;
-      macro.days += 1;
-    }
-    const daySugar = _daySugar(day);
-    if (daySugar !== null) { sugar.total += daySugar; sugar.days += 1; }
-    const daySodium = _daySodium(day);
-    if (daySodium !== null) { sodium.total += daySodium; sodium.days += 1; }
-  });
-
-  _dateRange(analysisRange.fromKey, analysisRange.toKey).forEach(key => {
-    const date = _dateFromKey(key);
-    if (!date || date > TODAY) return;
-    const y = date.getFullYear();
-    const m = date.getMonth();
-    const d = date.getDate();
-    const day = cache[key] || {};
-    const diet = getDiet(y, m, d);
-    const hasDiet = hasDietRecord(y, m, d);
-    const hasEx = hasExerciseRecord(y, m, d);
-    const dok = dietDayOk(y, m, d);
-    if (hasDiet || hasEx) recordDays += 1;
-    if (hasEx) exerciseDays += 1;
-    if (dok === true) okDays += 1;
-    else if (dok === false) ngDays += 1;
-    const kcal = _dayKcal(diet);
-    if (kcal > 0) {
-      yearFoodKcalTotal += kcal;
-      yearFoodKcalDays += 1;
-    }
-    const weight = _weightOnOrBefore(checkins, key) ?? _maybeNum(plan?.weight) ?? 70;
-    const burned = calcBurnedKcal(day, weight).total;
-    if (burned > 0) {
-      yearExerciseKcalTotal += burned;
-      yearExerciseKcalDays += 1;
-    }
-  });
-
-  const monthCheckins = periodCheckins;
-  const monthFirst = monthCheckins.length >= 2 ? monthCheckins[0] : null;
-  const monthLast = monthCheckins.length >= 2 ? monthCheckins[monthCheckins.length - 1] : null;
-  const monthWeightFirst = monthFirst ? _maybeNum(monthFirst.weight) : null;
-  const monthWeightLast = monthLast ? _maybeNum(monthLast.weight) : null;
   const healthKeys = _healthChartKeys(analysisRange);
   const health = _buildHealthChartData(healthKeys, cache, checkins);
   const fatigue = _buildMuscleFatigue(analysisRange);
@@ -214,9 +189,6 @@ export function buildTrainerQuestStatsExport() {
       volume: Math.round(point.volume || 0),
     })),
   }));
-  const topFood = [...foodsByName.values()]
-    .sort((a, b) => (b.count - a.count) || (b.kcalTotal - a.kcalTotal) || a.name.localeCompare(b.name))[0] || null;
-  const dietTotal = okDays + ngDays;
   const workoutAnalysis = _analyzeTrainerWindow(analysisRange.fromKey, analysisRange.toKey);
   const analysisPlan = workoutAnalysis.planStats || {};
   const performanceRows = _buildExercisePerformanceRows(analysisRange);
@@ -234,39 +206,32 @@ export function buildTrainerQuestStatsExport() {
         toKey: analysisRange.toKey,
       },
       totalRecordEntries: entries.length,
-      recordDays,
-      exerciseDays,
+      recordDays: summary.recordDays,
+      exerciseDays: summary.exerciseDays,
       dietSuccess: {
-        okDays,
-        ngDays,
-        ratePct: dietTotal ? Math.round(okDays / dietTotal * 100) : null,
+        okDays: summary.okDays,
+        ngDays: summary.ngDays,
+        ratePct: summary.dietRate,
       },
-      averageIntakeKcal: yearFoodKcalDays ? Math.round(yearFoodKcalTotal / yearFoodKcalDays) : null,
-      averageExerciseKcal: yearExerciseKcalDays ? Math.round(yearExerciseKcalTotal / yearExerciseKcalDays) : null,
-      topFood: topFood ? {
-        name: topFood.name,
-        count: topFood.count,
-        avgKcal: Math.round(topFood.kcalTotal / Math.max(topFood.count, 1)),
+      averageIntakeKcal: summary.averageIntakeKcal,
+      averageExerciseKcal: summary.averageExerciseKcal,
+      topFood: summary.topFood ? {
+        name: summary.topFood.name,
+        count: summary.topFood.count,
+        avgKcal: Math.round(summary.topFood.kcalTotal / Math.max(summary.topFood.count, 1)),
       } : null,
-      topFoodDay,
-      topExerciseDay,
+      topFoodDay: summary.topFoodDay,
+      topExerciseDay: summary.topExerciseDay,
     },
     body: {
-      averageWeightKg: _avgFrom(periodCheckins, c => _maybeNum(c.weight)),
-      averageBodyFatPct: _avgFrom(periodCheckins, c => _maybeNum(c.bodyFatPct)),
-      averageSkeletalMuscleKg: _avgFrom(periodCheckins, c => _firstNumber(c, SKELETAL_KEYS)),
-      averageFatMassKg: _avgFrom(periodCheckins, _bodyFatMass),
-      monthlyWeightDeltaKg: monthWeightFirst !== null && monthWeightLast !== null ? monthWeightLast - monthWeightFirst : null,
+      averageWeightKg: summary.body.averageWeightKg,
+      averageBodyFatPct: summary.body.averageBodyFatPct,
+      averageSkeletalMuscleKg: summary.body.averageSkeletalMuscleKg,
+      averageFatMassKg: summary.body.averageFatMassKg,
+      monthlyWeightDeltaKg: summary.body.weightDeltaKg,
       monthCheckinCount: periodCheckins.length,
     },
-    nutrition: {
-      sampledDays: macro.days,
-      averageCarbsG: macro.days ? macro.carbs / macro.days : null,
-      averageProteinG: macro.days ? macro.protein / macro.days : null,
-      averageFatG: macro.days ? macro.fat / macro.days : null,
-      averageSugarG: sugar.days ? sugar.total / sugar.days : null,
-      averageSodiumMg: sodium.days ? sodium.total / sodium.days : null,
-    },
+    nutrition: summary.nutrition,
     running: {
       activityCount: runningSummary.activityCount,
       activeDays: runningSummary.activeDays,
@@ -341,6 +306,10 @@ export function buildTrainerQuestStatsExportText() {
   return JSON.stringify(buildTrainerQuestStatsExport(), null, 2);
 }
 
+export function buildStatsRawExportText() {
+  return JSON.stringify(buildStatsRawExport(), null, 2);
+}
+
 function _bindStatsAnalysisPeriodControls(root = document) {
   _statsNodes(root, '[data-stats-analysis-period]').forEach(btn => {
     _syncStatsAnalysisPeriodButton(btn);
@@ -355,139 +324,6 @@ function _bindStatsAnalysisPeriodControls(root = document) {
       _renderPeriodScopedStats(scope);
     });
   });
-}
-
-const _RAW_SHARED_KEYS = new Set(SHARED_PAYLOAD_KEYS);
-const _RAW_WORKOUT_KEYS = WORKOUT_PAYLOAD_KEYS.filter(key => !_RAW_SHARED_KEYS.has(key));
-const _RAW_DIET_KEYS = DIET_PAYLOAD_KEYS.filter(key => !_RAW_SHARED_KEYS.has(key));
-
-function _jsonSafeClone(value) {
-  if (value === undefined) return undefined;
-  try {
-    return JSON.parse(JSON.stringify(value));
-  } catch (_) {
-    return value;
-  }
-}
-
-function _pickRawFields(day, keys) {
-  const out = {};
-  keys.forEach(key => {
-    if (!Object.prototype.hasOwnProperty.call(day || {}, key)) return;
-    const value = _jsonSafeClone(day[key]);
-    if (value !== undefined) out[key] = value;
-  });
-  return out;
-}
-
-function _bodyCheckinsByDate(checkins) {
-  const byDate = new Map();
-  checkins.forEach(checkin => {
-    const key = checkin?.date || '';
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return;
-    const list = byDate.get(key) || [];
-    list.push(_jsonSafeClone(checkin));
-    byDate.set(key, list);
-  });
-  return byDate;
-}
-
-function _rawWorkoutSummary(day) {
-  const sessions = getWorkoutSessions(day, { minCount: 1 });
-  const entries = sessions.flatMap(session => Array.isArray(session?.exercises) ? session.exercises : []);
-  const sets = entries.flatMap(entry => Array.isArray(entry?.sets) ? entry.sets : []);
-  return {
-    sessions: sessions.length,
-    exercises: entries.length,
-    sets: sets.length,
-    completedSets: sets.filter(set => set?.done === true).length,
-    volume: Math.round(entries.reduce((sum, entry) => sum + calcVolume(entry?.sets || []), 0)),
-  };
-}
-
-function _rawDietSummary(day) {
-  return {
-    intakeKcal: _dayKcal(day),
-    proteinG: _dayProtein(day),
-    carbsG: _dayCarbs(day),
-    fatG: _dayFat(day),
-    sugarG: _daySugar(day),
-    sodiumMg: _daySodium(day),
-    foods: _foodItems(day).length,
-  };
-}
-
-function _rawDailyRow(key, day, checkinsByDate, checkinsToDate, plan) {
-  const date = _dateFromKey(key);
-  const y = date?.getFullYear();
-  const m = date?.getMonth();
-  const d = date?.getDate();
-  const dietDay = date ? getDiet(y, m, d) : day;
-  const bodyCheckins = checkinsByDate.get(key) || [];
-  const weightForBurn = _weightOnOrBefore(checkinsToDate, key) ?? _maybeNum(plan?.weight) ?? 70;
-  const exerciseKcal = Math.round(calcBurnedKcal(day, weightForBurn).total || 0);
-  return {
-    date: key,
-    hasWorkout: date ? hasExerciseRecord(y, m, d) : false,
-    hasDiet: date ? hasDietRecord(y, m, d) : false,
-    dietOk: date ? dietDayOk(y, m, d) : null,
-    derived: {
-      workout: _rawWorkoutSummary(day),
-      diet: _rawDietSummary(dietDay),
-      exerciseKcal,
-      bodyCheckinCount: bodyCheckins.length,
-    },
-    raw: {
-      workout: _pickRawFields(day, _RAW_WORKOUT_KEYS),
-      diet: _pickRawFields(day, _RAW_DIET_KEYS),
-      shared: _pickRawFields(day, SHARED_PAYLOAD_KEYS),
-      day: _jsonSafeClone(day || {}),
-      bodyCheckins,
-    },
-  };
-}
-
-export function buildStatsRawExport() {
-  const cache = getCache();
-  const todayKey = _keyOffset(0);
-  const checkins = getRawBodyCheckins()
-    .filter(checkin => (checkin?.date || '') <= todayKey)
-    .sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
-  const checkinsByDate = _bodyCheckinsByDate(checkins);
-  const plan = getDietPlan();
-  const dateKeys = new Set(
-    Object.keys(cache)
-      .filter(key => /^\d{4}-\d{2}-\d{2}$/.test(key) && key <= todayKey)
-  );
-  checkins.forEach(checkin => {
-    if (/^\d{4}-\d{2}-\d{2}$/.test(checkin?.date || '')) dateKeys.add(checkin.date);
-  });
-  const daily = [...dateKeys]
-    .sort((a, b) => a.localeCompare(b))
-    .map(key => _rawDailyRow(key, cache[key] || {}, checkinsByDate, checkins, plan));
-  const workoutDays = daily.filter(row => row.hasWorkout).length;
-  const dietDays = daily.filter(row => row.hasDiet).length;
-  return {
-    schema: 'tomatofarm.rawDailyStats.v1',
-    exportedAt: new Date().toISOString(),
-    today: todayKey,
-    source: 'data.js getCache users/{uid}/workouts daily documents',
-    counts: {
-      totalDays: daily.length,
-      workoutDays,
-      dietDays,
-      bodyCheckins: checkins.length,
-      workoutPayloadKeys: _RAW_WORKOUT_KEYS.length,
-      dietPayloadKeys: _RAW_DIET_KEYS.length,
-      sharedPayloadKeys: SHARED_PAYLOAD_KEYS.length,
-    },
-    daily,
-    bodyCheckins: checkins.map(_jsonSafeClone),
-  };
-}
-
-export function buildStatsRawExportText() {
-  return JSON.stringify(buildStatsRawExport(), null, 2);
 }
 
 function _downloadTextFile(filename, text, type) {
@@ -540,245 +376,6 @@ function _syncStatsAnalysisPeriodButton(btn) {
   const active = btn.dataset.statsAnalysisPeriod === _statsAnalysisPeriod;
   btn.classList.toggle('active', active);
   btn.setAttribute('aria-pressed', active ? 'true' : 'false');
-}
-
-function _esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-function _clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
-function _keyOffset(daysAgo) {
-  const d = new Date(TODAY);
-  d.setDate(d.getDate() - daysAgo);
-  return dateKey(d.getFullYear(), d.getMonth(), d.getDate());
-}
-const FOOD_KEYS = ['bFoods', 'lFoods', 'dFoods', 'sFoods'];
-const MEAL_PREFIXES = ['b', 'l', 'd', 's'];
-const SKELETAL_KEYS = ['skeletalMuscleMassKg', 'skeletalMuscleMass', 'skeletalMuscleKg', 'muscleMassKg', 'muscleMass', 'smmKg', 'smm'];
-const BODY_FAT_MASS_KEYS = ['bodyFatMassKg', 'fatMassKg', 'bodyFatKg', 'fatKg'];
-function _dayKcal(day) { return (day?.bKcal||0)+(day?.lKcal||0)+(day?.dKcal||0)+(day?.sKcal||0); }
-function _dayProtein(day) { return (day?.bProtein||0)+(day?.lProtein||0)+(day?.dProtein||0)+(day?.sProtein||0); }
-function _dayCarbs(day) { return (day?.bCarbs||0)+(day?.lCarbs||0)+(day?.dCarbs||0)+(day?.sCarbs||0); }
-function _dayFat(day) { return (day?.bFat||0)+(day?.lFat||0)+(day?.dFat||0)+(day?.sFat||0); }
-const MAJOR_LABELS = { chest:'가슴', back:'등', lower:'하체', shoulder:'어깨', bicep:'이두', tricep:'삼두', abs:'복근', core:'복근' };
-const LANDMARKS = {
-  chest: { label:'가슴', low:8, good:14, high:22 },
-  back: { label:'등', low:10, good:16, high:25 },
-  lower: { label:'하체', low:8, good:14, high:20 },
-  shoulder: { label:'어깨', low:6, good:14, high:22 },
-  bicep: { label:'이두', low:6, good:12, high:20 },
-  tricep: { label:'삼두', low:6, good:14, high:18 },
-  abs: { label:'복근', low:0, good:12, high:25 },
-};
-const FATIGUE_GROUPS = [
-  {
-    id: 'back', label: '등', majors: ['back'],
-    spots: [{ x: 62, y: 16, w: 24, h: 29, r: -6 }, { x: 65, y: 35, w: 18, h: 16, r: 8 }],
-  },
-  {
-    id: 'shoulder', label: '어깨', majors: ['shoulder'],
-    spots: [{ x: 11, y: 18, w: 29, h: 10, r: 3 }, { x: 63, y: 15, w: 26, h: 10, r: -2 }],
-  },
-  {
-    id: 'arms', label: '팔', majors: ['bicep', 'tricep'],
-    spots: [{ x: 7, y: 23, w: 10, h: 28, r: -8 }, { x: 32, y: 27, w: 9, h: 27, r: -12 }, { x: 58, y: 23, w: 9, h: 29, r: 10 }, { x: 83, y: 23, w: 8, h: 30, r: -10 }],
-  },
-  {
-    id: 'chest', label: '가슴', majors: ['chest'],
-    spots: [{ x: 17, y: 20, w: 22, h: 15, r: 5 }],
-  },
-  {
-    id: 'legs', label: '다리', majors: ['lower', 'glute'],
-    spots: [{ x: 12, y: 50, w: 27, h: 39, r: 4 }, { x: 64, y: 49, w: 25, h: 40, r: -3 }],
-  },
-  {
-    id: 'core', label: '코어', majors: ['abs', 'core'],
-    spots: [{ x: 21, y: 32, w: 16, h: 19, r: 2 }],
-  },
-];
-const FATIGUE_GROUP_BY_MAJOR = FATIGUE_GROUPS.reduce((acc, group) => {
-  group.majors.forEach(major => { acc[major] = group.id; });
-  return acc;
-}, {});
-function _setsBand(sets, lm) {
-  if (sets < lm.low) return { tone:'under', label:'부족', msg:`주 ${lm.low - sets}세트만 더` };
-  if (sets > lm.high) return { tone:'over', label:'많음', msg:'회복 확인' };
-  return { tone:'ok', label: sets >= lm.good ? '충분' : '적정', msg:'유지 가능' };
-}
-function _progressView(e) {
-  const count = e.pointsCount || 0;
-  const deltaKg = e.last - e.first;
-  const deltaPct = e.first ? (deltaKg / e.first * 100) : 0;
-  const name = String(e.name || '').toLowerCase();
-  const likelyAccessory = e.major === 'abs' || /crunch|크런치|curl|컬|raise|레이즈|extension|익스텐션|pushdown|푸시다운/.test(name);
-  const suspicious = Math.abs(deltaPct) >= 60 && (count < 4 || likelyAccessory || e.first < 25);
-  const reliablePct = count >= 3 && !suspicious && Math.abs(deltaPct) < 60;
-  const main = suspicious ? '기록 점검 필요' : (deltaKg >= 0 ? `+${deltaKg.toFixed(1)}kg` : `${deltaKg.toFixed(1)}kg`);
-  const sub = suspicious
-    ? `변화폭 ${Math.round(deltaPct)}% · 표본 ${count}회`
-    : `${e.slope>=0?'+':''}${e.slope.toFixed(1)}kg/주${reliablePct ? ` · ${deltaPct>=0?'+':''}${Math.round(deltaPct)}%` : ` · 표본 ${count}회`}`;
-  return { suspicious, main, sub };
-}
-function _entryMajor(entry, exById, movById) {
-  const ex = exById.get(entry?.exerciseId);
-  const sp = Array.isArray(entry?.muscleIds) && entry.muscleIds[0]
-    ? entry.muscleIds[0]
-    : (Array.isArray(ex?.muscleIds) && ex.muscleIds[0] ? ex.muscleIds[0] : null);
-  if (sp && SUBPATTERN_TO_MAJOR[sp]) return SUBPATTERN_TO_MAJOR[sp];
-  const mov = movById.get(entry?.movementId || ex?.movementId);
-  if (mov?.primary) return mov.primary;
-  return entry?.muscleId || ex?.muscleId || 'etc';
-}
-function _setE1rm(set) {
-  const kg = Number(set?.kg) || 0, reps = Number(set?.reps) || 0;
-  if (kg <= 0 || reps <= 0) return 0;
-  return kg * (1 + Math.min(reps, 30) / 30);
-}
-function _isHardSet(set) {
-  if (!set || set.setType === 'warmup' || set.done === false) return false;
-  if (!((Number(set.kg)||0) > 0 && (Number(set.reps)||0) > 0)) return false;
-  const rpe = Number(set.rpe);
-  if (Number.isFinite(rpe) && rpe > 0) return rpe >= 7;
-  return Number(set.reps) >= 5;
-}
-function _topSetE1rm(entry) {
-  let best = 0;
-  for (const set of entry?.sets || []) {
-    if (!_isHardSet(set)) continue;
-    best = Math.max(best, _setE1rm(set));
-  }
-  return best;
-}
-
-function _fmtDateShort(key) {
-  return String(key || '').slice(5).replace('-', '.');
-}
-
-function _normalizeFatigueMajor(major) {
-  if (major === 'glute') return 'glute';
-  if (major === 'core') return 'abs';
-  return major || 'etc';
-}
-
-function _emptyFatigueGroups() {
-  return FATIGUE_GROUPS.map(group => ({
-    ...group,
-    score: 0,
-    sets: 0,
-    volume: 0,
-    days: new Set(),
-    lastDate: '',
-    level: 0,
-  }));
-}
-function _fatigueRed(level) {
-  const n = _clamp(Number(level) || 0, 0, 1);
-  const saturation = Math.round(34 + n * 62);
-  const lightness = Math.round(72 - n * 16);
-  return `hsl(3, ${saturation}%, ${lightness}%)`;
-}
-
-function _fatigueBlue(level) {
-  const n = _clamp(Number(level) || 0, 0, 1);
-  const saturation = Math.round(46 + n * 38);
-  const lightness = Math.round(72 - n * 24);
-  return `hsl(205, ${saturation}%, ${lightness}%)`;
-}
-
-function _fatigueStatus(group, relative) {
-  if (relative <= 0) return { tone: 'under', label: '보강', hint: '이번 기간 기록 없음' };
-  if (relative < 0.35) return { tone: 'under', label: '보강', hint: '최고 활성 대비 낮음' };
-  if (relative < 0.55) return { tone: 'low', label: '낮음', hint: '다음 운동에서 먼저 채우기' };
-  if (relative >= 0.82) return { tone: 'hot', label: '집중', hint: '회복 상태 확인' };
-  return { tone: 'steady', label: '균형', hint: '현재 흐름 유지' };
-}
-
-function _fatigueExerciseEntries(day) {
-  return getWorkoutSessions(day, { minCount: 1 })
-    .flatMap(session => Array.isArray(session?.exercises) ? session.exercises : []);
-}
-
-function _buildMuscleFatigue(range = _statsAnalysisRange()) {
-  const period = {
-    key: range.key,
-    label: range.label,
-    title: range.key === 'week' ? '이번 주' : range.label,
-    days: range.actualDays,
-  };
-  const groups = _emptyFatigueGroups();
-  const byId = new Map(groups.map(group => [group.id, group]));
-  const exById = new Map(getExList().map(ex => [ex.id, ex]));
-  const movById = new Map(MOVEMENTS.map(mov => [mov.id, mov]));
-  const todayKey = range.toKey;
-  const sinceKey = range.fromKey;
-  let trainingDays = 0;
-
-  Object.entries(getCache())
-    .filter(([key]) => /^\d{4}-\d{2}-\d{2}$/.test(key) && key >= sinceKey && key <= todayKey)
-    .forEach(([key, day]) => {
-      let touched = false;
-      const date = _dateFromKey(key);
-      const daysAgo = date ? Math.max(0, Math.round((new Date(TODAY) - date) / 86400000)) : 0;
-      const recency = 1 - Math.min(daysAgo, Math.max(period.days - 1, 1)) / Math.max(period.days, 1) * 0.3;
-
-      for (const entry of _fatigueExerciseEntries(day)) {
-        const major = _normalizeFatigueMajor(_entryMajor(entry, exById, movById));
-        const groupId = FATIGUE_GROUP_BY_MAJOR[major];
-        const group = byId.get(groupId);
-        if (!group) continue;
-
-        const sets = (entry.sets || []).filter(_isHardSet).length;
-        const volume = calcVolume(entry.sets || []);
-        if (sets <= 0 && volume <= 0) continue;
-
-        group.sets += sets;
-        group.volume += volume;
-        group.score += (sets || Math.min(volume / 500, 1)) * recency;
-        group.days.add(key);
-        group.lastDate = group.lastDate && group.lastDate > key ? group.lastDate : key;
-        touched = true;
-      }
-
-      if (touched) trainingDays++;
-    });
-
-  const totalScore = groups.reduce((sum, group) => sum + group.score, 0);
-  const maxScore = Math.max(...groups.map(group => group.score), 1);
-  groups.forEach(group => {
-    const relative = totalScore > 0 ? group.score / maxScore : 0;
-    const status = totalScore > 0 ? _fatigueStatus(group, relative) : { tone: 'empty', label: '기록 없음', hint: '' };
-    const visualLevel = totalScore > 0
-      ? (relative > 0 ? _clamp(relative, 0.18, 1) : 0.30)
-      : 0;
-    group.level = group.score > 0 ? _clamp(relative, 0.18, 1) : 0;
-    group.visualLevel = visualLevel;
-    group.relativePct = Math.round(relative * 100);
-    group.tone = status.tone;
-    group.statusLabel = status.label;
-    group.hint = status.hint;
-    group.tint = totalScore > 0
-      ? (status.tone === 'under' || status.tone === 'low' ? _fatigueBlue(visualLevel) : _fatigueRed(visualLevel))
-      : '';
-    group.days = group.days.size;
-    group.volume = Math.round(group.volume);
-  });
-
-  const active = groups.filter(group => group.level > 0).sort((a, b) => b.score - a.score);
-  const underactive = totalScore > 0
-    ? groups.filter(group => group.tone === 'under' || group.tone === 'low').sort((a, b) => a.score - b.score || a.label.localeCompare(b.label, 'ko'))
-    : [];
-  const hot = totalScore > 0
-    ? groups.filter(group => group.tone === 'hot').sort((a, b) => b.score - a.score)
-    : [];
-  return {
-    period,
-    groups,
-    active,
-    underactive,
-    hot,
-    top: active[0] || null,
-    trainingDays,
-    totalSets: groups.reduce((sum, group) => sum + group.sets, 0),
-    totalVolume: groups.reduce((sum, group) => sum + group.volume, 0),
-    totalScore,
-  };
 }
 
 function _fatigueHotspotsHtml(groups) {
@@ -885,142 +482,6 @@ function _renderMuscleFatigue(scope = document) {
   `;
 }
 
-function _num(v) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : 0;
-}
-function _maybeNum(v) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
-}
-function _firstNumber(obj, keys) {
-  for (const key of keys) {
-    const n = _maybeNum(obj?.[key]);
-    if (n !== null) return n;
-  }
-  return null;
-}
-function _fmt(n, digits = 0) {
-  return Number(n).toLocaleString('ko-KR', {
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  });
-}
-function _formatVolumeMass(value) {
-  const volume = Math.max(0, _num(value));
-  if (volume >= 1000) {
-    const tons = Math.round((volume / 1000) * 10) / 10;
-    return `${_fmt(tons, Number.isInteger(tons) ? 0 : 1)}t`;
-  }
-  return `${_fmt(Math.round(volume))}kg`;
-}
-function _formatVolumeDelta(value) {
-  const volume = _num(value);
-  if (!volume) return '0kg';
-  return `${volume > 0 ? '+' : '-'}${_formatVolumeMass(Math.abs(volume))}`;
-}
-function _fmtSigned(n, digits = 1, unit = 'kg') {
-  return `${n >= 0 ? '+' : ''}${_fmt(n, digits)} ${unit}`;
-}
-function _dateFromKey(key) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(key))) return null;
-  const [y, m, d] = key.split('-').map(Number);
-  return new Date(y, m - 1, d);
-}
-function _keyFromDate(d) {
-  return dateKey(d.getFullYear(), d.getMonth(), d.getDate());
-}
-function _dateRange(startKey, endKey) {
-  const start = _dateFromKey(startKey), end = _dateFromKey(endKey);
-  if (!start || !end || start > end) return [];
-  const out = [];
-  const cur = new Date(start);
-  while (cur <= end) {
-    out.push(_keyFromDate(cur));
-    cur.setDate(cur.getDate() + 1);
-  }
-  return out;
-}
-function _dateEntries() {
-  const todayKey = _keyOffset(0);
-  return Object.entries(getCache())
-    .filter(([key]) => /^\d{4}-\d{2}-\d{2}$/.test(key) && key <= todayKey)
-    .sort(([a], [b]) => a.localeCompare(b));
-}
-function _foodItems(day) {
-  return FOOD_KEYS.flatMap(key => Array.isArray(day?.[key]) ? day[key] : []);
-}
-function _foodName(food) {
-  return String(food?.name || food?.foodName || food?.label || '').trim();
-}
-function _foodKcal(food) {
-  return _num(food?.kcal ?? food?.calories ?? food?.energy);
-}
-function _sumMealFields(day, suffixes) {
-  let total = 0, seen = false;
-  MEAL_PREFIXES.forEach(prefix => suffixes.forEach(suffix => {
-    const n = _maybeNum(day?.[`${prefix}${suffix}`]);
-    if (n !== null) { total += n; seen = true; }
-  }));
-  return seen ? total : null;
-}
-function _sumFoodFields(day, keys) {
-  let total = 0, seen = false;
-  _foodItems(day).forEach(food => {
-    const n = _firstNumber(food, keys);
-    if (n !== null) { total += n; seen = true; }
-  });
-  return seen ? total : null;
-}
-function _daySugar(day) {
-  return _sumMealFields(day, ['Sugar', 'Sugars']) ?? _sumFoodFields(day, ['sugar', 'sugars']);
-}
-function _daySodium(day) {
-  return _sumMealFields(day, ['Sodium', 'SodiumMg']) ?? _sumFoodFields(day, ['sodium', 'sodiumMg']);
-}
-function _bodyFatMass(checkin) {
-  const direct = _firstNumber(checkin, BODY_FAT_MASS_KEYS);
-  if (direct !== null) return direct;
-  const weight = _maybeNum(checkin?.weight);
-  const pct = _maybeNum(checkin?.bodyFatPct);
-  if (weight !== null && pct !== null) return weight * pct / 100;
-  return null;
-}
-function _avgFrom(list, getter) {
-  let total = 0, count = 0;
-  list.forEach(item => {
-    const n = getter(item);
-    if (n !== null && Number.isFinite(n)) { total += n; count++; }
-  });
-  return count ? total / count : null;
-}
-function _weightOnOrBefore(checkins, key) {
-  for (let i = checkins.length - 1; i >= 0; i--) {
-    const c = checkins[i];
-    if ((c?.date || '') <= key) {
-      const n = _maybeNum(c.weight);
-      if (n !== null) return n;
-    }
-  }
-  return null;
-}
-function _joinedMetrics(values) {
-  if (values.every(v => !v)) return null;
-  return values.map(v => v || '없음').join(' | ');
-}
-function _avgDayMetric(entries, specs) {
-  let total = 0, count = 0;
-  entries.forEach(([, day]) => {
-    for (const spec of specs) {
-      const n = _firstNumber(day, spec.keys);
-      if (n === null) continue;
-      total += n * (spec.scale || 1);
-      count++;
-      break;
-    }
-  });
-  return count ? total / count : null;
-}
 function _summaryKpi(label, value, note = '', tone = '') {
   const hasValue = value !== null && value !== undefined && value !== '';
   const cls = ['stats-summary-kpi'];
@@ -1045,142 +506,46 @@ function _renderOverallSummary(scope = document) {
   const root = _statsNode(scope, 'stats-overall-summary');
   if (!root) return;
 
-  const cache = getCache();
   const range = _statsAnalysisRange();
-  const rangeKeys = _dateRange(range.fromKey, range.toKey);
-  const entries = rangeKeys.map(key => [key, cache[key] || {}]);
-  const checkins = getBodyCheckins()
-    .filter(c => (c?.date || '') >= range.fromKey && (c?.date || '') <= range.toKey)
-    .sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
-  const checkinsToDate = getBodyCheckins()
-    .filter(c => (c?.date || '') <= range.toKey)
-    .sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
-  const avgWeight = _avgFrom(checkins, c => _maybeNum(c.weight));
-  const avgSkeletal = _avgFrom(checkins, c => _firstNumber(c, SKELETAL_KEYS));
-  const avgFatMass = _avgFrom(checkins, _bodyFatMass);
-  const fallbackWeight = _avgFrom(checkinsToDate, c => _maybeNum(c.weight));
-  const foodsByName = new Map();
-  let topFoodDay = null;
-  let topExerciseDay = null;
-  const macro = { carbs: 0, protein: 0, fat: 0, days: 0 };
-  const sugar = { total: 0, days: 0 };
-  const sodium = { total: 0, days: 0 };
-  let recordDays = 0, exerciseDays = 0, okDays = 0, ngDays = 0;
-  let periodFoodKcalTotal = 0, periodFoodKcalDays = 0, periodExerciseKcalTotal = 0, periodExerciseKcalDays = 0;
-
-  entries.forEach(([key, day]) => {
-    const date = _dateFromKey(key);
-    if (date) {
-      const y = date.getFullYear();
-      const m = date.getMonth();
-      const d = date.getDate();
-      const diet = getDiet(y, m, d);
-      const hasDiet = hasDietRecord(y, m, d);
-      const hasEx = hasExerciseRecord(y, m, d);
-      const dok = dietDayOk(y, m, d);
-      if (hasDiet || hasEx) recordDays++;
-      if (hasEx) exerciseDays++;
-      if (dok === true) okDays++;
-      else if (dok === false) ngDays++;
-      const dietKcal = _dayKcal(diet);
-      if (dietKcal > 0) {
-        periodFoodKcalTotal += dietKcal;
-        periodFoodKcalDays++;
-      }
-    }
-
-    const kcal = _dayKcal(day);
-    if (kcal > 0) {
-      if (!topFoodDay || kcal > topFoodDay.kcal) topFoodDay = { key, kcal };
-    }
-
-    _foodItems(day).forEach(food => {
-      const name = _foodName(food);
-      if (!name) return;
-      const next = foodsByName.get(name) || { name, count: 0, kcalTotal: 0 };
-      next.count++;
-      next.kcalTotal += _foodKcal(food);
-      foodsByName.set(name, next);
-    });
-
-    const weight = _weightOnOrBefore(checkinsToDate, key) ?? avgWeight ?? fallbackWeight ?? 70;
-    const burned = calcBurnedKcal(day, weight).total;
-    if (burned > 0) {
-      if (!topExerciseDay || burned > topExerciseDay.kcal) topExerciseDay = { key, kcal: burned };
-      periodExerciseKcalTotal += burned;
-      periodExerciseKcalDays++;
-    }
-
-    const carbs = _dayCarbs(day);
-    const protein = _dayProtein(day);
-    const fat = _dayFat(day);
-    if (carbs + protein + fat > 0) {
-      macro.carbs += carbs;
-      macro.protein += protein;
-      macro.fat += fat;
-      macro.days++;
-    }
-    const daySugar = _daySugar(day);
-    if (daySugar !== null) { sugar.total += daySugar; sugar.days++; }
-    const daySodium = _daySodium(day);
-    if (daySodium !== null) { sodium.total += daySodium; sodium.days++; }
-  });
-
-  const topFood = [...foodsByName.values()]
-    .sort((a, b) => (b.count - a.count) || (b.kcalTotal - a.kcalTotal) || a.name.localeCompare(b.name))[0];
-
-  const firstCheckin = checkins.length >= 2 ? checkins[0] : null;
-  const lastCheckin = checkins.length >= 2 ? checkins[checkins.length - 1] : null;
-  const weightFirst = firstCheckin ? _maybeNum(firstCheckin.weight) : null;
-  const weightLast = lastCheckin ? _maybeNum(lastCheckin.weight) : null;
-  const weightDelta = weightFirst !== null && weightLast !== null ? weightLast - weightFirst : null;
-  const avgSteps = _avgDayMetric(entries, [{ keys: ['steps', 'stepCount', 'dailySteps', 'walkSteps', 'walkingSteps'] }]);
-  const avgStepKcal = _avgDayMetric(entries, [{ keys: ['stepsKcal', 'stepKcal', 'walkKcal', 'walkingKcal'] }]);
-  const avgWaterMl = _avgDayMetric(entries, [
-    { keys: ['waterMl', 'waterIntakeMl', 'hydrationMl', 'drinkWaterMl'] },
-    { keys: ['waterL', 'waterLiter'], scale: 1000 },
-    { keys: ['waterCups', 'waterCupCount'], scale: 250 },
-  ]);
-  const avgBowel = _avgDayMetric(entries, [{ keys: ['bowelCount', 'bowelMovementCount', 'stoolCount', 'poopCount', 'defecationCount'] }]);
-
-  const hasAnyNutrient = macro.days || sugar.days || sodium.days;
+  const summary = buildStatsPeriodSummary(range);
+  const { body, lifestyle, nutrition } = summary;
+  const hasAnyNutrient = Object.entries(nutrition)
+    .some(([key, value]) => key !== 'sampledDays' && value !== null);
   const nutrientValue = hasAnyNutrient ? [
-    macro.days ? `탄수 ${_fmt(macro.carbs / macro.days, 1)}g` : '탄수 없음',
-    macro.days ? `단백 ${_fmt(macro.protein / macro.days, 1)}g` : '단백 없음',
-    macro.days ? `지방 ${_fmt(macro.fat / macro.days, 1)}g` : '지방 없음',
-    sugar.days ? `당 ${_fmt(sugar.total / sugar.days, 1)}g` : '당 없음',
-    sodium.days ? `나트륨 ${_fmt(sodium.total / sodium.days, 0)}mg` : '나트륨 없음',
+    nutrition.averageCarbsG !== null ? `탄수 ${_fmt(nutrition.averageCarbsG, 1)}g` : '탄수 없음',
+    nutrition.averageProteinG !== null ? `단백 ${_fmt(nutrition.averageProteinG, 1)}g` : '단백 없음',
+    nutrition.averageFatG !== null ? `지방 ${_fmt(nutrition.averageFatG, 1)}g` : '지방 없음',
+    nutrition.averageSugarG !== null ? `당 ${_fmt(nutrition.averageSugarG, 1)}g` : '당 없음',
+    nutrition.averageSodiumMg !== null ? `나트륨 ${_fmt(nutrition.averageSodiumMg, 0)}mg` : '나트륨 없음',
   ].join(' | ') : null;
 
-  const dietTotal = okDays + ngDays;
-  const dietRate = dietTotal ? Math.round(okDays / dietTotal * 100) : null;
+  const dietTotal = summary.okDays + summary.ngDays;
+  const dietRate = summary.dietRate;
   const dietTone = dietRate === null ? '' : (dietRate >= 80 ? 'good' : dietRate >= 50 ? 'warn' : 'bad');
-  const avgFoodKcal = periodFoodKcalDays ? Math.round(periodFoodKcalTotal / periodFoodKcalDays) : null;
-  const avgExerciseKcal = periodExerciseKcalDays ? Math.round(periodExerciseKcalTotal / periodExerciseKcalDays) : null;
   const bodyValue = _joinedMetrics([
-    avgWeight !== null ? `체중 ${_fmt(avgWeight, 1)}kg` : null,
-    avgSkeletal !== null ? `골격근 ${_fmt(avgSkeletal, 1)}kg` : null,
-    avgFatMass !== null ? `체지방량 ${_fmt(avgFatMass, 1)}kg` : null,
+    body.averageWeightKg !== null ? `체중 ${_fmt(body.averageWeightKg, 1)}kg` : null,
+    body.averageSkeletalMuscleKg !== null ? `골격근 ${_fmt(body.averageSkeletalMuscleKg, 1)}kg` : null,
+    body.averageFatMassKg !== null ? `체지방량 ${_fmt(body.averageFatMassKg, 1)}kg` : null,
   ]);
   const lifestyleValue = _joinedMetrics([
-    avgSteps !== null ? `걸음 ${_fmt(Math.round(avgSteps))}${avgStepKcal !== null ? `/${_fmt(Math.round(avgStepKcal))}kcal` : ''}` : null,
-    avgWaterMl !== null ? `물 ${_fmt(Math.round(avgWaterMl))}ml` : null,
-    avgBowel !== null ? `배변 ${_fmt(avgBowel, 1)}회` : null,
+    lifestyle.averageSteps !== null ? `걸음 ${_fmt(Math.round(lifestyle.averageSteps))}${lifestyle.averageStepKcal !== null ? `/${_fmt(Math.round(lifestyle.averageStepKcal))}kcal` : ''}` : null,
+    lifestyle.averageWaterMl !== null ? `물 ${_fmt(Math.round(lifestyle.averageWaterMl))}ml` : null,
+    lifestyle.averageBowelCount !== null ? `배변 ${_fmt(lifestyle.averageBowelCount, 1)}회` : null,
   ]);
 
   const kpis = [
-    _summaryKpi('기록일', `${_fmt(recordDays)}일`, '식단 또는 운동'),
-    _summaryKpi('운동일', `${_fmt(exerciseDays)}일`, '선택 기간 운동 기록'),
-    _summaryKpi('식단 성공률', dietRate !== null ? `${dietRate}%` : null, dietTotal ? `${okDays}성공 · ${ngDays}실패` : '판정 없음', dietTone),
-    _summaryKpi('평균 섭취', avgFoodKcal !== null ? `${_fmt(avgFoodKcal)}kcal` : null, periodFoodKcalDays ? `${_fmt(periodFoodKcalDays)}일 평균` : '기록 없음'),
-    _summaryKpi('평균 운동', avgExerciseKcal !== null ? `${_fmt(avgExerciseKcal)}kcal` : null, periodExerciseKcalDays ? `${_fmt(periodExerciseKcalDays)}일 평균` : '기록 없음'),
-    _summaryKpi('체중 변화', weightDelta !== null && Number.isFinite(weightDelta) ? _fmtSigned(weightDelta) : null, checkins.length ? `${checkins.length}회 체크인` : '체크인 부족'),
+    _summaryKpi('기록일', `${_fmt(summary.recordDays)}일`, '식단 또는 운동'),
+    _summaryKpi('운동일', `${_fmt(summary.exerciseDays)}일`, '선택 기간 운동 기록'),
+    _summaryKpi('식단 성공률', dietRate !== null ? `${dietRate}%` : null, dietTotal ? `${summary.okDays}성공 · ${summary.ngDays}실패` : '판정 없음', dietTone),
+    _summaryKpi('평균 섭취', summary.averageIntakeKcal !== null ? `${_fmt(summary.averageIntakeKcal)}kcal` : null, summary.intakeDays ? `${_fmt(summary.intakeDays)}일 평균` : '기록 없음'),
+    _summaryKpi('평균 운동', summary.averageExerciseKcal !== null ? `${_fmt(summary.averageExerciseKcal)}kcal` : null, summary.exerciseKcalDays ? `${_fmt(summary.exerciseKcalDays)}일 평균` : '기록 없음'),
+    _summaryKpi('체중 변화', body.weightDeltaKg !== null && Number.isFinite(body.weightDeltaKg) ? _fmtSigned(body.weightDeltaKg) : null, body.checkinCount ? `${body.checkinCount}회 체크인` : '체크인 부족'),
   ].join('');
 
   const facts = [
-    _summaryFact('자주 먹은 음식', topFood ? `${topFood.name} · ${_fmt(Math.round(topFood.kcalTotal / Math.max(topFood.count, 1)))}kcal · ${topFood.count}회` : null),
-    _summaryFact('최고 섭취일', topFoodDay ? `${topFoodDay.key} · ${_fmt(topFoodDay.kcal)}kcal` : null),
-    _summaryFact('최고 운동일', topExerciseDay ? `${topExerciseDay.key} · ${_fmt(topExerciseDay.kcal)}kcal` : null),
+    _summaryFact('자주 먹은 음식', summary.topFood ? `${summary.topFood.name} · ${_fmt(Math.round(summary.topFood.kcalTotal / Math.max(summary.topFood.count, 1)))}kcal · ${summary.topFood.count}회` : null),
+    _summaryFact('최고 섭취일', summary.topFoodDay ? `${summary.topFoodDay.key} · ${_fmt(summary.topFoodDay.kcal)}kcal` : null),
+    _summaryFact('최고 운동일', summary.topExerciseDay ? `${summary.topExerciseDay.key} · ${_fmt(summary.topExerciseDay.kcal)}kcal` : null),
     _summaryFact('평균 체성분', bodyValue),
     _summaryFact('평균 영양소', nutrientValue),
     _summaryFact('생활지표', lifestyleValue),
@@ -1189,25 +554,18 @@ function _renderOverallSummary(scope = document) {
   root.innerHTML = `
     <div class="stats-summary-head">
       <span>${_esc(range.label)} 핵심 지표</span>
-      <b>${_esc(_fmtDateShort(range.fromKey))} - ${_esc(_fmtDateShort(range.toKey))} · 기록 ${_fmt(recordDays)}일</b>
+      <b>${_esc(_fmtDateShort(range.fromKey))} - ${_esc(_fmtDateShort(range.toKey))} · 기록 ${_fmt(summary.recordDays)}일</b>
     </div>
     <div class="stats-summary-kpis">${kpis}</div>
     <div class="stats-summary-details">${facts}</div>`;
 }
 
 function _formatRunningDuration(sec) {
-  const total = Math.max(0, Math.floor(_num(sec)));
-  const hours = Math.floor(total / 3600);
-  const minutes = Math.floor((total % 3600) / 60);
-  const seconds = total % 60;
-  if (hours > 0) return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+  return formatRunningDuration(sec, { padMinutes: false });
 }
 
 function _formatRunningPace(secPerKm) {
-  const total = Math.round(_num(secPerKm));
-  if (total <= 0) return '--';
-  return `${Math.floor(total / 60)}'${String(total % 60).padStart(2, '0')}''`;
+  return formatRunningPace(secPerKm, { empty: '--' });
 }
 
 function _renderRunningSummary(scope = document) {
@@ -1246,37 +604,8 @@ function _renderRunningSummary(scope = document) {
     <p class="stats-running-note">칼로리는 워치가 제공한 실제값 또는 체중·속도·활동 시간 기반 추정값입니다.</p>`;
 }
 
-function _linearSlope(points) {
-  const pts = points.filter(p => Number.isFinite(p.y));
-  if (pts.length < 2) return 0;
-  const n = pts.length, sx = pts.reduce((s,p)=>s+p.x,0), sy = pts.reduce((s,p)=>s+p.y,0);
-  const sxx = pts.reduce((s,p)=>s+p.x*p.x,0), sxy = pts.reduce((s,p)=>s+p.x*p.y,0);
-  const den = n*sxx - sx*sx;
-  return den ? (n*sxy - sx*sy) / den : 0;
-}
-function _daysBetween(fromKey, toKey) {
-  const from = _dateFromKey(fromKey);
-  const to = _dateFromKey(toKey);
-  if (!from || !to || from > to) return 0;
-  return Math.round((to.getTime() - from.getTime()) / 86400000);
-}
-function _analysisPeriodConfig(key = _statsAnalysisPeriod) {
-  return STATS_ANALYSIS_PERIODS[key] || STATS_ANALYSIS_PERIODS['90'];
-}
-function _weekStartKey() {
-  const d = new Date(TODAY);
-  const day = d.getDay();
-  const diff = day === 0 ? 6 : day - 1;
-  d.setDate(d.getDate() - diff);
-  return _keyFromDate(d);
-}
 function _statsAnalysisRange(key = _statsAnalysisPeriod) {
-  const cfg = _analysisPeriodConfig(key);
-  const todayKey = _keyOffset(0);
-  const firstKey = _dateEntries()[0]?.[0] || todayKey;
-  const fromKey = cfg.kind === 'week' ? _weekStartKey() : (cfg.days > 0 ? _keyOffset(cfg.days - 1) : firstKey);
-  const actualDays = Math.max(1, _daysBetween(fromKey, todayKey) + 1);
-  return { ...cfg, key, fromKey, toKey: todayKey, actualDays };
+  return _buildStatsAnalysisRange(key);
 }
 function _statsAnalysisCompareRange(range) {
   const spanDays = range.key === 'week' ? 7 : (range.days > 0 ? range.days : Math.min(180, Math.max(30, range.actualDays || 90)));
@@ -1912,91 +1241,6 @@ function _destroyTrackedChart(tracker, canvas) {
   if (existing && existing !== tracked) existing.destroy();
 }
 
-function _statsDietDayFromKey(cache, key) {
-  const date = _dateFromKey(key);
-  return date ? getDiet(date.getFullYear(), date.getMonth(), date.getDate()) : (cache[key] || {});
-}
-
-function _statsWorkoutDayFromKey(cache, key) {
-  return cache[key] || {};
-}
-
-function _weekStartDateForStats(date) {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  const diff = d.getDay() === 0 ? 6 : d.getDay() - 1;
-  d.setDate(d.getDate() - diff);
-  return d;
-}
-
-function _weekBucketLabel(startKey, endKey) {
-  const start = startKey.slice(5).replace('-', '/');
-  const end = endKey.slice(5).replace('-', '/');
-  return start === end ? start : `${start}~${end}`;
-}
-
-function _weeklyDateBuckets(keys) {
-  const buckets = [];
-  let bucket = null;
-  keys.forEach(key => {
-    const date = _dateFromKey(key);
-    if (!date) return;
-    const weekKey = _keyFromDate(_weekStartDateForStats(date));
-    if (!bucket || bucket.weekKey !== weekKey) {
-      bucket = { weekKey, keys: [] };
-      buckets.push(bucket);
-    }
-    bucket.keys.push(key);
-  });
-  return buckets.map(item => {
-    const startKey = item.keys[0];
-    const endKey = item.keys[item.keys.length - 1];
-    return { ...item, startKey, endKey, label: _weekBucketLabel(startKey, endKey) };
-  });
-}
-
-function _buildWeeklyKcalWeightSeries(range, cache, checkins) {
-  const plan = getDietPlan();
-  const checkinByDate = new Map(checkins.map(c => [c.date, c]));
-  const buckets = _weeklyDateBuckets(_dateRange(range.fromKey, range.toKey));
-  const labels = buckets.map(bucket => bucket.label);
-  const intakeData = [];
-  const burnedData = [];
-  const weightData = [];
-
-  buckets.forEach(bucket => {
-    let intakeTotal = 0;
-    let burnedTotal = 0;
-    let hasIntake = false;
-    let hasBurned = false;
-    let weekWeight = null;
-
-    bucket.keys.forEach(key => {
-      const dietDay = _statsDietDayFromKey(cache, key);
-      const workoutDay = _statsWorkoutDayFromKey(cache, key);
-      const recordedWeight = _maybeNum(checkinByDate.get(key)?.weight);
-      if (recordedWeight !== null) weekWeight = recordedWeight;
-      const intake = _dayKcal(dietDay);
-      if (intake > 0) {
-        intakeTotal += intake;
-        hasIntake = true;
-      }
-      const weightForBurn = _weightOnOrBefore(checkins, key) ?? _maybeNum(plan?.weight) ?? 70;
-      const burned = calcBurnedKcal(workoutDay, weightForBurn).total;
-      if (burned > 0) {
-        burnedTotal += burned;
-        hasBurned = true;
-      }
-    });
-
-    weightData.push(weekWeight !== null ? weekWeight : null);
-    intakeData.push(hasIntake ? Math.round(intakeTotal) : null);
-    burnedData.push(hasBurned ? Math.round(burnedTotal) : null);
-  });
-
-  return { labels, buckets, intakeData, burnedData, weightData };
-}
-
 function _renderKcalWeightChart(scope = document) {
   const canvas = _statsNode(scope, 'kcal-weight-chart');
   const emptyEl = _statsNode(scope, 'kcal-weight-chart-empty');
@@ -2172,115 +1416,6 @@ function _renderCalorieReport(scope = document) {
     </div>
     <div class="calorie-meal-grid">${mealRows}</div>
   `;
-}
-
-const HEALTH_CHART_SERIES = {
-  weight: { label: '체중', unit: 'kg', color: '#ef6a6a', background: 'rgba(239,106,106,0.08)', order: 1 },
-  bodyFat: { label: '체지방률', unit: '%', color: '#10b981', background: 'rgba(16,185,129,0.08)', order: 2 },
-  intake: { label: '섭취칼로리', unit: 'kcal', color: '#6366f1', background: 'rgba(99,102,241,0.10)', order: 3 },
-  burned: { label: '운동칼로리', unit: 'kcal', color: '#f59e0b', background: 'rgba(245,158,11,0.10)', order: 4 },
-};
-
-function _sampleHealthKeys(keys, maxPoints = 72) {
-  if (!Array.isArray(keys) || keys.length <= maxPoints) return keys || [];
-  const out = [];
-  const step = (keys.length - 1) / (maxPoints - 1);
-  for (let i = 0; i < maxPoints; i++) {
-    out.push(keys[Math.round(i * step)]);
-  }
-  return [...new Set(out)];
-}
-
-function _healthChartKeys(range = _statsAnalysisRange()) {
-  return _sampleHealthKeys(_dateRange(range.fromKey, range.toKey));
-}
-
-function _buildHealthChartData(keys, cache, checkins) {
-  const plan = getDietPlan();
-  const checkinByDate = new Map(checkins.map(c => [c.date, c]));
-  const labels = keys.map(key => key.slice(5).replace('-', '/'));
-  const data = { weight: [], bodyFat: [], intake: [], burned: [] };
-
-  keys.forEach(key => {
-    const day = cache[key] || {};
-    const checkin = checkinByDate.get(key) || null;
-    const weight = _maybeNum(checkin?.weight);
-    const bodyFat = _maybeNum(checkin?.bodyFatPct);
-    const intake = _dayKcal(day);
-    const weightForBurn = _weightOnOrBefore(checkins, key) ?? _maybeNum(plan?.weight) ?? 70;
-    const burned = calcBurnedKcal(day, weightForBurn).total;
-
-    data.weight.push(weight !== null ? weight : null);
-    data.bodyFat.push(bodyFat !== null ? bodyFat : null);
-    data.intake.push(intake > 0 ? intake : null);
-    data.burned.push(burned > 0 ? burned : null);
-  });
-
-  return { labels, data };
-}
-
-function _normalizeHealthValues(values) {
-  return normalizeHealthValues(values);
-}
-
-function _healthDataset(key, rawValues) {
-  const cfg = HEALTH_CHART_SERIES[key];
-  return {
-    label: cfg.label,
-    data: _normalizeHealthValues(rawValues),
-    rawValues,
-    healthKey: key,
-    borderColor: cfg.color,
-    backgroundColor: 'transparent',
-    borderWidth: 1.35,
-    borderCapStyle: 'round',
-    borderJoinStyle: 'round',
-    cubicInterpolationMode: 'monotone',
-    pointRadius: 0,
-    pointHoverRadius: 3,
-    pointHitRadius: 12,
-    tension: 0.32,
-    fill: false,
-    spanGaps: true,
-    yAxisID: 'y',
-    order: cfg.order,
-  };
-}
-
-function _formatHealthTooltip(ctx) {
-  const key = ctx.dataset.healthKey;
-  const value = ctx.dataset.rawValues?.[ctx.dataIndex];
-  const cfg = HEALTH_CHART_SERIES[key] || Object.values(HEALTH_CHART_SERIES).find(item => item.label === ctx.dataset.label);
-  if (value == null) return `${ctx.dataset.label}: -`;
-  if (cfg?.unit === 'kcal') return `${ctx.dataset.label}: ${_fmt(value)}kcal`;
-  if (cfg?.unit === '%') return `${ctx.dataset.label}: ${Number(value).toFixed(1)}%`;
-  return `${ctx.dataset.label}: ${Number(value).toFixed(1)}kg`;
-}
-
-function _healthChartSeriesWithData(data) {
-  return Object.keys(HEALTH_CHART_SERIES)
-    .filter(key => data[key]?.some(value => value !== null && value !== undefined));
-}
-
-function _lastHealthValue(values) {
-  return lastRecordedValue(values);
-}
-
-function _formatHealthValue(key, value) {
-  if (value === null || value === undefined) return '--';
-  const cfg = HEALTH_CHART_SERIES[key];
-  if (cfg?.unit === 'kcal') return `${_fmt(Math.round(value))}kcal`;
-  if (cfg?.unit === '%') return `${Number(value).toFixed(1)}%`;
-  return `${Number(value).toFixed(1)}kg`;
-}
-
-function _healthLegendHtml(key, values) {
-  const cfg = HEALTH_CHART_SERIES[key];
-  const latest = _lastHealthValue(values);
-  return `
-    <span class="stats-health-legend-chip" style="--health-color:${_esc(cfg.color)}">
-      <i></i>${_esc(cfg.label)} <b>${_esc(_formatHealthValue(key, latest))}</b>
-    </span>`;
 }
 
 function _destroyHealthChart(canvas) {

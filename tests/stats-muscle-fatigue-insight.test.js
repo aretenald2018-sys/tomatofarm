@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const statsJs = readFileSync('render-stats.js', 'utf8');
+const fatigueModelJs = readFileSync('stats/fatigue-model.js', 'utf8');
 const css = readAppCssSync();
 const swJs = readFileSync('sw.js', 'utf8') + readFileSync('runtime-assets.js', 'utf8');
 
@@ -24,9 +25,11 @@ function sliceByFirstBrace(source, startToken) {
 }
 
 test('muscle fatigue classifies underactive groups as blue action candidates', () => {
-  const build = sliceByFirstBrace(statsJs, 'function _buildMuscleFatigue');
-  assert.match(statsJs, /function _fatigueBlue/);
-  assert.match(statsJs, /function _fatigueStatus/);
+  const build = sliceByFirstBrace(fatigueModelJs, 'export function _buildMuscleFatigue');
+  assert.match(fatigueModelJs, /export const LANDMARKS = \{/);
+  assert.match(statsJs, /import \{[\s\S]*?LANDMARKS,[\s\S]*?\} from '\.\/stats\/fatigue-model\.js'/);
+  assert.match(fatigueModelJs, /function _fatigueBlue/);
+  assert.match(fatigueModelJs, /function _fatigueStatus/);
   assert.match(build, /group\.tone = status\.tone/);
   assert.match(build, /status\.tone === 'under' \|\| status\.tone === 'low' \? _fatigueBlue/);
   assert.match(build, /underactive/);

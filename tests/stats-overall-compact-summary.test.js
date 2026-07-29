@@ -6,6 +6,8 @@ import { readFileSync } from 'node:fs';
 const indexHtml = readFileSync('index.html', 'utf8');
 const appJs = readFileSync('app.js', 'utf8');
 const statsJs = readFileSync('render-stats.js', 'utf8');
+const statsSummaryModelJs = readFileSync('stats/summary-model.js', 'utf8');
+const statsAnalysisRangeJs = readFileSync('stats/analysis-range.js', 'utf8');
 const styleCss = readAppCssSync();
 const swJs = readFileSync('sw.js', 'utf8') + readFileSync('runtime-assets.js', 'utf8');
 
@@ -46,7 +48,8 @@ test('overall summary renderer replaces legacy aggregate renderers', () => {
   assert.match(statsJs, /function _renderPeriodScopedStats/);
   assert.match(statsJs, /_renderOverallSummary\(scope\)/);
   assert.match(statsJs, /const range = _statsAnalysisRange\(\)/);
-  assert.match(statsJs, /hasDietRecord\(y, m, d\)/);
+  assert.match(statsJs, /buildStatsPeriodSummary\(range\)/);
+  assert.match(statsSummaryModelJs, /hasDietRecord\(y, m, d\)/);
   assert.match(statsJs, /stats-summary-kpi/);
   assert.match(statsJs, /stats-summary-fact/);
   assert.doesNotMatch(statsJs, /function _renderOverallMetadata/);
@@ -63,9 +66,9 @@ test('overall summary renderer replaces legacy aggregate renderers', () => {
 test('deep stats tab is merged into the overall workout analysis block', () => {
   assert.match(statsJs, /function _renderWorkoutAnalysis/);
   assert.match(statsJs, /STATS_ANALYSIS_PERIODS/);
-  assert.match(statsJs, /week:\s*\{\s*label:\s*'이번주'/);
-  assert.match(statsJs, /function _weekStartKey/);
-  assert.match(statsJs, /cfg\.kind === 'week'/);
+  assert.match(statsAnalysisRangeJs, /week:\s*\{\s*label:\s*'이번주'/);
+  assert.match(statsAnalysisRangeJs, /export function weekStartKey/);
+  assert.match(statsAnalysisRangeJs, /config\.kind === 'week'/);
   assert.match(statsJs, /계획 이행률/);
   assert.match(statsJs, /계획 대비 볼륨/);
   assert.match(statsJs, /완료 세트/);
