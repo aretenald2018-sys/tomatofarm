@@ -12,8 +12,11 @@ const FIREBASE_JSON = JSON.parse(readFileSync(path.join(repoRoot, 'firebase.json
 
 // 앱이 실제로 접근하는 소스만 본다. 생성물(www/, android/)과 개발 도구(tools/)는
 // 배포되는 클라이언트가 아니다.
-const SCANNED_DIRECTORIES = ['data', 'home', 'admin', 'workout', 'modals', 'utils', 'ai', 'diet', 'app'];
-const SCANNED_FILES = ['app.js', 'data.js', 'feature-login.js', 'render-admin.js'];
+const SCANNED_DIRECTORIES = ['data', 'home', 'admin', 'workout', 'modals', 'utils', 'ai', 'diet', 'app', 'auth', 'social'];
+const SCANNED_FILES = [
+  'app.js', 'data.js', 'feature-login.js', 'render-admin.js',
+  'feature-letters.js', 'feature-diet-setup.js',
+];
 
 function collectSourceFiles() {
   const files = [];

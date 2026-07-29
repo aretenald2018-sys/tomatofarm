@@ -16,6 +16,9 @@ function sliceBetween(source, startToken, endToken) {
 
 const indexHtml = read('index.html');
 const featureLoginJs = read('feature-login.js');
+const loginActionsJs = read('auth/login-actions.js');
+const loginScreenJs = read('auth/login-screen.js');
+const signupJs = read('auth/signup.js');
 const appJs = read('app.js');
 const swJs = read('sw.js') + read('runtime-assets.js');
 const welcomeBackJs = read('home/welcome-back.js');
@@ -42,42 +45,42 @@ test('login screen markup uses data-login actions instead of inline handlers', (
 });
 
 test('feature-login binds login actions with a scoped idempotent bridge', () => {
-  assert.match(featureLoginJs, /function _bindLoginActions\(root = document\)/);
-  assert.match(featureLoginJs, /doc\.documentElement\.dataset\.loginActionsBound === '1'/);
-  assert.match(featureLoginJs, /return !!control\?\.closest\?\.\('#login-screen, #login-pw-modal, #guild-onboarding-overlay, #dynamic-modal, #guild-modal'\)/);
-  assert.match(featureLoginJs, /doc\.addEventListener\('click', \(event\) => \{[\s\S]*\[data-login-action\][\s\S]*_runLoginAction\(control\.dataset\.loginAction, control, event\)[\s\S]*\}, true\)/);
-  assert.match(featureLoginJs, /doc\.addEventListener\('keydown', \(event\) => \{[\s\S]*\[data-login-enter-action\][\s\S]*event\.preventDefault\(\)[\s\S]*_runLoginAction\(control\.dataset\.loginEnterAction, control, event\)[\s\S]*\}, true\)/);
-  assert.match(featureLoginJs, /doc\.addEventListener\('input', \(event\) => \{[\s\S]*\[data-login-input-action\][\s\S]*_runLoginAction\(control\.dataset\.loginInputAction, control, event\)[\s\S]*\}, true\)/);
-  assert.match(featureLoginJs, /doc\.addEventListener\('focusin', \(event\) => \{[\s\S]*\[data-login-focus-action\][\s\S]*_runLoginAction\(control\.dataset\.loginFocusAction, control, event\)[\s\S]*\}, true\)/);
-  assert.match(featureLoginJs, /case 'create-account-login':[\s\S]*createAccountAndLogin\(\)/);
-  assert.match(featureLoginJs, /case 'create-account-signup':[\s\S]*createAccountFromSignup\(\)/);
-  assert.match(featureLoginJs, /case 'verify-and-login':[\s\S]*verifyAndLogin\(\)/);
-  assert.match(featureLoginJs, /case 'search-guilds':[\s\S]*searchGuildsFor\(_loginGuildPrefix\(control\)\)/);
-  assert.match(featureLoginJs, /case 'add-guild-chip':[\s\S]*addGuildChipFor\(_loginGuildPrefix\(control\)\)/);
+  assert.match(loginActionsJs, /function _bindLoginActions\(root = document\)/);
+  assert.match(loginActionsJs, /doc\.documentElement\.dataset\.loginActionsBound === '1'/);
+  assert.match(loginActionsJs, /return !!control\?\.closest\?\.\('#login-screen, #login-pw-modal, #guild-onboarding-overlay, #dynamic-modal, #guild-modal'\)/);
+  assert.match(loginActionsJs, /doc\.addEventListener\('click', \(event\) => \{[\s\S]*\[data-login-action\][\s\S]*_runLoginAction\(control\.dataset\.loginAction, control, event\)[\s\S]*\}, true\)/);
+  assert.match(loginActionsJs, /doc\.addEventListener\('keydown', \(event\) => \{[\s\S]*\[data-login-enter-action\][\s\S]*event\.preventDefault\(\)[\s\S]*_runLoginAction\(control\.dataset\.loginEnterAction, control, event\)[\s\S]*\}, true\)/);
+  assert.match(loginActionsJs, /doc\.addEventListener\('input', \(event\) => \{[\s\S]*\[data-login-input-action\][\s\S]*_runLoginAction\(control\.dataset\.loginInputAction, control, event\)[\s\S]*\}, true\)/);
+  assert.match(loginActionsJs, /doc\.addEventListener\('focusin', \(event\) => \{[\s\S]*\[data-login-focus-action\][\s\S]*_runLoginAction\(control\.dataset\.loginFocusAction, control, event\)[\s\S]*\}, true\)/);
+  assert.match(loginActionsJs, /case 'create-account-login':[\s\S]*createAccountAndLogin\(\)/);
+  assert.match(loginActionsJs, /case 'create-account-signup':[\s\S]*createAccountFromSignup\(\)/);
+  assert.match(loginActionsJs, /case 'verify-and-login':[\s\S]*verifyAndLogin\(\)/);
+  assert.match(loginActionsJs, /case 'search-guilds':[\s\S]*searchGuildsFor\(_loginGuildPrefix\(control\)\)/);
+  assert.match(loginActionsJs, /case 'add-guild-chip':[\s\S]*addGuildChipFor\(_loginGuildPrefix\(control\)\)/);
   assert.match(featureLoginJs, /document\.addEventListener\('DOMContentLoaded', \(\) => \{[\s\S]*_bindLoginActions\(\);[\s\S]*initLoginScreen\(\);[\s\S]*\}\)/);
 });
 
 test('login restore skips guild onboarding when a running draft can resume', () => {
-  assert.match(featureLoginJs, /function _hasRestorableRunningDraftForUser\(user\)/);
-  assert.match(featureLoginJs, /tomatofarm_running_session_draft_active/);
-  assert.match(featureLoginJs, /if \(!localStorage\.getItem\(guildObKey\) && !_hasRestorableRunningDraftForUser\(saved\)\)/);
+  assert.match(loginScreenJs, /function _hasRestorableRunningDraftForUser\(user\)/);
+  assert.match(loginScreenJs, /tomatofarm_running_session_draft_active/);
+  assert.match(loginScreenJs, /if \(!localStorage\.getItem\(guildObKey\) && !_hasRestorableRunningDraftForUser\(saved\)\)/);
 });
 
 test('APK login reboots the in-page user session without a WebView reload', () => {
-  assert.match(featureLoginJs, /function _continueToAppAfterLogin\(\)/);
-  assert.match(featureLoginJs, /new CustomEvent\('app:start-user-session', \{ detail: \{ resolve \} \}\)/);
+  assert.match(loginScreenJs, /function _continueToAppAfterLogin\(\)/);
+  assert.match(loginScreenJs, /new CustomEvent\('app:start-user-session', \{ detail: \{ resolve \} \}\)/);
   assert.match(appJs, /document\.addEventListener\('app:start-user-session'/);
-  assert.match(featureLoginJs, /function _runDeferredLoginMaintenance\(\)/);
-  assert.match(featureLoginJs, /LOGIN_SESSION_RESTORE_TIMEOUT_MS = 1800/);
-  assert.match(featureLoginJs, /restoreUserFromBackup\(\),[\s\S]*LOGIN_SESSION_RESTORE_TIMEOUT_MS/);
+  assert.match(loginScreenJs, /function _runDeferredLoginMaintenance\(\)/);
+  assert.match(loginScreenJs, /LOGIN_SESSION_RESTORE_TIMEOUT_MS = 1800/);
+  assert.match(loginScreenJs, /restoreUserFromBackup\(\),[\s\S]*LOGIN_SESSION_RESTORE_TIMEOUT_MS/);
 
-  for (const [start, end] of [
-    ['async function selectAccount', 'async function verifyAndLogin'],
-    ['async function verifyAndLogin', 'function closePasswordModal'],
-    ['async function createAccountFromSignup', 'function toggleSignupGuild'],
-    ['async function createAccountAndLogin', 'async function logoutAccount'],
+  for (const [source, start, end] of [
+    [loginScreenJs, 'async function selectAccount', 'async function verifyAndLogin'],
+    [loginScreenJs, 'async function verifyAndLogin', 'function closePasswordModal'],
+    [signupJs, 'async function createAccountFromSignup', 'function toggleSignupGuild'],
+    [loginScreenJs, 'async function createAccountAndLogin', 'async function logoutAccount'],
   ]) {
-    const loginPath = sliceBetween(featureLoginJs, start, end);
+    const loginPath = sliceBetween(source, start, end);
     assert.match(loginPath, /return _continueToAppAfterLogin\(\);/);
     assert.doesNotMatch(loginPath, /location\.reload\(\)/);
   }

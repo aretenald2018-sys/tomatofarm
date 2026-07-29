@@ -11,13 +11,16 @@ import {
   isPersonalSharedAccount,
   resolveAccountDataOwnerId,
 } from '../data/account-unification.js';
-const FEATURE_LOGIN_SOURCE = readFileSync(new URL('../feature-login.js', import.meta.url), 'utf8');
+const SIGNUP_SOURCE = readFileSync(new URL('../auth/signup.js', import.meta.url), 'utf8');
 const PROVISION_SOURCE = readFileSync(
   new URL('../functions/scripts/provision-admin-console-account.js', import.meta.url),
   'utf8',
 );
 const REPO_SOURCES = [
   '../app.js', '../feature-login.js', '../render-admin.js',
+  '../auth/login-screen.js', '../auth/login-actions.js', '../auth/signup.js',
+  '../social/guild-modal.js', '../social/guild-picker.js',
+  '../feature-letters.js', '../feature-diet-setup.js',
   '../data/data-core.js', '../data/data-auth.js', '../data/data-api.js',
   '../data/data-account.js', '../data/data-load.js', '../data/data-social-friends.js',
   '../data/shared-account-owner.js', '../home/friend-feed.js', '../home/friend-profile.js',
@@ -50,11 +53,11 @@ test('the admin console account never borrows the personal data namespace', () =
 });
 
 test('the signup screen refuses to create the admin console account', () => {
-  const start = FEATURE_LOGIN_SOURCE.indexOf('async function createAccountFromSignup()');
+  const start = SIGNUP_SOURCE.indexOf('async function createAccountFromSignup()');
   assert.notEqual(start, -1, 'createAccountFromSignup should exist');
-  const end = FEATURE_LOGIN_SOURCE.indexOf('await saveAccount(account);', start);
+  const end = SIGNUP_SOURCE.indexOf('await saveAccount(account);', start);
   assert.notEqual(end, -1, 'the signup save should follow the guard');
-  const signupSource = FEATURE_LOGIN_SOURCE.slice(start, end);
+  const signupSource = SIGNUP_SOURCE.slice(start, end);
 
   const guardIndex = signupSource.indexOf('isAdminConsoleAccount(newId)');
   assert.notEqual(guardIndex, -1, 'signup must reject the admin console id');
@@ -161,7 +164,13 @@ test('the legacy unlock flags survive only as keys to be cleared', () => {
   assert.equal(authSource.includes("getItem('admin_authenticated')"), false);
   assert.equal(authSource.includes("getItem('kim_authenticated')"), false);
 
-  const [, loginSource] = REPO_SOURCES.find(([path]) => path.endsWith('feature-login.js'));
-  assert.equal(loginSource.includes('admin_authenticated'), false);
-  assert.equal(loginSource.includes('kim_authenticated'), false);
+  // 로그인 흐름은 auth/ 와 social/ 로 쪼개져 있다. 한 파일만 보면 옮겨 심은
+  // 플래그를 놓친다.
+  const loginSurface = REPO_SOURCES.filter(([path]) =>
+    path.endsWith('feature-login.js') || path.startsWith('../auth/') || path.startsWith('../social/'));
+  assert.ok(loginSurface.length >= 6, 'the split login surface should be scanned');
+  for (const [path, loginSource] of loginSurface) {
+    assert.equal(loginSource.includes('admin_authenticated'), false, `${path} still reads admin_authenticated`);
+    assert.equal(loginSource.includes('kim_authenticated'), false, `${path} still reads kim_authenticated`);
+  }
 });

@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const AUTH_SOURCE = readFileSync(new URL('../data/data-auth.js', import.meta.url), 'utf8');
-const FEATURE_LOGIN_SOURCE = readFileSync(new URL('../feature-login.js', import.meta.url), 'utf8');
+const FEATURE_LOGIN_SOURCE = readFileSync(new URL('../auth/login-screen.js', import.meta.url), 'utf8');
 const DATA_ACCOUNT_SOURCE = readFileSync(new URL('../data/data-account.js', import.meta.url), 'utf8');
 const DATA_API_SOURCE = readFileSync(new URL('../data/data-api.js', import.meta.url), 'utf8');
-const AUTH_DATA_IMPORT_MARKER = "import('./" + "data.js')";
+const AUTH_DATA_IMPORT_MARKER = "import('../" + "data.js')";
 
 const ADMIN_CONSOLE_ID = 'console-admin';
 const PERSONAL_ID = 'personal';
