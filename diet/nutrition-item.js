@@ -1,3 +1,4 @@
+import { NUTRITION_FIELDS } from './nutrition-fields.js';
 import {
   normalizeFromCsv,
   normalizeFromLocalDB,
@@ -55,7 +56,7 @@ export function canonicalNutritionDisplay(item) {
     : (Number(canonical.base?.grams) || 100);
   const ratio = baseAmount > 0 ? (Number(serving.grams) || baseAmount) / baseAmount : 1;
   const nutrition = Object.fromEntries(
-    ['kcal', 'protein', 'carbs', 'fat', 'fiber', 'sugar', 'sodium']
+    NUTRITION_FIELDS
       .map(key => [key, Math.round((Number(canonical.nutrition?.[key]) || 0) * ratio * 10) / 10]),
   );
   return { canonical, serving, nutrition };

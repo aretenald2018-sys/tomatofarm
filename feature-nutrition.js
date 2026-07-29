@@ -14,6 +14,7 @@ import { setNutritionItemSavedHandler } from './diet/editor-events.js';
 import { getNutritionSearchMeal, setNutritionSearchMeal } from './diet/selection.js';
 import { openNutritionWeightModal } from './modals/nutrition-weight-modal.js';
 import { openNutritionItemEditor, switchNutritionTab } from './modals/nutrition-item-modal.js';
+import { calcPerServing } from './diet/recipe-nutrition.js';
 
 // ── 상태 ──────────────────────────────────────────────────────────
 let _nutritionSearchCache = { db: [], csv: [], recent: [], raw: [], brand: [] };
@@ -318,28 +319,12 @@ export async function removeFromFavorites(itemId) {
   }
 }
 
-// ── 1인분 영양정보 계산 ────────────────────────────────────────────
-function _calcPerServing(recipe) {
-  const ings = recipe.ingredients || [];
-  if (!ings.length) return null;
-  const servings = recipe.servings || 1;
-  let kcal=0, protein=0, carbs=0, fat=0, totalGrams=0;
-  ings.forEach(i => { kcal+=i.kcal; protein+=i.protein; carbs+=i.carbs; fat+=i.fat; totalGrams+=i.grams; });
-  return {
-    kcal: Math.round(kcal / servings),
-    protein: Math.round(protein / servings * 10) / 10,
-    carbs: Math.round(carbs / servings * 10) / 10,
-    fat: Math.round(fat / servings * 10) / 10,
-    grams: Math.round(totalGrams / servings),
-  };
-}
-
 // ── 내 요리 → 식단에 추가 ──────────────────────────────────────────
 export function selectCookingRecipeForDiet(recipeId) {
   const recipe = getCookingRecords().find(r => r.id === recipeId);
   const searchMeal = getNutritionSearchMeal();
   if (!recipe || !searchMeal) return;
-  const ps = _calcPerServing(recipe);
+  const ps = calcPerServing(recipe);
   if (!ps) return;
 
   const foodItem = {
@@ -365,7 +350,7 @@ function _buildRecipeResultsHtml(q) {
 
   let html = `<div style="font-size:12px;font-weight:600;color:var(--text);padding:12px 8px;border-bottom:1px solid var(--border);margin-top:8px">🍳 내 요리</div>`;
   html += recipes.slice(0, 10).map(r => {
-    const ps = _calcPerServing(r);
+    const ps = calcPerServing(r);
     if (!ps) return '';
     return `
       <div class="nutrition-result-row" data-nutrition-action="select-recipe" data-recipe-id="${r.id}" style="cursor:pointer">

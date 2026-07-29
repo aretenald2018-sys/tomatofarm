@@ -11,6 +11,9 @@ import { searchNutritionDB }                  from './data.js';
 import { confirmAction } from './utils/confirm-modal.js';
 import { setNutritionItemSavedHandler } from './diet/editor-events.js';
 import { openNutritionItemEditor } from './modals/nutrition-item-modal.js';
+import { calcPerServing } from './diet/recipe-nutrition.js';
+
+export { calcPerServing } from './diet/recipe-nutrition.js';
 
 const CATEGORIES   = ['한식','양식','일식','중식','기타'];
 const RESULT_LABEL = { success:'✓ 성공', partial:'△ 보통', fail:'✗ 아쉬움' };
@@ -384,22 +387,6 @@ function _calcTotals() {
   let kcal=0, protein=0, carbs=0, fat=0;
   _ingredients.forEach(i => { kcal+=i.kcal; protein+=i.protein; carbs+=i.carbs; fat+=i.fat; });
   return { kcal, protein, carbs, fat };
-}
-
-// ── 1인분 영양정보 계산 (외부에서도 사용) ──────────────────────────
-export function calcPerServing(recipe) {
-  const ings = recipe.ingredients || [];
-  if (!ings.length) return null;
-  const servings = recipe.servings || 1;
-  let kcal=0, protein=0, carbs=0, fat=0, totalGrams=0;
-  ings.forEach(i => { kcal+=i.kcal; protein+=i.protein; carbs+=i.carbs; fat+=i.fat; totalGrams+=i.grams; });
-  return {
-    kcal: Math.round(kcal / servings),
-    protein: Math.round(protein / servings * 10) / 10,
-    carbs: Math.round(carbs / servings * 10) / 10,
-    fat: Math.round(fat / servings * 10) / 10,
-    grams: Math.round(totalGrams / servings),
-  };
 }
 
 // ── 소급 업데이트 ─────────────────────────────────────────────────
