@@ -78,8 +78,9 @@ test('calendar open can reset the workout home month to today', () => {
 });
 
 test('workout navigation keeps only rendered calendar and day sheet surfaces', async () => {
-  const [appJs, calendarJs, calendarSheetStateJs, dateKeyJs, indexHtml, workoutExercises, navJs, styleCss, swJs] = await Promise.all([
+  const [appJs, workoutGesturesJs, calendarJs, calendarSheetStateJs, dateKeyJs, indexHtml, workoutExercises, navJs, styleCss, swJs] = await Promise.all([
     readFile(new URL('../app.js', import.meta.url), 'utf8'),
+    readFile(new URL('../app/workout-gestures.js', import.meta.url), 'utf8'),
     readFile(new URL('../render-calendar.js', import.meta.url), 'utf8'),
     readFile(new URL('../calendar/sheet-state.js', import.meta.url), 'utf8'),
     readFile(new URL('../utils/date-key.js', import.meta.url), 'utf8'),
@@ -94,21 +95,23 @@ test('workout navigation keeps only rendered calendar and day sheet surfaces', a
   ]);
   const workoutTabHtml = indexHtml.slice(indexHtml.indexOf('<div id="tab-workout"'), indexHtml.indexOf('<div id="tab-diet"'));
 
-  assert.match(appJs, /enableWorkoutPwaHistory\(\{[\s\S]*getActiveTab: \(\) => _currentTab,[\s\S]*handleOverlayBack: _handleWorkoutOverlayBack/);
-  assert.match(appJs, /window\.Capacitor\?\.Plugins\?\.App/);
-  assert.match(appJs, /_handleWorkoutOverlayBack\(\) \|\| handleWorkoutBack/);
-  assert.match(appJs, /handleWorkoutBack\(\{ activeTab: _currentTab, preferHistory: true \}\)/);
-  assert.match(appJs, /const WORKOUT_PULL_BACK_THRESHOLD_PX = 72/);
-  assert.match(appJs, /function initWorkoutPullBackGesture\(\)/);
+  assert.match(workoutGesturesJs, /enableWorkoutPwaHistory\(\{[\s\S]*getActiveTab: \(\) => _getCurrentTab\(\),[\s\S]*handleOverlayBack: _handleWorkoutOverlayBack/);
+  assert.match(workoutGesturesJs, /window\.Capacitor\?\.Plugins\?\.App/);
+  assert.match(workoutGesturesJs, /_handleWorkoutOverlayBack\(\) \|\| handleWorkoutBack/);
+  assert.match(workoutGesturesJs, /handleWorkoutBack\(\{ activeTab: _getCurrentTab\(\), preferHistory: true \}\)/);
+  assert.match(workoutGesturesJs, /const WORKOUT_PULL_BACK_THRESHOLD_PX = 72/);
+  assert.match(workoutGesturesJs, /function initWorkoutPullBackGesture\(\)/);
+  // app.js keeps only the wiring; the gesture body lives in app/workout-gestures.js.
+  assert.match(appJs, /configureWorkoutGestures\(\{ getCurrentTab: \(\) => _currentTab \}\);/);
   assert.match(appJs, /document\.body\?\.classList\.toggle\('wt-workout-tab-active', tab === 'workout'\)/);
-  assert.match(appJs, /window\.addEventListener\('touchmove', onMove, \{ passive: false, capture: true \}\)/);
-  assert.match(appJs, /handleWorkoutBack\(\{ activeTab: _currentTab, preferHistory: true, action: 'pull:back' \}\)/);
+  assert.match(workoutGesturesJs, /window\.addEventListener\('touchmove', onMove, \{ passive: false, capture: true \}\)/);
+  assert.match(workoutGesturesJs, /handleWorkoutBack\(\{ activeTab: _getCurrentTab\(\), preferHistory: true, action: 'pull:back' \}\)/);
   assert.doesNotMatch(appJs, /function _isWorkoutRecordScrollTarget\(target\)/);
   assert.doesNotMatch(appJs, /wt-workout-detail-mode|wt-exercise-detail-root/);
   assert.doesNotMatch(appJs, /#tab-workout\.wt-workout-record-mode \.workout-tab-content/);
-  assert.match(appJs, /return !!target\?\.closest\?\.\('input, textarea, select/);
-  assert.match(appJs, /function _workoutPageScrollTop\(\)/);
-  assert.match(appJs, /Number\(document\.body\?\.scrollTop\) \|\| 0/);
+  assert.match(workoutGesturesJs, /return !!target\?\.closest\?\.\('input, textarea, select/);
+  assert.match(workoutGesturesJs, /function _workoutPageScrollTop\(\)/);
+  assert.match(workoutGesturesJs, /Number\(document\.body\?\.scrollTop\) \|\| 0/);
   assert.match(appJs, /action:\s*'calendar:tab-today'/);
   assert.match(appJs, /selectedKey:\s*_dateKeyFromParts\(TODAY\.getFullYear\(\), TODAY\.getMonth\(\), TODAY\.getDate\(\)\)/);
   assert.match(appJs, /viewYear:\s*TODAY\.getFullYear\(\)/);
@@ -152,7 +155,7 @@ test('workout navigation keeps only rendered calendar and day sheet surfaces', a
   assert.doesNotMatch(navJs, /WorkoutRecordScreen|WorkoutDetailScreen|pushWorkoutRecord|pushWorkoutDetail|\brecord:\s*\{|\bdetail:\s*\{/);
   assert.match(navJs, /typeof options\.handleOverlayBack === 'function' && options\.handleOverlayBack\(\)/);
   assert.match(navJs, /_writeHistory\('push', 'overlay:back'\)/);
-  assert.match(appJs, /\[data-wt-calendar-scroll-surface\]/);
+  assert.match(workoutGesturesJs, /\[data-wt-calendar-scroll-surface\]/);
   assert.match(calendarJs, /<div class="cal-workout-surface \$\{surfaceClass\}"\$\{scrollSurfaceAttr\}>/);
   assert.match(calendarJs, /class="cal-workout-month-grid" data-wt-calendar-scroll-surface/);
   assert.match(styleCss, /\.cal-workout-surface-home\s*\{[\s\S]*touch-action:\s*pan-y/);

@@ -85,6 +85,7 @@
   './app/overlay-stack.js',
   './app/static-actions.js',
   './app/render-events.js',
+  './app/workout-gestures.js',
   './data.js',
   './calc.js',
   './calc/shared.js',
