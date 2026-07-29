@@ -113,11 +113,11 @@ test('workout navigation keeps only rendered calendar and day sheet surfaces', a
   assert.match(workoutGesturesJs, /function _workoutPageScrollTop\(\)/);
   assert.match(workoutGesturesJs, /Number\(document\.body\?\.scrollTop\) \|\| 0/);
   assert.match(appJs, /action:\s*'calendar:tab-today'/);
-  assert.match(appJs, /selectedKey:\s*_dateKeyFromParts\(TODAY\.getFullYear\(\), TODAY\.getMonth\(\), TODAY\.getDate\(\)\)/);
+  assert.match(appJs, /selectedKey:\s*dateKey\(TODAY\.getFullYear\(\), TODAY\.getMonth\(\), TODAY\.getDate\(\)\)/);
   assert.match(appJs, /viewYear:\s*TODAY\.getFullYear\(\)/);
   assert.match(appJs, /viewMonth:\s*TODAY\.getMonth\(\)/);
   assert.match(appJs, /async function openWorkoutDaySheetFromAction/);
-  assert.match(appJs, /openWorkoutDaySheet\(dateKey,[\s\S]*sheetState:\s*'full'/);
+  assert.match(appJs, /openWorkoutDaySheet\(targetDateKey,[\s\S]*sheetState:\s*'full'/);
   assert.doesNotMatch(appJs, /wtOpenWorkoutDaySheet:\s*openWorkoutDaySheetFromAction/);
   assert.doesNotMatch(appJs, /_redirectWorkoutRecordRouteToDaySheet|WORKOUT_ROUTES|currentWorkoutRoute/);
   assert.doesNotMatch(appJs, /wtOpenWorkoutRecord|openWorkoutRecordFromCalendar/);

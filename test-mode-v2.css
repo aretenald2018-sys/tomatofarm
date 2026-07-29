@@ -1,8 +1,8 @@
 /* ================================================================
    test-mode-v2.css — 테스트모드 v2 "성장 보드" 전용 스타일 (tm2-)
    ----------------------------------------------------------------
-   계획: docs/ai/features/2026-06-12-test-mode-v2-board.md
-   금지 목록 준수: wt-v4-* 재사용 금지 → tm2- 네임스페이스 자급자족.
+   운영 성장 보드: workout/test-v2/*가 tm2- 네임스페이스를 소비한다.
+   wt-v4-* 재사용 금지 → tm2- 네임스페이스 자급자족.
    팔레트는 앱 라이트 모드 계승(토마토 #fa342c · ink 스케일 · #fafafb).
    셀 색칠 의미: 옅은 녹색=계획 / 채도 녹색=이번주 / 진녹=달성(색칠).
    레이어: 보드 오버레이 z 10060, 시트 z 10070 (v1 wt-v4-modal 10050 위).
@@ -24,23 +24,6 @@
 .tm2-root *, .tm2-root *::before, .tm2-root *::after { box-sizing: border-box; }
 .tm2-root b { font-weight: 700; }
 .tm2-root button { font-family: inherit; cursor: pointer; }
-
-/* ---------- 운동탭 진입 카드 ---------- */
-.tm2-entry-card {
-  display: flex; align-items: center; gap: 12px;
-  background: var(--tm2-surface); border: 1px solid var(--tm2-line);
-  border-radius: 18px; padding: 14px 16px; margin: 10px 0;
-  width: 100%; text-align: left; transition: background 0.1s ease-in-out;
-}
-.tm2-entry-card:active { background: var(--tm2-soft); }
-.tm2-entry-card .tm2-entry-icon {
-  flex: none; width: 40px; height: 40px; border-radius: 12px;
-  background: var(--tm2-plan-bg); display: flex; align-items: center; justify-content: center;
-  font-size: 20px;
-}
-.tm2-entry-card .tm2-entry-text b { display: block; font-size: 15px; color: var(--tm2-ink1); }
-.tm2-entry-card .tm2-entry-text span { font-size: 12px; color: var(--tm2-ink3); }
-.tm2-entry-card .tm2-entry-arrow { margin-left: auto; color: var(--tm2-ink4); font-size: 16px; }
 
 /* ---------- 풀스크린 보드 오버레이 ---------- */
 .tm2-overlay {

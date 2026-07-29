@@ -231,7 +231,7 @@ test('running session is wired into app init, save, load, and sessions', () => {
 test('running summary save opens the saved workout day detail sheet', () => {
   assert.match(appJs, /openWorkoutDaySheet,/);
   assert.match(appJs, /async function openWorkoutDaySheetFromAction/);
-  assert.match(appJs, /openWorkoutDaySheet\(dateKey,[\s\S]*sheetState:\s*'full'/);
+  assert.match(appJs, /openWorkoutDaySheet\(targetDateKey,[\s\S]*sheetState:\s*'full'/);
   assert.match(runningSessionJs, /_ensureRunningWorkoutDate\(draft\.dateKey, \{ allowCurrent: false \}\)/);
   assert.match(runningSessionJs, /const targetSessionIndex = _workoutSessionIndexFromState\(\)/);
   assert.match(runningSessionJs, /const saved = await saveWorkoutDay\(\{ silent: true \}\)/);

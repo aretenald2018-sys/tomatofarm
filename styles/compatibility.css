@@ -1,30 +1,24 @@
 /* App shell and light-mode compatibility layer. */
-body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
-.quest-cell-title, .quest-item-title, .quest-period-badge,
-.diet-meal-label, .diet-badge, .diet-db-btn, .diet-skip-btn,
+body, button, input, select, textarea, .tab-btn,
+.quest-cell-title, .quest-item-title,
+.diet-badge, .diet-db-btn, .diet-skip-btn,
 .cooking-card-name, .cooking-dash-label,
-.stats-block-title, .period-btn, .export-btn, .stats-analysis-period, .stats-raw-export-btn,
-.home-card-title, .section-category-title, .sheet-section-label,
+.stats-block-title, .export-btn, .stats-analysis-period, .stats-raw-export-btn,
+.home-card-title, .sheet-section-label,
 .modal-title, .ex-editor-label, .ex-picker-group-label,
-.more-menu-item, .memo-input, .memo-item-label,
-.goal-label, .goal-ai-label, .goal-ai-summary,
-.ws-stepper-val, .rest-preset-btn {
+.more-menu-item, .memo-input,
+.goal-label {
   font-family: var(--font-sans) !important;
 }
 
-.dash-stat-val,
 .cal-current, .cal-goal, .cal-unit,
-.day-num, .wt-rest-time,
+.wt-rest-time,
 .set-input, .set-vol, .set-num, .ug-val, .ug-pct,
-.macro-bar-info, .quest-time-pct, .quest-dday-badge,
-.monthly-stat-val, .heatmap-cell, .cooking-dash-val {
+.macro-bar-info,
+.heatmap-cell, .cooking-dash-val {
   font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace !important;
 }
 
-:root.light .cell.skip-disabled { background: #f0f0f0; border-color: #d0d0d0; }
-:root.light .cell.skip-disabled .day-num { color: #888; }
-:root.light .cell.skip-disabled .cell-icon { color: #666; }
-:root.light .cell.health-issue { background: #fff0f0; border-color: #fca5a5; }
 :root.light .cell { background: #fff; border-color: var(--border); }
 :root.light .cell.gym-on { background: rgba(249,115,22,0.08); }
 :root.light .cell.cf-on { background: rgba(250,52,44,0.08); }
@@ -39,7 +33,6 @@ body, button, input, select, textarea, .tab-btn, .act-btn, .sheet-btn,
 :root.light .wt-rest-section { border-top-color: var(--border); }
 :root.light .set-row { border-color: var(--border); }
 :root.light .stats-block { background: #fff; border-color: var(--border); box-shadow: var(--shadow-sm); }
-:root.light .period-btn.active { background: var(--primary); color: #fff; }
 :root.light .heatmap-cell { background: var(--surface2); }
 :root.light .cooking-card { background: #fff; border-color: var(--border); box-shadow: var(--shadow-sm); }
 :root.light .quest-cell { background: #fff; border-color: var(--border); }

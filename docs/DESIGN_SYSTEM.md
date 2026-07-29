@@ -7,13 +7,15 @@ The cascade order is the `STYLE_ENTRY_SOURCES` array in `scripts/generate-style-
 1. `styles/tokens.css` owns design tokens.
 2. `styles/components.css` and `styles/primitives.css` own reusable components and fields.
 3. `styles/features/*.css` owns feature surfaces. A selector stays under its feature root.
-4. `styles/compatibility.css` contains temporary compatibility only.
-5. `styles/workout/expert-mode.css` owns the isolated expert-mode scene.
-6. `styles/accessibility.css` is the final focus, touch-target, assistive-text, and reduced-motion layer.
+4. `styles/compatibility.css` contains temporary compatibility only. Every removal is recorded in `docs/COMPATIBILITY.md`.
+5. `admin/admin-hig.css` owns the isolated admin hierarchy and does not define general app primitives.
+6. `styles/workout/expert-mode.css` owns the isolated expert-mode scene.
+7. `test-mode-v2.css` is a shipped workout growth-board surface consumed by `workout/test-v2/*`, not test scaffolding. It owns only the `tm2-` namespace.
+8. `styles/accessibility.css` loads last and is the final focus, touch-target, assistive-text, and reduced-motion layer for every surface above.
 
 Root `style.css` is a generated standalone WebView bundle. Never edit it directly. Change an owner stylesheet, run the generator, and use `node scripts/generate-style-entry.mjs --check` to verify that the tracked bundle is current.
 
-All owner stylesheets and the generated bundle must remain in `runtime-assets.js`. Moving a rule between files requires checking the generator's declared order; filename order is not the cascade contract.
+All owner stylesheets and the generated bundle must remain in `runtime-assets.js`. Moving a rule between files requires checking the generator's declared order; filename order is not the cascade contract. `tests/design-system-accessibility.test.js` locks the final accessibility layer after the isolated expert-mode scene.
 
 ## Selector rules
 

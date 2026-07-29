@@ -6,11 +6,17 @@ Tomato Farm is an unbundled ES-module application. The root is the source tree; 
 
 ```text
 index.html / app.js
-  -> app/                 shell, tab registry, lazy loading, overlay/action routing
+  -> app/                 static actions, tab registry, lazy loading, overlays, gestures
+  -> auth/                login screen/actions and signup flows
   -> home/                home read models, life-zone, social UI
+  -> social/              guild modal and picker controllers
   -> workout/             workout, running, Wear, program domains
   -> diet/                canonical meal and nutrition models
-  -> calendar/ + stats/   read models and selectors
+  -> calendar/            day/session models, sheet state, formatting, keyboard policy
+  -> stats/               selectors, aggregates, series, summaries, fatigue, exports
+  -> calc/                pure workout, volume, diet, social, and cycle calculations
+  -> config/              movement catalog behind the root config facade
+  -> ui/ + utils/         shared toast, action, date, text, identity, and build helpers
   -> data.js              public data facade
        -> data/           repositories, owner resolution, Firebase adapters
   -> runtime-assets.js    runtime/precache asset manifest

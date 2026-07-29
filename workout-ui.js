@@ -63,7 +63,7 @@ export async function uploadMealPhotoAI(meal, input) {
   } catch (e) {
     console.error('[uploadMealPhotoAI] error:', e);
     try {
-      const { showToast } = await import('./home/utils.js');
+      const { showToast } = await import('./ui/toast.js');
       showToast('사진 업로드 실패: ' + (e?.message || e), 2500, 'error');
     } catch {}
   }

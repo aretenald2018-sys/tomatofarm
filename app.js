@@ -2,7 +2,7 @@
 // app.js — 앱 진입점
 // ================================================================
 
-import { loadAll, TODAY, getTabOrder,
+import { dateKey, loadAll, TODAY, getTabOrder,
          getRawVisibleTabs, DEFAULT_VIS_TABS,
          isAdmin, trackEvent,
          getCurrentUser, getDataOwnerId, isPersonalInstance,
@@ -32,6 +32,7 @@ import { loadLazyModule } from './app/lazy-loader.js';
 import { getTabDefinition, isRegisteredTab } from './app/tab-registry.js';
 import { initOverlayStack } from './app/overlay-stack.js';
 import { initBuildInfoSurface, requestTomatoApkInstall } from './utils/build-info.js';
+import { parseDateKey } from './utils/date-key.js';
 import {
   configureWorkoutGestures,
   initWorkoutSystemBack,
@@ -45,7 +46,8 @@ import {
 import './utils/haptics.js';       // window.haptic.light/medium/heavy (Capacitor + web fallback)
 try { initBuildInfoSurface(); } catch (e) { console.warn('[app] build info init 실패:', e); }
 // ── 코어 탭 (즉시 로드) ──
-import { renderHome, refreshNotifCenter, showToast } from './home/index.js';
+import { renderHome, refreshNotifCenter } from './home/index.js';
+import { showToast } from './ui/toast.js';
 import { closeNotifCenter, markAllNotifsRead, toggleNotifCenter } from './home/notifications.js';
 import { setLifeZoneVisitContext } from './home/life-zone.js';
 import { showWelcomeBackPopup } from './home/welcome-back.js';
@@ -389,20 +391,6 @@ function _bindAppShellActions(root = document) {
   });
 }
 
-function _dateKeyFromParts(y, m, d) {
-  const yy = Number(y);
-  const mm = Number(m);
-  const dd = Number(d);
-  if (!Number.isFinite(yy) || !Number.isFinite(mm) || !Number.isFinite(dd)) return null;
-  return `${yy}-${String(mm + 1).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
-}
-
-function _parseWorkoutDateKey(key) {
-  const match = String(key || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) return null;
-  return { y: Number(match[1]), m: Number(match[2]) - 1, d: Number(match[3]) };
-}
-
 function _setWorkoutSurface() {
   const panel = document.getElementById('tab-workout');
   if (!panel) return;
@@ -420,14 +408,14 @@ async function _renderWorkoutRoute(snapshot = getWorkoutNavSnapshot(), action = 
 }
 
 async function openWorkoutDaySheetFromAction(key, sessionIndex = 0, options = {}) {
-  const dateKey = typeof key === 'string'
+  const targetDateKey = typeof key === 'string'
     ? key
-    : _dateKeyFromParts(key?.y, key?.m, key?.d);
-  const parsed = _parseWorkoutDateKey(dateKey);
+    : dateKey(Number(key?.y), Number(key?.m), Number(key?.d));
+  const parsed = parseDateKey(targetDateKey);
   if (!parsed) return false;
   const targetSessionIndex = Math.max(0, Math.floor(Number(sessionIndex) || 0));
   const action = options.action || 'sheet:open-external';
-  openWorkoutDaySheet(dateKey, {
+  openWorkoutDaySheet(targetDateKey, {
     sessionIndex: targetSessionIndex,
     sheetState: 'full',
     viewYear: parsed.y,
@@ -477,9 +465,9 @@ async function switchTab(tab, options = {}) {
       && Number.isFinite(Number(targetDate.m))
       && Number.isFinite(Number(targetDate.d));
     if (hasTargetDate) {
-      const key = _dateKeyFromParts(Number(targetDate.y), Number(targetDate.m), Number(targetDate.d));
+      const key = dateKey(Number(targetDate.y), Number(targetDate.m), Number(targetDate.d));
       const targetSessionIndex = 0;
-      const parsed = _parseWorkoutDateKey(key);
+      const parsed = parseDateKey(key);
       openWorkoutDaySheet(key, {
         sessionIndex: targetSessionIndex,
         sheetState: 'full',
@@ -496,7 +484,7 @@ async function switchTab(tab, options = {}) {
         history: 'replace',
         notify: false,
         closeSheet: false,
-        selectedKey: _dateKeyFromParts(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate()),
+        selectedKey: dateKey(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate()),
         selectedSessionIndex: 0,
         viewYear: TODAY.getFullYear(),
         viewMonth: TODAY.getMonth(),
@@ -543,6 +531,7 @@ document.addEventListener('cooking:saved', renderAll);
 document.addEventListener('app:render-requested', renderAll);
 let _workoutDataRefreshTimer = null;
 document.addEventListener('data:workouts-updated', () => {
+  scheduleSeasonDashboardWidgetSync('data-updated', 0);
   if (_workoutDataRefreshTimer) clearTimeout(_workoutDataRefreshTimer);
   _workoutDataRefreshTimer = setTimeout(() => {
     _workoutDataRefreshTimer = null;
@@ -652,8 +641,10 @@ document.addEventListener('app:start-user-session', (event) => {
 
 // ── 운동탭에서 날짜 지정 진입 ────────────────────────────────────
 function openWorkoutTab(y, m, d) {
-  const key = _dateKeyFromParts(y, m, d);
-  if (key) {
+  // dateKey()는 잘못된 인자에도 문자열을 만들므로, 유효성은 parseDateKey로 따로
+  // 확인해야 날짜 없는 진입의 "운동탭만 열기" 폴백이 살아남는다.
+  const key = dateKey(Number(y), Number(m), Number(d));
+  if (parseDateKey(key)) {
     openWorkoutDaySheetFromAction(key, 0, {
       history: 'replace',
       action: 'sheet:open-from-tab-date',

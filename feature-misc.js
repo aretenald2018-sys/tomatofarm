@@ -5,7 +5,8 @@
 import { getSectionTitle, saveSectionTitle,
          getMiniMemoItems, saveMiniMemoItems,
          deleteNutritionItem, getNutritionDB } from './data.js';
-import { renderHome, showToast } from './home/index.js';
+import { renderHome } from './home/index.js';
+import { showToast } from './ui/toast.js';
 import { getDeferredInstallPrompt } from './pwa-fcm.js';
 import { confirmAction } from './utils/confirm-modal.js';
 import { renderBuildInfo } from './utils/build-info.js';

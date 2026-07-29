@@ -243,14 +243,5 @@ if (!_isLocalDev && 'serviceWorker' in navigator) {
   registerFirebaseMessagingWorker();
 }
 
-// 설치 프롬프트 처리 (PWA 설치 버튼)
-let deferredPrompt;
-window.addEventListener('beforeinstallprompt', (e) => {
-  deferredPrompt = e;
-  console.log('[PWA] 설치 준비 완료');
-});
-
-window.addEventListener('appinstalled', () => {
-  console.log('[PWA] 앱이 설치되었습니다');
-  deferredPrompt = null;
-});
+// 설치 프롬프트(beforeinstallprompt/appinstalled)는 pwa-fcm.js가 단독으로 처리한다.
+// 여기에 있던 중복 리스너는 값을 어디에도 쓰지 않는 죽은 코드였다.

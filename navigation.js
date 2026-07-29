@@ -3,7 +3,8 @@
 // ================================================================
 
 import { saveTabOrder, getVisibleTabs, saveVisibleTabs } from './data.js';
-import { showToast } from './home/index.js';
+import { closeModal, openModal } from './app/overlay-stack.js';
+import { showToast } from './ui/toast.js';
 
 let _getCurrentTab = () => 'home';
 let _switchTab = () => undefined;
@@ -216,12 +217,15 @@ export function initSwipeNavigation() {
 export function applyTabOrder(order) {
   const nav = document.getElementById('tab-nav');
   if (!nav || !order?.length) return;
-  if (!order.includes('diet')) {
-    const wIdx = order.indexOf('workout');
-    order.splice(wIdx >= 0 ? wIdx : 1, 0, 'diet');
+  // 호출자가 넘긴 배열을 splice로 직접 고치면, 저장된 탭 순서를 그대로 넘긴
+  // 경우 그 배열까지 함께 바뀐다. 사본에만 diet를 끼워 넣는다.
+  const normalizedOrder = [...order];
+  if (!normalizedOrder.includes('diet')) {
+    const wIdx = normalizedOrder.indexOf('workout');
+    normalizedOrder.splice(wIdx >= 0 ? wIdx : 1, 0, 'diet');
   }
   const settingsBtn = nav.querySelector('.tab-btn-settings');
-  order.forEach(tabId => {
+  normalizedOrder.forEach(tabId => {
     const btn = nav.querySelector(`.tab-btn[data-tab="${tabId}"]`);
     if (btn) nav.insertBefore(btn, settingsBtn);
   });
@@ -286,12 +290,11 @@ export function openTabSettingsModal() {
       <span style="font-size:14px;font-weight:500;color:var(--text);">${t.label}</span>
     </label>`;
   }).join('');
-  document.getElementById('tab-settings-modal').classList.add('open');
+  openModal('tab-settings-modal');
 }
 
 export function closeTabSettingsModal(e) {
-  if (e && e.target !== document.getElementById('tab-settings-modal')) return;
-  document.getElementById('tab-settings-modal').classList.remove('open');
+  closeModal('tab-settings-modal', e);
 }
 
 export async function saveTabSettingsFromModal() {
@@ -300,6 +303,6 @@ export async function saveTabSettingsFromModal() {
   checks.forEach(c => { if (c.checked) selected.push(c.dataset.tabId); });
   await saveVisibleTabs(selected);
   applyVisibleTabs(selected);
-  document.getElementById('tab-settings-modal').classList.remove('open');
+  closeModal('tab-settings-modal');
   showToast('탭 설정이 저장되었습니다');
 }

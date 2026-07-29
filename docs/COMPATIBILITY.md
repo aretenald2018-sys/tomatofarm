@@ -21,6 +21,8 @@ The app has no runtime business-action compatibility bridge. New UI actions must
 - AI food-profile console globals; exported module functions remain available to code.
 - Weekly-streak and welcome-back inline handlers and their transient window state.
 - Query-string duplicates from the service-worker precache manifest.
+- Unreferenced typography selectors: `.act-btn`, `.sheet-btn`, `.quest-period-badge`, `.diet-meal-label`, `.period-btn`, `.section-category-title`, `.memo-item-label`, `.goal-ai-label`, `.goal-ai-summary`, `.ws-stepper-val`, `.rest-preset-btn`, `.dash-stat-val`, `.day-num`, `.quest-time-pct`, `.quest-dday-badge`, and `.monthly-stat-val`.
+- Unreferenced light-mode selectors: `.cell.skip-disabled`, `.cell.skip-disabled .day-num`, `.cell.skip-disabled .cell-icon`, `.cell.health-issue`, and `.period-btn.active`.
 
 ## Removed with the admin account split (2026-07-22)
 
