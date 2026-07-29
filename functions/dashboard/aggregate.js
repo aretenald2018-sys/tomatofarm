@@ -251,6 +251,7 @@ function runningSessionMetrics(session = {}) {
     distanceKm,
     durationSec,
     paceSecPerKm,
+    avgHeartRateBpm: number(summary.avgHeartRateBpm || summary.heartRateBpm || session.avgHeartRateBpm) || null,
     cadenceSpm: number(summary.cadenceSpm || summary.avgCadenceSpm) || null,
     startedAt: asEpochMs(session.runStartedAt || summary.startedAt) || null,
   };
@@ -380,6 +381,22 @@ function runningDomain(workouts, runningPlan, todayKey, nowEpochMs) {
       || number(a.startedAt) - number(b.startedAt)
       || a.sessionIndex - b.sessionIndex);
   const latest = allRuns.at(-1);
+  const fixedTargetPace = number(runningPlan?.targetPaceSecPerKm) || (
+    number(runningPlan?.targetTimeMin) > 0 && number(runningPlan?.raceDistanceKm) > 0
+      ? (number(runningPlan.targetTimeMin) * 60) / number(runningPlan.raceDistanceKm)
+      : null
+  );
+  const adaptiveRatePct = number(runningPlan?.adaptiveRatePct) || null;
+  const baselinePaceSecPerKm = previous?.paceSecPerKm > 0
+    ? Math.round(previous.paceSecPerKm)
+    : (number(runningPlan?.baselinePaceSecPerKm) || null);
+  const targetPaceSecPerKm = runningPlan?.paceGoalMode === "adaptive" && baselinePaceSecPerKm > 0 && adaptiveRatePct > 0
+    ? Math.round(baselinePaceSecPerKm * (1 - adaptiveRatePct / 100))
+    : (fixedTargetPace > 0 ? Math.round(fixedTargetPace) : null);
+  const actualPaceSecPerKm = latest?.paceSecPerKm > 0 ? Math.round(latest.paceSecPerKm) : null;
+  const paceStatus = targetPaceSecPerKm == null || actualPaceSecPerKm == null
+    ? "planned"
+    : actualPaceSecPerKm <= targetPaceSecPerKm ? "achieved" : "missed";
   const updatedAtEpochMs = latest ? dateKeyToEpochMs(latest.dateKey) + 23 * 60 * 60 * 1000 : null;
   return {
     score: mixedScore(goal, trend),
@@ -392,7 +409,17 @@ function runningDomain(workouts, runningPlan, todayKey, nowEpochMs) {
     weeklySessions: current.sessions,
     weeklySessionTarget: number(runningPlan?.weeklySessions, 3),
     latestPaceSecPerKm: latest?.paceSecPerKm ? Math.round(latest.paceSecPerKm) : null,
+    latestHeartRateBpm: latest?.avgHeartRateBpm ? Math.round(latest.avgHeartRateBpm) : null,
     latestCadenceSpm: latest?.cadenceSpm ? Math.round(latest.cadenceSpm) : null,
+    goal: {
+      mode: runningPlan?.paceGoalMode === "adaptive" ? "adaptive" : "fixed",
+      targetPaceSecPerKm,
+      baselinePaceSecPerKm,
+      actualPaceSecPerKm,
+      adaptiveRatePct,
+      status: paceStatus,
+      heartRateCaution: false,
+    },
     paceChangePct: current.paceSecPerKm && previous.paceSecPerKm
       ? round(((previous.paceSecPerKm - current.paceSecPerKm) / previous.paceSecPerKm) * 100, 1)
       : null,
@@ -405,6 +432,7 @@ function runningDomain(workouts, runningPlan, todayKey, nowEpochMs) {
       distanceKm: round(run.distanceKm, 2),
       paceSecPerKm: run.paceSecPerKm > 0 ? Math.round(run.paceSecPerKm) : null,
       cadenceSpm: run.cadenceSpm ? Math.round(run.cadenceSpm) : null,
+      avgHeartRateBpm: run.avgHeartRateBpm ? Math.round(run.avgHeartRateBpm) : null,
     })),
   };
 }
@@ -549,7 +577,13 @@ function rewardPointsDomain(budget, nowEpochMs) {
   const byId = new Map(categories.map((category) => [category.id, category]));
   const pointItems = normalizePointItems(rewardSettings);
   const enabledItems = pointItems.filter((item) => item.enabled);
-  if (!enabledItems.length) return { state: "missing" };
+  const missing = (label = "와인구매 포인트") => ({
+    source: "budget-canonical",
+    schemaVersion: 1,
+    label,
+    state: "missing",
+  });
+  if (!enabledItems.length) return missing();
   const todayKey = dateKeyAt(nowEpochMs);
   const selectedDailyReward = rewardSettings?.dailyReward || {};
   const configuredFocus = enabledItems.find((item) => item.id === String(selectedDailyReward.focusBucketKey || ""));
@@ -573,7 +607,7 @@ function rewardPointsDomain(budget, nowEpochMs) {
     spendByDate.set(key, (spendByDate.get(key) || 0) + transactionExpense(transaction));
   }
   const dailyBaseline = rewardDailyBaseline(spendByDate, baselineStart, todayKey, rewardSettings.baselineMethod);
-  if (dailyBaseline <= 0) return { state: "waiting", label: point.label };
+  if (dailyBaseline <= 0) return missing(point.label);
   const daySaved = (key) => Math.max(0, dailyBaseline - number(spendByDate.get(key)));
   const monthStart = `${todayKey.slice(0, 7)}-01`;
   const earnedBetween = (startKey, endKey) => {
@@ -598,9 +632,15 @@ function rewardPointsDomain(budget, nowEpochMs) {
     return total + Math.max(0, Math.round(number(entry?.amount)));
   }, 0);
   return {
+    source: "budget-canonical",
+    schemaVersion: 1,
     state: "ready",
     label: point.label,
     balance: Math.round(earnedMonth - spentMonth),
+    monthPoints: Math.round(earnedMonth - spentMonth),
+    earnedMonthPoints: Math.round(earnedMonth),
+    spentMonthPoints: Math.round(spentMonth),
+    todayPoints: Math.round(daySaved(todayKey) * point.rate),
     earnedTwoWeek: Math.round(earnedTwoWeek),
   };
 }
@@ -751,7 +791,9 @@ function buildDashboardSnapshot({ tomato = {}, budget = {}, weights, revision = 
       paceChangePct: domains.running.paceChangePct,
       cadenceChangePct: domains.running.cadenceChangePct,
       paceSecPerKm: domains.running.latestPaceSecPerKm,
+      avgHeartRateBpm: domains.running.latestHeartRateBpm,
       cadenceSpm: domains.running.latestCadenceSpm,
+      goal: domains.running.goal,
       weeklyDistanceKm: domains.running.weeklyDistanceKm,
       trend: domains.running.trend,
       records: domains.running.records,

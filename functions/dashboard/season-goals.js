@@ -82,6 +82,21 @@ function inferW863Profile(benchmark = {}) {
   return "squat";
 }
 
+function _programValue(value) {
+  return String(value ?? '').trim().toLowerCase().replace(/\s+/g, '');
+}
+
+function isW863Benchmark(benchmark = {}) {
+  const values = [benchmark.program, benchmark.scheme, benchmark.wendler?.scheme];
+  return values.some(value => ['w863', '863', '8/6/3', '8-6-3', '8_6_3'].includes(_programValue(value)))
+    || benchmark.templateVersion === W863_VERSION
+    || benchmark.wendler?.templateVersion === W863_VERSION;
+}
+
+function isWendlerBenchmark(benchmark = {}) {
+  return _programValue(benchmark.program) === 'wendler' || isW863Benchmark(benchmark);
+}
+
 function latestTm(wendler = {}, weekStart) {
   const anchors = (wendler.tmAnchors || [])
     .filter((anchor) => anchor?.weekStart <= weekStart && Number(anchor?.tmKg) > 0)
@@ -93,7 +108,7 @@ function wendlerGoal(benchmark, cycle, weekStart) {
   const wendler = benchmark.wendler || {};
   const programStart = benchmark.programStartDate || wendler.programStartDate || cycle.startDate;
   const programWeek = Math.max(1, weeksBetween(programStart, weekStart) + 1);
-  const original = wendler.templateVersion === W863_VERSION || wendler.scheme === "w863";
+  const original = wendler.templateVersion === W863_VERSION || wendler.scheme === "w863" || isW863Benchmark(benchmark);
   const weekCount = original ? 7 : Math.max(1, wendler.weekMap?.length || cycle.weeks || 6);
   const week = ((programWeek - 1) % weekCount) + 1;
   const log = benchmark.wendlerLog?.[weekStart] || {};
@@ -144,9 +159,10 @@ function buildSeasonHealthGoals({ season, board, todayKey } = {}) {
   for (const benchmark of benchmarks) {
     const cycle = activeCycle(board, benchmark.groupId, weekStart);
     if (!cycle) continue;
-    const tracks = benchmark.program === "wendler" ? ["volume"] : (benchmark.tracks?.length ? benchmark.tracks : ["volume"]);
+    const wendler = isWendlerBenchmark(benchmark);
+    const tracks = wendler ? ["volume"] : (benchmark.tracks?.length ? benchmark.tracks : ["volume"]);
     for (const track of tracks) {
-      const goal = benchmark.program === "wendler"
+      const goal = wendler
         ? wendlerGoal(benchmark, cycle, weekStart)
         : stairGoal(board, benchmark, cycle, track, weekStart);
       const trackLabel = track === "intensity" ? "강도" : "볼륨";
