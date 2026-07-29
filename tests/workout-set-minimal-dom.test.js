@@ -82,6 +82,9 @@ function buildHarnessScript() {
     '_toggleWorkoutDayExportMenu',
     '_closeWorkoutDayExportMenu',
     '_clearWorkoutSetInputOnFocus',
+    '_lockWorkoutSetKeyboardDom',
+    '_releaseWorkoutSetKeyboardDom',
+    '_resetWorkoutSetKeyboardDomLock',
     '_workoutSetKeyboardElement',
     '_workoutSetKeyboardSheet',
     '_workoutSetKeyboardActiveInput',
@@ -140,6 +143,8 @@ function buildHarnessScript() {
     // 모듈 상태 객체에 산다. 하네스도 같은 모양으로 넣어줘야 떼어온 함수가 그대로 돈다.
     const workoutDetailState = { editingCardId: null, inlineSetEditor: null };
     const workoutSetKeyboardState = { input: null, domLocked: false };
+    const workoutSetKeyboardDomLocks = new Set();
+    let workoutSetKeyboardDomLockSeq = 0;
     const workoutDetailRuntime = {
       getSelectedKey: () => _workoutHomeSelectedKey,
       getSessionIndex: () => _workoutHomeSessionIndex,

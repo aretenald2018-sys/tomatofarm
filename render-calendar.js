@@ -150,6 +150,8 @@ import {
   _bindWorkoutSetSwipeDelete,
   _commitWorkoutSetKeyboardInput,
   _hideWorkoutSetKeyboard,
+  _lockWorkoutSetKeyboardDom,
+  _releaseWorkoutSetKeyboardDom,
   _sameWorkoutSetKeyboardTarget,
   _showWorkoutSetKeyboard,
   _workoutSetKeyboardActiveInput,
@@ -1648,6 +1650,11 @@ function _bindWorkoutHomeSheetActions(root) {
     const target = event.target instanceof Element ? event.target : event.target?.parentElement;
     const input = target?.closest?.(WORKOUT_SHEET_SET_INPUT_SELECTOR);
     if (!input || !sheet.contains(input)) return;
+    // 잠금은 이 인계가 끝나면 반드시 풀어야 한다. 커밋이 떠 있으면 커밋이,
+    // 없으면 이 핸들러 끝에서 푼다. 안 풀면 키패드가 사는 내내 잠금이 남아
+    // 다른 세트 행 탭에 필요한 재렌더까지 막힌다.
+    let domLockToken = null;
+    let domLockHandedToCommit = false;
     if (input.hasAttribute('data-wt-set-inline-input')) {
       const previousInput = workoutSetKeyboardState.input?.isConnected ? workoutSetKeyboardState.input : null;
       const targetMeta = _workoutSetKeyboardMeta(input);
@@ -1655,15 +1662,19 @@ function _bindWorkoutHomeSheetActions(root) {
       const switchingMountedField = previousInput
         && previousInput !== input
         && previousInput.hasAttribute('data-wt-set-inline-input');
-      if (switchingMountedField) workoutSetKeyboardState.domLocked = true;
+      if (switchingMountedField) domLockToken = _lockWorkoutSetKeyboardDom();
       if (inlineEditorKey) workoutDetailState.inlineSetEditor = inlineEditorKey;
       if (switchingMountedField && previousInput.getAttribute('data-wt-set-keyboard-dirty') === 'true') {
+        domLockHandedToCommit = true;
+        const releaseToken = domLockToken;
         Promise.resolve(_commitWorkoutSetKeyboardInput(previousInput, {
           closeInline: false,
           nextTarget: targetMeta,
           skipRender: true,
         })).catch((error) => {
           console.warn('[workout-calendar] mounted inline field commit failed:', error);
+        }).finally(() => {
+          _releaseWorkoutSetKeyboardDom(releaseToken);
         });
       }
       if (switchingMountedField) {
@@ -1672,6 +1683,8 @@ function _bindWorkoutHomeSheetActions(root) {
     }
     _clearWorkoutSetInputOnFocus(input);
     _showWorkoutSetKeyboard(input);
+    // focusin은 포커스가 이미 옮겨진 뒤에 온다. 커밋이 없으면 인계는 여기서 끝.
+    if (!domLockHandedToCommit) _releaseWorkoutSetKeyboardDom(domLockToken);
   }, true);
   sheet.addEventListener('input', (event) => {
     const target = event.target instanceof Element ? event.target : event.target?.parentElement;

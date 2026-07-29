@@ -642,7 +642,10 @@ test('workout keypad keeps digit entry local and commits once with an optimistic
   assert.match(calendarJs, /if \(_workoutSetKeyboardActiveInput\(\)\) return;[\s\S]*document\.dispatchEvent\(new CustomEvent\('sheet:saved'\)\)/);
   assert.match(move, /const commitPromise = Promise\.resolve\(_commitWorkoutSetKeyboardInput/);
   assert.match(move, /const targetAlreadyMounted = inlineMove && !!_workoutSetKeyboardRenderedInput\(target\)/);
-  assert.match(move, /if \(targetAlreadyMounted\) workoutSetKeyboardState\.domLocked = true/);
+  assert.match(move, /const domLockToken = targetAlreadyMounted \? _lockWorkoutSetKeyboardDom\(\) : null/);
+  // 잠금은 인계가 끝나면 반드시 풀려야 한다. 안 풀면 키패드가 살아 있는 내내
+  // 남아 다른 세트 행 탭이 필요로 하는 재렌더까지 막힌다.
+  assert.match(move, /_releaseWorkoutSetKeyboardDom\(domLockToken\)/);
   assert.match(move, /skipRender: targetAlreadyMounted/);
   assert.match(move, /_focusWorkoutSetKeyboardRenderedTarget\(target\)/);
   assert.match(move, /inlineMove && !targetAlreadyMounted/);

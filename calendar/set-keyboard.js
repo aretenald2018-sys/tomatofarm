@@ -30,6 +30,34 @@ export const workoutSetKeyboardState = {
   domLocked: false,
 };
 
+// domLocked는 "이미 마운트된 인라인 입력으로의 커밋 + 포커스 인계가 진행 중"인
+// 동안만 서 있어야 하는 잠금이다. 예전에는 키패드가 통째로 닫힐 때만 풀려서,
+// 한 행 안에서 kg→횟수로 옮기면 키패드가 살아 있는 내내 잠금이 남았다. 그러면
+// 아직 인라인이 아닌 다른 행을 눌렀을 때 필요한 재렌더까지 막혀 탭이 먹통이 됐다.
+// 인계가 끝나면 풀되, 인계가 겹칠 수 있으니 토큰 단위로 센다. 표면을 정리할 때
+// 발급분을 전부 버리므로, 늦게 도착한 옛 토큰의 해제는 자연히 무시된다.
+const workoutSetKeyboardDomLocks = new Set();
+let workoutSetKeyboardDomLockSeq = 0;
+
+export function _lockWorkoutSetKeyboardDom() {
+  workoutSetKeyboardDomLockSeq += 1;
+  const token = workoutSetKeyboardDomLockSeq;
+  workoutSetKeyboardDomLocks.add(token);
+  workoutSetKeyboardState.domLocked = true;
+  return token;
+}
+
+export function _releaseWorkoutSetKeyboardDom(token) {
+  if (token == null) return;
+  if (!workoutSetKeyboardDomLocks.delete(token)) return;
+  if (!workoutSetKeyboardDomLocks.size) workoutSetKeyboardState.domLocked = false;
+}
+
+function _resetWorkoutSetKeyboardDomLock() {
+  workoutSetKeyboardDomLocks.clear();
+  workoutSetKeyboardState.domLocked = false;
+}
+
 export function configureWorkoutSetKeyboard(runtime = {}) {
   Object.assign(workoutSetKeyboardRuntime, runtime);
 }
@@ -262,7 +290,7 @@ export function _clearWorkoutSetKeyboardSurface(input = null) {
     sheet.classList.remove('has-set-keyboard');
   });
   workoutSetKeyboardState.input = null;
-  workoutSetKeyboardState.domLocked = false;
+  _resetWorkoutSetKeyboardDomLock();
 }
 
 export function _hideWorkoutSetKeyboard(options = {}) {
@@ -271,7 +299,7 @@ export function _hideWorkoutSetKeyboard(options = {}) {
     _clearWorkoutSetKeyboardSurface(input);
     return Promise.resolve(false);
   }
-  workoutSetKeyboardState.domLocked = false;
+  _resetWorkoutSetKeyboardDomLock();
   const commitPromise = Promise.resolve(_commitWorkoutSetKeyboardInput(input, { closeInline: true }));
   _clearWorkoutSetKeyboardSurface(input);
   return commitPromise;
@@ -414,7 +442,7 @@ export function _completeWorkoutSetKeyboardInput() {
     _clearWorkoutSetKeyboardSurface(input);
     return Promise.resolve(false);
   }
-  workoutSetKeyboardState.domLocked = false;
+  _resetWorkoutSetKeyboardDomLock();
   const commitPromise = Promise.resolve(_commitWorkoutSetKeyboardDone(input))
     .catch((e) => {
       console.warn('[workout-calendar] set keyboard complete failed:', e);
@@ -431,7 +459,7 @@ export function _moveWorkoutSetKeyboardFocus(direction) {
   if (!input || !target) return false;
   const inlineMove = input.hasAttribute('data-wt-set-inline-input') && target.mode === 'inline';
   const targetAlreadyMounted = inlineMove && !!_workoutSetKeyboardRenderedInput(target);
-  if (targetAlreadyMounted) workoutSetKeyboardState.domLocked = true;
+  const domLockToken = targetAlreadyMounted ? _lockWorkoutSetKeyboardDom() : null;
   if (inlineMove) workoutSetKeyboardRuntime.syncNavState({ history: 'replace', action: 'sheet:set-inline-field' });
   const commitPromise = Promise.resolve(_commitWorkoutSetKeyboardInput(input, {
     closeInline: false,
@@ -451,6 +479,10 @@ export function _moveWorkoutSetKeyboardFocus(direction) {
     if (inlineMove && !targetAlreadyMounted) _focusWorkoutSetKeyboardRenderedTarget(target);
   }).catch((e) => {
     console.warn('[workout-calendar] set keyboard move failed:', e);
+  }).finally(() => {
+    // 커밋이 끝나면 인계도 끝난 것이다. targetAlreadyMounted 분기는 포커스를
+    // 동기로 옮기므로 여기서 풀어도 rAF/80ms 재시도 경로와 겹치지 않는다.
+    _releaseWorkoutSetKeyboardDom(domLockToken);
   });
   return true;
 }

@@ -457,6 +457,74 @@ test('set keypad commits a dirty value on field switch without rerendering the r
   }
 });
 
+test('tapping another set row after switching fields inside a row still opens that row inline editor', async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), 'tomato-logged-in-row-switch-'));
+  let harness;
+  try {
+    const htmlPath = await buildWorkoutSheetHarness(tempDir);
+    harness = await launchHarness(htmlPath);
+    const { page } = harness;
+
+    // 실제 사용 흐름: 1세트 무게 → 1세트 횟수 → 2세트 무게.
+    // 세 번째 탭은 아직 인라인이 아닌 행(버튼)을 누르는 것이라 재렌더가 필요하다.
+    await tapElement(page, editFieldSelector(0, 'kg'));
+    await page.waitForFunction(
+      (selector) => document.activeElement === document.querySelector(selector),
+      { timeout: 5000 },
+      inlineInputSelector(0, 'kg'),
+    );
+    await tapElement(page, '[data-wt-set-keyboard] [data-wt-set-keyboard-action="clear"]');
+    await tapElement(page, '[data-wt-set-keyboard] [data-wt-set-keyboard-key="9"]');
+    await tapElement(page, '[data-wt-set-keyboard] [data-wt-set-keyboard-key="5"]');
+
+    // 같은 행의 횟수 칸으로 이동. 이 이동이 domLocked를 세운다.
+    await tapElement(page, inlineInputSelector(0, 'reps'));
+    await page.waitForFunction(
+      (selector) => document.activeElement === document.querySelector(selector),
+      { timeout: 5000 },
+      inlineInputSelector(0, 'reps'),
+    );
+    await tapElement(page, '[data-wt-set-keyboard] [data-wt-set-keyboard-action="clear"]');
+    await tapElement(page, '[data-wt-set-keyboard] [data-wt-set-keyboard-key="1"]');
+    await tapElement(page, '[data-wt-set-keyboard] [data-wt-set-keyboard-key="2"]');
+
+    // 세 번째 탭: 2세트 무게 칸. 이 행은 아직 읽기 모드라 인라인 입력이
+    // 새로 마운트되어야 하고, 포커스도 거기로 가야 한다.
+    await tapElement(page, editFieldSelector(1, 'kg'));
+    await page.waitForSelector(inlineInputSelector(1, 'kg'), { timeout: 5000 });
+    await page.waitForFunction(
+      (selector) => document.activeElement === document.querySelector(selector),
+      { timeout: 5000 },
+      inlineInputSelector(1, 'kg'),
+    );
+
+    const afterSecondRow = await page.evaluate(() => ({
+      ...window.__qa.activeSnapshot(),
+      firstRowInline: document.querySelectorAll('[data-wt-day-sheet] [data-wt-set-inline-input][data-set-index="0"]').length,
+      secondRowInline: document.querySelectorAll('[data-wt-day-sheet] [data-wt-set-inline-input][data-set-index="1"]').length,
+    }));
+    assert.equal(afterSecondRow.activeField, 'kg');
+    assert.equal(afterSecondRow.activeSetIndex, '1');
+    assert.equal(afterSecondRow.activeIsInline, true);
+    assert.equal(afterSecondRow.keyboardTracksActive, true);
+    // 2세트 행만 인라인으로 바뀌고 1세트 행은 읽기 모드로 돌아간다.
+    assert.equal(afterSecondRow.secondRowInline, 2);
+    assert.equal(afterSecondRow.firstRowInline, 0);
+
+    // 1세트에 넣은 값은 행을 옮기는 과정에서 모두 커밋되어 있어야 한다.
+    await page.waitForFunction(
+      () => window.__qa.storedSets()[0]?.kg === 95 && window.__qa.storedSets()[0]?.reps === 12,
+      { timeout: 5000 },
+    );
+
+    assert.deepEqual(harness.pageErrors, []);
+    assert.deepEqual(harness.blockedRequests, []);
+  } finally {
+    if (harness?.browser) await harness.browser.close();
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 // ── 식단 검색 하네스 ─────────────────────────────────────────────
 test('nutrition search renders the public food DB and brand sections through the real feature-nutrition.js', async () => {
   const tempDir = await mkdtemp(path.join(tmpdir(), 'tomato-logged-in-nutrition-'));
