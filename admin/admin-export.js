@@ -1,5 +1,9 @@
+import { toFiniteNumber } from '../utils/number.js';
 import { TODAY, getDeveloperLetterStatus, getDeveloperLetterStatusMeta } from '../data.js';
 
+// CSV 필드 이스케이프다. utils/escape-html.js 의 HTML 이스케이프와 규칙이
+// 달라서 그 정본으로 대체하지 않는다 — 쉼표·따옴표·줄바꿈이 든 필드는
+// 따옴표로 감싸야 열이 밀리지 않는다.
 function _esc(value) {
   if (value === null || value === undefined) return '';
   const s = String(value);
@@ -15,10 +19,7 @@ function _dateStamp(date = TODAY) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
-function _num(value) {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
-}
+const _num = (value, fallback = null) => toFiniteNumber(value, fallback);
 
 function _fmtNum(value, digits = 1) {
   const n = _num(value);

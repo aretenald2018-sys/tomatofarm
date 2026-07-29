@@ -1,5 +1,8 @@
 import { dateKey, TODAY } from '../data.js';
 
+// ── HTML 이스케이프는 ../utils/escape-html.js 의 정본을 그대로 재수출한다 ──
+export { escapeHtml } from '../utils/escape-html.js';
+
 export const CARD_STYLE = 'background:var(--hig-surface);border:1px solid var(--hig-separator);border-radius:18px;padding:16px;margin-bottom:16px;';
 export const SECTION_TITLE = 'font-size:17px;font-weight:600;letter-spacing:-0.41px;';
 
@@ -42,15 +45,6 @@ export function fmtReadDelay(createdAt, readAt) {
   }
   const days = Math.floor(diff / 86400000);
   return `${days}일 뒤 읽음`;
-}
-
-export function escapeHtml(value) {
-  return String(value || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
 }
 
 export function stageColor(stage) {

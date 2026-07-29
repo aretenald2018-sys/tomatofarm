@@ -11,15 +11,7 @@ import {
 import { dk, daysAgo, fmtDate, nameResolver, CARD_STYLE, SECTION_TITLE } from './admin-utils.js';
 import { confirmAction } from '../utils/confirm-modal.js';
 import { renderSocialStacked } from './admin-charts.js';
-
-function _escapeHtml(value) {
-  return String(value || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
+import { escapeHtml as _escapeHtml } from '../utils/escape-html.js';
 
 function _enc(value) {
   return encodeURIComponent(String(value || ''));
