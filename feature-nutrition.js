@@ -1,3 +1,4 @@
+import { escapeHtml as _escapeHtml } from './utils/escape-html.js';
 // ================================================================
 // feature-nutrition.js — 영양 DB 검색, 공공API, 직접추가, 캐시
 // ================================================================
@@ -17,10 +18,12 @@ import { openNutritionItemEditor, switchNutritionTab } from './modals/nutrition-
 import { calcPerServing } from './diet/recipe-nutrition.js';
 
 // ── 상태 ──────────────────────────────────────────────────────────
-let _nutritionSearchCache = { db: [], csv: [], recent: [], raw: [], brand: [] };
+let _nutritionSearchCache = { db: [], csv: [], csvRendered: [], recent: [], raw: [], brand: [] };
 let _nutritionSearchTimer = null;
 let _lastSearchQuery = null;
 let _nutritionCSVLoaded = false;
+const _nutritionItemCache = new Map();
+let _nutritionItemCacheSequence = 0;
 
 // NOTE: _loadPublicFoodDB / _loadAgriFoodDB는 과거에 19,495건을 localStorage에
 // 적재했지만 검색에 쓰지 않아 비용 대비 효용이 없었음. 2026-04-17 제거.
@@ -81,21 +84,12 @@ export function debouncedNutritionSearch() {
 }
 
 // ── 렌더링 헬퍼 ──────────────────────────────────────────────────
-function _escapeHtml(value) {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
 function _renderNutritionRow(item, { icon = '🏠', removable = false, isCSV = false } = {}) {
   const display = canonicalNutritionDisplay(item);
   if (!display) return '';
   const canonical = display.canonical;
-  const itemDataKey = `_nutritionItem_${item.id}`;
-  window[itemDataKey] = canonical;
+  const itemDataKey = `nutrition-item-${++_nutritionItemCacheSequence}`;
+  _nutritionItemCache.set(itemDataKey, canonical);
   const name = _escapeHtml(canonical.name || '이름 없는 식품');
   const manufacturer = _escapeHtml(canonical.brand || '');
   const { kcal, carbs, protein, fat } = display.nutrition;
@@ -127,6 +121,7 @@ function _renderNutritionSection(title, items, options = {}) {
 export function renderNutritionSearchInitial() {
   const container = document.getElementById('nutrition-search-results');
   if (!container) return;
+  _nutritionItemCache.clear();
   const recentItems = getRecentNutritionItems(10);
 
   let html = _renderNutritionSection('⭐ 최근 항목', recentItems, { removable: true });
@@ -144,6 +139,7 @@ export async function renderNutritionSearchResults() {
   const input = document.getElementById('nutrition-search-input');
   const container = document.getElementById('nutrition-search-results');
   if (!input || !container) return;
+  _nutritionItemCache.clear();
   const q = (input.value || '').trim();
 
   let html = '';
@@ -152,7 +148,7 @@ export async function renderNutritionSearchResults() {
   if (!q) {
     const recentItems = getRecentNutritionItems(10);
     const csvResults = searchCSVFood('');
-    _nutritionSearchCache = { db: [], csv: csvResults, recent: recentItems, raw: [], brand: [] };
+    _nutritionSearchCache = { db: [], csv: csvResults, csvRendered: [], recent: recentItems, raw: [], brand: [] };
 
     html += _renderNutritionSection(`⭐ 즐겨찾기 (최근 ${recentItems.length}개)`, recentItems, { removable: true });
     html += _renderNutritionSection('📊 CSV 데이터', csvResults.slice(0, 20), { icon: '📊', isCSV: true, marginTop: true });
@@ -167,7 +163,7 @@ export async function renderNutritionSearchResults() {
     const csvResults = searchCSVFood(q);
     // 로컬 원재료(큐레이티드) DB 검색 — 샐러리/닭가슴살처럼 단일 재료일 때 즉시 나옴
     const rawResults = searchRawIngredients(q);
-    _nutritionSearchCache = { db: dbResults, csv: csvResults, recent: recentFiltered, raw: rawResults, brand: [] };
+    _nutritionSearchCache = { db: dbResults, csv: csvResults, csvRendered: [], recent: recentFiltered, raw: rawResults, brand: [] };
 
     html += _renderNutritionSection('⭐ 즐겨찾기', recentFiltered, { removable: true, color: 'var(--accent)' });
 
@@ -183,6 +179,8 @@ export async function renderNutritionSearchResults() {
     const rawNames = new Set(rawResults.map(r => r.name?.toLowerCase()));
     const dbNames = new Set([...dbResults, ...recentFiltered].map(r => r.name?.toLowerCase()));
     const dedupedCsv = csvResults.filter(c => !dbNames.has(c.name?.toLowerCase()) && !rawNames.has(c.name?.toLowerCase()));
+    // 공공·브랜드 결과 중복 제거는 실제로 렌더된 CSV 목록을 기준으로 한다.
+    _nutritionSearchCache.csvRendered = dedupedCsv;
     html += _renderNutritionSection('📊 CSV 검색 결과', dedupedCsv.slice(0, 15), { icon: '📊', isCSV: true, marginTop: true });
 
     allNames = new Set([...dbNames, ...rawNames, ...dedupedCsv.map(c => c.name?.toLowerCase())]);
@@ -216,10 +214,10 @@ export async function renderNutritionSearchResults() {
         return !hasBrand && allNames?.has(item?.name?.toLowerCase());
       };
       const localKeys = new Set([
-        ...dbResults,
-        ...recentFiltered,
-        ...rawResults,
-        ...dedupedCsv,
+        ...(_nutritionSearchCache.db || []),
+        ...(_nutritionSearchCache.recent || []),
+        ...(_nutritionSearchCache.raw || []),
+        ...(_nutritionSearchCache.csvRendered || []),
       ].map(resultKey));
       const dedupedGov = (govResults || []).filter(g => !shouldHideAsDuplicate(g, localKeys));
       const govKeys = new Set(dedupedGov.map(resultKey));
@@ -399,7 +397,7 @@ export function selectNutritionItem(itemId) {
 }
 
 export function selectNutritionItemFromCache(itemDataKey) {
-  const item = window[itemDataKey];
+  const item = _nutritionItemCache.get(itemDataKey);
 
   if (!item) {
     console.error('[selectNutritionItemFromCache] 항목을 찾을 수 없습니다:', itemDataKey);
