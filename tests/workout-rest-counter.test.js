@@ -80,6 +80,7 @@ test('workout day sheet set completion enters the shared rest and idle-limit flo
 test('idle-limit recovery runs after workout hydration, same-day reopen, and native resume', () => {
   const load = read('workout/load.js');
   const app = read('app.js');
+  const workoutGestures = read('app/workout-gestures.js');
   const sameDateStart = load.indexOf('if (isSameDate && targetSessionIndex');
   const sameDateEnd = load.indexOf('\n  resetWorkoutTypeUi();', sameDateStart);
   const sameDateBranch = load.slice(sameDateStart, sameDateEnd);
@@ -90,7 +91,11 @@ test('idle-limit recovery runs after workout hydration, same-day reopen, and nat
   assert.match(load, /wtCheckWorkoutIdleLimit/);
   assert.match(sameDateBranch, /_recoverWorkoutIdleLimit\('same-date load'\)/);
   assert.match(hydrationFlow, /_recoverWorkoutIdleLimit\('date load'\)/);
-  assert.match(app, /addListener\('appStateChange',[\s\S]*event\.isActive[\s\S]*wtRecoverTimers\(\)/);
+  // 타이머 복구 진입점은 둘이다. 네이티브 재개는 app/workout-gestures.js 가,
+  // 웹 포커스 복귀는 app.js 의 visibilitychange 가 담당한다. 어느 한쪽이
+  // 이동하거나 사라지면 백그라운드 이후 휴식 타이머가 멈춘 채로 남는다.
+  assert.match(workoutGestures, /addListener\('appStateChange',[\s\S]*event\.isActive[\s\S]*wtRecoverTimers\(\)/);
+  assert.match(app, /visibilitychange[\s\S]*_currentTab === 'workout'[\s\S]*wtRecoverTimers\(\)/);
 });
 
 test('raw statistics export can include set rest intervals', () => {
