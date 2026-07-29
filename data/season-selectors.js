@@ -1,3 +1,4 @@
+import { toFiniteNumber as _num } from '../utils/number.js';
 // Pure season-scoped workout, running, and strength selectors.
 
 import {
@@ -19,10 +20,6 @@ import {
   startOfSeasonWeek,
 } from './season-model.js';
 
-function _num(value) {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : 0;
-}
 function _round(value, digits = 1) {
   const factor = 10 ** digits;
   return Math.round(_num(value) * factor) / factor;

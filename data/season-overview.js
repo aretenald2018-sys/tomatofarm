@@ -94,7 +94,11 @@ function _strengthItems(cache = {}, board = {}, week, todayKey) {
         });
       // 웬들러 종목은 스텝을 만들지 않고 paintWeek이 benchmark.wendlerLog에 달성을 남긴다 (board-core 계약)
       const log = (wendler ? benchmark.wendlerLog?.[week.goalWeekStart] : step?.weekLog?.[week.goalWeekStart]) || {};
-      const future = week.goalWeekStart > todayKey;
+      // 러닝 항목과 같은 기준을 쓴다. goalWeekStart 는 시즌이 월요일에 시작하지 않을 때
+      // 시즌 시작일보다 앞선 월요일을 가리키므로, 아직 시작하지 않은 시즌의 첫 주가
+      // 헬스만 ×(미달)·러닝은 ·(예정)으로 갈렸다. 달성 로그 조회 키는 f70cf78 대로
+      // goalWeekStart 를 그대로 쓴다.
+      const future = week.startDate > todayKey;
       const program = wendler
         ? buildExerciseProgramWorkoutPrescription(board, benchmark, {
           track,
@@ -116,7 +120,7 @@ function _strengthItems(cache = {}, board = {}, week, todayKey) {
         ? 'planned'
         : boardHit || actualHit
           ? 'achieved'
-          : log.attempted || workSets.length
+          : log.attempted || log.performed === true || !!log.missedAt || workSets.length
             ? 'attempted'
             : 'not-achieved';
       const target = wendler

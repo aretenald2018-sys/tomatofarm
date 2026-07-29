@@ -13,6 +13,7 @@
 //  - dumpFoodProfile() export로 프로파일 덤프
 // ================================================================
 
+import { dateFromKey as _parseDateKey } from '../utils/date-key.js';
 import { _cache }      from './data-core.js';
 import { normalizeFood } from './korean-food-normalize.js';
 
@@ -44,13 +45,6 @@ function _percentile(arr, p) {
   const s = [...arr].sort((a, b) => a - b);
   const idx = Math.min(s.length - 1, Math.max(0, Math.floor(p * (s.length - 1))));
   return s[idx];
-}
-
-function _parseDateKey(key) {
-  // "2026-04-15" → Date
-  const [y, m, d] = key.split('-').map(Number);
-  if (!y || !m || !d) return null;
-  return new Date(y, m - 1, d);
 }
 
 function _daysBetween(a, b) {

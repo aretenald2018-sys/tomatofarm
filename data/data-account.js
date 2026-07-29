@@ -30,8 +30,13 @@ export async function getAccountListIncludingAdminConsole() {
   return _readAllAccounts();
 }
 
+// 프로필·길드 호출자는 세션이 잡아 둔 계정 스냅샷을 그대로 저장한다. 그 스냅샷은
+// 로그인 이후 _accounts 에 merge 로 쌓인 lastLoginAt/tutorialDoneAt/actionLog
+// (data-social-log.js) 를 갖고 있지 않으므로, 전체 덮어쓰기로 저장하면 그 필드들이
+// 조용히 사라진다. merge 로 저장해 스냅샷에 없는 필드는 보존한다. 필드를 실제로
+// 비우는 경로는 명시적으로 null 을 넣으므로 merge 에서도 그대로 지워진다.
 export async function saveAccount(account) {
-  await setDoc(doc(db, '_accounts', account.id), account);
+  await setDoc(doc(db, '_accounts', account.id), account, { merge: true });
 }
 
 export async function refreshCurrentUserFromDB() {
@@ -103,7 +108,9 @@ export async function recoverDeletedAccounts() {
         passwordHash: null,
         createdAt: Date.now(),
       };
-      await setDoc(doc(db, '_accounts', id), account);
+      // 복구 스캔은 계정 목록을 읽은 뒤 실제 재생성과 경합할 수 있다. 그 사이에
+      // 쌓인 필드를 스텁으로 통째로 덮지 않도록 merge 저장을 거친다.
+      await saveAccount(account);
       recovered++;
       console.log('[recover] 계정 복구:', id, '별명:', account.nickname);
     }

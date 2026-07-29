@@ -1102,10 +1102,13 @@ export const saveMilestoneShown = (obj) => { _settings.milestone_shown = obj; re
 
 export function getStreakFreezes() { return _settings.streak_freezes || []; }
 export async function useStreakFreeze(type) {
-  const state = getTomatoState();
+  // getTomatoState()/getStreakFreezes() 는 _settings 안의 값을 그대로 돌려준다.
+  // 그 참조를 직접 늘리면 저장이 실패해도(_fbOp 는 오류를 삼킨다) 메모리에는 이미
+  // 사용한 것으로 남는다. 복사본에서 계산하고 저장 함수만 _settings 를 갱신한다.
+  const state = { ...getTomatoState() };
   const available = state.totalTomatoes + (state.giftedReceived || 0) - (state.giftedSent || 0);
   if (available <= 0) return { error: '토마토가 부족해요.' };
-  const freezes = getStreakFreezes();
+  const freezes = [...getStreakFreezes()];
   const now = Date.now();
   const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
   const recentFreeze = freezes.find(f => f.type === type && f.usedAt > weekAgo);
@@ -1134,7 +1137,8 @@ export function getAllTomatoCycles() { return _tomatoCycles; }
 export async function sendTomatoGift(toUserId, message) {
   if (!getCurrentUserRef()) return { error: '로그인이 필요해요.' };
   const recipientOwnerId = await resolvePrivateDataOwnerId(toUserId);
-  const state = getTomatoState();
+  // 저장 전 in-place 증가를 피한다 (useStreakFreeze 와 같은 이유).
+  const state = { ...getTomatoState() };
   const available = state.totalTomatoes + state.giftedReceived - state.giftedSent;
   if (available <= 0) return { error: '선물할 토마토가 없어요.' };
   const fromId = _socialId();

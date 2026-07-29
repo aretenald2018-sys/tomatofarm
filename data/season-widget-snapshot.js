@@ -1,5 +1,9 @@
 import { calcDietMetrics, getDayTargetKcal, isExerciseDaySuccess } from '../calc.js';
 import {
+  countRecordedNutrientMeals,
+  sumDayNutrient,
+} from '../diet/day-nutrition.js';
+import {
   activeBenchmarks,
   activeCycleOf,
   mondayOf,
@@ -84,8 +88,7 @@ function _itemVisibilityRank(state) {
 
 function _foodSnapshot(cache, todayKey, dietPlan) {
   const day = cache?.[todayKey] || {};
-  const actualKcal = Math.round(['bKcal', 'lKcal', 'dKcal', 'sKcal']
-    .reduce((sum, key) => sum + _number(day[key]), 0));
+  const actualKcal = Math.round(sumDayNutrient(day, 'kcal'));
   const targetKcal = dietPlan && (dietPlan._userSet || dietPlan.weight || dietPlan.height)
     ? Math.max(0, Math.round(getDayTargetKcal(
       dietPlan,
@@ -95,7 +98,7 @@ function _foodSnapshot(cache, todayKey, dietPlan) {
       day,
     )))
     : 0;
-  const recordedMeals = ['bKcal', 'lKcal', 'dKcal', 'sKcal'].filter(key => _number(day[key]) > 0).length;
+  const recordedMeals = countRecordedNutrientMeals(day, 'kcal');
   const progress = targetKcal > 0 ? Math.round((actualKcal / targetKcal) * 100) : 0;
   let carbsTargetG = 0;
   let proteinTargetG = 0;
@@ -119,9 +122,9 @@ function _foodSnapshot(cache, todayKey, dietPlan) {
     actualKcal,
     targetKcal,
     progress: Math.max(0, Math.min(100, progress)),
-    proteinG: Math.round(['bProtein', 'lProtein', 'dProtein', 'sProtein'].reduce((sum, key) => sum + _number(day[key]), 0)),
-    carbsG: Math.round(['bCarbs', 'lCarbs', 'dCarbs', 'sCarbs'].reduce((sum, key) => sum + _number(day[key]), 0)),
-    fatG: Math.round(['bFat', 'lFat', 'dFat', 'sFat'].reduce((sum, key) => sum + _number(day[key]), 0)),
+    proteinG: Math.round(sumDayNutrient(day, 'protein')),
+    carbsG: Math.round(sumDayNutrient(day, 'carbs')),
+    fatG: Math.round(sumDayNutrient(day, 'fat')),
     proteinTargetG,
     carbsTargetG,
     fatTargetG,
