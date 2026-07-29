@@ -12,7 +12,20 @@ import {
   WORKOUT_RUNNING_SESSION_INDEX,
 } from '../workout/session-policy.js';
 
-const calendarJs = readFileSync(new URL('../render-calendar.js', import.meta.url), 'utf8');
+// 달력 탭 소스는 render-calendar.js + calendar/*.js 분할 이후 여러 파일에 걸쳐 있다.
+// 이 스위트는 "달력 탭 코드 어딘가에 있는가"를 보므로 분할 소스를 이어붙여 검사한다.
+const calendarJs = [
+  '../render-calendar.js',
+  '../calendar/format.js',
+  '../calendar/gesture-policy.js',
+  '../calendar/day-metrics.js',
+  '../calendar/workout-read-model.js',
+  '../calendar/export-text.js',
+  '../calendar/session-state.js',
+  '../calendar/detail-template.js',
+  '../calendar/sheet-state.js',
+  '../calendar/set-keyboard.js',
+].map(path => readFileSync(new URL(path, import.meta.url), 'utf8')).join('\n\n');
 const styleCss = readAppCssSync();
 const tm2Css = readFileSync(new URL('../test-mode-v2.css', import.meta.url), 'utf8');
 const swJs = readFileSync(new URL('../sw.js', import.meta.url), 'utf8') + readFileSync(new URL('../runtime-assets.js', import.meta.url), 'utf8');
@@ -64,6 +77,10 @@ function buildAddCarouselFocusHarnessScript() {
     let _viewMonth = 6;
     let _workoutHomeSelectedKey = '2026-07-06';
     let _workoutHomeSessionIndex = 0;
+    const workoutSheetStateRuntime = {
+      getSelectedKey: () => _workoutHomeSelectedKey,
+      getSessionIndex: () => _workoutHomeSessionIndex,
+    };
     let _workoutHomeView = 'detail';
     let _workoutHomeSheetState = 'full';
     window.__renderCalls = 0;
@@ -412,7 +429,7 @@ test('day sheet add picker focuses the selected exercise carousel slide', () => 
   assert.match(refresh, /if \(entryIndex != null\) _requestWorkoutSheetPendingCarouselFocus\(key, targetIndex, entryIndex\)/);
   assert.match(refresh, /renderWorkoutCalendarHome\(\);[\s\S]*if \(entryIndex != null\) _tryRestorePendingWorkoutSheetCarouselFocus\(key, targetIndex\)/);
   assert.match(helper, /const index = Math\.max\(0, Math\.floor\(Number\(slideIndex\)\)\)/);
-  assert.match(helper, /_rememberWorkoutSheetCarouselSlide\(options\?\.key \?\? _workoutHomeSelectedKey, options\?\.sessionIndex \?\? _workoutHomeSessionIndex, index\)/);
+  assert.match(helper, /_rememberWorkoutSheetCarouselSlide\(options\?\.key \?\? workoutSheetStateRuntime\.getSelectedKey\(\), options\?\.sessionIndex \?\? workoutSheetStateRuntime\.getSessionIndex\(\), index\)/);
   assert.match(helper, /const slide = track\?\.querySelector\?\.\(`\[data-wt-day-exercise-slide="\$\{index\}"\]`\)/);
   assert.match(helper, /if \(!slide\) return false/);
   assert.match(helper, /carouselSlideIndex: index/);
@@ -534,8 +551,8 @@ test('day sheet remembers exercise carousel slide across close and reopen', () =
 test('day sheet detail renders picker-added draft exercise rows', () => {
   const rowStart = calendarJs.indexOf('function _exerciseRows');
   const rowEnd = calendarJs.indexOf('function _workoutMetrics', rowStart);
-  const metricsEnd = calendarJs.indexOf('function _renderWorkoutHomeDayBar');
-  const detailStart = calendarJs.indexOf('function _renderWorkoutHomeDetailHtml');
+  const metricsEnd = calendarJs.indexOf('function _sessionLabel', rowEnd);
+  const detailStart = calendarJs.indexOf('function _workoutHomeDetailModel');
   const detailEnd = calendarJs.indexOf('function _renderWorkoutDetailSummaryCard', detailStart);
   const tabStart = calendarJs.indexOf('function _renderWorkoutDetailSessionTabs');
   const tabEnd = calendarJs.indexOf('function _renderWorkoutDetailRecorded', tabStart);
@@ -625,11 +642,11 @@ test('workout keypad keeps digit entry local and commits once with an optimistic
   assert.match(calendarJs, /if \(_workoutSetKeyboardActiveInput\(\)\) return;[\s\S]*document\.dispatchEvent\(new CustomEvent\('sheet:saved'\)\)/);
   assert.match(move, /const commitPromise = Promise\.resolve\(_commitWorkoutSetKeyboardInput/);
   assert.match(move, /const targetAlreadyMounted = inlineMove && !!_workoutSetKeyboardRenderedInput\(target\)/);
-  assert.match(move, /if \(targetAlreadyMounted\) _workoutSetKeyboardDomLocked = true/);
+  assert.match(move, /if \(targetAlreadyMounted\) workoutSetKeyboardState\.domLocked = true/);
   assert.match(move, /skipRender: targetAlreadyMounted/);
   assert.match(move, /_focusWorkoutSetKeyboardRenderedTarget\(target\)/);
   assert.match(move, /inlineMove && !targetAlreadyMounted/);
-  assert.match(calendarJs, /if \(_workoutSetKeyboardDomLocked && _workoutSetKeyboardElement\(\)\?\.classList\.contains\('is-open'\)\) return/);
+  assert.match(calendarJs, /if \(workoutSetKeyboardState\.domLocked && _workoutSetKeyboardElement\(\)\?\.classList\.contains\('is-open'\)\) return/);
 });
 
 test('day sheet exercise card renders prior workout record instead of today set summary', () => {
@@ -697,7 +714,7 @@ test('day sheet exercise card uses inline plus row and one complete button', () 
   const oldEditFn = calendarJs.slice(oldEditStart, oldEditEnd);
   const completeFn = calendarJs.slice(completeStart, completeEnd);
 
-  assert.match(card, /const collapsed = stamped && _workoutEditingCardId !== cardId/);
+  assert.match(card, /const collapsed = stamped && workoutDetailState\.editingCardId !== cardId/);
   assert.match(card, /const editing = !collapsed/);
   assert.match(calendarJs, /from '\.\/workout\/exercise-completion\.js'/);
   assert.match(exerciseCompletionJs, /export function workoutExerciseCompletionStampAt\(entry\)/);
@@ -818,7 +835,7 @@ test('day sheet save syncs saved session over stale active workout draft', () =>
   const syncFn = calendarJs.slice(syncStart, syncEnd);
 
   assert.match(calendarJs, /import \{ S \} from '\.\/workout\/state\.js'/);
-  assert.match(calendarJs, /import \{[\s\S]*?wtReplaceActiveWorkoutDraftSession[\s\S]*?\} from '\.\/workout\/timers\.js'/);
+  assert.match(calendarJs, /import \{ wtReplaceActiveWorkoutDraftSession \} from '\.\.\/workout\/timers\.js'/);
   assert.match(saveFn, /const savePromise = saveDay\(key, payload, \{ mode: 'merge', rethrow: true \}\)/);
   assert.match(saveFn, /const cache = getCache\(\) \|\| \{\}[\s\S]*cache\[key\] = \{ \.\.\.currentDay, \.\.\.payload \}/);
   assert.match(saveFn, /if \(options\?\.optimisticRender\)[\s\S]*_syncWorkoutHomeSavedSessionState\(key, result, options\.sessionIndex\)[\s\S]*await savePromise[\s\S]*return/);
@@ -917,7 +934,7 @@ test('day sheet set inputs preserve keyboard next focus without restoring the ch
   assert.ok(keyboardButtonStart >= 0 && keyboardButtonEnd > keyboardButtonStart, 'keyboard button rule should exist');
   assert.doesNotMatch(styleCss.slice(keyboardButtonStart, keyboardButtonEnd), /vh/);
   assert.match(inputHelpers, /\.wt-day-sheet-scroll/);
-  assert.match(calendarJs, /_workoutSetKeyboardInput\?\.isConnected && _workoutSetKeyboardInput\.matches/);
+  assert.match(calendarJs, /workoutSetKeyboardState\.input\?\.isConnected && workoutSetKeyboardState\.input\.matches/);
   assert.match(inputHelpers, /function _captureWorkoutSheetInputState\(sourceInput = null, options = \{\}\)/);
   assert.match(inputHelpers, /const focused = document\.activeElement/);
   assert.match(inputHelpers, /const ignoreSourceInput = options\?\.ignoreSourceInput === true/);
@@ -1085,7 +1102,7 @@ test('running detail card uses the workout read-card shell with aggregated runni
   const card = calendarJs.slice(cardStart, cardEnd);
 
   assert.match(calendarJs, /loadRunningRoute,/);
-  assert.match(calendarJs, /from '\.\/workout\/running-presentation\.js'/);
+  assert.match(calendarJs, /from '\.\.\/workout\/running-presentation\.js'/);
   assert.match(calendarJs, /import \{ destroyRunningMaps, renderRunningMap \} from '\.\/workout\/running-map\.js'/);
   assert.match(calendarJs, /createRunningRouteHydrationController/);
   assert.match(calendarJs, /function _mountWorkoutRunningMaps/);
@@ -1157,7 +1174,7 @@ test('running detail card uses the workout read-card shell with aggregated runni
 });
 
 test('running tab stacks multiple running session cards after the gym sessions', () => {
-  const detailStart = calendarJs.indexOf('function _renderWorkoutHomeDetailHtml');
+  const detailStart = calendarJs.indexOf('function _workoutHomeDetailModel');
   const detailEnd = calendarJs.indexOf('function _renderWorkoutDetailSummaryCard', detailStart);
   assert.ok(detailStart >= 0 && detailEnd > detailStart, 'detail renderer should exist');
   const detail = calendarJs.slice(detailStart, detailEnd);

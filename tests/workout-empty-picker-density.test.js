@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises';
 
 const css = readAppCssSync();
 const renderCalendar = await readFile(new URL('../render-calendar.js', import.meta.url), 'utf8');
+const calendarDetailTemplate = await readFile(new URL('../calendar/detail-template.js', import.meta.url), 'utf8');
 const workoutExercises = await readFile(new URL('../workout/exercises.js', import.meta.url), 'utf8');
 
 function ruleBody(selector) {
@@ -15,10 +16,10 @@ function ruleBody(selector) {
 }
 
 test('running tab keeps only session tabs in the bottom bar while gym keeps its add button', () => {
-  const start = renderCalendar.indexOf('function _renderWorkoutHomeDetail');
-  const end = renderCalendar.indexOf('function _renderWorkoutDetailSummaryCard', start);
+  const start = calendarDetailTemplate.indexOf('function _renderWorkoutHomeDetailHtml');
+  const end = calendarDetailTemplate.indexOf('function _renderWorkoutDetailSummaryCard', start);
   assert.ok(start >= 0 && end > start, 'workout day detail renderer should exist');
-  const detail = renderCalendar.slice(start, end);
+  const detail = calendarDetailTemplate.slice(start, end);
 
   assert.match(detail, /class="wt-day-sessionbar"[\s\S]*class="wt-day-session-tabs"/);
   assert.match(detail, /data-wt-running-upload-input data-date-key="\$\{_esc\(key\)\}" hidden/);
@@ -43,10 +44,10 @@ test('running tab keeps only session tabs in the bottom bar while gym keeps its 
 });
 
 test('record export dock sits left of the add button on both gym and running tabs', () => {
-  const start = renderCalendar.indexOf('function _renderWorkoutDayExportDock');
-  const end = renderCalendar.indexOf('function _renderWorkoutDetailSummaryCard', start);
+  const start = calendarDetailTemplate.indexOf('function _renderWorkoutDayExportDock');
+  const end = calendarDetailTemplate.indexOf('function _renderWorkoutDetailSummaryCard', start);
   assert.ok(start >= 0 && end > start, 'export dock renderer should exist');
-  const dock = renderCalendar.slice(start, end);
+  const dock = calendarDetailTemplate.slice(start, end);
 
   assert.match(dock, /data-wt-sheet-card-action="toggle-export-menu"/);
   assert.match(dock, /data-wt-sheet-card-action="export-day"[\s\S]*오늘기록추출/);
@@ -74,10 +75,10 @@ test('session tabs are compact enough to leave room for both floating buttons', 
 });
 
 test('empty running view offers upload and start with a route illustration', () => {
-  const start = renderCalendar.indexOf('function _renderWorkoutRunningEmpty');
-  const end = renderCalendar.indexOf('// ═', start);
+  const start = calendarDetailTemplate.indexOf('function _renderWorkoutRunningEmpty');
+  const end = calendarDetailTemplate.length;
   assert.ok(start >= 0 && end > start, 'running empty renderer should exist');
-  const empty = renderCalendar.slice(start, end);
+  const empty = calendarDetailTemplate.slice(start, end);
   assert.match(empty, /class="wt-empty-run"[\s\S]*wt-empty-run-route[\s\S]*wt-empty-run-pin/);
   assert.match(empty, /class="wt-running-upload-action wt-running-upload-action--empty"/);
   assert.match(empty, /data-wt-day-upload-running/);

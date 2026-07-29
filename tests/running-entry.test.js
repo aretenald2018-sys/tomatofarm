@@ -19,6 +19,7 @@ const configJs = await readFile(new URL('../config.js', import.meta.url), 'utf8'
 const runningSessionJs = await readFile(new URL('../workout/running-session.js', import.meta.url), 'utf8');
 const runningMapJs = await readFile(new URL('../workout/running-map.js', import.meta.url), 'utf8');
 const calendarJs = await readFile(new URL('../render-calendar.js', import.meta.url), 'utf8');
+const calendarDetailTemplateJs = await readFile(new URL('../calendar/detail-template.js', import.meta.url), 'utf8');
 const sessionPolicyJs = await readFile(new URL('../workout/session-policy.js', import.meta.url), 'utf8');
 const runningModelJs = await readFile(new URL('../workout/running-model.js', import.meta.url), 'utf8');
 const runningDraftStoreJs = await readFile(new URL('../workout/running-draft-store.js', import.meta.url), 'utf8');
@@ -29,8 +30,8 @@ const runningInputJs = await readFile(new URL('../workout/running-input.js', imp
 test('running session mounts as an inline card below the day summary instead of a full-screen root', () => {
   assert.match(indexHtml, /id="wt-chip-running"[^>]*data-action="workout:switch-type"[^>]*data-action-arg="running"[^>]*>🏃 런닝\/조깅<\/button>/);
   assert.doesNotMatch(indexHtml, /id="wt-running-session-root"/);
-  assert.match(calendarJs, /data-wt-running-session-host/);
-  assert.match(calendarJs, /id="wt-running-session-root" class="wt-running-inline-root"/);
+  assert.match(calendarDetailTemplateJs, /data-wt-running-session-host/);
+  assert.match(calendarDetailTemplateJs, /id="wt-running-session-root" class="wt-running-inline-root"/);
   assert.match(calendarJs, /wtMountRunningSession\(\)/);
   assert.match(runningSessionJs, /export function wtMountRunningSession/);
   assert.match(runningSessionJs, /wt-running-live-card/);

@@ -78,9 +78,11 @@ test('calendar open can reset the workout home month to today', () => {
 });
 
 test('workout navigation keeps only rendered calendar and day sheet surfaces', async () => {
-  const [appJs, calendarJs, indexHtml, workoutExercises, navJs, styleCss, swJs] = await Promise.all([
+  const [appJs, calendarJs, calendarSheetStateJs, dateKeyJs, indexHtml, workoutExercises, navJs, styleCss, swJs] = await Promise.all([
     readFile(new URL('../app.js', import.meta.url), 'utf8'),
     readFile(new URL('../render-calendar.js', import.meta.url), 'utf8'),
+    readFile(new URL('../calendar/sheet-state.js', import.meta.url), 'utf8'),
+    readFile(new URL('../utils/date-key.js', import.meta.url), 'utf8'),
     readFile(new URL('../index.html', import.meta.url), 'utf8'),
     readFile(new URL('../workout/exercises.js', import.meta.url), 'utf8'),
     readFile(new URL('../workout/navigation-stack.js', import.meta.url), 'utf8'),
@@ -124,9 +126,9 @@ test('workout navigation keeps only rendered calendar and day sheet surfaces', a
   assert.doesNotMatch(appJs, /wtFocusWorkoutEntryFromDetail|renderWorkoutExerciseDetail|clearWorkoutExerciseDetail/);
   assert.match(calendarJs, /openWorkoutDaySheet\(nextKey/);
   assert.match(calendarJs, /calendar\.viewYear != null && Number\.isFinite\(Number\(calendar\.viewYear\)\)/);
-  assert.match(calendarJs, /\^\(\\d\{4\}\)-\(\\d\{2\}\)-\(\\d\{2\}\)\$/);
-  assert.match(calendarJs, /function _workoutHomeScrollRoot\(\)[\s\S]*document\.getElementById\('workout-calendar-root'\)/);
-  assert.match(calendarJs, /function _workoutHomeScrollTop\(\)[\s\S]*const root = _workoutHomeScrollRoot\(\);[\s\S]*Number\(root\?\.scrollTop\) \|\| 0/);
+  assert.match(dateKeyJs, /\^\(\\d\{4\}\)-\(\\d\{2\}\)-\(\\d\{2\}\)\$/);
+  assert.match(calendarSheetStateJs, /function _workoutHomeScrollRoot\(\)[\s\S]*document\.getElementById\('workout-calendar-root'\)/);
+  assert.match(calendarSheetStateJs, /function _workoutHomeScrollTop\(\)[\s\S]*const root = _workoutHomeScrollRoot\(\);[\s\S]*Number\(root\?\.scrollTop\) \|\| 0/);
   assert.match(calendarJs, /const restoreScroll = \(\) => \{[\s\S]*const root = _workoutHomeScrollRoot\(\);[\s\S]*root\.scrollTo\(\{ top, behavior: 'auto' \}\)/);
   assert.match(calendarJs, /else root\.scrollTop = top;/);
   assert.doesNotMatch(calendarJs, /window\.wtOpenWorkoutRecord|_openWorkoutEditorForSession|_loadWorkoutEditorForSession/);

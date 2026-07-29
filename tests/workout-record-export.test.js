@@ -2,7 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const calendarJs = readFileSync(new URL('../render-calendar.js', import.meta.url), 'utf8');
+// 달력 탭 소스는 render-calendar.js + calendar/*.js로 나뉘어 있다.
+// 순수 조립 로직을 이름으로 떼어오는 이 테스트는 두 소스를 하나로 보고 찾는다.
+const calendarJs = readFileSync(new URL('../render-calendar.js', import.meta.url), 'utf8')
+  + readFileSync(new URL('../calendar/export-text.js', import.meta.url), 'utf8');
 
 function extractFunctionSource(source, name) {
   const start = source.indexOf(`function ${name}`);

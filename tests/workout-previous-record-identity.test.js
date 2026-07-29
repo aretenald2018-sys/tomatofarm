@@ -2,7 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const calendarJs = readFileSync(new URL('../render-calendar.js', import.meta.url), 'utf8');
+// '지난 기록' 매칭은 달력 분할 이후 calendar/workout-read-model.js에 산다.
+const calendarJs = readFileSync(new URL('../render-calendar.js', import.meta.url), 'utf8')
+  + readFileSync(new URL('../calendar/workout-read-model.js', import.meta.url), 'utf8');
 
 function extractFunctionSource(source, name) {
   const start = source.indexOf(`function ${name}(`);

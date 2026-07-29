@@ -72,12 +72,14 @@ test('social action refreshes on success and rolls back before failure refresh',
 });
 
 test('presentation renderers delegate models and admin stays behind data API', async () => {
-  const [calendar, stats, admin] = await Promise.all([
+  const [calendar, calendarDayMetrics, stats, admin] = await Promise.all([
     readFile(resolve(root, 'render-calendar.js'), 'utf8'),
+    readFile(resolve(root, 'calendar/day-metrics.js'), 'utf8'),
     readFile(resolve(root, 'render-stats.js'), 'utf8'),
     readFile(resolve(root, 'render-admin.js'), 'utf8'),
   ]);
-  assert.match(calendar, /buildCalendarActivityRows/);
+  assert.match(calendar, /from '\.\/calendar\/day-metrics\.js'/);
+  assert.match(calendarDayMetrics, /buildCalendarActivityRows/);
   assert.match(stats, /from '\.\/stats\/selectors\.js'/);
   assert.doesNotMatch(admin, /data-core|firebase\/firestore|\b(?:getDoc|setDoc|collection)\s*\(/);
 });

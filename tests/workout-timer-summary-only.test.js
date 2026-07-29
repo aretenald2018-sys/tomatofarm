@@ -8,6 +8,8 @@ import {
 } from '../workout/completion-metrics.js';
 
 const calendarJs = readFileSync(new URL('../render-calendar.js', import.meta.url), 'utf8');
+const calendarWorkoutReadModelJs = readFileSync(new URL('../calendar/workout-read-model.js', import.meta.url), 'utf8');
+const calendarDetailTemplateJs = readFileSync(new URL('../calendar/detail-template.js', import.meta.url), 'utf8');
 const workoutIndexJs = readFileSync(new URL('../workout/index.js', import.meta.url), 'utf8');
 const styleCss = readAppCssSync();
 const swJs = readFileSync(new URL('../sw.js', import.meta.url), 'utf8') + readFileSync(new URL('../runtime-assets.js', import.meta.url), 'utf8');
@@ -29,14 +31,14 @@ function sliceByFirstBrace(source, startToken) {
 }
 
 test('workout duration remains in the top-right summary card', () => {
-  const summary = sliceByFirstBrace(calendarJs, 'function _renderWorkoutDetailSummaryCard');
+  const summary = sliceByFirstBrace(calendarDetailTemplateJs, 'function _renderWorkoutDetailSummaryCard');
   assert.match(summary, /label:\s*'운동시간'/);
   assert.match(summary, /wx\?\.durationSec/);
 });
 
 test('workout summary card shows elapsed rest since the latest completed set', () => {
-  const summary = sliceByFirstBrace(calendarJs, 'function _renderWorkoutDetailSummaryCard');
-  assert.match(calendarJs, /from '\.\/workout\/completion-metrics\.js'/);
+  const summary = sliceByFirstBrace(calendarDetailTemplateJs, 'function _renderWorkoutDetailSummaryCard');
+  assert.match(calendarDetailTemplateJs, /from '\.\.\/workout\/completion-metrics\.js'/);
   assert.match(summary, /const lastCompletedAt = latestWorkoutCompletionAt\(wx\)/);
   assert.match(summary, /label:\s*'휴식'/);
   assert.match(summary, /formatWorkoutCompletionElapsed\(lastCompletedAt\)/);
@@ -80,17 +82,13 @@ test('workout completion metrics use only completed workout timestamps', () => {
 });
 
 test('workout calendar duration can fall back to set completion timeline', () => {
-  assert.match(calendarJs, /import \{ buildWorkoutSetTimeline \} from '\.\/workout\/timeline\.js'/);
-  const metricsStart = calendarJs.indexOf('function _workoutMetrics');
-  const metricsEnd = calendarJs.indexOf('function _renderWorkoutHomeDayBar', metricsStart);
-  assert.ok(metricsStart >= 0 && metricsEnd > metricsStart, 'workout metrics function should exist');
-  const metrics = calendarJs.slice(metricsStart, metricsEnd);
-  assert.match(metrics, /const workoutTimeline = buildWorkoutSetTimeline\(d\.exercises,\s*d\.workoutDuration\)/);
-  assert.match(metrics, /workoutTimeline\.durationSec/);
+  assert.match(calendarWorkoutReadModelJs, /import \{ buildWorkoutSetTimeline \} from '\.\.\/workout\/timeline\.js'/);
+  assert.match(calendarWorkoutReadModelJs, /const workoutTimeline = buildWorkoutSetTimeline\(d\.exercises,\s*d\.workoutDuration\)/);
+  assert.match(calendarWorkoutReadModelJs, /workoutTimeline\.durationSec/);
 });
 
 test('duration-only workout no longer creates a separate timer activity card', () => {
-  const cards = sliceByFirstBrace(calendarJs, 'function _renderWorkoutDetailCards');
+  const cards = sliceByFirstBrace(calendarDetailTemplateJs, 'function _renderWorkoutDetailCards');
   assert.doesNotMatch(cards, /label:\s*'운동 타이머'/);
   assert.doesNotMatch(cards, /key:\s*'timer'/);
   assert.doesNotMatch(cards, /wx\.workoutDurationSec\s*>\s*0/);

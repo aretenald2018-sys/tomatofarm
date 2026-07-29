@@ -6,7 +6,20 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import puppeteer from 'puppeteer';
 
-const calendarJs = readFileSync(new URL('../render-calendar.js', import.meta.url), 'utf8');
+// 달력 탭 소스는 render-calendar.js + calendar/*.js 분할 이후 여러 파일에 걸쳐 있다.
+// 이 스위트는 "달력 탭 코드 어딘가에 있는가"를 보므로 분할 소스를 이어붙여 검사한다.
+const calendarJs = [
+  '../render-calendar.js',
+  '../calendar/format.js',
+  '../calendar/gesture-policy.js',
+  '../calendar/day-metrics.js',
+  '../calendar/workout-read-model.js',
+  '../calendar/export-text.js',
+  '../calendar/session-state.js',
+  '../calendar/detail-template.js',
+  '../calendar/sheet-state.js',
+  '../calendar/set-keyboard.js',
+].map(path => readFileSync(new URL(path, import.meta.url), 'utf8')).join('\n\n');
 const setPresentationJs = readFileSync(new URL('../workout/set-presentation.js', import.meta.url), 'utf8');
 const styleCss = readAppCssSync();
 const testArtifactRoot = process.env.TOMATO_TEST_ARTIFACT_DIR
@@ -123,9 +136,28 @@ function buildHarnessScript() {
     let _workoutHomeSheetState = 'bar';
     const _workoutOpenSetTypeMenus = new Set();
     const _workoutExpandedSetEditors = new Set();
-    let _workoutInlineSetEditor = null;
-    let _workoutSetKeyboardInput = null;
-    let _workoutSetKeyboardDomLocked = false;
+    // 달력 분할 이후 이 상태들은 calendar/detail-template.js와 calendar/set-keyboard.js의
+    // 모듈 상태 객체에 산다. 하네스도 같은 모양으로 넣어줘야 떼어온 함수가 그대로 돈다.
+    const workoutDetailState = { editingCardId: null, inlineSetEditor: null };
+    const workoutSetKeyboardState = { input: null, domLocked: false };
+    const workoutDetailRuntime = {
+      getSelectedKey: () => _workoutHomeSelectedKey,
+      getSessionIndex: () => _workoutHomeSessionIndex,
+      setSessionIndex: (index) => { _workoutHomeSessionIndex = index; },
+    };
+    const workoutSetKeyboardRuntime = {
+      cancelInlineField: (...args) => _cancelWorkoutSetInlineFieldFromSheet(...args),
+      getSelectedKey: () => _workoutHomeSelectedKey,
+      clearInputOnFocus: input => _clearWorkoutSetInputOnFocus(input),
+      defaultSet: (...args) => _defaultWorkoutSheetSet(...args),
+      focusEditorField: (...args) => _focusWorkoutSetEditorFieldFromSheet(...args),
+      focusInlineField: (...args) => _focusWorkoutSetInlineFieldFromSheet(...args),
+      mutateExercise: (...args) => _mutateWorkoutExerciseFromSheet(...args),
+      removeExerciseSet: (...args) => _removeWorkoutExerciseSetFromSheet(...args),
+      setWorkoutSheetNumber: (...args) => _setWorkoutSheetNumber(...args),
+      syncNavState: (...args) => _syncWorkoutHomeNavState(...args),
+      updateExerciseSet: (...args) => _updateWorkoutExerciseSetFromSheet(...args),
+    };
     window.__renderCalls = 0;
     window.__syncCalls = [];
     window.__restoreCalls = [];
@@ -211,7 +243,7 @@ function buildHarnessScript() {
       };
     }
     function renderWorkoutCalendarHome() {
-      if (_workoutSetKeyboardDomLocked && _workoutSetKeyboardElement()?.classList.contains('is-open')) return;
+      if (workoutSetKeyboardState.domLocked && _workoutSetKeyboardElement()?.classList.contains('is-open')) return;
       window.__renderCalls += 1;
       document.body.innerHTML = '<main id="workout-calendar-root"><section data-wt-day-sheet><div class="wt-day-sheet-scroll"><div data-wt-day-exercise-carousel-track>'
         + _renderWorkoutExerciseDetailCard('2026-07-04', 0, _rowFromEntry(), 0)

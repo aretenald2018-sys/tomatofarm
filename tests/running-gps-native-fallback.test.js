@@ -150,8 +150,8 @@ test('watch UI does not invent calories, pace, or heart-zone time when sensors h
 
 test('empty running routes never render the Seoul City Hall fallback as a recorded route', () => {
   const runningMap = read('workout/running-map.js');
-  const calendar = read('render-calendar.js');
+  const calendarDetail = read('calendar/detail-template.js');
 
   assert.match(runningMap, /if \(!route\.length\) \{[\s\S]*'no-location'[\s\S]*return null/);
-  assert.match(calendar, /if \(!hasStoredRoute\) \{[\s\S]*GPS 경로가 저장되지 않았어요/);
+  assert.match(calendarDetail, /if \(!hasStoredRoute\) \{[\s\S]*GPS 경로가 저장되지 않았어요/);
 });
