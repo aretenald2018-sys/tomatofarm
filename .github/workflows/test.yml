@@ -1,0 +1,49 @@
+name: Tests
+
+# 이 저장소는 그동안 어떤 CI도 `npm test`를 돌리지 않았다. deploy.yml 은 배포 직전
+# 검증 스크립트만 실행하고, .githooks/pre-push 는 push 대상만 확인한다. 그래서
+# 회귀가 잡히려면 누군가 로컬에서 수동으로 테스트를 돌려야 했고, 실제로 그 틈으로
+# 회귀가 하나 통과해 버렸다(87f22fd 가 옮긴 타이머 복구 배선을 테스트가 따라가지
+# 못한 건, 브라우저 테스트 11개가 puppeteer 미설치 환경에서 파일 단위로 죽어
+# 개별 검증이 통째로 가려졌기 때문이다. 파일 단위 실패는 변경 전후가 똑같아 보여서
+# 기준선 비교로도 드러나지 않는다).
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      # puppeteer 가 dependencies 에 있으므로 여기서 Chromium 도 함께 받는다.
+      # 이 설치가 없으면 브라우저 테스트 11개가 조용히 파일 단위로 죽는다.
+      - name: Install dependencies
+        run: npm ci
+
+      # 우분투 러너는 비특권 user namespace 를 AppArmor 로 막아 두어 Chrome 의
+      # 샌드박스가 뜨지 않는다. 테스트 11개가 모두 --no-sandbox 없이
+      # puppeteer.launch 를 부르므로, 테스트를 고치는 대신 러너 쪽을 연다.
+      - name: Allow Chrome sandbox on the runner
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+
+      - name: Run tests
+        run: npm test
