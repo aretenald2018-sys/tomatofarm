@@ -1320,7 +1320,7 @@ test('workout calendar mobile grid restores the compact weekly summary rail', ()
   assert.match(mobileCss, /\.cal-workout-surface-home \.cal-workout-bar\s*\{[\s\S]*padding:\s*1px 2px;[\s\S]*font-size:\s*9\.5px/);
 });
 
-test('workout calendar week rail restores the plain weekly summary without goals or carousel', () => {
+test('workout calendar week rail shows season week goals instead of accumulated hours or the old goal carousel', () => {
   const gridStart = calendarJs.indexOf('function _renderWorkoutHomeMonthGrid');
   const gridEnd = calendarJs.indexOf('function _renderWorkoutHomeDayBar', gridStart);
   assert.ok(gridStart >= 0 && gridEnd > gridStart, 'workout month grid renderer should exist');
@@ -1330,21 +1330,38 @@ test('workout calendar week rail restores the plain weekly summary without goals
   const weekday = calendarJs.slice(weekdayStart, weekdayEnd);
 
   assert.match(calendarJs, /function _isoWeekNumber\(date\)/);
-  assert.match(calendarJs, /function _formatWorkoutWeekHours\(seconds\)/);
   assert.match(calendarJs, /const dayMetrics = new Map\(\)/);
   assert.match(calendarJs, /dayMetrics\.set\(d, wx\)/);
-  assert.match(grid, /let weekDurationSec = 0/);
-  assert.match(grid, /let weekSets = 0/);
   assert.match(grid, /const weekNo = _isoWeekNumber\(new Date\(y, m, anchorDay\)\)/);
   assert.match(grid, /<strong>\$\{weekNo\}주<\/strong>/);
-  assert.match(grid, /_formatWorkoutWeekHours\(weekDurationSec\)/);
-  assert.match(grid, /weekSets > 0 \? `\$\{weekSets\}s` : '—'/);
+  // 레일은 누적 시간/세트가 아니라 시즌 설정에서 나온 이번 주 목표를 띄운다.
+  assert.match(calendarJs, /function _buildWeekGoalsByMonday\(registry, cache, todayKey\)/);
+  assert.match(calendarJs, /function _renderWeekGoalRail\(weekGoals\)/);
+  assert.match(calendarJs, /buildSeasonOverview\(\{[\s\S]{0,200}board: getSeasonTestBoardV2\(season\.id\)/);
+  assert.match(calendarJs, /state === 'achieved'\) return '✓'/);
+  assert.match(grid, /_renderWeekGoalRail\(weekGoals\)/);
+  // 달력 행은 일요일 시작, 시즌 주차는 월요일 시작이라 행 한가운데(수요일)로 맞춘다.
+  assert.match(grid, /\(row \* 7\) - firstDow \+ 4/);
+  assert.match(grid, /weekGoalsByMonday\?\.get\(startOfSeasonWeek\(railAnchorKey\)\)/);
+  assert.match(grid, /cal-week-goal-count">\$\{weekGoals\.achieved\}\/\$\{weekGoals\.total\}/);
+  // 새 레일은 누적값을 쓰지 않으므로 _formatWorkoutWeekHours와 그 누적 변수는 사라진다.
+  assert.doesNotMatch(calendarJs, /_formatWorkoutWeekHours/);
+  assert.doesNotMatch(grid, /weekDurationSec|weekSets/);
   assert.match(weekday, /<div class="cal-week-rail-spacer" aria-hidden="true"><\/div>/);
   assert.doesNotMatch(weekday, /data-cal-goal-input|목표입력/);
   assert.doesNotMatch(grid, /cal-cycle-branch|cal-goal-exercise|cal-goal-card|data-cal-cycle-target/);
   assert.doesNotMatch(styleCss, /\.cal-cycle-branch|\.cal-goal-exercise|\.cal-goal-card|\.cal-goal-part-bookmark/);
-  assert.match(styleCss, /\.cal-workout-week-rail\s*\{[\s\S]*flex-direction:\s*column;[\s\S]*align-items:\s*center/);
+  assert.match(styleCss, /\.cal-workout-week-rail\s*\{[^}]*flex-direction:\s*column;[^}]*align-items:\s*stretch/);
   assert.match(styleCss, /\.cal-workout-week-rail strong\s*\{/);
+  // 칩은 아이콘/이름 2열 grid다. rail 자손 span을 block으로 되돌리면 이 grid가 깨진다.
+  assert.match(styleCss, /\.cal-week-goal\s*\{[^}]*display:\s*grid/);
+  assert.doesNotMatch(styleCss, /\.cal-workout-week-rail span\s*\{\s*display:\s*block/);
+  // 레일 안에서만 굴러야 달력 스크롤을 뺏지 않는다.
+  assert.match(styleCss, /\.cal-week-goals\s*\{[^}]*overflow-y:\s*auto;[^}]*overscroll-behavior:\s*contain;/);
+  assert.match(styleCss, /\.cal-week-goal\.is-achieved/);
+  assert.match(styleCss, /\.cal-week-goal\.is-attempted/);
+  assert.match(styleCss, /\.cal-week-goal\.is-not-achieved/);
+  assert.match(styleCss, /\.cal-week-goal\.is-planned/);
 });
 
 test('cycle rail target cards open the existing growth-board benchmark settings sheet', () => {

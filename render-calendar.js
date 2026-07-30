@@ -16,6 +16,8 @@ import {
   getMuscleParts,
   getLatestCheckinWeight,
   getSeasonRegistry,
+  getSeasonRunningPlan,
+  getSeasonTestBoardV2,
   loadRunningRoute,
   saveDay,
 } from './data.js';
@@ -24,7 +26,8 @@ import {
   SUBPATTERN_TO_MAJOR,
 } from './calc.js';
 import { dateKey, TODAY, isFuture, isBeforeStart } from './data/data-date.js';
-import { findSeasonForDate } from './data/season-model.js';
+import { findSeasonForDate, startOfSeasonWeek } from './data/season-model.js';
+import { buildSeasonOverview } from './data/season-overview.js';
 import { openModal, closeModal } from './utils/dom.js';
 import { confirmAction } from './utils/confirm-modal.js';
 import {
@@ -77,7 +80,6 @@ import {
   _formatDuration,
   _formatDurationShort,
   _isBlankWorkoutSheetNumber,
-  _formatWorkoutWeekHours,
   _isoWeekNumber,
   _workoutSheetInputValue,
   _workoutSheetRawNumber,
@@ -732,7 +734,10 @@ function _renderWorkoutCalendar(root, { cache, plan, checkins, y, m, firstDow, d
   `;
 
   const gridHtml = isWorkoutHome
-    ? _renderWorkoutHomeMonthGrid({ y, m, firstDow, daysCount, dayCells, dayMetrics })
+    ? _renderWorkoutHomeMonthGrid({
+      y, m, firstDow, daysCount, dayCells, dayMetrics,
+      weekGoalsByMonday: _buildWeekGoalsByMonday(seasonRegistry, cache, todayKey),
+    })
     : `<div class="cal-grid cal-workout-grid">${flatCells.join('')}</div>`;
   const calendarBodyHtml = isWorkoutHome
     ? `<section class="cal-workout-calendar-card" aria-label="${_esc(monthLabel)} 운동 달력">${weekdayHtml}${gridHtml}</section>`
@@ -779,35 +784,87 @@ function _renderWorkoutCalendar(root, { cache, plan, checkins, y, m, firstDow, d
   `;
 }
 
-function _renderWorkoutHomeMonthGrid({ y, m, firstDow, daysCount, dayCells, dayMetrics }) {
+// 주차 레일에 띄울 "이번 주 해야 할 운동"을 시즌 설정에서 만든다.
+// 위젯/시즌 개요와 같은 판정을 쓰기 위해 buildSeasonOverview 결과를 그대로 재사용한다.
+// 반환: 월요일 키 -> { items, achieved, total }
+function _buildWeekGoalsByMonday(registry, cache, todayKey) {
+  const byMonday = new Map();
+  const seasons = registry?.seasons || [];
+  for (const season of seasons) {
+    let overview;
+    try {
+      overview = buildSeasonOverview({
+        cache,
+        season,
+        board: getSeasonTestBoardV2(season.id) || {},
+        runningPlan: getSeasonRunningPlan(season.id) || {},
+        todayKey,
+      });
+    } catch {
+      continue;
+    }
+    for (const week of overview?.weeks || []) {
+      const mondayKey = week.goalWeekStart;
+      if (!mondayKey) continue;
+      const bucket = byMonday.get(mondayKey) || { items: [], achieved: 0, total: 0 };
+      for (const item of week.items || []) {
+        if (!item) continue;
+        bucket.items.push(item);
+        if (item.state !== 'planned') {
+          bucket.total += 1;
+          if (item.state === 'achieved') bucket.achieved += 1;
+        }
+      }
+      byMonday.set(mondayKey, bucket);
+    }
+  }
+  return byMonday;
+}
+
+function _weekGoalStateIcon(state) {
+  if (state === 'achieved') return '✓';
+  if (state === 'attempted') return '△';
+  if (state === 'planned') return '·';
+  return '×';
+}
+
+function _renderWeekGoalRail(weekGoals) {
+  if (!weekGoals?.items?.length) {
+    return '<div class="cal-week-goals is-empty"><span>목표 없음</span></div>';
+  }
+  const chips = weekGoals.items.map(item => `
+    <span class="cal-week-goal is-${_esc(item.state)}" title="${_esc(`${item.label} · ${item.detail}`)}">
+      <i aria-hidden="true">${_weekGoalStateIcon(item.state)}</i><b>${_esc(item.label)}</b>
+    </span>`).join('');
+  return `<div class="cal-week-goals" data-wt-week-goals tabindex="0" role="list" aria-label="이번 주 운동 목표 ${weekGoals.achieved}/${weekGoals.total} 달성">${chips}</div>`;
+}
+
+function _renderWorkoutHomeMonthGrid({ y, m, firstDow, daysCount, dayCells, dayMetrics, weekGoalsByMonday }) {
   const weekRows = [];
   const rowCount = Math.ceil((firstDow + daysCount) / 7);
   for (let row = 0; row < rowCount; row++) {
     const cellHtmls = [];
-    let weekDurationSec = 0;
-    let weekSets = 0;
     for (let dow = 0; dow < 7; dow++) {
       const day = (row * 7) + dow - firstDow + 1;
       if (day < 1 || day > daysCount) {
         cellHtmls.push(`<div class="cal-cell cal-cell-empty cal-workout-cell cal-workout-cell-outside"></div>`);
         continue;
       }
-      const wx = dayMetrics.get(day);
-      if (wx?.hasWorkout) {
-        weekDurationSec += wx.durationSec || 0;
-        weekSets += wx.setCount || 0;
-      }
       cellHtmls.push(dayCells.get(day) || `<div class="cal-cell cal-cell-empty cal-workout-cell"></div>`);
     }
 
     const anchorDay = Math.min(daysCount, Math.max(1, (row * 7) - firstDow + 1));
     const weekNo = _isoWeekNumber(new Date(y, m, anchorDay));
+    // 레일은 누적 기록 대신 "이 주에 해야 할 운동"을 보여준다. 달력 행은 일요일 시작이고
+    // 시즌 주차는 월요일 시작이라, 행 한가운데(수요일)의 주간 시작으로 맞춘다.
+    const railAnchorKey = dateKey(y, m, Math.min(daysCount, Math.max(1, (row * 7) - firstDow + 4)));
+    const weekGoals = weekGoalsByMonday?.get(startOfSeasonWeek(railAnchorKey)) || null;
     weekRows.push(`
       <div class="cal-workout-week-row">
-        <div class="cal-workout-week-rail" aria-label="${weekNo}주 운동 요약">
+        <div class="cal-workout-week-rail" aria-label="${weekNo}주 운동 목표">
           <strong>${weekNo}주</strong>
-          <span>${_formatWorkoutWeekHours(weekDurationSec)}</span>
-          <span>${weekSets > 0 ? `${weekSets}s` : '—'}</span>
+          ${weekGoals?.total ? `<em class="cal-week-goal-count">${weekGoals.achieved}/${weekGoals.total}</em>` : ''}
+          ${_renderWeekGoalRail(weekGoals)}
         </div>
         <div class="cal-workout-week-cells">
           ${cellHtmls.join('')}

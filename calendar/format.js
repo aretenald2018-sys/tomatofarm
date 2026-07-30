@@ -100,10 +100,3 @@ export function _dateTitle(key) {
 export function _durationFromMinSec(min, sec) {
   return Math.max(0, Math.round((_num(min) * 60) + _num(sec)));
 }
-
-export function _formatWorkoutWeekHours(seconds) {
-  const sec = Math.max(0, Math.round(_num(seconds)));
-  if (sec <= 0) return '—';
-  const hours = Math.round((sec / 3600) * 10) / 10;
-  return `${String(hours).replace(/\.0$/, '')}h`;
-}

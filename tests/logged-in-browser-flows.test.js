@@ -83,13 +83,14 @@ async function bootstrapHarness(browser, htmlPath) {
   return { browser, page, pageErrors, consoleWarnings, blockedRequests };
 }
 
-async function writeHarnessHtml(htmlPath, { importMap, body, moduleSource }) {
+async function writeHarnessHtml(htmlPath, { importMap, body, moduleSource, head = '' }) {
   await writeFile(htmlPath, `<!doctype html>
 <html lang="ko">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <script type="importmap">${JSON.stringify(importMap)}</script>
+${head}
 </head>
 <body>
 ${body}
@@ -516,6 +517,230 @@ test('tapping another set row after switching fields inside a row still opens th
       () => window.__qa.storedSets()[0]?.kg === 95 && window.__qa.storedSets()[0]?.reps === 12,
       { timeout: 5000 },
     );
+
+    assert.deepEqual(harness.pageErrors, []);
+    assert.deepEqual(harness.blockedRequests, []);
+  } finally {
+    if (harness?.browser) await harness.browser.close();
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+// ── 운동 달력 월 그리드(주차 목표 레일) 하네스 ───────────────────
+// 레일은 시즌 설정 → buildSeasonOverview → 칩 렌더까지 세 단계를 지난다.
+// 소스 문자열 검사로는 "칩이 실제로 그려졌는가"를 알 수 없으므로 진짜 렌더로 본다.
+// style.css를 붙여 CSS 절반(칩 grid 레이아웃 / 상태별 배경)까지 같이 확인한다.
+async function buildWorkoutMonthGridHarness(tempDir) {
+  const htmlPath = path.join(tempDir, 'workout-month-grid.html');
+
+  const stubAiUrl = await writeStub(tempDir, 'stub-ai.js', `
+function unavailable(name) {
+  return async () => { throw new Error('harness: ai.js.' + name + ' is not available offline'); };
+}
+export const parseEquipmentFromText = unavailable('parseEquipmentFromText');
+export const parseEquipmentFromImage = unavailable('parseEquipmentFromImage');
+export const estimateInOnePass = unavailable('estimateInOnePass');
+`);
+
+  const importMap = {
+    imports: {
+      [repoUrl('data.js')]: FAKE_DATA_URL,
+      [repoUrl('ai.js')]: stubAiUrl,
+    },
+  };
+
+  const moduleSource = `
+      const fake = await import(${JSON.stringify(FAKE_DATA_URL)});
+      const seasonModel = await import(${JSON.stringify(repoUrl('data/season-model.js'))});
+      const calendar = await import(${JSON.stringify(repoUrl('render-calendar.js'))});
+
+      const today = fake.TODAY;
+      // 두 달 전 15일이 든 ISO 주를 목표 주차로 쓴다. 15일의 월요일은 언제나 9~15일
+      // 사이라 그 주 수요일(11~17일)도 같은 달 안에 들어오고, 달력의 정확히 한 행이
+      // 그 주차를 가리킨다(오늘이 며칠이든 흔들리지 않는다). 두 달 전이라 이미 지난
+      // 주차이므로 목표 상태가 planned로 뭉개지지도 않는다.
+      const anchor = new Date(today.getFullYear(), today.getMonth() - 2, 15);
+      const VIEW_YEAR = anchor.getFullYear();
+      const VIEW_MONTH = anchor.getMonth();
+      const GOAL_MONDAY = seasonModel.startOfSeasonWeek(fake.dateKey(VIEW_YEAR, VIEW_MONTH, 15));
+      const GOAL_SUNDAY = seasonModel.addSeasonDays(GOAL_MONDAY, 6);
+      const SEASON_ID = 'season-week-goal-rail';
+
+      function seed({ withSeason = true } = {}) {
+        fake.resetFakeDataLayer({
+          currentUser: ${JSON.stringify(SIGNED_IN_USER)},
+          exercises: [
+            { id: 'bench-press', name: '벤치프레스', muscleId: 'chest', movementId: 'horizontal-press' },
+            { id: 'back-squat', name: '스쿼트', muscleId: 'lower', movementId: 'squat' },
+            { id: 'barbell-row', name: '바벨로우', muscleId: 'back', movementId: 'horizontal-pull' },
+          ],
+          muscleParts: [
+            { id: 'chest', name: '가슴', color: '#334155' },
+            { id: 'lower', name: '하체', color: '#0f766e' },
+            { id: 'back', name: '등', color: '#7c3aed' },
+          ],
+          bodyCheckins: [{ date: fake.dateKey(VIEW_YEAR, VIEW_MONTH, 15), weight: 72 }],
+        });
+        if (!withSeason) return;
+        fake.fakeDataStore.settings.season_registry = {
+          schemaVersion: 2,
+          seasons: [{
+            id: SEASON_ID,
+            name: '주차 목표 시즌',
+            startDate: GOAL_MONDAY,
+            endDate: GOAL_SUNDAY,
+          }],
+        };
+        // 성장 보드 한 주치 처방 + 달성 로그. 상태 세 갈래를 한 주에 모아 둔다.
+        fake.fakeDataStore.settings['season_' + SEASON_ID + '_test_board_v2'] = {
+          startDate: GOAL_MONDAY,
+          benchmarks: [
+            { id: 'bm_bench', exerciseId: 'bench-press', groupId: 'chest', status: 'active', order: 1, label: '벤치프레스', tracks: ['volume'] },
+            { id: 'bm_squat', exerciseId: 'back-squat', groupId: 'lower', status: 'active', order: 2, label: '스쿼트', tracks: ['volume'] },
+            { id: 'bm_row', exerciseId: 'barbell-row', groupId: 'back', status: 'active', order: 3, label: '바벨로우', tracks: ['volume'] },
+          ],
+          steps: [
+            // 보드에서 달성 도장을 찍은 목표 → achieved
+            { benchmarkId: 'bm_bench', track: 'volume', weekStart: GOAL_MONDAY, span: 1, kg: 80, reps: 10, weekLog: { [GOAL_MONDAY]: { paintedAt: GOAL_MONDAY + 'T09:00:00.000Z' } } },
+            // 시도만 남긴 목표 → attempted
+            { benchmarkId: 'bm_squat', track: 'volume', weekStart: GOAL_MONDAY, span: 1, kg: 120, reps: 5, weekLog: { [GOAL_MONDAY]: { attempted: true } } },
+            // 아무 기록도 없는 목표 → not-achieved
+            { benchmarkId: 'bm_row', track: 'volume', weekStart: GOAL_MONDAY, span: 1, kg: 70, reps: 8, weekLog: {} },
+          ],
+        };
+        // 러닝 목표도 레일에 한 칸 올라온다. 주행 기록이 없으니 미달.
+        fake.fakeDataStore.settings['season_' + SEASON_ID + '_running_plan'] = { weeklyDistanceKm: 20, weeklySessions: 3 };
+      }
+
+      function renderMonth() {
+        calendar.applyWorkoutCalendarNavSnapshot({
+          calendar: {
+            viewYear: VIEW_YEAR,
+            viewMonth: VIEW_MONTH,
+            selectedKey: fake.dateKey(VIEW_YEAR, VIEW_MONTH, 15),
+            selectedSessionIndex: 0,
+            sheetOpen: false,
+            sheetState: 'bar',
+            scrollTop: 0,
+            activeTab: 'summary',
+          },
+        }, { preserveScroll: false });
+      }
+
+      function chipSnapshot(chip) {
+        const style = getComputedStyle(chip);
+        return {
+          state: (Array.from(chip.classList).find(name => name.startsWith('is-')) || '').replace(/^is-/, ''),
+          label: chip.querySelector('b')?.textContent?.trim() || '',
+          icon: chip.querySelector('i')?.textContent?.trim() || '',
+          title: chip.getAttribute('title') || '',
+          display: style.display,
+          background: style.backgroundColor,
+        };
+      }
+
+      function railSnapshot() {
+        const rails = Array.from(document.querySelectorAll('#workout-calendar-root .cal-workout-week-rail'));
+        const filled = rails.filter(rail => rail.querySelector('.cal-week-goals:not(.is-empty)'));
+        const goalRail = filled[0]?.querySelector('.cal-week-goals') || null;
+        return {
+          railCount: rails.length,
+          goalsContainerCount: document.querySelectorAll('#workout-calendar-root .cal-week-goals').length,
+          filledRailCount: filled.length,
+          emptyRailTexts: Array.from(new Set(rails
+            .map(rail => rail.querySelector('.cal-week-goals.is-empty')?.textContent?.trim())
+            .filter(Boolean))),
+          weekLabel: filled[0]?.querySelector('strong')?.textContent?.trim() || null,
+          countText: filled[0]?.querySelector('.cal-week-goal-count')?.textContent?.trim() || null,
+          countTagName: filled[0]?.querySelector('.cal-week-goal-count')?.tagName || null,
+          ariaLabel: goalRail?.getAttribute('aria-label') || null,
+          role: goalRail?.getAttribute('role') || null,
+          overflowY: goalRail ? getComputedStyle(goalRail).overflowY : null,
+          chips: filled[0] ? Array.from(filled[0].querySelectorAll('.cal-week-goal')).map(chipSnapshot) : [],
+          // 새 레일에는 rail 직속 <span>이 없어야 한다. 하나라도 있으면
+          // 예전 '.cal-workout-week-rail span { display: block }' 규칙이
+          // 필요하다는 뜻이고, 그 규칙은 칩 grid를 block으로 덮는다.
+          bareRailSpanCount: rails
+            .reduce((count, rail) => count + Array.from(rail.children).filter(child => child.tagName === 'SPAN').length, 0),
+        };
+      }
+
+      window.__qa = {
+        goalMonday: GOAL_MONDAY,
+        seed,
+        renderMonth,
+        railSnapshot,
+      };
+
+      seed();
+      renderMonth();
+`;
+
+  await writeHarnessHtml(htmlPath, {
+    importMap,
+    head: `  <link rel="stylesheet" href="${repoUrl('style.css')}">`,
+    body: `  <main id="workout-calendar-root"></main>
+  <div id="wt-workout-timer-bar"></div>`,
+    moduleSource,
+  });
+  return htmlPath;
+}
+
+test('workout month calendar rail renders season week goal chips with achieved/attempted/planned states', async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), 'tomato-logged-in-week-goals-'));
+  let harness;
+  try {
+    const htmlPath = await buildWorkoutMonthGridHarness(tempDir);
+    harness = await launchHarness(htmlPath);
+    const { page } = harness;
+
+    const filled = await page.evaluate(() => window.__qa.railSnapshot());
+
+    // 달력 행마다 레일이 하나씩, 그 안에 목표 컨테이너가 하나씩 있어야 한다.
+    assert.ok(filled.railCount >= 4, `expected at least 4 week rails, got ${filled.railCount}`);
+    assert.equal(filled.goalsContainerCount, filled.railCount);
+
+    // 시즌 주차는 한 주뿐이므로 칩이 든 레일도 정확히 하나다.
+    assert.equal(filled.filledRailCount, 1);
+    assert.match(filled.weekLabel, /^\d+주$/);
+
+    // 헬스 3개(달성/시도/미달) + 러닝 1개(미달).
+    assert.equal(filled.chips.length, 4);
+    assert.deepEqual(filled.chips.map(chip => chip.state), ['achieved', 'attempted', 'not-achieved', 'not-achieved']);
+    assert.deepEqual(filled.chips.map(chip => chip.label), ['벤치프레스', '스쿼트', '바벨로우', '러닝']);
+    assert.deepEqual(filled.chips.map(chip => chip.icon), ['✓', '△', '×', '×']);
+    // 칩 툴팁은 목표 이름 + 처방을 같이 보여준다.
+    assert.match(filled.chips[0].title, /^벤치프레스 · 볼륨 · 80kg × 10회$/);
+
+    // 달성/총계 카운트. 러닝 포함 4개 중 1개 달성.
+    assert.equal(filled.countText, '1/4');
+    assert.equal(filled.countTagName, 'EM');
+    assert.equal(filled.ariaLabel, '이번 주 운동 목표 1/4 달성');
+    assert.equal(filled.role, 'list');
+
+    // CSS 절반: 칩은 아이콘/이름 2열 grid이고, 상태마다 배경이 다르다.
+    // '.cal-workout-week-rail span { display: block }'이 남아 있으면 여기서 block으로 잡힌다.
+    assert.equal(filled.bareRailSpanCount, 0);
+    assert.deepEqual(filled.chips.map(chip => chip.display), ['grid', 'grid', 'grid', 'grid']);
+    assert.equal(filled.chips[0].background, 'rgb(232, 246, 237)');
+    assert.equal(filled.chips[1].background, 'rgb(255, 245, 230)');
+    assert.equal(filled.chips[2].background, 'rgb(253, 238, 236)');
+    // 레일 안에서만 굴러야 달력 스크롤을 뺏지 않는다.
+    assert.equal(filled.overflowY, 'auto');
+
+    // 목표가 없는 주차는 '목표 없음'으로 남는다.
+    assert.deepEqual(filled.emptyRailTexts, ['목표 없음']);
+
+    // 시즌이 아예 없으면 모든 레일이 빈 상태여야 한다.
+    const empty = await page.evaluate(() => {
+      window.__qa.seed({ withSeason: false });
+      window.__qa.renderMonth();
+      return window.__qa.railSnapshot();
+    });
+    assert.equal(empty.filledRailCount, 0);
+    assert.equal(empty.goalsContainerCount, empty.railCount);
+    assert.deepEqual(empty.emptyRailTexts, ['목표 없음']);
+    assert.equal(empty.countText, null);
 
     assert.deepEqual(harness.pageErrors, []);
     assert.deepEqual(harness.blockedRequests, []);
