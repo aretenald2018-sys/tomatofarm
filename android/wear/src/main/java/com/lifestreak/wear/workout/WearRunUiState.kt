@@ -129,6 +129,9 @@ class WearRunUiState(
             paceTrend = buildPaceTrend(distanceSamples),
             heartRateTrend = heartRateSamples,
             routeProjection = projectRoute(routePoints),
+            // W5c current-pace slice: pure function of the same distanceSamples buildPaceTrend
+            // above consumes, plus "now" so a stationary runner (no recent samples) reads null.
+            currentPaceSecPerKm = currentPaceSecPerKm(distanceSamples, nowMs()),
         )
     }
 

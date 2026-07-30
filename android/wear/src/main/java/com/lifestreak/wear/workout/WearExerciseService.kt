@@ -44,6 +44,7 @@ import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
+import kotlin.math.floor
 import kotlin.math.roundToInt
 
 class WearExerciseService : Service() {
@@ -77,6 +78,10 @@ class WearExerciseService : Service() {
     private var healthLocationManaged = false
     private var healthHeartRateManaged = false
     private var lastLiveSnapshotPublishedElapsedRealtimeMs = 0L
+    // W5c split-vibration slice: the last whole kilometre we've already buzzed for, so a
+    // service-restart mid-run (restoreRuntimeFromSnapshot seeds this from the restored distance)
+    // doesn't re-buzz kilometres already passed.
+    private var lastAnnouncedSplitKm = 0
     private var persistenceUnsubscribe: (() -> Unit)? = null
     private var pendingPersistenceSnapshot: WearExerciseSessionSnapshot? = null
     private var persistenceWriteScheduled = false
@@ -210,6 +215,7 @@ class WearExerciseService : Service() {
         lastDirectLocationElapsedRealtimeMs = 0L
         lastGpsStatusPublishedElapsedRealtimeMs = 0L
         lastLiveSnapshotPublishedElapsedRealtimeMs = 0L
+        lastAnnouncedSplitKm = 0
         healthLocationManaged = false
         healthHeartRateManaged = false
         if (lastDirectGpsAccuracyM == null) gpsStatusMessage = GPS_STATUS_SEARCHING
@@ -293,6 +299,7 @@ class WearExerciseService : Service() {
             accumulator ?: return
         } else {
             debugRouteReplayActive = true
+            lastAnnouncedSplitKm = 0
             stopDirectLocationUpdates()
             stopFusedRouteLocationUpdates()
             stopDirectHeartRateUpdates()
@@ -317,6 +324,7 @@ class WearExerciseService : Service() {
         lastDirectGpsAccuracyM = accuracy
         lastDirectGpsFixElapsedRealtimeMs = elapsedRealtimeMs
         gpsStatusMessage = GPS_STATUS_DIRECT
+        checkSplitVibration(currentAccumulator)
         WearExerciseSessionStore.publishFromAccumulator(
             status = WearExerciseSessionStatus.ACTIVE,
             accumulator = currentAccumulator,
@@ -783,6 +791,11 @@ class WearExerciseService : Service() {
         val healthDistanceMeters = runCatching {
             metrics.getData(DataType.DISTANCE_TOTAL)?.total
         }.getOrNull()?.takeIf { distance -> distance.isFinite() && distance >= 0.0 }
+        // W5a elevation slice: same defensive read as DISTANCE_TOTAL above — an API-surface mismatch
+        // just falls back to the route-altitude estimate in the accumulator instead of crashing.
+        val healthElevationGainMeters = runCatching {
+            metrics.getData(DataType.ELEVATION_GAIN)?.total
+        }.getOrNull()?.takeIf { elevation -> elevation.isFinite() && elevation >= 0.0 }
         val heartRatePoint = metrics.getData(DataType.HEART_RATE_BPM).lastOrNull()
         val heartRateAccuracy = heartRatePoint?.accuracy as? HeartRateAccuracy
         val heartRateBpm = heartRatePoint
@@ -825,6 +838,7 @@ class WearExerciseService : Service() {
             heartRateBpm = heartRateBpm,
             activeDurationMs = activeDurationMs,
             healthDistanceMeters = healthDistanceMeters,
+            healthElevationGainMeters = healthElevationGainMeters,
         )
         locationPoints.forEach { point ->
             val pointElapsedRealtimeMs = point.timeDurationFromBoot.toMillis()
@@ -939,6 +953,9 @@ class WearExerciseService : Service() {
         accumulator = restoredAccumulator
         exerciseStarted = false
         endRequested = false
+        // W5c split-vibration slice: seed from the restored distance so a relaunch mid-run doesn't
+        // re-buzz kilometres already passed.
+        lastAnnouncedSplitKm = floor(snapshot.distanceMeters / 1_000.0).toInt().coerceAtLeast(0)
         if (runningStatus) {
             restoredAccumulator.applyMetricUpdate(
                 elapsedRealtimeMs = nowElapsedRealtimeMs,
@@ -992,6 +1009,11 @@ class WearExerciseService : Service() {
         message: String? = null,
         force: Boolean = false,
     ) {
+        // W5c split-vibration slice: checked on every distance-relevant update path (this function
+        // is the single funnel for all of them), independent of the live-snapshot throttle below —
+        // a throttled-out publish must never let a completed kilometre go unbuzzed. Works with the
+        // screen off/ambient since this fires from the service, not the UI controller.
+        checkSplitVibration(accumulator)
         val elapsedRealtimeMs = SystemClock.elapsedRealtime()
         val statusChanged = WearExerciseSessionStore.current().status != status
         // Ambient/wrist-down (plan's W2 battery slice): relax the live-snapshot cadence since
@@ -1010,6 +1032,20 @@ class WearExerciseService : Service() {
             accumulator = accumulator,
             message = message,
         )
+    }
+
+    // W5c split-vibration slice: fires one buzz each time the published distance crosses into a
+    // new whole kilometre. lastAnnouncedSplitKm is reset to 0 on a fresh start/debug-replay and
+    // seeded from the restored distance on restore (see handleStartRun/restoreRuntimeFromSnapshot),
+    // so this never re-buzzes a kilometre already passed.
+    private fun checkSplitVibration(accumulator: WearExerciseMetricAccumulator) {
+        val distanceMeters = accumulator.snapshot().distanceMeters
+        if (!distanceMeters.isFinite() || distanceMeters < 0.0) return
+        val currentKm = floor(distanceMeters / 1_000.0).toInt()
+        if (currentKm > lastAnnouncedSplitKm) {
+            lastAnnouncedSplitKm = currentKm
+            WearRunHaptics.vibrateSplit(this)
+        }
     }
 
     private fun startActiveDurationCheckpoints() {
@@ -1363,6 +1399,12 @@ class WearExerciseService : Service() {
             // if the watch/session doesn't actually support it. Deliberately not requesting HS's
             // speed data type here — current pace is derived from distance samples instead.
             DataType.DISTANCE_TOTAL,
+            // W5a elevation slice: same idea for cumulative elevation gain — the capability
+            // intersection above drops it on watches/sessions that don't support it, in which case
+            // the accumulator falls back to summing route-point altitude deltas. Verify against a
+            // real device/build: like DISTANCE_TOTAL, DataType.ELEVATION_GAIN's exact behavior on
+            // health-services-client 1.0.0 isn't compiled against locally.
+            DataType.ELEVATION_GAIN,
         )
         if (hasHeartRatePermission()) {
             dataTypes.add(DataType.HEART_RATE_BPM)

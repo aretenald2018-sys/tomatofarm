@@ -266,7 +266,14 @@ export function buildRunningActivityAnalytics(points = [], options = {}) {
     ? _round(preciseDistanceKm / (durationSec / 3600), 2)
     : 0;
   const elevation = _elevationMetrics(movementRoute);
-  const fallbackElevation = elevation.elevationGainM == null ? _elevationMetrics(route) : elevation;
+  const routeElevation = elevation.elevationGainM == null ? _elevationMetrics(route) : elevation;
+  // W5a elevation slice: a watch-provided elevation gain (Health Services or its own route-altitude
+  // fallback) wins over our own route-derived estimate — same return shape as the route-derived
+  // helper above (elevationGainM/elevationLossM) so downstream renderers are unaffected.
+  const overrideElevationGainM = _positive(options.elevationGainM);
+  const fallbackElevation = overrideElevationGainM != null
+    ? { ...routeElevation, elevationGainM: Math.round(overrideElevationGainM) }
+    : routeElevation;
   const heart = _metricSummary(_heartRateValues(route, options.heartRateSamples));
   const cadence = _metricSummary(_metricValues(route, 'cadenceSpm'));
   const splits = _splitHeartRateMetrics(

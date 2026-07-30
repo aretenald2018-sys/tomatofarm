@@ -58,6 +58,29 @@ test('running analytics collects pace, calories, elevation, heart rate, cadence,
   ]);
 });
 
+test('running analytics lets a watch-provided elevation gain override the route-derived estimate', () => {
+  const route = [
+    routePoint(0, 0, { altitude: 10 }),
+    routePoint(500, 300, { altitude: 15 }),
+    routePoint(1000, 600, { altitude: 10 }),
+  ];
+
+  // Route-derived gain here is 5m (10 -> 15, the 15 -> 10 descent doesn't count); a watch-supplied
+  // value should win over that route-derived number.
+  const routeDerived = buildRunningActivityAnalytics(route, { startedAt: 0, endedAt: 600_000, distanceKm: 1 });
+  assert.equal(routeDerived.elevationGainM, 5);
+
+  const withOverride = buildRunningActivityAnalytics(route, {
+    startedAt: 0,
+    endedAt: 600_000,
+    distanceKm: 1,
+    elevationGainM: 42,
+  });
+  assert.equal(withOverride.elevationGainM, 42);
+  // The return shape stays the same (loss still comes from the route) — only gain is overridden.
+  assert.equal(withOverride.elevationLossM, routeDerived.elevationLossM);
+});
+
 test('running analytics leaves calories empty instead of inventing a default body weight', () => {
   const analytics = buildRunningActivityAnalytics([
     routePoint(0, 0),

@@ -1,5 +1,11 @@
 package com.lifestreak.wear.workout
 
+import android.content.Context
+import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
+import android.util.Log
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -42,6 +48,9 @@ data class WearRunUiSnapshot(
     val paceTrend: List<WearPaceTrendPoint> = emptyList(),
     val heartRateTrend: List<HeartRateSample> = emptyList(),
     val routeProjection: WearRouteProjection = WearRouteProjection(),
+    // W5c split-vibration/current-pace slice: rolling pace over the trailing window (see
+    // currentPaceSecPerKm below), null while stationary or before enough samples exist.
+    val currentPaceSecPerKm: Int? = null,
 ) {
     val durationText: String = formatDuration(durationMs)
     val distanceText: String = String.format(Locale.US, "%.2f", distanceKm)
@@ -49,6 +58,7 @@ data class WearRunUiSnapshot(
     val paceText: String = formatPace(durationMs, distanceKm)
     val averagePaceText: String = paceText
     val fastestPaceText: String = paceTrend.minOfOrNull { it.secondsPerKm }?.let(::formatPaceSeconds) ?: "--"
+    val currentPaceText: String = currentPaceSecPerKm?.let(::formatPaceSeconds) ?: "--"
     val heartRateText: String = heartRateBpm?.let { "$it bpm" } ?: "-- bpm"
     val averageHeartRateBpm: Int? = averageHeartRateBpm(heartRateTrend)
     val maxHeartRateBpm: Int? = heartRateTrend.maxOfOrNull { it.bpm }
@@ -83,6 +93,46 @@ internal fun buildPaceTrend(samples: List<WearDistanceSample>): List<WearPaceTre
                 secondsPerKm = secondsPerKm,
             )
         }
+}
+
+/**
+ * W5c current-pace slice: rolling pace over a trailing ~40s window of the same 10s-bucketed
+ * distance samples [buildPaceTrend] consumes, rather than the whole-run average — this is what
+ * other running apps show as "current pace". Pure and side-effect free, like [buildPaceTrend].
+ *
+ * - Newest-vs-oldest-within-window difference: takes the most recent sample and the oldest sample
+ *   still inside [windowMs] of it, and derives pace from their time/distance delta.
+ * - If the newest sample itself is older than [windowMs] relative to [nowMs] (e.g. the runner has
+ *   stopped and no new confirmed-movement point has arrived), this returns null — "--" on screen —
+ *   rather than reporting a stale pace.
+ * - If the distance delta inside the window is negligible (below [MIN_CURRENT_PACE_DISTANCE_DELTA_KM]),
+ *   this also returns null instead of an absurdly large number.
+ */
+internal fun currentPaceSecPerKm(
+    samples: List<WearDistanceSample>,
+    nowMs: Long,
+    windowMs: Long = CURRENT_PACE_WINDOW_MS,
+): Int? {
+    val validSamples = samples
+        .filter { it.timestampMs >= 0L && it.distanceKm.isFinite() && it.distanceKm >= 0.0 }
+        .sortedBy { it.timestampMs }
+    if (validSamples.size < 2) return null
+
+    val newest = validSamples.last()
+    if (nowMs - newest.timestampMs > windowMs) return null
+
+    val windowStartMs = newest.timestampMs - windowMs
+    val windowSamples = validSamples.filter { it.timestampMs >= windowStartMs }
+    if (windowSamples.size < 2) return null
+
+    val oldest = windowSamples.first()
+    val durationMs = newest.timestampMs - oldest.timestampMs
+    val distanceDeltaKm = newest.distanceKm - oldest.distanceKm
+    if (durationMs <= 0L || distanceDeltaKm < MIN_CURRENT_PACE_DISTANCE_DELTA_KM) return null
+
+    val secondsPerKm = (durationMs / 1000.0 / distanceDeltaKm).roundToInt()
+    if (secondsPerKm < MIN_VALID_SECONDS_PER_KM) return null
+    return secondsPerKm
 }
 
 internal fun projectRoute(points: List<WearRoutePoint>): WearRouteProjection {
@@ -190,3 +240,45 @@ private const val MIN_VALID_SECONDS_PER_KM = 180
 private const val MIN_HEART_RATE_BPM = 30
 private const val MAX_HEART_RATE_BPM = 240
 private const val HEART_ZONE_MAX_SAMPLE_MS = 60_000L
+private const val CURRENT_PACE_WINDOW_MS = 40_000L
+// Below this, treat the window's distance progress as GPS/route-filter noise rather than genuine
+// movement (a confirmed running fix advances distance by well more than this over 40s).
+private const val MIN_CURRENT_PACE_DISTANCE_DELTA_KM = 0.001
+
+/**
+ * W5c split-vibration slice: a single buzz each time the run crosses a whole kilometre (service-
+ * side — see WearExerciseService — so it fires with the screen off/ambient, not just when the UI
+ * happens to be visible). Mirrors WearStrengthUiController's rest-timer vibrate() helper: prefers
+ * [VibratorManager] on API 31+ with a legacy [Vibrator] fallback, and is wrapped defensively
+ * end-to-end so a missing vibrator service or a thrown exception just silently skips the buzz.
+ * No new manifest permission is needed — see AndroidManifest.xml/the plan notes: the existing
+ * rest-timer vibration already relies on the platform granting VIBRATE without a manifest entry.
+ */
+internal object WearRunHaptics {
+    private const val TAG = "WearRunHaptics"
+    private const val SPLIT_VIBRATION_DURATION_MS = 400L
+
+    fun vibrateSplit(context: Context) {
+        vibrate(context, SPLIT_VIBRATION_DURATION_MS)
+    }
+
+    private fun vibrate(context: Context, durationMs: Long) {
+        try {
+            val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                (context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager)?.defaultVibrator
+            } else {
+                @Suppress("DEPRECATION")
+                context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+            }
+            if (vibrator == null || !vibrator.hasVibrator()) return
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator.vibrate(VibrationEffect.createOneShot(durationMs, VibrationEffect.DEFAULT_AMPLITUDE))
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(durationMs)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Wear run split vibration failed", e)
+        }
+    }
+}

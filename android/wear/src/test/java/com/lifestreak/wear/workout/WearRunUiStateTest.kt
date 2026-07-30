@@ -190,6 +190,102 @@ class WearRunUiStateTest {
     }
 
     @Test
+    fun snapshotExposesCurrentPaceDerivedFromLiveDistanceSamples() {
+        state.start()
+        now += 40_000L
+
+        state.updateLiveMetrics(
+            distanceKm = 0.40,
+            distanceSamples = listOf(
+                WearDistanceSample(timestampMs = 0L, distanceKm = 0.0),
+                WearDistanceSample(timestampMs = 40_000L, distanceKm = 0.40),
+            ),
+        )
+
+        val snapshot = state.snapshot()
+        assertEquals(100, snapshot.currentPaceSecPerKm)
+        assertEquals("1'40\"", snapshot.currentPaceText)
+    }
+
+    // --- W5c current-pace pure function -----------------------------------------------------
+
+    @Test
+    fun currentPaceUsesTheNewestAndOldestSampleInsideTheTrailingWindow() {
+        val samples = listOf(
+            WearDistanceSample(timestampMs = 0L, distanceKm = 0.0),
+            WearDistanceSample(timestampMs = 10_000L, distanceKm = 0.10),
+            WearDistanceSample(timestampMs = 20_000L, distanceKm = 0.20),
+            WearDistanceSample(timestampMs = 30_000L, distanceKm = 0.30),
+            WearDistanceSample(timestampMs = 40_000L, distanceKm = 0.40),
+        )
+
+        // Window of 40s ending at the newest sample (40_000L) reaches back to 0L, so
+        // oldest=0.0km@0ms, newest=0.40km@40_000ms -> 40s / 0.4km = 100s/km.
+        assertEquals(100, currentPaceSecPerKm(samples, nowMs = 40_000L, windowMs = 40_000L))
+    }
+
+    @Test
+    fun currentPaceExcludesSamplesOutsideTheTrailingWindow() {
+        val samples = listOf(
+            WearDistanceSample(timestampMs = 0L, distanceKm = 0.0),
+            WearDistanceSample(timestampMs = 10_000L, distanceKm = 0.30), // fast start, outside the window
+            WearDistanceSample(timestampMs = 50_000L, distanceKm = 0.40),
+            WearDistanceSample(timestampMs = 60_000L, distanceKm = 0.50),
+            WearDistanceSample(timestampMs = 70_000L, distanceKm = 0.60),
+            WearDistanceSample(timestampMs = 80_000L, distanceKm = 0.70),
+        )
+
+        // Window [40_000, 80_000]: the oldest sample inside is 50_000L@0.40km (10_000L@0.30km
+        // falls outside it), newest is 80_000L@0.70km -> 30s / 0.30km = 100s/km. If the excluded
+        // fast-start sample leaked in, the pace would come out faster than this.
+        assertEquals(100, currentPaceSecPerKm(samples, nowMs = 80_000L, windowMs = 40_000L))
+    }
+
+    @Test
+    fun currentPaceIsNullWhenTheNewestSampleIsOlderThanTheWindow() {
+        val samples = listOf(
+            WearDistanceSample(timestampMs = 0L, distanceKm = 0.0),
+            WearDistanceSample(timestampMs = 10_000L, distanceKm = 0.10),
+        )
+
+        // "now" is 50s past the newest sample, further than the 40s window — treat as stopped
+        // rather than reporting a stale pace.
+        assertNull(currentPaceSecPerKm(samples, nowMs = 60_000L, windowMs = 40_000L))
+    }
+
+    @Test
+    fun currentPaceIsNullWhenDistanceBarelyMovesInsideTheWindow() {
+        val samples = listOf(
+            WearDistanceSample(timestampMs = 0L, distanceKm = 0.500),
+            WearDistanceSample(timestampMs = 40_000L, distanceKm = 0.5001),
+        )
+
+        assertNull(currentPaceSecPerKm(samples, nowMs = 40_000L, windowMs = 40_000L))
+    }
+
+    @Test
+    fun currentPaceRoundsSecondsPerKilometre() {
+        val samples = listOf(
+            WearDistanceSample(timestampMs = 0L, distanceKm = 0.0),
+            WearDistanceSample(timestampMs = 40_000L, distanceKm = 0.13),
+        )
+
+        // 40s / 0.13km = 307.69... -> 308
+        assertEquals(308, currentPaceSecPerKm(samples, nowMs = 40_000L, windowMs = 40_000L))
+    }
+
+    @Test
+    fun currentPaceIsNullWithFewerThanTwoSamples() {
+        assertNull(currentPaceSecPerKm(emptyList(), nowMs = 0L))
+        assertNull(
+            currentPaceSecPerKm(
+                listOf(WearDistanceSample(timestampMs = 0L, distanceKm = 0.0)),
+                nowMs = 0L,
+            ),
+        )
+    }
+
+    @Test
     fun derivesHeartZoneDurationsFromTenSecondSamples() {
         state.start()
         now += 50_000L

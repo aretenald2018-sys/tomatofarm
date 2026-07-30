@@ -18,6 +18,9 @@ test('wear slice3 declares Health Services dependency, permissions, and foregrou
     'android.permission.ACTIVITY_RECOGNITION',
     'android.permission.FOREGROUND_SERVICE',
     'android.permission.FOREGROUND_SERVICE_HEALTH',
+    // Haptics (rest timer, per-kilometre splits, heart-zone alerts) need this or every
+    // Vibrator.vibrate() throws SecurityException into a swallowing try/catch.
+    'android.permission.VIBRATE',
   ].forEach((permissionName) => {
     assert.match(manifest, new RegExp(`android:name="${permissionName.replaceAll('.', '\\.')}"`));
   });
@@ -205,4 +208,32 @@ test('wear slice C checks Health Services ownership before starting and re-arms 
   assert.match(publishHeartRateBody, /if \(isEnded\) \{/);
   assert.match(publishHeartRateBody, /clearExerciseCallback\(\)/);
   assert.match(publishHeartRateBody, /startDirectHeartRate\(\)/);
+});
+
+test('wear slice D requests Health Services elevation gain and buzzes at each completed kilometre', () => {
+  const service = readProjectFile('android/wear/src/main/java/com/lifestreak/wear/workout/WearExerciseService.kt');
+  const accumulator = readProjectFile('android/wear/src/main/java/com/lifestreak/wear/workout/WearExerciseMetricAccumulator.kt');
+  const uiMetrics = readProjectFile('android/wear/src/main/java/com/lifestreak/wear/workout/WearRunUiMetrics.kt');
+
+  // W5a elevation slice: requested alongside DISTANCE_TOTAL, read the same defensive way.
+  assert.ok(service.includes('DataType.ELEVATION_GAIN'), 'must request Health Services cumulative elevation gain');
+  assert.match(service, /metrics\.getData\(DataType\.ELEVATION_GAIN\)/);
+  assert.match(service, /healthElevationGainMeters\s*=\s*healthElevationGainMeters/);
+  assert.ok(!service.includes('DataType.SPEED'), 'W5a must not introduce an HS speed request either');
+  assert.match(accumulator, /elevationGainMeters/);
+
+  // W5c split-vibration slice: last-announced-kilometre tracking lives in the service (so it fires
+  // with the screen off/ambient), reset on a fresh start and seeded from the restored distance so a
+  // relaunch mid-run doesn't re-buzz kilometres already passed.
+  assert.match(service, /lastAnnouncedSplitKm/);
+  assert.match(service, /floor\(distanceMeters \/ 1_000\.0\)/);
+  assert.match(service, /floor\(snapshot\.distanceMeters \/ 1_000\.0\)/);
+  assert.match(service, /WearRunHaptics\.vibrateSplit\(/);
+
+  // Vibration helper itself: VibratorManager (API 31+) with a legacy Vibrator fallback, defensive
+  // end to end (mirrors the existing strength rest-timer vibration).
+  assert.match(uiMetrics, /object WearRunHaptics/);
+  assert.match(uiMetrics, /VibratorManager/);
+  assert.match(uiMetrics, /Vibrator\b/);
+  assert.match(uiMetrics, /VibrationEffect/);
 });

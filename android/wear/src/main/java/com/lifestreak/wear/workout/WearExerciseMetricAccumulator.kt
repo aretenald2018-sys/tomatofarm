@@ -14,6 +14,10 @@ data class WearExerciseMetricsSnapshot(
     val heartRateSamples: List<HeartRateSample>,
     val routePoints: List<WearRoutePoint>,
     val healthDistanceMeters: Double? = null,
+    // W5a elevation slice: null means "no elevation data available at all" (neither Health Services
+    // nor any altitude-bearing route point) — distinct from a genuinely flat 0.0 route.
+    val elevationGainMeters: Double? = null,
+    val healthElevationGainMeters: Double? = null,
 ) {
     val distanceKm: Double = distanceMeters / 1_000.0
 }
@@ -31,6 +35,9 @@ class WearExerciseMetricAccumulator(
     // supplies it. Monotonic (only ever moves up) like activeDurationMs above, and takes
     // precedence over the filtered route distance in snapshot() below.
     private var healthDistanceMeters: Double? = null
+    // W5a elevation slice: same treatment as healthDistanceMeters above, for Health Services'
+    // cumulative elevation gain.
+    private var healthElevationGainMeters: Double? = null
 
     fun markRouteGap(reason: String = "interruption") {
         if (routePoints.isNotEmpty()) pendingRouteGapReason = reason.take(48)
@@ -42,12 +49,16 @@ class WearExerciseMetricAccumulator(
         activeDurationMs: Long? = null,
         routePoint: WearRoutePoint? = null,
         healthDistanceMeters: Double? = null,
+        healthElevationGainMeters: Double? = null,
     ) {
         if (activeDurationMs != null && activeDurationMs >= 0L) {
             this.activeDurationMs = maxOf(this.activeDurationMs, activeDurationMs)
         }
         if (healthDistanceMeters != null && healthDistanceMeters.isFinite() && healthDistanceMeters >= 0.0) {
             this.healthDistanceMeters = maxOf(this.healthDistanceMeters ?: 0.0, healthDistanceMeters)
+        }
+        if (healthElevationGainMeters != null && healthElevationGainMeters.isFinite() && healthElevationGainMeters >= 0.0) {
+            this.healthElevationGainMeters = maxOf(this.healthElevationGainMeters ?: 0.0, healthElevationGainMeters)
         }
         if (heartRateBpm != null && heartRateBpm in MIN_HEART_RATE_BPM..MAX_HEART_RATE_BPM) {
             latestHeartRateBpm = heartRateBpm
@@ -84,7 +95,22 @@ class WearExerciseMetricAccumulator(
             heartRateSamples = heartRateSamplesByBucket.values.sortedBy { it.timestampMs },
             routePoints = normalizedRoute,
             healthDistanceMeters = healthDistanceMeters,
+            elevationGainMeters = elevationGainMeters(movementRoute),
+            healthElevationGainMeters = healthElevationGainMeters,
         )
+    }
+
+    // W5a elevation slice: same precedence rule as distance above — Health Services' own cumulative
+    // ascent wins when available. When it never reports, fall back to summing positive altitude
+    // deltas over the same confirmed/filtered movementRoute the distance uses (so a noisy discarded
+    // fix can't inflate ascent). Unlike distance, this can be null: a flat 0.0 route with altitude
+    // data is a meaningful "no ascent", but a route with no altitude data at all (and no HS value)
+    // means elevation is simply unknown, which the watch summary/payload should show as "--", not 0.
+    private fun elevationGainMeters(movementRoute: List<WearRoutePoint>): Double? {
+        healthElevationGainMeters?.let { return it }
+        val hasAltitudeData = movementRoute.any { point -> point.altitude != null }
+        if (!hasAltitudeData) return null
+        return routeElevationGainMeters(movementRoute)
     }
 
     fun toRunSession(dateKey: String, endedAtWallClockMs: Long): WearRunSession {
@@ -179,6 +205,23 @@ class WearExerciseMetricAccumulator(
         }
     }
 
+    // W5a elevation slice: mirrors routeDistanceMeters above, summing only positive altitude
+    // deltas (descent doesn't count toward "elevation gain") across the same segment/gap edges.
+    private fun routeElevationGainMeters(route: List<WearRoutePoint>): Double {
+        if (route.size < 2) return 0.0
+        return route.zipWithNext().sumOf { (previous, point) ->
+            val previousAltitude = previous.altitude
+            val nextAltitude = point.altitude
+            if (point.gapBefore || previous.segmentId != point.segmentId ||
+                previousAltitude == null || nextAltitude == null
+            ) {
+                0.0
+            } else {
+                (nextAltitude - previousAltitude).coerceAtLeast(0.0)
+            }
+        }
+    }
+
     private fun routeDistanceSamples(route: List<WearRoutePoint>): List<WearDistanceSample> {
         if (route.isEmpty()) return emptyList()
         var cumulativeDistanceMeters = 0.0
@@ -234,6 +277,8 @@ class WearExerciseMetricAccumulator(
             accumulator.activeDurationMs = snapshot.activeDurationMs.coerceAtLeast(0L)
             accumulator.healthDistanceMeters = snapshot.healthDistanceMeters
                 ?.takeIf { distance -> distance.isFinite() && distance >= 0.0 }
+            accumulator.healthElevationGainMeters = snapshot.healthElevationGainMeters
+                ?.takeIf { elevation -> elevation.isFinite() && elevation >= 0.0 }
             snapshot.heartRateSamples
                 .filter { sample -> sample.timestampMs >= 0L && sample.bpm in MIN_HEART_RATE_BPM..MAX_HEART_RATE_BPM }
                 .forEach { sample -> accumulator.heartRateSamplesByBucket[sample.timestampMs] = sample }

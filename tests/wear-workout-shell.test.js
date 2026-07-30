@@ -83,6 +83,8 @@ test('wear workout layout exposes running and strength controls, one pager of ea
     'runSummaryDuration',
     'runSummaryHeartRate',
     'runSummarySyncStatus',
+    // W5a elevation slice: the run summary shows elevation gain ("↗ 24 m", or "—" when unknown).
+    'runSummaryElevation',
   ]) {
     assert.match(workoutLayout, new RegExp(`@\\+id/${id}`), `${id} must stay in the wear run flow`);
   }
@@ -207,6 +209,39 @@ test('wear workout layout exposes running and strength controls, one pager of ea
 
   const addRow = read('android', 'wear', 'src', 'main', 'res', 'layout', 'wear_strength_set_row_add.xml');
   assert.match(addRow, /세트 추가/);
+});
+
+test('wear run pace page surfaces current pace as the primary metric, average/fastest secondary', () => {
+  const pacePage = read('android', 'wear', 'src', 'main', 'res', 'layout', 'wear_run_page_pace.xml');
+  const pagerAdapter = read('android', 'wear', 'src', 'main', 'java', 'com', 'lifestreak', 'wear', 'workout', 'WearRunMetricPagerAdapter.kt');
+  const uiMetrics = read('android', 'wear', 'src', 'main', 'java', 'com', 'lifestreak', 'wear', 'workout', 'WearRunUiMetrics.kt');
+
+  // W5c current-pace slice: runPaceCurrent exists alongside (and is bound in addition to) the
+  // existing average/fastest ids — the pager's in-place holder.bind pattern is extended, not
+  // restructured.
+  assert.match(pacePage, /@\+id\/runPaceCurrent/);
+  assert.match(pacePage, /@\+id\/runPaceAverage/);
+  assert.match(pacePage, /@\+id\/runPaceFastest/);
+  assert.match(pagerAdapter, /R\.id\.runPaceCurrent/);
+  assert.match(pagerAdapter, /findViewHolderForAdapterPosition\(page\)/);
+  assert.doesNotMatch(pagerAdapter, /notifyItemRangeChanged/);
+
+  assert.match(uiMetrics, /fun currentPaceSecPerKm\(/);
+  assert.match(uiMetrics, /val currentPaceText: String/);
+});
+
+test('wear run split-vibration helper lives in WearRunUiMetrics and the manifest grants VIBRATE', () => {
+  const uiMetrics = read('android', 'wear', 'src', 'main', 'java', 'com', 'lifestreak', 'wear', 'workout', 'WearRunUiMetrics.kt');
+  const manifest = read('android', 'wear', 'src', 'main', 'AndroidManifest.xml');
+
+  assert.match(uiMetrics, /object WearRunHaptics/);
+  assert.match(uiMetrics, /VibratorManager/);
+  assert.match(uiMetrics, /VibrationEffect/);
+  // Vibrator.vibrate() throws SecurityException without android.permission.VIBRATE, and every
+  // caller here wraps it in a swallowing try/catch — so a missing entry means silent no-op
+  // haptics for splits, the rest timer and heart-zone alerts alike. Install-time permission,
+  // no runtime prompt.
+  assert.match(manifest, /android\.permission\.VIBRATE/);
 });
 
 test('wear run controller starts exercise and saves completed runs, refusing to start while strength is active', () => {

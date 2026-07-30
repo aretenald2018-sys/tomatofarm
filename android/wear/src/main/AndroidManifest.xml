@@ -12,6 +12,10 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Rest-timer, per-kilometre split and heart-zone haptics all call Vibrator.vibrate(), which
+         throws SecurityException without this. It is an install-time permission, so there is no
+         runtime prompt; without it every buzz is silently swallowed by their try/catch. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application

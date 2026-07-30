@@ -136,6 +136,33 @@ test('WearRunGraphViews uses local Canvas drawing and no map tiles or SDK hooks'
   );
 });
 
+test('wear run pace page keeps current pace as the primary metric above average/fastest', () => {
+  const pacePage = readProjectFile(path.join(wearLayoutRoot, 'wear_run_page_pace.xml'));
+
+  const currentIndex = pacePage.indexOf('@+id/runPaceCurrent');
+  const averageIndex = pacePage.indexOf('@+id/runPaceAverage');
+  const fastestIndex = pacePage.indexOf('@+id/runPaceFastest');
+  const graphIndex = pacePage.indexOf('@+id/runPaceGraph');
+  assert.notEqual(currentIndex, -1, 'wear_run_page_pace.xml must declare runPaceCurrent');
+  assert.notEqual(averageIndex, -1, 'wear_run_page_pace.xml must keep runPaceAverage');
+  assert.notEqual(fastestIndex, -1, 'wear_run_page_pace.xml must keep runPaceFastest');
+  assert.ok(
+    currentIndex < averageIndex && averageIndex < fastestIndex && fastestIndex < graphIndex,
+    'current pace must render above the average/fastest row and the pace graph',
+  );
+
+  // Primary metric reads visually larger than the secondary average/fastest row.
+  const currentBlock = pacePage.slice(currentIndex, averageIndex);
+  const currentSizeMatch = currentBlock.match(/textSize="(\d+)sp"/);
+  const averageBlock = pacePage.slice(averageIndex, fastestIndex);
+  const averageSizeMatch = averageBlock.match(/textSize="(\d+)sp"/);
+  assert.ok(currentSizeMatch && averageSizeMatch, 'expected textSize on both runPaceCurrent and runPaceAverage');
+  assert.ok(
+    Number(currentSizeMatch[1]) > Number(averageSizeMatch[1]),
+    'runPaceCurrent must be the visually larger, primary value',
+  );
+});
+
 test('WearRunMetricPagerAdapter binds exactly the five live pages and no old dashboard pages', () => {
   const relativePath = path.join(wearWorkoutRoot, 'WearRunMetricPagerAdapter.kt');
   assertProjectFileExists(relativePath);

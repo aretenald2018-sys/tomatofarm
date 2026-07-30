@@ -198,6 +198,13 @@ function _optionalCalories(value) {
   return _boundedInt(value, { min: 1, max: 20_000, nullable: true });
 }
 
+// W5a elevation slice: nullable end-to-end, same as the watch payload's own elevationGainM — a
+// missing/invalid value must degrade to "no elevation data" (null), never a fabricated 0.
+function _optionalElevationGainM(value) {
+  if (value == null || value === '') return null;
+  return _boundedInt(value, { min: 0, max: 20_000, nullable: true });
+}
+
 function _runningWeightKg() {
   const value = typeof deps.getRunningWeightKg === 'function' ? deps.getRunningWeightKg() : null;
   return isValidRunningWeightKg(value) ? Number(value) : null;
@@ -222,6 +229,10 @@ export function normalizeWearWorkoutPayload(raw) {
   const route = _normalizeRoutePoints(payload.route, startedAt, endedAt);
   const samples10s = _normalizeSamples(payload.samples10s, startedAt, endedAt);
   const calories = _optionalCalories(payload.calories ?? payload.caloriesKcal ?? payload.activeCalories);
+  // W5a elevation slice: a watch-provided elevationGainM (top level or its own routeSummary copy)
+  // overrides our route-derived estimate via buildRunningActivityAnalytics' options.elevationGainM
+  // hook below.
+  const elevationGainM = _optionalElevationGainM(payload.elevationGainM ?? payload.routeSummary?.elevationGainM);
   const routeSummary = {
     ..._normalizeRouteSummary(payload, route, durationSec, distanceKm, startedAt, endedAt, distanceMeters),
     ...buildRunningActivityAnalytics(route, {
@@ -236,6 +247,7 @@ export function normalizeWearWorkoutPayload(raw) {
       maxHeartRateBpm,
       calories,
       calorieSource: calories != null ? 'wear' : undefined,
+      elevationGainM,
       weightKg: _runningWeightKg(),
     }),
   };
@@ -305,6 +317,7 @@ function _redactedRouteSummary(payload) {
     durationSec: Math.max(0, Math.floor(_num(payload?.durationSec ?? summary.durationSec, 0))),
     startedAt: _boundedInt(payload?.startedAt ?? summary.startedAt, { min: 0 }),
     endedAt: _boundedInt(payload?.endedAt ?? summary.endedAt, { min: 0 }),
+    elevationGainM: _optionalElevationGainM(payload?.elevationGainM ?? summary.elevationGainM),
     redacted: true,
   };
 }
@@ -329,11 +342,13 @@ function _sanitizeQueuedPayload(payload = {}) {
   const avgHeartRateBpm = _boundedInt(payload?.avgHeartRateBpm, { min: 30, max: 240, nullable: true });
   const maxHeartRateBpm = _boundedInt(payload?.maxHeartRateBpm, { min: 30, max: 240, nullable: true });
   const calories = _optionalCalories(payload?.calories ?? payload?.caloriesKcal ?? payload?.activeCalories);
+  const elevationGainM = _optionalElevationGainM(payload?.elevationGainM ?? payload?.routeSummary?.elevationGainM);
   const rawDistanceMeters = _num(payload?.distanceMeters, NaN);
   if (avgPaceSecPerKm != null) safe.avgPaceSecPerKm = avgPaceSecPerKm;
   if (avgHeartRateBpm != null) safe.avgHeartRateBpm = avgHeartRateBpm;
   if (maxHeartRateBpm != null) safe.maxHeartRateBpm = maxHeartRateBpm;
   if (calories != null) safe.calories = calories;
+  if (elevationGainM != null) safe.elevationGainM = elevationGainM;
   if (Number.isFinite(rawDistanceMeters) && rawDistanceMeters >= 0) safe.distanceMeters = rawDistanceMeters;
   return {
     ...safe,

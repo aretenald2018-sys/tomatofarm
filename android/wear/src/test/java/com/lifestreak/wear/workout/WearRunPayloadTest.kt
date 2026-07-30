@@ -59,6 +59,54 @@ class WearRunPayloadTest {
     }
 
     @Test
+    fun elevationGainIsNullByDefaultInJsonPayload() {
+        val payload = WearRunSession(
+            dateKey = "2026-07-06",
+            startedAtMs = 1_000L,
+            endedAtMs = 11_000L,
+            distanceMeters = 100.0,
+        ).toPayload().getOrThrow()
+
+        assertNull(payload.summary.elevationGainM)
+        assertNull(payload.summary.routeSummary.elevationGainM)
+
+        val json = JSONObject(payload.toJsonString())
+        assertTrue(json.isNull("elevationGainM"))
+        assertTrue(json.getJSONObject("routeSummary").isNull("elevationGainM"))
+    }
+
+    @Test
+    fun elevationGainRoundsToWholeMetresInJsonPayloadTopLevelAndRouteSummary() {
+        val payload = WearRunSession(
+            dateKey = "2026-07-06",
+            startedAtMs = 1_000L,
+            endedAtMs = 11_000L,
+            distanceMeters = 100.0,
+            elevationGainMeters = 24.6,
+        ).toPayload().getOrThrow()
+
+        assertEquals(25, payload.summary.elevationGainM)
+        assertEquals(25, payload.summary.routeSummary.elevationGainM)
+
+        val json = JSONObject(payload.toJsonString())
+        assertEquals(25, json.getInt("elevationGainM"))
+        assertEquals(25, json.getJSONObject("routeSummary").getInt("elevationGainM"))
+    }
+
+    @Test
+    fun negativeElevationGainIsTreatedAsMissingRatherThanFailingThePayload() {
+        val payload = WearRunSession(
+            dateKey = "2026-07-06",
+            startedAtMs = 1_000L,
+            endedAtMs = 11_000L,
+            distanceMeters = 100.0,
+            elevationGainMeters = -5.0,
+        ).toPayload().getOrThrow()
+
+        assertNull(payload.summary.elevationGainM)
+    }
+
+    @Test
     fun acceptsMissingDistanceAndHeartRateWithoutInventingMetrics() {
         val payload = WearRunSession(
             dateKey = "2026-07-06",

@@ -14,6 +14,7 @@ import com.lifestreak.wear.R
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlin.math.roundToInt
 
 class WearWorkoutUiController(
     private val handler: Handler,
@@ -34,6 +35,11 @@ class WearWorkoutUiController(
     private var finishRequested = false
     private var ignoreExerciseUpdatesUntilStart = false
     private var hostInteractive = true
+
+    // W5a elevation slice: latest merged elevation gain from the exercise session snapshot, shown
+    // only on the run summary screen (runSummaryElevation) — the live run/pace screens don't need
+    // it, so this doesn't need to live on WearRunUiState/WearRunUiSnapshot.
+    private var latestElevationGainMeters: Double? = null
 
     // Ambient (AOD) state (plan's W1 앰비언트 슬라이스) — see onEnterAmbient/onUpdateAmbient/onExitAmbient.
     private var ambientActive = false
@@ -78,6 +84,7 @@ class WearWorkoutUiController(
             ignoreExerciseUpdatesUntilStart = true
             pendingTransferId = null
             runState.reset()
+            latestElevationGainMeters = null
             WearExerciseSessionStore.reset()
             WearExerciseSessionPersistence.clear(v.context)
             WearExerciseService.prepareRun(v.context)
@@ -181,8 +188,10 @@ class WearWorkoutUiController(
             else -> ""
         }
         v.findViewById<TextView>(R.id.ambientPrimary)?.text = if (showMetrics) snapshot.durationText else ""
+        // W5c current-pace slice: the ambient overlay's secondary line now shows the rolling
+        // current pace (matches the pace page's primary metric) instead of the whole-run average.
         v.findViewById<TextView>(R.id.ambientSecondary)?.text =
-            if (showMetrics) "${snapshot.distanceText}km · ${snapshot.paceText}" else ""
+            if (showMetrics) "${snapshot.distanceText}km · ${snapshot.currentPaceText}" else ""
         v.findViewById<TextView>(R.id.ambientTertiary)?.text = if (showMetrics) snapshot.heartRateText else ""
     }
 
@@ -299,6 +308,7 @@ class WearWorkoutUiController(
         summarySyncStatus = ""
         gpsStatus = "경로 자동 기록"
         gpsStatusColor = Color.parseColor("#7C8499")
+        latestElevationGainMeters = null
         runState.start()
         WearExerciseService.startRun(v.context)
         render(v)
@@ -391,6 +401,11 @@ class WearWorkoutUiController(
         v.findViewById<TextView>(R.id.runSummaryDistance)?.text = snapshot.distanceSummaryText
         v.findViewById<TextView>(R.id.runSummaryPace)?.text = snapshot.paceText
         v.findViewById<TextView>(R.id.runSummaryHeartRate)?.text = snapshot.heartRateText
+        // W5a elevation slice: null means "no elevation data" (see WearExerciseMetricAccumulator),
+        // shown as an em dash rather than a fabricated "0 m".
+        v.findViewById<TextView>(R.id.runSummaryElevation)?.text = latestElevationGainMeters
+            ?.let { meters -> "↗ ${meters.roundToInt()} m" }
+            ?: "—"
         v.findViewById<TextView>(R.id.runSummarySyncStatus)?.text = summarySyncStatus
         v.findViewById<TextView>(R.id.runSummaryGpsStatus)?.text = gpsStatus
     }
@@ -544,6 +559,7 @@ class WearWorkoutUiController(
             heartRateSamples = snapshot.heartRateSamples,
             routePoints = snapshot.routePoints,
         )
+        latestElevationGainMeters = snapshot.elevationGainMeters
     }
 
     private fun scheduleRunTick(v: View) {
@@ -605,5 +621,8 @@ internal fun buildWearRunSessionForSummary(
         distanceMeters = exerciseSnapshot.distanceMeters,
         heartRateSamples = exerciseSnapshot.heartRateSamples,
         routePoints = exerciseSnapshot.routePoints,
+        // W5a elevation slice: carried straight through from the exercise snapshot into the
+        // phone-bound payload — see WearRunPayload for the null-vs-zero handling.
+        elevationGainMeters = exerciseSnapshot.elevationGainMeters,
     )
 }

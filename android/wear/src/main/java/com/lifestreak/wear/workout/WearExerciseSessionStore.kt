@@ -38,6 +38,13 @@ data class WearExerciseSessionSnapshot(
     // a killed-and-restored service doesn't drop back to the filtered GPS route distance. Null for
     // sessions persisted before this field existed.
     val healthDistanceMeters: Double? = null,
+    // W5a elevation slice: same idea for cumulative elevation gain. elevationGainMeters is the
+    // merged (Health Services or route-fallback) value the UI/payload use; healthElevationGainMeters
+    // is the raw Health-Services-only value carried through restarts so a killed-and-restored
+    // service seeds the accumulator's HS-sourced state distinctly from the route fallback. Both
+    // null for sessions persisted before this field existed.
+    val elevationGainMeters: Double? = null,
+    val healthElevationGainMeters: Double? = null,
 )
 
 /**
@@ -96,6 +103,8 @@ object WearExerciseSessionStore {
                 routePoints = metrics.routePoints,
                 message = message,
                 healthDistanceMeters = metrics.healthDistanceMeters,
+                elevationGainMeters = metrics.elevationGainMeters,
+                healthElevationGainMeters = metrics.healthElevationGainMeters,
             ),
         )
     }
@@ -228,6 +237,8 @@ object WearExerciseSessionPersistence {
             .put("routePoints", routePointsToJson(routePoints))
             .putNullable("message", snapshot.message)
             .putNullable("healthDistanceMeters", snapshot.healthDistanceMeters)
+            .putNullable("elevationGainMeters", snapshot.elevationGainMeters)
+            .putNullable("healthElevationGainMeters", snapshot.healthElevationGainMeters)
             .toString()
     }
 
@@ -258,6 +269,10 @@ object WearExerciseSessionPersistence {
                 message = json.optNullableString("message"),
                 healthDistanceMeters = json.optNullableDouble("healthDistanceMeters")
                     ?.takeIf { distance -> distance.isFinite() && distance >= 0.0 },
+                elevationGainMeters = json.optNullableDouble("elevationGainMeters")
+                    ?.takeIf { elevation -> elevation.isFinite() && elevation >= 0.0 },
+                healthElevationGainMeters = json.optNullableDouble("healthElevationGainMeters")
+                    ?.takeIf { elevation -> elevation.isFinite() && elevation >= 0.0 },
             )
             snapshot.takeIf { shouldPersist(it) }
         }.getOrNull()

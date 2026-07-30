@@ -462,4 +462,111 @@ class WearExerciseMetricAccumulatorTest {
         assertEquals(true, snapshot.routePoints[2].gapBefore)
         assertEquals("service-restart", snapshot.routePoints[2].gapReason)
     }
+
+    // --- W5a elevation slice --------------------------------------------------------------
+
+    @Test
+    fun elevationGainIsMonotonicAndIgnoresBadValues() {
+        val accumulator = WearExerciseMetricAccumulator(
+            startedAtWallClockMs = 10_000L,
+            startedAtElapsedRealtimeMs = 1_000L,
+        )
+
+        accumulator.applyMetricUpdate(elapsedRealtimeMs = 1_000L, healthElevationGainMeters = 12.0)
+        accumulator.applyMetricUpdate(elapsedRealtimeMs = 2_000L, healthElevationGainMeters = 5.0)
+        assertEquals(12.0, accumulator.snapshot().elevationGainMeters!!, 0.0001)
+
+        accumulator.applyMetricUpdate(elapsedRealtimeMs = 3_000L, healthElevationGainMeters = Double.NaN)
+        accumulator.applyMetricUpdate(elapsedRealtimeMs = 4_000L, healthElevationGainMeters = -5.0)
+        assertEquals(12.0, accumulator.snapshot().elevationGainMeters!!, 0.0001)
+
+        accumulator.applyMetricUpdate(elapsedRealtimeMs = 5_000L, healthElevationGainMeters = 20.0)
+        assertEquals(20.0, accumulator.snapshot().elevationGainMeters!!, 0.0001)
+    }
+
+    @Test
+    fun fallsBackToRouteAltitudeWhenHealthServicesNeverReportsElevation() {
+        val accumulator = WearExerciseMetricAccumulator(
+            startedAtWallClockMs = 10_000L,
+            startedAtElapsedRealtimeMs = 1_000L,
+        )
+        accumulator.applyMetricUpdate(
+            elapsedRealtimeMs = 1_000L,
+            routePoint = WearRoutePoint(
+                timestampMs = 10_000L,
+                lat = 37.5,
+                lng = 127.0,
+                altitude = 100.0,
+                accuracy = 5.0,
+            ),
+        )
+        accumulator.applyMetricUpdate(
+            elapsedRealtimeMs = 11_000L,
+            routePoint = WearRoutePoint(
+                timestampMs = 20_000L,
+                lat = 37.501,
+                lng = 127.0,
+                altitude = 106.0,
+                accuracy = 5.0,
+            ),
+        )
+        accumulator.applyMetricUpdate(
+            elapsedRealtimeMs = 21_000L,
+            routePoint = WearRoutePoint(
+                timestampMs = 30_000L,
+                lat = 37.502,
+                lng = 127.0,
+                altitude = 103.0,
+                accuracy = 5.0,
+            ),
+        )
+
+        val snapshot = accumulator.snapshot()
+        assertEquals(null, snapshot.healthElevationGainMeters)
+        // +6m then -3m: only the positive delta counts toward gain.
+        assertEquals(6.0, snapshot.elevationGainMeters!!, 0.0001)
+    }
+
+    @Test
+    fun elevationGainIsNullWithoutAltitudeDataOrHealthServices() {
+        val accumulator = WearExerciseMetricAccumulator(
+            startedAtWallClockMs = 10_000L,
+            startedAtElapsedRealtimeMs = 1_000L,
+        )
+        accumulator.applyMetricUpdate(
+            elapsedRealtimeMs = 1_000L,
+            routePoint = WearRoutePoint(timestampMs = 10_000L, lat = 37.5665, lng = 126.9780),
+        )
+        accumulator.applyMetricUpdate(
+            elapsedRealtimeMs = 61_000L,
+            routePoint = WearRoutePoint(timestampMs = 70_000L, lat = 37.5680, lng = 126.9780),
+        )
+
+        val snapshot = accumulator.snapshot()
+        // A real (non-altitude) route still produces distance — elevation must stay null rather
+        // than a fabricated 0.0, since "no altitude data" isn't the same claim as "flat route".
+        assertEquals(true, snapshot.distanceMeters > 150.0)
+        assertEquals(null, snapshot.elevationGainMeters)
+    }
+
+    @Test
+    fun restoresHealthServicesElevationFromASnapshotRoundTrip() {
+        val accumulator = WearExerciseMetricAccumulator.fromSnapshot(
+            snapshot = WearExerciseSessionSnapshot(
+                status = WearExerciseSessionStatus.ACTIVE,
+                startedAtWallClockMs = 10_000L,
+                activeDurationMs = 40_000L,
+                healthElevationGainMeters = 45.0,
+            ),
+            startedAtElapsedRealtimeMs = 1_000L,
+        )
+
+        assertEquals(45.0, accumulator.snapshot().elevationGainMeters!!, 0.0001)
+
+        accumulator.applyMetricUpdate(elapsedRealtimeMs = 2_000L, healthElevationGainMeters = 30.0)
+        assertEquals(45.0, accumulator.snapshot().elevationGainMeters!!, 0.0001)
+
+        accumulator.applyMetricUpdate(elapsedRealtimeMs = 3_000L, healthElevationGainMeters = 60.0)
+        assertEquals(60.0, accumulator.snapshot().elevationGainMeters!!, 0.0001)
+    }
 }

@@ -75,6 +75,9 @@ class WearRunMetricPagerAdapter : RecyclerView.Adapter<WearRunMetricPagerAdapter
         }
 
         private fun bindPace(snapshot: WearRunUiSnapshot) {
+            // W5c current-pace slice: the primary (largest) value on this page is now the rolling
+            // current pace; average/fastest stay as the secondary row below it.
+            itemView.findViewById<TextView>(R.id.runPaceCurrent)?.text = snapshot.currentPaceText
             itemView.findViewById<TextView>(R.id.runPaceAverage)?.text = snapshot.averagePaceText
             itemView.findViewById<TextView>(R.id.runPaceFastest)?.text = snapshot.fastestPaceText
             itemView.findViewById<WearRunPaceGraphView>(R.id.runPaceGraph)

@@ -20,6 +20,26 @@
         android:textSize="9sp"
         android:textStyle="bold" />
 
+    <!-- W5c current-pace slice: the rolling current pace is the primary (largest) value on this
+         page — average/fastest below stay secondary. -->
+    <TextView
+        android:id="@+id/runPaceCurrent"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:includeFontPadding="false"
+        android:text="--"
+        android:textColor="#F7F8F4"
+        android:textSize="40sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="현재 페이스"
+        android:textColor="#81877D"
+        android:textSize="8sp" />
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

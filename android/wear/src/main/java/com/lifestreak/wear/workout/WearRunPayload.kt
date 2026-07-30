@@ -38,6 +38,9 @@ data class WearRouteSummary(
     val gapCount: Int = 0,
     val interrupted: Boolean = false,
     val distanceMeters: Double = distanceKm * 1_000.0,
+    // W5a elevation slice: nullable — see WearExerciseMetricAccumulator.elevationGainMeters for why
+    // "no data" (null) is distinct from a genuinely flat "0 m" run.
+    val elevationGainM: Int? = null,
 )
 
 data class WearRunSession(
@@ -48,6 +51,7 @@ data class WearRunSession(
     val activeDurationMs: Long? = null,
     val heartRateSamples: List<HeartRateSample> = emptyList(),
     val routePoints: List<WearRoutePoint> = emptyList(),
+    val elevationGainMeters: Double? = null,
 ) {
     fun toPayload(): Result<WearWorkoutPayload> = WearWorkoutPayload.fromSession(this)
 }
@@ -64,6 +68,8 @@ data class WearRunSummary(
     val samples10s: List<HeartRateSample>,
     val route: List<WearRoutePoint>,
     val routeSummary: WearRouteSummary,
+    // W5a elevation slice: rounded to whole metres, nullable (see WearRouteSummary above).
+    val elevationGainM: Int? = null,
 )
 
 data class WearWorkoutPayload(
@@ -88,6 +94,7 @@ data class WearWorkoutPayload(
             .putNullable("avgPaceSecPerKm", summary.avgPaceSecPerKm)
             .putNullable("avgHeartRateBpm", summary.avgHeartRateBpm)
             .putNullable("maxHeartRateBpm", summary.maxHeartRateBpm)
+            .putNullable("elevationGainM", summary.elevationGainM)
             .put(
                 "route",
                 JSONArray().apply {
@@ -119,7 +126,8 @@ data class WearWorkoutPayload(
                     .put("endedAt", summary.routeSummary.endedAtMs)
                     .put("segmentCount", summary.routeSummary.segmentCount)
                     .put("gapCount", summary.routeSummary.gapCount)
-                    .put("interrupted", summary.routeSummary.interrupted),
+                    .put("interrupted", summary.routeSummary.interrupted)
+                    .putNullable("elevationGainM", summary.routeSummary.elevationGainM),
             )
             .put(
                 "samples10s",
@@ -193,6 +201,11 @@ data class WearWorkoutPayload(
             require(bucketedSamples.size <= MAX_HEART_RATE_BUCKETS) {
                 "samples10s exceeds payload limit"
             }
+            // W5a elevation slice: nullable end-to-end — an invalid/absent value degrades to "no
+            // elevation data" (null), never a fabricated 0.
+            val elevationGainM = session.elevationGainMeters
+                ?.takeIf { elevation -> elevation.isFinite() && elevation >= 0.0 }
+                ?.roundToInt()
 
             WearWorkoutPayload(
                 workoutType = WearWorkoutType.RUNNING,
@@ -227,7 +240,9 @@ data class WearWorkoutPayload(
                         segmentCount = routeGapSummary.segmentCount,
                         gapCount = routeGapSummary.gapCount,
                         interrupted = routeGapSummary.interrupted,
+                        elevationGainM = elevationGainM,
                     ),
+                    elevationGainM = elevationGainM,
                 ),
             )
         }

@@ -333,6 +333,18 @@
                 android:textStyle="bold" />
         </LinearLayout>
 
+        <!-- W5a elevation slice: "—" when no elevation data is available (neither Health Services
+             nor any altitude-bearing route point), never a fabricated "0 m". -->
+        <TextView
+            android:id="@+id/runSummaryElevation"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="—"
+            android:textColor="#A5ABA1"
+            android:textSize="11sp"
+            android:textStyle="bold" />
+
         <TextView
             android:id="@+id/runSummaryGpsStatus"
             android:layout_width="wrap_content"
