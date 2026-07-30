@@ -906,7 +906,7 @@ class WearExerciseService : Service() {
         // W5a elevation slice: same defensive read as DISTANCE_TOTAL above — an API-surface mismatch
         // just falls back to the route-altitude estimate in the accumulator instead of crashing.
         val healthElevationGainMeters = runCatching {
-            metrics.getData(DataType.ELEVATION_GAIN)?.total
+            metrics.getData(DataType.ELEVATION_GAIN_TOTAL)?.total
         }.getOrNull()?.takeIf { elevation -> elevation.isFinite() && elevation >= 0.0 }
         val heartRatePoint = metrics.getData(DataType.HEART_RATE_BPM).lastOrNull()
         val heartRateAccuracy = heartRatePoint?.accuracy as? HeartRateAccuracy
@@ -1551,10 +1551,8 @@ class WearExerciseService : Service() {
             DataType.DISTANCE_TOTAL,
             // W5a elevation slice: same idea for cumulative elevation gain — the capability
             // intersection above drops it on watches/sessions that don't support it, in which case
-            // the accumulator falls back to summing route-point altitude deltas. Verify against a
-            // real device/build: like DISTANCE_TOTAL, DataType.ELEVATION_GAIN's exact behavior on
-            // health-services-client 1.0.0 isn't compiled against locally.
-            DataType.ELEVATION_GAIN,
+            // the accumulator falls back to summing route-point altitude deltas.
+            DataType.ELEVATION_GAIN_TOTAL,
         )
         if (hasHeartRatePermission()) {
             dataTypes.add(DataType.HEART_RATE_BPM)
