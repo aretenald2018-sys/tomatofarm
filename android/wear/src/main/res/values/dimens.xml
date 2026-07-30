@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Strength (헬스) screen dimension tokens for the 44mm (480x480) round-screen optimization pass.
+  See the plan's "44mm 대화면 최적화" section for the exact spec these mirror. Existing running
+  layouts intentionally keep their own hardcoded dp values (regression avoidance) and do not
+  reference these tokens.
+-->
+<resources>
+    <!-- Circular safe area: keep interactive/critical content off the round-screen corners. -->
+    <dimen name="strength_safe_area_horizontal">24dp</dimen>
+    <dimen name="strength_safe_area_vertical">20dp</dimen>
+
+    <!-- Ready-screen mode buttons (러닝 / 헬스). -->
+    <dimen name="strength_mode_button_size">72dp</dimen>
+    <dimen name="strength_text_mode_label">12sp</dimen>
+    <dimen name="strength_text_mode_icon">28sp</dimen>
+
+    <!-- Exercise-card kg row. -->
+    <dimen name="strength_kg_button_size">56dp</dimen>
+    <dimen name="strength_kg_button_icon_size">24dp</dimen>
+    <dimen name="strength_text_kg_value">34sp</dimen>
+
+    <!-- Exercise-card reps row. -->
+    <dimen name="strength_reps_button_size">48dp</dimen>
+    <dimen name="strength_reps_button_icon_size">20dp</dimen>
+    <dimen name="strength_text_reps_value">28sp</dimen>
+
+    <!-- Exercise-card ROM auxiliary row. -->
+    <dimen name="strength_rom_button_size">28dp</dimen>
+    <dimen name="strength_text_rom">13sp</dimen>
+
+    <!-- Exercise-card text. -->
+    <dimen name="strength_text_exercise_name">18sp</dimen>
+    <dimen name="strength_text_last_record">14sp</dimen>
+    <dimen name="strength_text_set_counter">15sp</dimen>
+    <dimen name="strength_text_logged_trail">13sp</dimen>
+
+    <!-- Complete-set pill CTA. -->
+    <dimen name="strength_complete_button_height">52dp</dimen>
+    <dimen name="strength_text_complete_button">15sp</dimen>
+
+    <!-- Bottom action row (운동 추가 / 운동 종료). -->
+    <dimen name="strength_action_button_height">40dp</dimen>
+    <dimen name="strength_text_action_button">13sp</dimen>
+
+    <!-- Top status arc: page dots + live heart rate. -->
+    <dimen name="strength_page_dot_size">6dp</dimen>
+    <dimen name="strength_page_dot_active_size">8dp</dimen>
+    <dimen name="strength_page_dot_gap">4dp</dimen>
+    <dimen name="strength_hr_icon_size">14dp</dimen>
+    <dimen name="strength_text_hr">14sp</dimen>
+
+    <!-- Picker list rows. -->
+    <dimen name="strength_picker_row_height">52dp</dimen>
+    <dimen name="strength_picker_icon_size">28dp</dimen>
+    <dimen name="strength_text_picker_group">18sp</dimen>
+    <dimen name="strength_text_picker_exercise">16sp</dimen>
+    <dimen name="strength_text_picker_badge">13sp</dimen>
+    <dimen name="strength_text_picker_header">13sp</dimen>
+
+    <!-- Summary screen. -->
+    <dimen name="strength_text_summary_value">22sp</dimen>
+    <dimen name="strength_text_summary_label">13sp</dimen>
+    <dimen name="strength_text_summary_sync">13sp</dimen>
+</resources>

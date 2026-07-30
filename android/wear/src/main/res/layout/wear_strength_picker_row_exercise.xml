@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/strengthPickerRowExerciseRoot"
+    android:layout_width="match_parent"
+    android:layout_height="@dimen/strength_picker_row_height"
+    android:background="@drawable/wear_strength_pill_muted"
+    android:clickable="true"
+    android:focusable="true"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingStart="14dp"
+    android:paddingEnd="12dp">
+
+    <TextView
+        android:id="@+id/strengthPickerRowExerciseName"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:text="종목명"
+        android:textColor="#F7F8F4"
+        android:textSize="@dimen/strength_text_picker_exercise" />
+
+    <TextView
+        android:id="@+id/strengthPickerRowExerciseBadge"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:text=""
+        android:textColor="#A5ABA1"
+        android:textSize="@dimen/strength_text_picker_badge" />
+</LinearLayout>

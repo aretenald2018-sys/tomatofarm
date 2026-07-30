@@ -35,6 +35,16 @@ class WearWorkoutUiController(
     private var ignoreExerciseUpdatesUntilStart = false
     private var hostInteractive = true
 
+    /**
+     * Cross-controller mutual-exclusion hooks (see the plan's "러닝 기능과의 공존 설계"). MainActivity
+     * wires both to the strength controller after constructing it: [isStrengthActive] refuses a run
+     * start while a strength session is at the picker/carousel (Health Services only allows one
+     * active exercise), and [isStrengthOccupyingScreen] keeps `runReadyScreen` hidden whenever any
+     * strength screen (picker/active/summary) is sharing this same host view.
+     */
+    var isStrengthActive: () -> Boolean = { false }
+    var isStrengthOccupyingScreen: () -> Boolean = { false }
+
     private companion object {
         const val TAG = "TomatoWearRun"
     }
@@ -178,6 +188,12 @@ class WearWorkoutUiController(
     }
 
     private fun startRun(v: View) {
+        if (isStrengthActive()) {
+            gpsStatus = "헬스 진행 중"
+            gpsStatusColor = Color.parseColor("#FFB35A")
+            render(v)
+            return
+        }
         if (ContextCompat.checkSelfPermission(v.context, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             gpsStatus = "위치 권한을 켜주세요"
             summarySyncStatus = "워치 설정에서 정확한 위치를 허용해주세요"
@@ -258,7 +274,7 @@ class WearWorkoutUiController(
         // battery during setup, pause, or the summary screen.
         v.keepScreenOn = hostInteractive && snapshot.screen == WearRunUiScreen.ACTIVE
         v.findViewById<View>(R.id.runReadyScreen)?.visibility =
-            if (snapshot.screen == WearRunUiScreen.READY) View.VISIBLE else View.GONE
+            if (snapshot.screen == WearRunUiScreen.READY && !isStrengthOccupyingScreen()) View.VISIBLE else View.GONE
         v.findViewById<View>(R.id.runActiveScreen)?.visibility =
             if (snapshot.screen == WearRunUiScreen.ACTIVE) View.VISIBLE else View.GONE
         v.findViewById<View>(R.id.runPausedScreen)?.visibility =

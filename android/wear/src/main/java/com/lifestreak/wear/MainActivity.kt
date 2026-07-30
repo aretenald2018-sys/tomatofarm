@@ -14,11 +14,13 @@ import com.lifestreak.wear.workout.WearExerciseService
 import com.lifestreak.wear.workout.WearExerciseSessionPersistence
 import com.lifestreak.wear.workout.WearExerciseSessionStatus
 import com.lifestreak.wear.workout.WearExerciseSessionStore
+import com.lifestreak.wear.workout.WearStrengthUiController
 import com.lifestreak.wear.workout.WearWorkoutUiController
 
 class MainActivity : AppCompatActivity() {
     private val handler = Handler(Looper.getMainLooper())
     private val wearWorkoutUi = WearWorkoutUiController(handler)
+    private val wearStrengthUi = WearStrengthUiController(handler)
     private var restoredRunStatus: WearExerciseSessionStatus? = null
     private var runHost: View? = null
 
@@ -33,12 +35,28 @@ class MainActivity : AppCompatActivity() {
 
         runHost = findViewById<View>(R.id.wearRunHost)
             ?: findViewById(android.R.id.content)
-        wearWorkoutUi.bind(requireNotNull(runHost))
+        val host = requireNotNull(runHost)
+
+        // Cross-controller wiring for the plan's "러닝 기능과의 공존 설계": the run controller asks
+        // the strength controller whether it may refuse a run start / must hide runReadyScreen, and
+        // the strength controller asks the run controller to recompute that visibility whenever its
+        // own screen changes (see WearStrengthUiController.onScreenChanged's kdoc).
+        wearWorkoutUi.isStrengthActive = wearStrengthUi::isStrengthActive
+        wearWorkoutUi.isStrengthOccupyingScreen = wearStrengthUi::isStrengthOccupyingScreen
+        wearStrengthUi.onScreenChanged = { hostView -> wearWorkoutUi.onHostResumed(hostView) }
+
+        wearWorkoutUi.bind(host)
+        wearStrengthUi.bind(host)
+
         if (requestWearExercisePermissionsIfNeeded()) {
-            if (!restoreRunServiceIfNeeded() &&
-                WearExerciseSessionStore.current().status == WearExerciseSessionStatus.IDLE
-            ) {
-                WearExerciseService.prepareRun(this)
+            if (!restoreRunServiceIfNeeded()) {
+                // Restoration priority ①러닝 -> ②헬스 -> ③모드 선택 (plan §3).
+                val strengthRestored = wearStrengthUi.restoreIfNeeded(host)
+                if (!strengthRestored &&
+                    WearExerciseSessionStore.current().status == WearExerciseSessionStatus.IDLE
+                ) {
+                    WearExerciseService.prepareRun(this)
+                }
             }
         }
     }
@@ -46,11 +64,19 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         runHost?.let(wearWorkoutUi::onHostResumed)
+        runHost?.let(wearStrengthUi::onHostResumed)
     }
 
     override fun onPause() {
         runHost?.let(wearWorkoutUi::onHostPaused)
+        runHost?.let(wearStrengthUi::onHostPaused)
         super.onPause()
+    }
+
+    override fun onBackPressed() {
+        val host = runHost
+        if (host != null && wearStrengthUi.handleBackPressed(host)) return
+        super.onBackPressed()
     }
 
     private fun requestWearExercisePermissionsIfNeeded(): Boolean {
@@ -101,10 +127,14 @@ class MainActivity : AppCompatActivity() {
             grantResults.isNotEmpty() &&
             grantResults.all { result -> result == PackageManager.PERMISSION_GRANTED }
         ) {
-            if (!restoreRunServiceIfNeeded() &&
-                WearExerciseSessionStore.current().status == WearExerciseSessionStatus.IDLE
-            ) {
-                WearExerciseService.prepareRun(this)
+            if (!restoreRunServiceIfNeeded()) {
+                val host = runHost
+                val strengthRestored = host != null && wearStrengthUi.restoreIfNeeded(host)
+                if (!strengthRestored &&
+                    WearExerciseSessionStore.current().status == WearExerciseSessionStatus.IDLE
+                ) {
+                    WearExerciseService.prepareRun(this)
+                }
             }
         }
     }
@@ -115,6 +145,7 @@ class MainActivity : AppCompatActivity() {
         }
         super.onDestroy()
         wearWorkoutUi.dispose()
+        wearStrengthUi.dispose()
     }
 
     private companion object {
