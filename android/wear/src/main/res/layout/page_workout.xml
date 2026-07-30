@@ -450,6 +450,19 @@
                 android:text="-- bpm"
                 android:textColor="#FF775F"
                 android:textSize="@dimen/strength_text_hr" />
+
+            <TextView
+                android:id="@+id/strengthRestChip"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:clickable="true"
+                android:focusable="true"
+                android:text=""
+                android:textColor="#D7FF3F"
+                android:textSize="@dimen/strength_text_hr"
+                android:textStyle="bold"
+                android:visibility="gone" />
         </LinearLayout>
 
         <TextView
@@ -508,7 +521,9 @@
         </LinearLayout>
     </FrameLayout>
 
-    <!-- 헬스(근력) 요약: 종목/세트/볼륨 + avg·max 심박 + 동기화 상태. -->
+    <!-- 헬스(근력) 요약: 소요 시간 + 종목/세트 + 볼륨 + avg·max 심박 + 동기화 상태. A compact
+         stack (rather than one long stats line) so nothing clips against the round safe area at
+         realistic values (e.g. "12,480kg"). -->
     <LinearLayout
         android:id="@+id/strengthSummaryScreen"
         android:layout_width="match_parent"
@@ -530,25 +545,76 @@
             android:textStyle="bold" />
 
         <TextView
-            android:id="@+id/strengthSummaryStats"
+            android:id="@+id/strengthSummaryDuration"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="7dp"
+            android:layout_marginTop="6dp"
+            android:fontFamily="sans-serif-condensed"
             android:gravity="center"
-            android:text="0종목 · 0세트 · 0kg"
+            android:text="00:00"
             android:textColor="#F7F8F4"
-            android:textSize="@dimen/strength_text_summary_value"
+            android:textSize="@dimen/strength_text_summary_duration"
             android:textStyle="bold" />
+
+        <LinearLayout
+            android:id="@+id/strengthSummaryCounts"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:gravity="center"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/strengthSummaryExerciseCount"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:text="0종목"
+                android:textColor="#F7F8F4"
+                android:textSize="@dimen/strength_text_summary_count"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_marginEnd="8dp"
+                android:gravity="center"
+                android:text="·"
+                android:textColor="#81877D"
+                android:textSize="@dimen/strength_text_summary_count" />
+
+            <TextView
+                android:id="@+id/strengthSummarySetCount"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:text="0세트"
+                android:textColor="#F7F8F4"
+                android:textSize="@dimen/strength_text_summary_count"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/strengthSummaryVolume"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:fontFamily="sans-serif-condensed"
+            android:gravity="center"
+            android:text="볼륨 0kg"
+            android:textColor="#A5ABA1"
+            android:textSize="@dimen/strength_text_summary_volume" />
 
         <TextView
             android:id="@+id/strengthSummaryHeartRate"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
+            android:layout_marginTop="6dp"
             android:gravity="center"
-            android:text="-- / -- bpm"
+            android:text=""
             android:textColor="#FF775F"
-            android:textSize="@dimen/strength_text_summary_label" />
+            android:textSize="@dimen/strength_text_summary_hr" />
 
         <TextView
             android:id="@+id/strengthSummarySyncStatus"
@@ -564,7 +630,7 @@
             android:id="@+id/strengthSummaryDoneButton"
             android:layout_width="44dp"
             android:layout_height="44dp"
-            android:layout_marginTop="10dp"
+            android:layout_marginTop="8dp"
             android:background="@drawable/wear_cardio_circle_primary"
             android:gravity="center"
             android:text="완료"
@@ -572,4 +638,383 @@
             android:textSize="10sp"
             android:textStyle="bold" />
     </LinearLayout>
+
+    <!-- 헬스(근력) 세트 편집: 체크리스트의 한 세트를 중량/횟수/RIR/ROM 네 값 모두 한 화면에서
+         조정하는 전체화면 오버레이. 네 행은 완전히 동일한 구조/크기(라벨-버튼-값-버튼)이며, 로터리
+         베젤은 마지막으로 탭한 행(기본값 중량)에 적용된다 — 포커스된 행의 값 글자만 라임으로
+         강조한다. 480px(240dp) 원형 화면에 안전영역까지 포함해 정확히 맞도록 각 치수를 계산했다
+         (dimens.xml의 strength_edit_* 토큰 주석 참조). -->
+    <FrameLayout
+        android:id="@+id/strengthEditScreen"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:paddingStart="@dimen/strength_safe_area_horizontal"
+            android:paddingTop="@dimen/strength_safe_area_vertical"
+            android:paddingEnd="@dimen/strength_safe_area_horizontal"
+            android:paddingBottom="@dimen/strength_safe_area_vertical">
+
+            <TextView
+                android:id="@+id/strengthEditSetLabel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:text="1세트"
+                android:textColor="#81877D"
+                android:textSize="@dimen/strength_text_edit_set_label" />
+
+            <LinearLayout
+                android:id="@+id/strengthEditKgRow"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/strength_edit_row_height"
+                android:layout_marginTop="4dp"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="@dimen/strength_edit_label_width"
+                    android:layout_height="wrap_content"
+                    android:gravity="end|center_vertical"
+                    android:paddingEnd="6dp"
+                    android:text="중량"
+                    android:textColor="#81877D"
+                    android:textSize="@dimen/strength_text_edit_row_label" />
+
+                <TextView
+                    android:id="@+id/strengthEditKgMinus"
+                    android:layout_width="@dimen/strength_edit_button_size"
+                    android:layout_height="@dimen/strength_edit_button_size"
+                    android:background="@drawable/wear_cardio_circle_muted"
+                    android:clickable="true"
+                    android:contentDescription="중량 감소"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:text="−"
+                    android:textColor="#F7F8F4"
+                    android:textSize="@dimen/strength_edit_button_icon_size"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/strengthEditKgValue"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:fontFamily="sans-serif-condensed"
+                    android:gravity="center"
+                    android:minWidth="@dimen/strength_edit_value_min_width"
+                    android:text="20kg"
+                    android:textColor="#D7FF3F"
+                    android:textSize="@dimen/strength_text_edit_row_value"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/strengthEditKgPlus"
+                    android:layout_width="@dimen/strength_edit_button_size"
+                    android:layout_height="@dimen/strength_edit_button_size"
+                    android:background="@drawable/wear_cardio_circle_muted"
+                    android:clickable="true"
+                    android:contentDescription="중량 증가"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:text="+"
+                    android:textColor="#F7F8F4"
+                    android:textSize="@dimen/strength_edit_button_icon_size"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/strengthEditRepsRow"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/strength_edit_row_height"
+                android:layout_marginTop="4dp"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="@dimen/strength_edit_label_width"
+                    android:layout_height="wrap_content"
+                    android:gravity="end|center_vertical"
+                    android:paddingEnd="6dp"
+                    android:text="횟수"
+                    android:textColor="#81877D"
+                    android:textSize="@dimen/strength_text_edit_row_label" />
+
+                <TextView
+                    android:id="@+id/strengthEditRepsMinus"
+                    android:layout_width="@dimen/strength_edit_button_size"
+                    android:layout_height="@dimen/strength_edit_button_size"
+                    android:background="@drawable/wear_cardio_circle_muted"
+                    android:clickable="true"
+                    android:contentDescription="횟수 감소"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:text="−"
+                    android:textColor="#F7F8F4"
+                    android:textSize="@dimen/strength_edit_button_icon_size"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/strengthEditRepsValue"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:fontFamily="sans-serif-condensed"
+                    android:gravity="center"
+                    android:minWidth="@dimen/strength_edit_value_min_width"
+                    android:text="10회"
+                    android:textColor="#F7F8F4"
+                    android:textSize="@dimen/strength_text_edit_row_value"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/strengthEditRepsPlus"
+                    android:layout_width="@dimen/strength_edit_button_size"
+                    android:layout_height="@dimen/strength_edit_button_size"
+                    android:background="@drawable/wear_cardio_circle_muted"
+                    android:clickable="true"
+                    android:contentDescription="횟수 증가"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:text="+"
+                    android:textColor="#F7F8F4"
+                    android:textSize="@dimen/strength_edit_button_icon_size"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/strengthEditRirRow"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/strength_edit_row_height"
+                android:layout_marginTop="4dp"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="@dimen/strength_edit_label_width"
+                    android:layout_height="wrap_content"
+                    android:gravity="end|center_vertical"
+                    android:paddingEnd="6dp"
+                    android:text="RIR"
+                    android:textColor="#81877D"
+                    android:textSize="@dimen/strength_text_edit_row_label" />
+
+                <TextView
+                    android:id="@+id/strengthEditRirMinus"
+                    android:layout_width="@dimen/strength_edit_button_size"
+                    android:layout_height="@dimen/strength_edit_button_size"
+                    android:background="@drawable/wear_cardio_circle_muted"
+                    android:clickable="true"
+                    android:contentDescription="RIR 감소"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:text="−"
+                    android:textColor="#F7F8F4"
+                    android:textSize="@dimen/strength_edit_button_icon_size"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/strengthEditRirValue"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:fontFamily="sans-serif-condensed"
+                    android:gravity="center"
+                    android:minWidth="@dimen/strength_edit_value_min_width"
+                    android:text="–"
+                    android:textColor="#F7F8F4"
+                    android:textSize="@dimen/strength_text_edit_row_value"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/strengthEditRirPlus"
+                    android:layout_width="@dimen/strength_edit_button_size"
+                    android:layout_height="@dimen/strength_edit_button_size"
+                    android:background="@drawable/wear_cardio_circle_muted"
+                    android:clickable="true"
+                    android:contentDescription="RIR 증가"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:text="+"
+                    android:textColor="#F7F8F4"
+                    android:textSize="@dimen/strength_edit_button_icon_size"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/strengthEditRomRow"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/strength_edit_row_height"
+                android:layout_marginTop="4dp"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="@dimen/strength_edit_label_width"
+                    android:layout_height="wrap_content"
+                    android:gravity="end|center_vertical"
+                    android:paddingEnd="6dp"
+                    android:text="ROM"
+                    android:textColor="#81877D"
+                    android:textSize="@dimen/strength_text_edit_row_label" />
+
+                <TextView
+                    android:id="@+id/strengthEditRomMinus"
+                    android:layout_width="@dimen/strength_edit_button_size"
+                    android:layout_height="@dimen/strength_edit_button_size"
+                    android:background="@drawable/wear_cardio_circle_muted"
+                    android:clickable="true"
+                    android:contentDescription="가동범위 감소"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:text="−"
+                    android:textColor="#F7F8F4"
+                    android:textSize="@dimen/strength_edit_button_icon_size"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/strengthEditRomValue"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:fontFamily="sans-serif-condensed"
+                    android:gravity="center"
+                    android:minWidth="@dimen/strength_edit_value_min_width"
+                    android:text="100%"
+                    android:textColor="#F7F8F4"
+                    android:textSize="@dimen/strength_text_edit_row_value"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/strengthEditRomPlus"
+                    android:layout_width="@dimen/strength_edit_button_size"
+                    android:layout_height="@dimen/strength_edit_button_size"
+                    android:background="@drawable/wear_cardio_circle_muted"
+                    android:clickable="true"
+                    android:contentDescription="가동범위 증가"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:text="+"
+                    android:textColor="#F7F8F4"
+                    android:textSize="@dimen/strength_edit_button_icon_size"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/strengthEditConfirmButton"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/strength_edit_confirm_height"
+                android:layout_marginTop="4dp"
+                android:background="@drawable/wear_strength_pill_primary"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:text="확인"
+                android:textColor="#06120C"
+                android:textSize="@dimen/strength_text_complete_button"
+                android:textStyle="bold" />
+        </LinearLayout>
+    </FrameLayout>
+
+    <!-- 헬스(근력) 휴식 타이머: 세트 완료 직후 자동 표시되는 전체화면 오버레이 (플래그십 상호작용).
+         페이저 스와이프나 하단 pill 조작 시 이 화면만 숨겨지고, 타이머 자체는
+         WearStrengthSessionState.restEndsAtMs로 계속 진행된다. -->
+    <FrameLayout
+        android:id="@+id/strengthRestScreen"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:paddingStart="@dimen/strength_safe_area_horizontal"
+            android:paddingEnd="@dimen/strength_safe_area_horizontal">
+
+            <FrameLayout
+                android:layout_width="@dimen/strength_rest_ring_size"
+                android:layout_height="@dimen/strength_rest_ring_size"
+                android:layout_marginBottom="4dp">
+
+                <com.lifestreak.wear.workout.WearStrengthRestRingView
+                    android:id="@+id/strengthRestRing"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent" />
+
+                <TextView
+                    android:id="@+id/strengthRestCountdown"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:fontFamily="sans-serif-condensed"
+                    android:text="1:30"
+                    android:textColor="#F7F8F4"
+                    android:textSize="@dimen/strength_text_rest_countdown"
+                    android:textStyle="bold" />
+            </FrameLayout>
+
+            <TextView
+                android:id="@+id/strengthRestNextPreview"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:ellipsize="end"
+                android:gravity="center"
+                android:maxLines="1"
+                android:text=""
+                android:textColor="#81877D"
+                android:textSize="@dimen/strength_text_last_record" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:gravity="center"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/strengthRestExtend"
+                    android:layout_width="0dp"
+                    android:layout_height="@dimen/strength_action_button_height"
+                    android:layout_marginEnd="8dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/wear_strength_pill_muted"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:text="+15초"
+                    android:textColor="#F7F8F4"
+                    android:textSize="@dimen/strength_text_action_button"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/strengthRestSkip"
+                    android:layout_width="0dp"
+                    android:layout_height="@dimen/strength_action_button_height"
+                    android:layout_weight="1"
+                    android:background="@drawable/wear_strength_pill_primary"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:text="건너뛰기"
+                    android:textColor="#06120C"
+                    android:textSize="@dimen/strength_text_action_button"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </LinearLayout>
+    </FrameLayout>
 </FrameLayout>

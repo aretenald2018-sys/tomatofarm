@@ -14,6 +14,9 @@ data class WearStrengthSetEntry(
     val setType: String,
     val done: Boolean,
     val completedAt: Long,
+    /** Reps In Reserve; omitted from the JSON entirely when null (additive field, phone contract
+     * tolerates it either way). */
+    val rir: Int? = null,
 )
 
 data class WearStrengthEntry(
@@ -96,6 +99,7 @@ data class WearStrengthPayload(
                                 setType = "main",
                                 done = true,
                                 completedAt = set.completedAt,
+                                rir = set.rir,
                             )
                         },
                     )
@@ -148,15 +152,15 @@ private fun strengthEntriesToJson(entries: List<WearStrengthEntry>): JSONArray {
 private fun strengthSetsToJson(sets: List<WearStrengthSetEntry>): JSONArray {
     return JSONArray().apply {
         sets.forEach { set ->
-            put(
-                JSONObject()
-                    .put("kg", set.kg)
-                    .put("reps", set.reps)
-                    .put("romPct", set.romPct)
-                    .put("setType", set.setType)
-                    .put("done", set.done)
-                    .put("completedAt", set.completedAt),
-            )
+            val setJson = JSONObject()
+                .put("kg", set.kg)
+                .put("reps", set.reps)
+                .put("romPct", set.romPct)
+                .put("setType", set.setType)
+                .put("done", set.done)
+                .put("completedAt", set.completedAt)
+            if (set.rir != null) setJson.put("rir", set.rir)
+            put(setJson)
         }
     }
 }

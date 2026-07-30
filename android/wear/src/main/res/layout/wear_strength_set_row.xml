@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  One set-checklist row: set number | "80kg × 8회" (tappable while pending -> edit screen) |
+  circular check button (tappable -> log/undo). Bound by WearStrengthPagerAdapter.CardViewHolder.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/setRowRoot"
+    android:layout_width="match_parent"
+    android:layout_height="@dimen/strength_set_row_height"
+    android:layout_marginTop="6dp"
+    android:background="@drawable/wear_strength_pill_muted"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingStart="14dp"
+    android:paddingEnd="10dp">
+
+    <TextView
+        android:id="@+id/setRowIndex"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:minWidth="18dp"
+        android:text="1"
+        android:textColor="#81877D"
+        android:textSize="@dimen/strength_text_set_row_index" />
+
+    <TextView
+        android:id="@+id/setRowValues"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_marginStart="10dp"
+        android:layout_weight="1"
+        android:clickable="true"
+        android:focusable="true"
+        android:fontFamily="sans-serif-condensed"
+        android:gravity="center_vertical"
+        android:text="80kg × 8회"
+        android:textColor="#F7F8F4"
+        android:textSize="@dimen/strength_text_set_row_values"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/setRowCheck"
+        android:layout_width="@dimen/strength_set_row_check_size"
+        android:layout_height="@dimen/strength_set_row_check_size"
+        android:background="@drawable/wear_cardio_circle_muted"
+        android:clickable="true"
+        android:contentDescription="세트 완료 체크"
+        android:focusable="true"
+        android:gravity="center"
+        android:text=""
+        android:textColor="#F7F8F4"
+        android:textSize="16sp"
+        android:textStyle="bold" />
+</LinearLayout>

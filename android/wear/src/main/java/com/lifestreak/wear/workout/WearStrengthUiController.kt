@@ -1,6 +1,12 @@
 package com.lifestreak.wear.workout
 
+import android.content.Context
+import android.graphics.Color
+import android.os.Build
 import android.os.Handler
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.MotionEvent
@@ -15,12 +21,28 @@ import androidx.viewpager2.widget.ViewPager2
 import androidx.wear.widget.WearableRecyclerView
 import com.lifestreak.wear.R
 
+/** Which of the edit screen's four uniform rows the rotary bezel currently targets — the row the
+ * user last tapped (default 중량 whenever a new set is opened for editing). */
+private enum class EditField {
+    KG,
+    REPS,
+    RIR,
+    ROM,
+}
+
 /**
  * Owns the strength (헬스) picker/active/summary screens plus the ready-screen 헬스 button, mirroring
  * [WearWorkoutUiController]'s shape (bind/dispose/onHostResumed/onHostPaused, syncSummary
  * choreography, persist-after-every-mutation). See the plan's "러닝 기능과의 공존 설계" for the
- * mutual-exclusion contract with the run controller and "44mm 대화면 최적화" for the screen layout
- * this binds against.
+ * mutual-exclusion contract with the run controller.
+ *
+ * Reworked for the Strong/Hevy-style set checklist: the active screen is now a per-exercise set
+ * checklist (see [WearStrengthPagerAdapter]) plus two full-screen overlays this controller owns
+ * directly — the set-edit screen ([EditField]-focused, rotary-adjustable) and the rest-timer
+ * screen (auto-shown after logging a set, vibrates on completion). Both overlays are UI-only
+ * state (`editingCardIdx`/`editingSetIdx`/`editingField`/`restScreenVisible`); only the rest
+ * timer's deadline needs to survive process death, and that lives in
+ * [WearStrengthSessionState.restEndsAtMs] instead.
  */
 class WearStrengthUiController(
     private val handler: Handler,
@@ -39,12 +61,25 @@ class WearStrengthUiController(
     private var lastHrSnapshot = WearStrengthHrSnapshot()
     private var hostInteractive = true
 
+    // Set-edit overlay (UI-level only — never persisted; closing it just hides it, values are
+    // already applied live to `state` as the ± buttons/rotary are used).
+    private var editingCardIdx: Int? = null
+    private var editingSetIdx: Int? = null
+    private var editingField: EditField = EditField.KG
+
+    // Rest-timer overlay visibility (UI-level only). The deadline itself
+    // (state.restEndsAtMs/restTotalMs) is what's persisted, so a hidden-but-running timer survives
+    // a pager swipe, a screen change, or process death.
+    private var restScreenVisible: Boolean = false
+
     /** Invoked at the end of every [render] so the run controller can recompute `runReadyScreen`
      * visibility (only it writes that id — see [WearWorkoutUiController.isStrengthOccupyingScreen]). */
     var onScreenChanged: (View) -> Unit = {}
 
     private companion object {
         const val TAG = "TomatoWearStrength"
+        val VIBRATE_PATTERN_FINISH_VISIBLE = longArrayOf(0, 120, 90, 120)
+        val VIBRATE_PATTERN_FINISH_HIDDEN = longArrayOf(0, 140)
     }
 
     /** Guard used by the run controller to refuse a run start (Health Services allows one session). */
@@ -61,6 +96,25 @@ class WearStrengthUiController(
         v.findViewById<View>(R.id.strengthAddExerciseButton)?.setOnClickListener { openPicker(v) }
         v.findViewById<View>(R.id.strengthFinishButton)?.setOnClickListener { finishStrength(v) }
         v.findViewById<View>(R.id.strengthSummaryDoneButton)?.setOnClickListener { completeSummary(v) }
+
+        v.findViewById<View>(R.id.strengthEditConfirmButton)?.setOnClickListener { closeEditScreen(v) }
+        v.findViewById<View>(R.id.strengthEditKgRow)?.setOnClickListener { setEditingField(v, EditField.KG) }
+        v.findViewById<View>(R.id.strengthEditRepsRow)?.setOnClickListener { setEditingField(v, EditField.REPS) }
+        v.findViewById<View>(R.id.strengthEditRirRow)?.setOnClickListener { setEditingField(v, EditField.RIR) }
+        v.findViewById<View>(R.id.strengthEditRomRow)?.setOnClickListener { setEditingField(v, EditField.ROM) }
+        v.findViewById<View>(R.id.strengthEditKgMinus)?.setOnClickListener { handleEditAdjustKg(v, -1) }
+        v.findViewById<View>(R.id.strengthEditKgPlus)?.setOnClickListener { handleEditAdjustKg(v, 1) }
+        v.findViewById<View>(R.id.strengthEditRepsMinus)?.setOnClickListener { handleEditAdjustReps(v, -1) }
+        v.findViewById<View>(R.id.strengthEditRepsPlus)?.setOnClickListener { handleEditAdjustReps(v, 1) }
+        v.findViewById<View>(R.id.strengthEditRirMinus)?.setOnClickListener { handleEditAdjustRir(v, -1) }
+        v.findViewById<View>(R.id.strengthEditRirPlus)?.setOnClickListener { handleEditAdjustRir(v, 1) }
+        v.findViewById<View>(R.id.strengthEditRomMinus)?.setOnClickListener { handleEditAdjustRom(v, -1) }
+        v.findViewById<View>(R.id.strengthEditRomPlus)?.setOnClickListener { handleEditAdjustRom(v, 1) }
+
+        v.findViewById<View>(R.id.strengthRestExtend)?.setOnClickListener { handleExtendRest(v) }
+        v.findViewById<View>(R.id.strengthRestSkip)?.setOnClickListener { handleSkipRest(v) }
+        v.findViewById<View>(R.id.strengthRestChip)?.setOnClickListener { openRestScreenFromChip(v) }
+
         bindSavedAck(v)
         initializePicker(v)
         initializePager(v)
@@ -78,6 +132,12 @@ class WearStrengthUiController(
         val (restoredState, hrSamples) = WearStrengthSessionPersistence.restore(v.context) ?: return false
         if (restoredState.screen == WearStrengthScreen.IDLE) return false
         state = restoredState
+        if (state.restEndsAtMs != null && state.restRemainingMs(nowMs()) <= 0L) {
+            // Expired while the process was dead: clear it silently, no vibration for time we
+            // weren't there to feel.
+            state = state.clearRest()
+            persist(v)
+        }
         WearStrengthHrStore.restoreSamples(hrSamples)
         if (state.screen == WearStrengthScreen.ACTIVE || state.screen == WearStrengthScreen.PICKER) {
             WearStrengthHrService.restore(v.context)
@@ -85,13 +145,23 @@ class WearStrengthUiController(
         }
         resetPickerToTopLevel()
         render(v)
+        if (state.restEndsAtMs != null) scheduleRestTick(v)
         return true
     }
 
-    /** Handles the system back gesture: picker-with-cards returns to the carousel (plan §5); an
-     * empty picker cancels strength mode entirely. Returns false when the run controller/Activity
-     * should fall back to default back behavior. */
+    /** Handles the system back gesture: the edit/rest overlays close first; a picker-with-cards
+     * returns to the carousel (plan §5); an empty picker cancels strength mode entirely. Returns
+     * false when the run controller/Activity should fall back to default back behavior. */
     fun handleBackPressed(v: View): Boolean {
+        if (editingCardIdx != null || editingSetIdx != null) {
+            closeEditScreen(v)
+            return true
+        }
+        if (restScreenVisible) {
+            restScreenVisible = false
+            render(v)
+            return true
+        }
         if (state.screen != WearStrengthScreen.PICKER) return false
         if (state.cards.isNotEmpty()) {
             state = state.closePicker()
@@ -132,6 +202,7 @@ class WearStrengthUiController(
         v.findViewById<TextView>(R.id.wearModeGuardStatus)?.text = ""
         catalog = WearStrengthContextStore.load(v.context)
         WearExerciseService.cancelPreparation(v.context)
+        closeOverlays()
         state = state.start(nowMs())
         resetPickerToTopLevel()
         persist(v)
@@ -140,6 +211,7 @@ class WearStrengthUiController(
 
     private fun openPicker(v: View) {
         catalog = WearStrengthContextStore.load(v.context)
+        closeOverlays()
         state = state.openPicker()
         resetPickerToTopLevel()
         persist(v)
@@ -148,6 +220,8 @@ class WearStrengthUiController(
 
     private fun cancelStrengthMode(v: View) {
         unsubscribeHr()
+        clearRestTick(v)
+        closeOverlays()
         WearStrengthHrService.end(v.context)
         WearStrengthSessionPersistence.clear(v.context)
         WearStrengthHrStore.reset()
@@ -165,6 +239,7 @@ class WearStrengthUiController(
             return
         }
         v.findViewById<TextView>(R.id.strengthActiveStatus)?.text = ""
+        closeOverlays()
         state = state.finish(nowMs())
         unsubscribeHr()
         persist(v)
@@ -174,6 +249,8 @@ class WearStrengthUiController(
     }
 
     private fun completeSummary(v: View) {
+        clearRestTick(v)
+        closeOverlays()
         pendingTransferId = null
         summarySyncStatus = ""
         WearStrengthSessionPersistence.clear(v.context)
@@ -182,6 +259,15 @@ class WearStrengthUiController(
         state = WearStrengthSessionState()
         render(v)
         WearExerciseService.prepareRun(v.context)
+    }
+
+    /** Closes both overlays (edit + rest screen), without touching the running rest timer's
+     * deadline in `state` — only its visibility. Used whenever we navigate away from the active
+     * checklist screen (picker/summary/cancel), so an overlay doesn't linger stale underneath. */
+    private fun closeOverlays() {
+        editingCardIdx = null
+        editingSetIdx = null
+        restScreenVisible = false
     }
 
     private fun syncStrengthSummary(v: View) {
@@ -249,20 +335,163 @@ class WearStrengthUiController(
         WearStrengthSessionPersistence.save(v.context, state, WearStrengthHrStore.rawSamples())
     }
 
-    private fun handleAdjustKg(v: View, delta: Int) = mutateActiveCard(v) { adjustKg(delta) }
-    private fun handleAdjustReps(v: View, delta: Int) = mutateActiveCard(v) { adjustReps(delta) }
-    private fun handleAdjustRom(v: View, delta: Int) = mutateActiveCard(v) { adjustRom(delta) }
-    private fun handleCompleteSet(v: View) = mutateActiveCard(v) { completeSet(nowMs()) }
-    private fun handleUndoLastSet(v: View) = mutateActiveCard(v) { undoLastSet() }
+    // ---- Checklist row callbacks -------------------------------------------------------------
 
-    private inline fun mutateActiveCard(
-        v: View,
-        mutation: WearStrengthSessionState.() -> WearStrengthSessionState,
-    ) {
-        state = state.mutation()
+    /** Pending row -> logs it and starts the rest timer; done row -> undoes it (no rest timer). */
+    private fun handleToggleSet(v: View, cardIdx: Int, setIdx: Int) {
+        val card = state.cards.getOrNull(cardIdx) ?: return
+        val set = card.sets.getOrNull(setIdx) ?: return
+        if (set.done) {
+            state = state.unlogSet(cardIdx, setIdx)
+            persist(v)
+            render(v)
+            return
+        }
+        state = state.logSet(cardIdx, setIdx, nowMs()).startRest(nowMs())
+        restScreenVisible = true
+        persist(v)
+        render(v)
+        scheduleRestTick(v)
+    }
+
+    private fun handleEditSet(v: View, cardIdx: Int, setIdx: Int) {
+        val card = state.cards.getOrNull(cardIdx) ?: return
+        val set = card.sets.getOrNull(setIdx) ?: return
+        if (set.done) return
+        editingCardIdx = cardIdx
+        editingSetIdx = setIdx
+        editingField = EditField.KG
+        render(v)
+    }
+
+    private fun handleAddSet(v: View, cardIdx: Int) {
+        state = state.addPlannedSet(cardIdx)
         persist(v)
         render(v)
     }
+
+    // ---- Set-edit overlay ---------------------------------------------------------------------
+
+    private fun setEditingField(v: View, field: EditField) {
+        editingField = field
+        renderEditFocus(v)
+    }
+
+    private fun handleEditAdjustKg(v: View, delta: Int) = mutateEditingSet(v) { c, s -> updateSetKg(c, s, delta) }
+    private fun handleEditAdjustReps(v: View, delta: Int) = mutateEditingSet(v) { c, s -> updateSetReps(c, s, delta) }
+    private fun handleEditAdjustRir(v: View, delta: Int) = mutateEditingSet(v) { c, s -> adjustRir(c, s, delta) }
+    private fun handleEditAdjustRom(v: View, delta: Int) = mutateEditingSet(v) { c, s -> updateSetRom(c, s, delta) }
+
+    private fun handleEditAdjustFocusedField(v: View, delta: Int) {
+        when (editingField) {
+            EditField.KG -> handleEditAdjustKg(v, delta)
+            EditField.REPS -> handleEditAdjustReps(v, delta)
+            EditField.RIR -> handleEditAdjustRir(v, delta)
+            EditField.ROM -> handleEditAdjustRom(v, delta)
+        }
+    }
+
+    private inline fun mutateEditingSet(
+        v: View,
+        mutation: WearStrengthSessionState.(Int, Int) -> WearStrengthSessionState,
+    ) {
+        val cardIdx = editingCardIdx ?: return
+        val setIdx = editingSetIdx ?: return
+        state = state.mutation(cardIdx, setIdx)
+        persist(v)
+        render(v)
+    }
+
+    private fun closeEditScreen(v: View) {
+        editingCardIdx = null
+        editingSetIdx = null
+        render(v)
+    }
+
+    // ---- Rest-timer overlay ---------------------------------------------------------------------
+
+    private fun handleExtendRest(v: View) {
+        state = state.extendRest()
+        persist(v)
+        renderRestScreen(v)
+    }
+
+    private fun handleSkipRest(v: View) {
+        state = state.clearRest()
+        restScreenVisible = false
+        clearRestTick(v)
+        persist(v)
+        render(v)
+    }
+
+    private fun openRestScreenFromChip(v: View) {
+        if (state.restEndsAtMs == null) return
+        restScreenVisible = true
+        render(v)
+    }
+
+    /** Ticks once a second while a rest timer is running (visible or hidden-behind-chip) so the
+     * countdown/ring/chip stay live and expiry is detected promptly. Mirrors
+     * [WearWorkoutUiController.scheduleRunTick]'s `View`-tag idiom. */
+    private fun scheduleRestTick(v: View) {
+        clearRestTick(v)
+        if (state.restEndsAtMs == null) return
+        val tick = object : Runnable {
+            override fun run() {
+                if (!v.isAttachedToWindow || state.restEndsAtMs == null) return
+                if (state.restRemainingMs(nowMs()) <= 0L) {
+                    checkRestExpiry(v)
+                    return
+                }
+                if (restScreenVisible) renderRestScreen(v)
+                renderRestChip(v)
+                handler.postDelayed(this, 1_000L)
+            }
+        }
+        v.setTag(R.id.wear_strength_rest_tick_runnable, tick)
+        handler.postDelayed(tick, 1_000L)
+    }
+
+    private fun clearRestTick(v: View) {
+        val tick = v.getTag(R.id.wear_strength_rest_tick_runnable) as? Runnable ?: return
+        handler.removeCallbacks(tick)
+        v.setTag(R.id.wear_strength_rest_tick_runnable, null)
+    }
+
+    /** A running rest timer just hit zero: clears it, vibrates (double pulse if the rest screen
+     * was open — the flagship "time's up" moment — single pulse if it was only running behind the
+     * chip), and re-renders (auto-returns to the checklist when the rest screen was visible). */
+    private fun checkRestExpiry(v: View) {
+        if (state.restEndsAtMs == null) return
+        val wasVisible = restScreenVisible
+        state = state.clearRest()
+        restScreenVisible = false
+        persist(v)
+        render(v)
+        if (wasVisible) vibrate(v.context, VIBRATE_PATTERN_FINISH_VISIBLE) else vibrate(v.context, VIBRATE_PATTERN_FINISH_HIDDEN)
+    }
+
+    private fun vibrate(context: Context, pattern: LongArray) {
+        try {
+            val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                (context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager)?.defaultVibrator
+            } else {
+                @Suppress("DEPRECATION")
+                context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+            }
+            if (vibrator == null || !vibrator.hasVibrator()) return
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator.vibrate(VibrationEffect.createWaveform(pattern, -1))
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(pattern, -1)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Wear strength rest-timer vibration failed", e)
+        }
+    }
+
+    // ---- Exercise selection / pager wiring ----------------------------------------------------
 
     private fun selectExercise(v: View, exercise: WearStrengthExercise) {
         val isFirstExercise = state.cards.isEmpty()
@@ -296,11 +525,9 @@ class WearStrengthUiController(
         val pagerView = v.findViewById<ViewPager2>(R.id.strengthExercisePager) ?: return null
         val adapter = pagerAdapter ?: WearStrengthPagerAdapter(
             callbacks = object : WearStrengthPagerAdapter.Callbacks {
-                override fun onAdjustKg(delta: Int) = handleAdjustKg(v, delta)
-                override fun onAdjustReps(delta: Int) = handleAdjustReps(v, delta)
-                override fun onAdjustRom(delta: Int) = handleAdjustRom(v, delta)
-                override fun onCompleteSet() = handleCompleteSet(v)
-                override fun onUndoLastSet() = handleUndoLastSet(v)
+                override fun onToggleSet(cardIdx: Int, setIdx: Int) = handleToggleSet(v, cardIdx, setIdx)
+                override fun onEditSet(cardIdx: Int, setIdx: Int) = handleEditSet(v, cardIdx, setIdx)
+                override fun onAddSet(cardIdx: Int) = handleAddSet(v, cardIdx)
             },
             lastRecordLabelFor = { exerciseId -> catalog?.findExercise(exerciseId)?.lastRecordLabel() },
         ).also { pagerAdapter = it }
@@ -316,23 +543,31 @@ class WearStrengthUiController(
                     state = state.selectCard(position)
                     persist(v)
                     renderPageDots(v)
+                    // Swiping the pager exits the rest screen (the timer itself keeps running in
+                    // `state`) — surfaced instead as the top-arc chip.
+                    if (restScreenVisible) {
+                        restScreenVisible = false
+                        v.findViewById<View>(R.id.strengthRestScreen)?.visibility = View.GONE
+                        renderRestChip(v)
+                    }
                 }
             }.also { callback -> pagerView.registerOnPageChangeCallback(callback) }
         }
         return adapter
     }
 
-    /** Bezel/rotary input on the active carousel adjusts kg on the active card (plan requirement). */
+    /** Bezel/rotary input on the set-edit screen adjusts the currently-focused field (plan
+     * requirement: moved off the pager now that kg is no longer directly on the checklist). */
     private fun bindRotary(v: View) {
-        val pagerView = v.findViewById<View>(R.id.strengthExercisePager) ?: return
-        pagerView.setOnGenericMotionListener { _, event ->
+        val editScreen = v.findViewById<View>(R.id.strengthEditScreen) ?: return
+        editScreen.setOnGenericMotionListener { _, event ->
             if (event.action == MotionEvent.ACTION_SCROLL &&
                 event.isFromSource(InputDeviceCompat.SOURCE_ROTARY_ENCODER)
             ) {
                 val delta = -event.getAxisValue(MotionEventCompat.AXIS_SCROLL)
                 when {
-                    delta > 0f -> handleAdjustKg(v, 1)
-                    delta < 0f -> handleAdjustKg(v, -1)
+                    delta > 0f -> handleEditAdjustFocusedField(v, 1)
+                    delta < 0f -> handleEditAdjustFocusedField(v, -1)
                 }
                 true
             } else {
@@ -340,6 +575,8 @@ class WearStrengthUiController(
             }
         }
     }
+
+    // ---- Rendering ------------------------------------------------------------------------------
 
     private fun render(v: View) {
         v.keepScreenOn = hostInteractive && state.screen == WearStrengthScreen.ACTIVE
@@ -349,6 +586,12 @@ class WearStrengthUiController(
             if (state.screen == WearStrengthScreen.ACTIVE) View.VISIBLE else View.GONE
         v.findViewById<View>(R.id.strengthSummaryScreen)?.visibility =
             if (state.screen == WearStrengthScreen.SUMMARY) View.VISIBLE else View.GONE
+
+        val editingVisible = state.screen == WearStrengthScreen.ACTIVE && editingCardIdx != null && editingSetIdx != null
+        v.findViewById<View>(R.id.strengthEditScreen)?.visibility = if (editingVisible) View.VISIBLE else View.GONE
+
+        val restVisible = state.screen == WearStrengthScreen.ACTIVE && restScreenVisible && state.restEndsAtMs != null
+        v.findViewById<View>(R.id.strengthRestScreen)?.visibility = if (restVisible) View.VISIBLE else View.GONE
 
         renderPickerEmptyState(v)
         initializePager(v)?.submitCards(state.cards)
@@ -360,6 +603,9 @@ class WearStrengthUiController(
         renderPageDots(v)
         renderHeartRate(v)
         renderSummaryScreen(v)
+        if (editingVisible) renderEditScreen(v)
+        renderRestScreen(v)
+        renderRestChip(v)
 
         onScreenChanged(v)
     }
@@ -407,12 +653,101 @@ class WearStrengthUiController(
 
     private fun renderSummaryScreen(v: View) {
         val exerciseCount = state.cards.count { it.loggedSets.isNotEmpty() }
-        v.findViewById<TextView>(R.id.strengthSummaryStats)?.text =
-            "${exerciseCount}종목 · ${state.totalSets}세트 · ${formatStrengthKg(state.totalVolumeKg)}kg"
+        val durationMs = ((state.endedAt ?: state.startedAt) - state.startedAt).coerceAtLeast(0L)
+        v.findViewById<TextView>(R.id.strengthSummaryDuration)?.text = formatDuration(durationMs)
+        v.findViewById<TextView>(R.id.strengthSummaryExerciseCount)?.text = "${exerciseCount}종목"
+        v.findViewById<TextView>(R.id.strengthSummarySetCount)?.text = "${state.totalSets}세트"
+        v.findViewById<TextView>(R.id.strengthSummaryVolume)?.text = "볼륨 ${formatVolumeKg(state.totalVolumeKg)}kg"
+
         val hr = lastHrSnapshot
-        v.findViewById<TextView>(R.id.strengthSummaryHeartRate)?.text =
-            "${hr.avgBpm ?: "--"} / ${hr.maxBpm ?: "--"} bpm"
+        val hrView = v.findViewById<TextView>(R.id.strengthSummaryHeartRate)
+        if (hr.avgBpm != null || hr.maxBpm != null) {
+            hrView?.visibility = View.VISIBLE
+            hrView?.text = "♥ 평균 ${hr.avgBpm ?: "--"} · 최고 ${hr.maxBpm ?: "--"}"
+        } else {
+            hrView?.visibility = View.GONE
+        }
         v.findViewById<TextView>(R.id.strengthSummarySyncStatus)?.text = summarySyncStatus
+    }
+
+    private fun renderEditScreen(v: View) {
+        val cardIdx = editingCardIdx
+        val setIdx = editingSetIdx
+        val card = cardIdx?.let { state.cards.getOrNull(it) }
+        val set = if (card != null && setIdx != null) card.sets.getOrNull(setIdx) else null
+        if (cardIdx == null || setIdx == null || card == null || set == null) {
+            editingCardIdx = null
+            editingSetIdx = null
+            return
+        }
+        v.findViewById<TextView>(R.id.strengthEditSetLabel)?.text = "${setIdx + 1}세트"
+        v.findViewById<TextView>(R.id.strengthEditKgValue)?.text = "${formatStrengthKg(set.kg)}kg"
+        v.findViewById<TextView>(R.id.strengthEditRepsValue)?.text = "${set.reps}회"
+        v.findViewById<TextView>(R.id.strengthEditRirValue)?.text = set.rir?.toString() ?: "–"
+        v.findViewById<TextView>(R.id.strengthEditRomValue)?.text = "${set.romPct}%"
+        renderEditFocus(v)
+    }
+
+    /** Highlights the currently rotary-focused row's value in lime; the rest stay the default
+     * prominent white. Only text color changes — no rebind of the numbers themselves. */
+    private fun renderEditFocus(v: View) {
+        val focusColor = Color.parseColor("#D7FF3F")
+        val normalColor = Color.parseColor("#F7F8F4")
+        val valueIdsByField = mapOf(
+            EditField.KG to R.id.strengthEditKgValue,
+            EditField.REPS to R.id.strengthEditRepsValue,
+            EditField.RIR to R.id.strengthEditRirValue,
+            EditField.ROM to R.id.strengthEditRomValue,
+        )
+        valueIdsByField.forEach { (field, id) ->
+            v.findViewById<TextView>(id)?.setTextColor(if (field == editingField) focusColor else normalColor)
+        }
+    }
+
+    private fun renderRestScreen(v: View) {
+        if (state.restEndsAtMs == null) return
+        val remaining = state.restRemainingMs(nowMs())
+        v.findViewById<TextView>(R.id.strengthRestCountdown)?.text = formatRestClock(remaining)
+        (v.findViewById<View>(R.id.strengthRestRing) as? WearStrengthRestRingView)?.setProgress(remaining, state.restTotalMs)
+        v.findViewById<TextView>(R.id.strengthRestNextPreview)?.text = nextSetPreviewLabel()
+    }
+
+    private fun renderRestChip(v: View) {
+        val chip = v.findViewById<TextView>(R.id.strengthRestChip) ?: return
+        val showChip = state.screen == WearStrengthScreen.ACTIVE && state.restEndsAtMs != null && !restScreenVisible
+        chip.visibility = if (showChip) View.VISIBLE else View.GONE
+        if (showChip) {
+            chip.text = "휴식 ${formatRestClock(state.restRemainingMs(nowMs()))}"
+        }
+    }
+
+    /** "다음: 2세트 80kg×8" for the currently-visible page's next pending row, or "" when there is
+     * none (shouldn't normally happen — [WearStrengthSessionState.logSet] always leaves a pending
+     * row on offer). */
+    private fun nextSetPreviewLabel(): String {
+        val cardIdx = pager?.currentItem?.takeIf { it in state.cards.indices } ?: state.activeCardIndex
+        val card = state.cards.getOrNull(cardIdx) ?: return ""
+        val nextIdx = card.sets.indexOfFirst { !it.done }
+        val nextSet = card.sets.getOrNull(nextIdx) ?: return ""
+        return "다음: ${nextIdx + 1}세트 ${formatStrengthKg(nextSet.kg)}kg×${nextSet.reps}"
+    }
+
+    private fun formatRestClock(remainingMs: Long): String {
+        val totalSeconds = (remainingMs / 1_000L).coerceAtLeast(0L)
+        val minutes = totalSeconds / 60L
+        val seconds = totalSeconds % 60L
+        return "%d:%02d".format(minutes, seconds)
+    }
+
+    /** e.g. `12480.5` -> `"12,480.5"`. Thousands-grouped so the summary volume line never runs
+     * long enough to clip the round safe area at realistic values. */
+    private fun formatVolumeKg(kg: Double): String {
+        val raw = formatStrengthKg(kg)
+        val dotIndex = raw.indexOf('.')
+        val intPart = if (dotIndex >= 0) raw.substring(0, dotIndex) else raw
+        val fractionPart = if (dotIndex >= 0) raw.substring(dotIndex) else ""
+        val grouped = intPart.reversed().chunked(3).joinToString(",").reversed()
+        return grouped + fractionPart
     }
 }
 

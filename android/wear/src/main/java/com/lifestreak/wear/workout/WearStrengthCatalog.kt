@@ -16,6 +16,8 @@ data class WearStrengthLastSet(
     val romPct: Int,
     val setType: String,
     val done: Boolean,
+    /** Reps In Reserve as recorded on the phone, 0-5; null when absent/invalid. */
+    val rir: Int? = null,
 )
 
 /** The most recent logged session for one exercise (identified by `exerciseId` on the phone). */
@@ -190,7 +192,10 @@ data class WearStrengthCatalog(
                 val romPct = item.optInt("romPct", 100)
                 val setType = item.optString("setType", "main").takeIf { it.isNotBlank() } ?: "main"
                 val done = item.optBoolean("done", true)
-                sets.add(WearStrengthLastSet(kg = kg, reps = reps, romPct = romPct, setType = setType, done = done))
+                val rir = item.optInt("rir", -1).takeIf { it in 0..5 }
+                sets.add(
+                    WearStrengthLastSet(kg = kg, reps = reps, romPct = romPct, setType = setType, done = done, rir = rir),
+                )
             }
             return sets
         }

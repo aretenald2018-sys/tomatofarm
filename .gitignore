@@ -135,6 +135,7 @@ android/wear/src/main/java/com/lifestreak/wear/workout/*
 !android/wear/src/main/java/com/lifestreak/wear/workout/WearStrengthHrStore.kt
 !android/wear/src/main/java/com/lifestreak/wear/workout/WearStrengthPagerAdapter.kt
 !android/wear/src/main/java/com/lifestreak/wear/workout/WearStrengthPayload.kt
+!android/wear/src/main/java/com/lifestreak/wear/workout/WearStrengthRestRingView.kt
 !android/wear/src/main/java/com/lifestreak/wear/workout/WearStrengthSessionPersistence.kt
 !android/wear/src/main/java/com/lifestreak/wear/workout/WearStrengthSessionState.kt
 !android/wear/src/main/java/com/lifestreak/wear/workout/WearStrengthUiController.kt
@@ -165,6 +166,8 @@ android/wear/src/main/res/layout/**
 !android/wear/src/main/res/layout/wear_strength_picker_row_exercise.xml
 !android/wear/src/main/res/layout/wear_strength_picker_row_group.xml
 !android/wear/src/main/res/layout/wear_strength_picker_row_header.xml
+!android/wear/src/main/res/layout/wear_strength_set_row.xml
+!android/wear/src/main/res/layout/wear_strength_set_row_add.xml
 !android/wear/src/main/res/mipmap-*/
 android/wear/src/main/res/mipmap-*/*
 !android/wear/src/main/res/mipmap-*/ic_launcher*.png

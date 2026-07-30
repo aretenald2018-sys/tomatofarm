@@ -25,7 +25,7 @@ class WearStrengthCatalogTest {
                     "dateKey": "2026-07-28",
                     "sets": [
                       { "kg": 40, "reps": 10, "romPct": 100, "setType": "warmup", "done": true },
-                      { "kg": 80, "reps": 8, "romPct": 100, "setType": "main", "done": true },
+                      { "kg": 80, "reps": 8, "romPct": 100, "setType": "main", "done": true, "rir": 2 },
                       { "kg": 82.5, "reps": 6, "romPct": 90, "setType": "main", "done": false }
                     ]
                   }
@@ -84,6 +84,55 @@ class WearStrengthCatalogTest {
         val top = benchPress.lastSession?.topSet()
         assertEquals(80.0, top?.kg)
         assertEquals(8, top?.reps)
+        assertEquals(2, top?.rir)
+    }
+
+    @Test
+    fun rirParsesWhenPresentAndValid() {
+        val catalog = WearStrengthCatalog.parse(fullContextJson())
+        val sets = catalog.findExercise("bench-press")!!.lastSession!!.sets
+        assertEquals(2, sets[1].rir) // the 80kg/8 main set carries "rir": 2 in fullContextJson()
+    }
+
+    @Test
+    fun rirIsNullWhenAbsentOutOfRangeOrNonInt() {
+        val json = """
+            {
+              "payloadVersion": 1,
+              "type": "strength-context",
+              "generatedAt": 1,
+              "catalog": [
+                {
+                  "muscleId": "chest",
+                  "muscleName": "가슴",
+                  "exercises": [
+                    {
+                      "exerciseId": "bench-press",
+                      "name": "벤치프레스",
+                      "movementId": "m",
+                      "stepKg": 2.5,
+                      "lastSession": {
+                        "dateKey": "2026-07-28",
+                        "sets": [
+                          { "kg": 20, "reps": 10, "romPct": 100, "setType": "main", "done": true },
+                          { "kg": 20, "reps": 10, "romPct": 100, "setType": "main", "done": true, "rir": 9 },
+                          { "kg": 20, "reps": 10, "romPct": 100, "setType": "main", "done": true, "rir": -1 },
+                          { "kg": 20, "reps": 10, "romPct": 100, "setType": "main", "done": true, "rir": "high" }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ],
+              "recentExerciseIds": []
+            }
+        """.trimIndent()
+
+        val sets = WearStrengthCatalog.parse(json).findExercise("bench-press")!!.lastSession!!.sets
+        assertNull(sets[0].rir) // absent
+        assertNull(sets[1].rir) // out of range (> 5)
+        assertNull(sets[2].rir) // out of range (< 0)
+        assertNull(sets[3].rir) // non-numeric
     }
 
     @Test

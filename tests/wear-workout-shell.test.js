@@ -96,15 +96,68 @@ test('wear workout layout exposes running and strength controls, one pager of ea
     'strengthExercisePager',
     'strengthPageDots',
     'strengthLiveHeartRate',
+    'strengthRestChip',
     'strengthAddExerciseButton',
     'strengthFinishButton',
     'strengthSummaryScreen',
-    'strengthSummaryStats',
+    'strengthSummaryDuration',
+    'strengthSummaryCounts',
+    'strengthSummaryExerciseCount',
+    'strengthSummarySetCount',
+    'strengthSummaryVolume',
+    'strengthSummaryHeartRate',
     'strengthSummarySyncStatus',
     'strengthSummaryDoneButton',
   ]) {
     assert.match(workoutLayout, new RegExp(`@\\+id/${id}`), `${id} must exist in the wear strength flow`);
   }
+
+  // 'strengthSummaryStats' was one long stats line pre-rework; the redesigned summary screen
+  // splits it into duration/counts/volume, so the old id must be gone.
+  assert.doesNotMatch(workoutLayout, /strengthSummaryStats/);
+
+  // Set-edit overlay (replaces the old per-card kg/reps/rom steppers): four uniform rows
+  // (중량/횟수/RIR/ROM), each with its own ±, plus the confirm pill. The old per-card ids
+  // (strengthCardKgMinus etc.) must be gone — editing now lives only on this overlay.
+  for (const id of [
+    'strengthEditScreen',
+    'strengthEditSetLabel',
+    'strengthEditKgMinus',
+    'strengthEditKgValue',
+    'strengthEditKgPlus',
+    'strengthEditRepsMinus',
+    'strengthEditRepsValue',
+    'strengthEditRepsPlus',
+    'strengthEditRirMinus',
+    'strengthEditRirValue',
+    'strengthEditRirPlus',
+    'strengthEditRomMinus',
+    'strengthEditRomValue',
+    'strengthEditRomPlus',
+    'strengthEditConfirmButton',
+  ]) {
+    assert.match(workoutLayout, new RegExp(`@\\+id/${id}`), `${id} must exist on the strength set-edit overlay`);
+  }
+  assert.doesNotMatch(
+    workoutLayout,
+    /strengthCardKgMinus|strengthCardKgPlus|strengthCardKgValue|strengthCardRepsMinus|strengthCardRepsPlus|strengthCardRepsValue|strengthCardRomMinus|strengthCardRomPlus|strengthCardRomValue|strengthCardCompleteButton|strengthCardSetCounter|strengthCardLoggedTrail/,
+    'the old per-card single-set editor ids must be removed by the checklist rework',
+  );
+
+  // Rest-timer overlay (the flagship post-set interaction): countdown + ring + next-set preview +
+  // extend/skip pills.
+  for (const id of [
+    'strengthRestScreen',
+    'strengthRestRing',
+    'strengthRestCountdown',
+    'strengthRestNextPreview',
+    'strengthRestExtend',
+    'strengthRestSkip',
+  ]) {
+    assert.match(workoutLayout, new RegExp(`@\\+id/${id}`), `${id} must exist on the strength rest-timer overlay`);
+  }
+  assert.match(workoutLayout, /\+15초/);
+  assert.match(workoutLayout, /건너뛰기/);
 
   assert.equal(
     [...workoutLayout.matchAll(/@(?:\+id|id)\/runMetricPager\b/g)].length,
@@ -127,8 +180,21 @@ test('wear workout layout exposes running and strength controls, one pager of ea
   assert.match(workoutLayout, /러닝/);
   assert.match(workoutLayout, /헬스/);
 
+  // The carousel page is now a Strong/Hevy-style set checklist (rebuilt per-bind by
+  // WearStrengthPagerAdapter), not a single-set editor — no more "세트 완료" per-card button.
   const exerciseCard = read('android', 'wear', 'src', 'main', 'res', 'layout', 'wear_strength_page_exercise.xml');
-  assert.match(exerciseCard, /세트 완료/);
+  assert.doesNotMatch(exerciseCard, /세트 완료/);
+  assert.match(exerciseCard, /@\+id\/strengthCardExerciseName/);
+  assert.match(exerciseCard, /@\+id\/strengthCardLastRecord/);
+  assert.match(exerciseCard, /@\+id\/strengthCardSetList/);
+
+  const setRow = read('android', 'wear', 'src', 'main', 'res', 'layout', 'wear_strength_set_row.xml');
+  assert.match(setRow, /@\+id\/setRowIndex/);
+  assert.match(setRow, /@\+id\/setRowValues/);
+  assert.match(setRow, /@\+id\/setRowCheck/);
+
+  const addRow = read('android', 'wear', 'src', 'main', 'res', 'layout', 'wear_strength_set_row_add.xml');
+  assert.match(addRow, /세트 추가/);
 });
 
 test('wear run controller starts exercise and saves completed runs, refusing to start while strength is active', () => {
@@ -182,15 +248,51 @@ test('wear strength controller wires picker/active/summary screens and shares th
   assert.match(controller, /WearWorkoutDataLayer\.addSavedListener/);
   assert.match(controller, /휴대폰에 저장했어요/);
 
-  // Rotary bezel maps to kg adjustment on the active card.
+  // Rotary bezel now targets the set-edit overlay (moved off the pager by the checklist rework).
   assert.match(controller, /OnGenericMotionListener|setOnGenericMotionListener/);
   assert.match(controller, /SOURCE_ROTARY_ENCODER/);
+  assert.match(controller, /strengthEditScreen/);
+
+  // Checklist row callbacks: one tap logs/undoes a set, editing a pending row's values is a
+  // separate overlay, and "+ 세트 추가" appends a carry-over row.
+  assert.match(controller, /onToggleSet/);
+  assert.match(controller, /onEditSet/);
+  assert.match(controller, /onAddSet/);
+  assert.match(controller, /state\.logSet\(/);
+  assert.match(controller, /state\.unlogSet\(/);
+  assert.match(controller, /\.addPlannedSet\(/);
+
+  // Rest timer: auto-starts after logging a set, persists its deadline for process-death restore,
+  // and vibrates on completion.
+  assert.match(controller, /\.startRest\(/);
+  assert.match(controller, /\.extendRest\(/);
+  assert.match(controller, /\.clearRest\(\)/);
+  assert.match(controller, /restEndsAtMs/);
+  assert.match(controller, /Vibrator|VibrationEffect/);
 
   assert.match(pagerAdapter, /RecyclerView\.Adapter/);
   assert.match(pagerAdapter, /wear_strength_page_exercise/);
+  assert.match(pagerAdapter, /onToggleSet/);
+  assert.match(pagerAdapter, /onEditSet/);
+  assert.match(pagerAdapter, /onAddSet/);
 
   assert.match(bridge, /type === 'strength'/);
   assert.match(bridge, /wear-strength-import/);
+});
+
+test('wear strength state persists the rest-timer deadline for process-death restore', () => {
+  const state = read('android', 'wear', 'src', 'main', 'java', 'com', 'lifestreak', 'wear', 'workout', 'WearStrengthSessionState.kt');
+  assert.match(state, /restEndsAtMs/);
+  assert.match(state, /restTotalMs/);
+  assert.match(state, /fun startRest\(/);
+  assert.match(state, /fun extendRest\(/);
+  assert.match(state, /fun clearRest\(\)/);
+  assert.match(state, /fun restRemainingMs\(/);
+  // The checklist rework's core API: per-set logging/undo/editing plus the manual add-set pill.
+  assert.match(state, /fun logSet\(/);
+  assert.match(state, /fun unlogSet\(/);
+  assert.match(state, /fun addPlannedSet\(/);
+  assert.match(state, /class PlannedSet/);
 });
 
 test('wear run and strength save sources are reviewable (not hidden by gitignore)', () => {
@@ -255,6 +357,7 @@ test('wear run and strength save sources are reviewable (not hidden by gitignore
     'android/wear/src/main/java/com/lifestreak/wear/workout/WearStrengthHrStore.kt',
     'android/wear/src/main/java/com/lifestreak/wear/workout/WearStrengthPagerAdapter.kt',
     'android/wear/src/main/java/com/lifestreak/wear/workout/WearStrengthPayload.kt',
+    'android/wear/src/main/java/com/lifestreak/wear/workout/WearStrengthRestRingView.kt',
     'android/wear/src/main/java/com/lifestreak/wear/workout/WearStrengthSessionPersistence.kt',
     'android/wear/src/main/java/com/lifestreak/wear/workout/WearStrengthSessionState.kt',
     'android/wear/src/main/java/com/lifestreak/wear/workout/WearStrengthUiController.kt',
@@ -269,6 +372,8 @@ test('wear run and strength save sources are reviewable (not hidden by gitignore
     'android/wear/src/main/res/layout/wear_strength_picker_row_exercise.xml',
     'android/wear/src/main/res/layout/wear_strength_picker_row_group.xml',
     'android/wear/src/main/res/layout/wear_strength_picker_row_header.xml',
+    'android/wear/src/main/res/layout/wear_strength_set_row.xml',
+    'android/wear/src/main/res/layout/wear_strength_set_row_add.xml',
     'android/wear/src/test/java/com/lifestreak/wear/workout/WearExerciseActiveDurationTrackerTest.kt',
     'android/wear/src/test/java/com/lifestreak/wear/workout/WearExerciseEndPolicyTest.kt',
     'android/wear/src/test/java/com/lifestreak/wear/workout/WearExerciseMetricAccumulatorTest.kt',

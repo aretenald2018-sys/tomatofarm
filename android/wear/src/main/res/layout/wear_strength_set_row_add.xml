@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Trailing "+ 세트 추가" pill appended after a card's set rows; tapping it appends a pending row
+     carrying over the last row's values (WearStrengthSessionState.addPlannedSet). -->
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/setRowAddRoot"
+    android:layout_width="match_parent"
+    android:layout_height="@dimen/strength_set_row_height"
+    android:layout_marginTop="6dp"
+    android:background="@drawable/wear_strength_pill_muted"
+    android:clickable="true"
+    android:focusable="true"
+    android:gravity="center"
+    android:text="+ 세트 추가"
+    android:textColor="#81877D"
+    android:textSize="@dimen/strength_text_set_row_values" />

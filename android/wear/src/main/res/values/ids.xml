@@ -2,4 +2,5 @@
 <resources>
     <item name="wear_run_tick_runnable" type="id" />
     <item name="wear_run_attach_listener" type="id" />
+    <item name="wear_strength_rest_tick_runnable" type="id" />
 </resources>

@@ -7,6 +7,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WearStrengthPayloadTest {
+    // WearStrengthCard no longer has a draftKg/draftReps/draftRomPct/loggedSets constructor (the
+    // checklist rework replaced them with `sets: List<PlannedSet>`); this helper rebuilds each
+    // WearStrengthLoggedSet as an already-done PlannedSet so `card.loggedSets` (the computed
+    // property WearStrengthPayload actually reads) reproduces exactly what the caller passed in.
     private fun cardWithSets(exerciseId: String, sets: List<WearStrengthLoggedSet>): WearStrengthCard {
         return WearStrengthCard(
             exerciseId = exerciseId,
@@ -14,10 +18,16 @@ class WearStrengthPayloadTest {
             muscleId = "chest",
             movementId = "movement",
             stepKg = 2.5,
-            draftKg = 20.0,
-            draftReps = 10,
-            draftRomPct = 100,
-            loggedSets = sets,
+            sets = sets.map { set ->
+                PlannedSet(
+                    kg = set.kg,
+                    reps = set.reps,
+                    romPct = set.romPct,
+                    done = true,
+                    completedAt = set.completedAt,
+                    rir = set.rir,
+                )
+            },
         )
     }
 
@@ -155,5 +165,33 @@ class WearStrengthPayloadTest {
         assertEquals(123L, payload.startedAtMs)
         assertEquals(456L, payload.endedAtMs)
         assertFalse(payload.toJsonString().isBlank())
+    }
+
+    @Test
+    fun rirKeyIsOmittedFromJsonWhenNull() {
+        val loggedSet = WearStrengthLoggedSet(kg = 20.0, reps = 10, romPct = 100, completedAt = 1L, rir = null)
+        val payload = WearStrengthPayload.fromSession(
+            session = session(listOf(cardWithSets("squat", listOf(loggedSet)))),
+            avgHeartRateBpm = null,
+            maxHeartRateBpm = null,
+            samples10s = emptyList(),
+        ).getOrThrow()
+
+        val set = JSONObject(payload.toJsonString()).getJSONArray("entries").getJSONObject(0).getJSONArray("sets").getJSONObject(0)
+        assertFalse(set.has("rir"))
+    }
+
+    @Test
+    fun rirKeyIsIncludedInJsonWhenSet() {
+        val loggedSet = WearStrengthLoggedSet(kg = 20.0, reps = 10, romPct = 100, completedAt = 1L, rir = 3)
+        val payload = WearStrengthPayload.fromSession(
+            session = session(listOf(cardWithSets("squat", listOf(loggedSet)))),
+            avgHeartRateBpm = null,
+            maxHeartRateBpm = null,
+            samples10s = emptyList(),
+        ).getOrThrow()
+
+        val set = JSONObject(payload.toJsonString()).getJSONArray("entries").getJSONObject(0).getJSONArray("sets").getJSONObject(0)
+        assertEquals(3, set.getInt("rir"))
     }
 }

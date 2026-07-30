@@ -18,7 +18,7 @@ class WearStrengthSessionPersistenceTest {
                     lastSession = null,
                 ),
             )
-            .completeSet(2_000L)
+            .logSet(cardIdx = 0, setIdx = 0, now = 2_000L)
         val hrSamples = listOf(
             HeartRateSample(timestampMs = 1_000L, bpm = 100),
             HeartRateSample(timestampMs = 2_000L, bpm = 110),
@@ -29,6 +29,29 @@ class WearStrengthSessionPersistenceTest {
 
         assertEquals(state, restored?.first)
         assertEquals(hrSamples, restored?.second)
+    }
+
+    @Test
+    fun encodeDecodeRoundTripsARunningRestTimer() {
+        val state = WearStrengthSessionState().start(1_000L)
+            .addExercise(
+                WearStrengthExercise(
+                    exerciseId = "bench-press",
+                    name = "바벨 벤치프레스",
+                    muscleId = "chest",
+                    movementId = "barbell-press",
+                    stepKg = 2.5,
+                    lastSession = null,
+                ),
+            )
+            .logSet(cardIdx = 0, setIdx = 0, now = 2_000L)
+            .startRest(now = 2_000L)
+
+        val encoded = WearStrengthSessionPersistence.encode(state, emptyList())
+        val restored = WearStrengthSessionPersistence.decode(encoded)
+
+        assertEquals(state, restored?.first)
+        assertEquals(2_000L + WearStrengthSessionState.DEFAULT_REST_MS, restored?.first?.restEndsAtMs)
     }
 
     @Test
