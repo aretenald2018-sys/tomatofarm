@@ -11,9 +11,9 @@
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:paddingStart="@dimen/strength_safe_area_horizontal"
-    android:paddingTop="@dimen/strength_safe_area_vertical"
+    android:paddingTop="@dimen/strength_card_top_inset"
     android:paddingEnd="@dimen/strength_safe_area_horizontal"
-    android:paddingBottom="@dimen/strength_safe_area_vertical">
+    android:paddingBottom="@dimen/strength_card_bottom_inset">
 
     <TextView
         android:id="@+id/strengthCardExerciseName"

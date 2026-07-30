@@ -16,11 +16,14 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_weight="1"
+        android:autoSizeMaxTextSize="@dimen/strength_text_picker_exercise"
+        android:autoSizeMinTextSize="10sp"
+        android:autoSizeStepGranularity="1sp"
+        android:autoSizeTextType="uniform"
         android:ellipsize="end"
-        android:maxLines="1"
+        android:maxLines="2"
         android:text="종목명"
-        android:textColor="#F7F8F4"
-        android:textSize="@dimen/strength_text_picker_exercise" />
+        android:textColor="#F7F8F4" />
 
     <TextView
         android:id="@+id/strengthPickerRowExerciseBadge"

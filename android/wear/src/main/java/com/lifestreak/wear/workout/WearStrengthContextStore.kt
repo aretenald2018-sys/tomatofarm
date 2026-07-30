@@ -1,6 +1,8 @@
 package com.lifestreak.wear.workout
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import java.io.File
 import java.io.FileOutputStream
 import java.security.MessageDigest
@@ -15,6 +17,21 @@ object WearStrengthContextStore {
     private const val TEMP_FILE_NAME = "wear-strength-context.json.tmp"
     const val PREFS_NAME = "tomato_wear_strength"
     private const val KEY_RECEIVED_AT = "context_received_at"
+
+    private val lock = Any()
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val listeners = linkedSetOf<() -> Unit>()
+
+    /**
+     * Notified on the main thread after [accept] stores a new context. The phone pushes whenever
+     * its app boots, which is routinely *while* the watch is already sitting on the empty picker
+     * telling the user to open it — without this the screen keeps that stale prompt until the user
+     * backs out and re-enters strength mode, because the catalog is only re-read on entry.
+     */
+    fun addListener(listener: () -> Unit): () -> Unit {
+        synchronized(lock) { listeners.add(listener) }
+        return { synchronized(lock) { listeners.remove(listener) } }
+    }
 
     /**
      * Verifies [rawBytes] against [expectedSha256]/[expectedLength] and, if valid, writes them
@@ -40,6 +57,7 @@ object WearStrengthContextStore {
                 .edit()
                 .putLong(KEY_RECEIVED_AT, System.currentTimeMillis())
                 .apply()
+            notifyListeners()
             true
         } catch (_: Exception) {
             tempFile.delete()
@@ -62,6 +80,17 @@ object WearStrengthContextStore {
         return context.applicationContext
             .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getLong(KEY_RECEIVED_AT, 0L)
+    }
+
+    private fun notifyListeners() {
+        val targets = synchronized(lock) { listeners.toList() }
+        targets.forEach { listener ->
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                listener()
+            } else {
+                mainHandler.post { listener() }
+            }
+        }
     }
 
     private fun sha256Hex(bytes: ByteArray): String {

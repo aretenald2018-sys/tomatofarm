@@ -29,13 +29,17 @@
         android:layout_height="match_parent"
         android:layout_marginStart="10dp"
         android:layout_weight="1"
+        android:autoSizeMaxTextSize="@dimen/strength_text_set_row_values"
+        android:autoSizeMinTextSize="12sp"
+        android:autoSizeStepGranularity="1sp"
+        android:autoSizeTextType="uniform"
         android:clickable="true"
         android:focusable="true"
         android:fontFamily="sans-serif-condensed"
         android:gravity="center_vertical"
+        android:maxLines="1"
         android:text="80kg × 8회"
         android:textColor="#F7F8F4"
-        android:textSize="@dimen/strength_text_set_row_values"
         android:textStyle="bold" />
 
     <TextView

@@ -16,6 +16,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.view.InputDeviceCompat
 import androidx.core.view.MotionEventCompat
+import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
 import androidx.wear.widget.WearableRecyclerView
@@ -59,6 +60,7 @@ class WearStrengthUiController(
     private var pagerCallback: ViewPager2.OnPageChangeCallback? = null
     private var hrUnsubscribe: (() -> Unit)? = null
     private var savedAckUnsubscribe: (() -> Unit)? = null
+    private var contextUnsubscribe: (() -> Unit)? = null
     private var pendingTransferId: String? = null
     private var summarySyncStatus = ""
     private var lastHrSnapshot = WearStrengthHrSnapshot()
@@ -101,6 +103,13 @@ class WearStrengthUiController(
 
     fun bind(v: View) {
         catalog = WearStrengthContextStore.load(v.context)
+        // The phone's push lands asynchronously, so pick it up while the screen is showing rather
+        // than only on the next entry into strength mode.
+        contextUnsubscribe?.invoke()
+        contextUnsubscribe = WearStrengthContextStore.addListener {
+            catalog = WearStrengthContextStore.load(v.context)
+            render(v)
+        }
         v.findViewById<View>(R.id.strengthOpenButton)?.setOnClickListener { openStrengthMode(v) }
         v.findViewById<View>(R.id.strengthAddExerciseButton)?.setOnClickListener { openPicker(v) }
         v.findViewById<View>(R.id.strengthFinishButton)?.setOnClickListener { finishStrength(v) }
@@ -186,6 +195,8 @@ class WearStrengthUiController(
         unsubscribeHr()
         savedAckUnsubscribe?.invoke()
         savedAckUnsubscribe = null
+        contextUnsubscribe?.invoke()
+        contextUnsubscribe = null
         pendingTransferId = null
         pagerCallback?.let { callback -> pager?.unregisterOnPageChangeCallback(callback) }
         pagerCallback = null
@@ -636,6 +647,13 @@ class WearStrengthUiController(
 
     private fun initializePicker(v: View) {
         val list = v.findViewById<WearableRecyclerView>(R.id.strengthPickerList) ?: return
+        // Without a layout manager RecyclerView skips layout entirely and the picker draws as a
+        // blank screen — the rows are in the adapter, nothing measures them. Deliberately the plain
+        // LinearLayoutManager: WearableLinearLayoutManager curves the list on a round screen, which
+        // shifts these full-width pill rows sideways until they clip off the right edge.
+        if (list.layoutManager == null) {
+            list.layoutManager = LinearLayoutManager(list.context)
+        }
         val adapter = pickerAdapter ?: StrengthPickerAdapter(
             onExerciseTap = { exercise -> selectExercise(v, exercise) },
             onBackTap = { resetPickerToTopLevel() },

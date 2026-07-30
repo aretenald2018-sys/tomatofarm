@@ -282,6 +282,14 @@ test('wear strength controller wires picker/active/summary screens and shares th
   assert.match(controller, /WearExerciseService\.cancelPreparation/);
   assert.match(controller, /WearExerciseService\.prepareRun/);
 
+  // The picker RecyclerView needs a layout manager or it silently skips layout and the whole
+  // screen draws blank — and a curving one shifts these full-width rows off the right edge.
+  assert.match(controller, /list\.layoutManager = LinearLayoutManager\(/);
+  assert.ok(
+    !/import androidx\.wear\.widget\.WearableLinearLayoutManager/.test(controller),
+    'picker must not use the curving wear layout manager',
+  );
+
   // Picker -> carousel -> HR service lifecycle.
   assert.match(controller, /state\.addExercise\(/);
   assert.match(controller, /WearStrengthHrService\.start/);
@@ -290,6 +298,14 @@ test('wear strength controller wires picker/active/summary screens and shares th
   assert.match(controller, /WearStrengthSessionPersistence\.save/);
   assert.match(controller, /WearStrengthSessionPersistence\.restore/);
   assert.match(controller, /완료한 세트가 없어요/);
+
+  // The phone pushes its catalog while the watch may already be sitting on the empty picker, so
+  // the store notifies and the controller re-reads instead of stranding "휴대폰 앱을 열어 동기화해 주세요".
+  const contextStore = read('android', 'wear', 'src', 'main', 'java', 'com', 'lifestreak', 'wear', 'workout', 'WearStrengthContextStore.kt');
+  assert.match(contextStore, /fun addListener\(/);
+  assert.match(contextStore, /notifyListeners\(\)/);
+  assert.match(controller, /WearStrengthContextStore\.addListener/);
+  assert.match(controller, /contextUnsubscribe/);
 
   // Same transport/ack choreography as the run controller's syncRunSummary.
   assert.match(controller, /WearStrengthPayload\.fromSession/);

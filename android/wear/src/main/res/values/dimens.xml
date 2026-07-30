@@ -18,6 +18,14 @@
     <dimen name="strength_text_exercise_name">18sp</dimen>
     <dimen name="strength_text_last_record">14sp</dimen>
 
+    <!-- Checklist page insets. The top status arc and the bottom action row are siblings drawn
+         over the pager, not part of the page, so the page has to start below the arc and let its
+         set list scroll clear of the action row — otherwise the exercise name renders under the
+         heart rate and the last row sits behind 운동 추가/운동 종료. Derived from those two
+         siblings: arc = 10dp padding + ~17dp line, action row = 8 + 40 + 8dp. -->
+    <dimen name="strength_card_top_inset">36dp</dimen>
+    <dimen name="strength_card_bottom_inset">56dp</dimen>
+
     <!-- Checklist set rows (wear_strength_set_row.xml / wear_strength_set_row_add.xml). -->
     <dimen name="strength_set_row_height">52dp</dimen>
     <dimen name="strength_set_row_check_size">40dp</dimen>
@@ -49,15 +57,16 @@
          = ~236dp of 240dp). Deliberately its own token family, not reused from the old
          strength_kg_*/strength_reps_*/strength_rom_* single-card tokens (removed below; no
          longer referenced now that the checklist replaced the old per-card editor). -->
+    <dimen name="strength_edit_safe_area_vertical">8dp</dimen>
     <dimen name="strength_text_edit_set_label">13sp</dimen>
-    <dimen name="strength_edit_row_height">30dp</dimen>
-    <dimen name="strength_edit_button_size">30dp</dimen>
+    <dimen name="strength_edit_row_height">28dp</dimen>
+    <dimen name="strength_edit_button_size">28dp</dimen>
     <dimen name="strength_edit_button_icon_size">14sp</dimen>
     <dimen name="strength_edit_label_width">44dp</dimen>
     <dimen name="strength_edit_value_min_width">76dp</dimen>
     <dimen name="strength_text_edit_row_label">13sp</dimen>
     <dimen name="strength_text_edit_row_value">20sp</dimen>
-    <dimen name="strength_edit_confirm_height">40dp</dimen>
+    <dimen name="strength_edit_confirm_height">36dp</dimen>
     <dimen name="strength_text_complete_button">15sp</dimen>
 
     <!-- Rest-timer screen. -->

@@ -548,19 +548,30 @@
     <!-- 헬스(근력) 요약: 소요 시간 + 종목/세트 + 볼륨 + avg·max 심박 + 동기화 상태. A compact
          stack (rather than one long stats line) so nothing clips against the round safe area at
          realistic values (e.g. "12,480kg"). -->
-    <LinearLayout
+    <ScrollView
         android:id="@+id/strengthSummaryScreen"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:gravity="center"
-        android:orientation="vertical"
+        android:fillViewport="true"
         android:paddingStart="@dimen/strength_safe_area_horizontal"
+        android:paddingTop="@dimen/strength_edit_safe_area_vertical"
         android:paddingEnd="@dimen/strength_safe_area_horizontal"
+        android:paddingBottom="@dimen/strength_edit_safe_area_vertical"
+        android:scrollbars="none"
         android:visibility="gone">
+
+        <!-- Scrollable: this stack needs ~240dp and a 44mm watch only offers ~206dp of usable
+             height, so a fixed layout clips the 완료 button off the bottom with no way to finish. -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_horizontal"
+            android:orientation="vertical">
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
             android:fontFamily="sans-serif-medium"
             android:letterSpacing="0.12"
             android:text="운동 완료"
@@ -654,6 +665,7 @@
             android:id="@+id/strengthSummaryDoneButton"
             android:layout_width="44dp"
             android:layout_height="44dp"
+            android:layout_gravity="center_horizontal"
             android:layout_marginTop="8dp"
             android:background="@drawable/wear_cardio_circle_primary"
             android:gravity="center"
@@ -661,7 +673,8 @@
             android:textColor="#06120C"
             android:textSize="10sp"
             android:textStyle="bold" />
-    </LinearLayout>
+        </LinearLayout>
+    </ScrollView>
 
     <!-- 헬스(근력) 세트 편집: 체크리스트의 한 세트를 중량/횟수/RIR/ROM 네 값 모두 한 화면에서
          조정하는 전체화면 오버레이. 네 행은 완전히 동일한 구조/크기(라벨-버튼-값-버튼)이며, 로터리
@@ -672,6 +685,7 @@
         android:id="@+id/strengthEditScreen"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:background="#050706"
         android:visibility="gone">
 
         <LinearLayout
@@ -679,9 +693,9 @@
             android:layout_height="match_parent"
             android:orientation="vertical"
             android:paddingStart="@dimen/strength_safe_area_horizontal"
-            android:paddingTop="@dimen/strength_safe_area_vertical"
+            android:paddingTop="@dimen/strength_edit_safe_area_vertical"
             android:paddingEnd="@dimen/strength_safe_area_horizontal"
-            android:paddingBottom="@dimen/strength_safe_area_vertical">
+            android:paddingBottom="@dimen/strength_edit_safe_area_vertical">
 
             <TextView
                 android:id="@+id/strengthEditSetLabel"
@@ -959,6 +973,7 @@
         android:id="@+id/strengthRestScreen"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:background="#050706"
         android:visibility="gone">
 
         <LinearLayout
