@@ -1017,4 +1017,72 @@
             </LinearLayout>
         </LinearLayout>
     </FrameLayout>
+
+    <!-- Ambient (AOD) overlay (plan's W1 앰비언트): shown instead of the interactive run/strength
+         screens whenever AmbientLifecycleObserver reports ambient mode, so metrics stay visible
+         at a glance instead of the screen falling back to the watch face. Pure black background,
+         monochrome white/grey text only, no drawables/ViewPager2/custom views — low-bit ambient
+         and burn-in safe (WearWorkoutUiController/WearStrengthUiController translate this whole
+         overlay by a small cycling offset when burn-in protection is required). -->
+    <FrameLayout
+        android:id="@+id/wearAmbientScreen"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#000000"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/ambientClock"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="sans-serif-condensed"
+                android:text="00:00"
+                android:textColor="#FFFFFF"
+                android:textSize="@dimen/ambient_text_clock" />
+
+            <TextView
+                android:id="@+id/ambientModeLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text=""
+                android:textColor="#808080"
+                android:textSize="@dimen/ambient_text_label" />
+
+            <TextView
+                android:id="@+id/ambientPrimary"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:fontFamily="sans-serif-condensed"
+                android:text=""
+                android:textColor="#FFFFFF"
+                android:textSize="@dimen/ambient_text_primary"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/ambientSecondary"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text=""
+                android:textColor="#BFBFBF"
+                android:textSize="@dimen/ambient_text_secondary" />
+
+            <TextView
+                android:id="@+id/ambientTertiary"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text=""
+                android:textColor="#808080"
+                android:textSize="@dimen/ambient_text_tertiary" />
+        </LinearLayout>
+    </FrameLayout>
 </FrameLayout>

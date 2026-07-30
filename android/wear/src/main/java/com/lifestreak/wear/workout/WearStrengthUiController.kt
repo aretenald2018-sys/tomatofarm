@@ -20,6 +20,9 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
 import androidx.wear.widget.WearableRecyclerView
 import com.lifestreak.wear.R
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 /** Which of the edit screen's four uniform rows the rotary bezel currently targets — the row the
  * user last tapped (default 중량 whenever a new set is opened for editing). */
@@ -60,6 +63,12 @@ class WearStrengthUiController(
     private var summarySyncStatus = ""
     private var lastHrSnapshot = WearStrengthHrSnapshot()
     private var hostInteractive = true
+
+    // Ambient (AOD) state (plan's W1 앰비언트 슬라이스) — see onEnterAmbient/onUpdateAmbient/onExitAmbient.
+    private var ambientActive = false
+    private var burnInProtectionRequired = false
+    private var ambientBurnInStep = 0
+    private var ambientRestWakeRunnable: Runnable? = null
 
     // Set-edit overlay (UI-level only — never persisted; closing it just hides it, values are
     // already applied live to `state` as the ± buttons/rotary are used).
@@ -181,6 +190,7 @@ class WearStrengthUiController(
         pagerCallback?.let { callback -> pager?.unregisterOnPageChangeCallback(callback) }
         pagerCallback = null
         pager = null
+        cancelAmbientRestWake()
         handler.removeCallbacksAndMessages(null)
     }
 
@@ -192,6 +202,121 @@ class WearStrengthUiController(
     fun onHostPaused(v: View) {
         hostInteractive = false
         v.keepScreenOn = false
+    }
+
+    /**
+     * Ambient entry (plan's W1): cancels the 1s rest tick (a single delayed wake-up at
+     * `restEndsAtMs` takes over so the countdown still refreshes to its finished state without
+     * ticking every second), hides the interactive strength screens/overlays, and populates +
+     * shows the shared [R.id.wearAmbientScreen] overlay. Skips populating that overlay's content
+     * whenever strength itself isn't occupying the host (see [isStrengthOccupyingScreen]) —
+     * mirrors [WearWorkoutUiController]'s side of the same mutual-exclusion contract, so only one
+     * controller ever writes to the shared ambient text views at a time.
+     */
+    fun onEnterAmbient(v: View, burnInProtectionRequired: Boolean, lowBitAmbient: Boolean) {
+        ambientActive = true
+        this.burnInProtectionRequired = burnInProtectionRequired
+        ambientBurnInStep = 0
+        clearRestTick(v)
+        v.findViewById<View>(R.id.strengthPickerScreen)?.visibility = View.GONE
+        v.findViewById<View>(R.id.strengthActiveScreen)?.visibility = View.GONE
+        v.findViewById<View>(R.id.strengthSummaryScreen)?.visibility = View.GONE
+        v.findViewById<View>(R.id.strengthEditScreen)?.visibility = View.GONE
+        v.findViewById<View>(R.id.strengthRestScreen)?.visibility = View.GONE
+        if (!isStrengthOccupyingScreen()) return
+        renderAmbient(v)
+        v.findViewById<View>(R.id.wearAmbientScreen)?.visibility = View.VISIBLE
+        if (state.restEndsAtMs != null) scheduleAmbientRestWake(v)
+    }
+
+    /** Periodic ambient refresh (roughly once a minute, driven by the system): refreshes the
+     * ambient text and, when burn-in protection is required, nudges the whole overlay by a small
+     * cycling ±8px offset so the same pixels aren't lit for hours on end. */
+    fun onUpdateAmbient(v: View) {
+        if (!ambientActive || !isStrengthOccupyingScreen()) return
+        renderAmbient(v)
+        if (burnInProtectionRequired) applyAmbientBurnInOffset(v)
+    }
+
+    /** Ambient exit: clears ambient flags, cancels the rest-timer wake-up, hides the overlay,
+     * restores the normal interactive render, and re-starts the 1s rest tick if a timer is still
+     * running. */
+    fun onExitAmbient(v: View) {
+        ambientActive = false
+        burnInProtectionRequired = false
+        ambientBurnInStep = 0
+        cancelAmbientRestWake()
+        v.findViewById<View>(R.id.wearAmbientScreen)?.apply {
+            visibility = View.GONE
+            translationX = 0f
+            translationY = 0f
+        }
+        render(v)
+        if (state.restEndsAtMs != null) scheduleRestTick(v)
+    }
+
+    /** Rest-timer countdown as of ambient entry doesn't need a per-second tick — instead this
+     * posts exactly one delayed refresh timed to `restEndsAtMs`, which repaints the ambient text
+     * to its finished state (0:00) without waking the screen every second while ambient. */
+    private fun scheduleAmbientRestWake(v: View) {
+        cancelAmbientRestWake()
+        val endsAt = state.restEndsAtMs ?: return
+        val delayMs = (endsAt - nowMs()).coerceAtLeast(0L)
+        val wake = Runnable {
+            if (ambientActive) renderAmbient(v)
+        }
+        ambientRestWakeRunnable = wake
+        handler.postDelayed(wake, delayMs)
+    }
+
+    private fun cancelAmbientRestWake() {
+        ambientRestWakeRunnable?.let { handler.removeCallbacks(it) }
+        ambientRestWakeRunnable = null
+    }
+
+    private fun renderAmbient(v: View) {
+        v.findViewById<TextView>(R.id.ambientClock)?.text = currentClockText()
+        val card = state.activeCard
+        if (state.restEndsAtMs != null) {
+            val remainingMs = state.restRemainingMs(nowMs())
+            val roundedMs = (((remainingMs + 5_000L) / 10_000L) * 10_000L).coerceAtLeast(0L)
+            v.findViewById<TextView>(R.id.ambientModeLabel)?.text = "휴식"
+            v.findViewById<TextView>(R.id.ambientPrimary)?.text = formatRestClock(roundedMs)
+            v.findViewById<TextView>(R.id.ambientSecondary)?.text = card?.name.orEmpty()
+        } else {
+            val doneCount = card?.sets?.count { it.done } ?: 0
+            val totalCount = card?.sets?.size ?: 0
+            v.findViewById<TextView>(R.id.ambientModeLabel)?.text = ""
+            v.findViewById<TextView>(R.id.ambientPrimary)?.text = "$doneCount/${totalCount}세트"
+            v.findViewById<TextView>(R.id.ambientSecondary)?.text = card?.name.orEmpty()
+        }
+        v.findViewById<TextView>(R.id.ambientTertiary)?.text = ambientHeartRateText()
+    }
+
+    private fun ambientHeartRateText(): String {
+        val hr = lastHrSnapshot
+        return when {
+            !hr.hasPermission -> ""
+            hr.latestBpm != null -> "${hr.latestBpm} bpm"
+            else -> "-- bpm"
+        }
+    }
+
+    private fun applyAmbientBurnInOffset(v: View) {
+        ambientBurnInStep = (ambientBurnInStep + 1) % 4
+        val offsetPx = 8f
+        val (dx, dy) = when (ambientBurnInStep) {
+            0 -> 0f to 0f
+            1 -> offsetPx to 0f
+            2 -> offsetPx to offsetPx
+            else -> 0f to offsetPx
+        }
+        v.findViewById<View>(R.id.wearAmbientScreen)?.translationX = dx
+        v.findViewById<View>(R.id.wearAmbientScreen)?.translationY = dy
+    }
+
+    private fun currentClockText(): String {
+        return DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault()).format(Instant.now())
     }
 
     private fun openStrengthMode(v: View) {
@@ -579,6 +704,7 @@ class WearStrengthUiController(
     // ---- Rendering ------------------------------------------------------------------------------
 
     private fun render(v: View) {
+        if (ambientActive) return
         v.keepScreenOn = hostInteractive && state.screen == WearStrengthScreen.ACTIVE
         v.findViewById<View>(R.id.strengthPickerScreen)?.visibility =
             if (state.screen == WearStrengthScreen.PICKER) View.VISIBLE else View.GONE

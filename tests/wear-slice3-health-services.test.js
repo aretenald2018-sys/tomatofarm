@@ -92,3 +92,35 @@ test('wear running power policy preserves sensor samples while batching expensiv
   assert.match(pager, /holder\.bind\(page, snapshot\)/);
   assert.match(pager, /else \{\s*notifyItemChanged\(page\)/);
 });
+
+test('wear slice A wires ambient (AOD) fan-out and visibility-following GPS warm-up', () => {
+  const activity = readProjectFile('android/wear/src/main/java/com/lifestreak/wear/MainActivity.kt');
+  const service = readProjectFile('android/wear/src/main/java/com/lifestreak/wear/workout/WearExerciseService.kt');
+  const controller = readProjectFile('android/wear/src/main/java/com/lifestreak/wear/workout/WearWorkoutUiController.kt');
+
+  // MainActivity attaches AmbientLifecycleObserver and fans enter/update/exit out to both
+  // controllers, in that order.
+  assert.match(activity, /AmbientLifecycleObserver/);
+  assert.match(activity, /lifecycle\.addObserver\(AmbientLifecycleObserver\(/);
+  const onEnterIndex = activity.indexOf('onEnterAmbient(ambientDetails');
+  const onUpdateIndex = activity.indexOf('onUpdateAmbient()');
+  const onExitIndex = activity.indexOf('onExitAmbient()');
+  assert.ok(onEnterIndex !== -1 && onUpdateIndex !== -1 && onExitIndex !== -1, 'expected all three ambient callbacks');
+  assert.ok(onEnterIndex < onUpdateIndex && onUpdateIndex < onExitIndex, 'expected onEnterAmbient/onUpdateAmbient/onExitAmbient in that order');
+
+  // Hard constraints from the plan: the pinned guard/return-line prefixes stay intact, and the
+  // new ambient disjunct/early-return are additive.
+  assert.match(controller, /if \(!hostInteractive \|\| runState\.screen != WearRunUiScreen\.ACTIVE[\s\S]*?\|\| ambientActive\) return/);
+  assert.match(controller, /if \(ambientActive\) return/);
+
+  // Battery slice (W2): the new ambient constants and the shortened preparation timeout.
+  assert.match(service, /AMBIENT_LIVE_SNAPSHOT_INTERVAL_MS = 15_000L/);
+  assert.match(service, /AMBIENT_ACTIVE_DURATION_CHECKPOINT_MS = 60_000L/);
+  assert.match(service, /PREPARATION_TIMEOUT_MS = 90_000L/);
+
+  // A healthy direct GPS fix drops the redundant high-accuracy fused request.
+  assert.match(
+    service,
+    /lastDirectLocationElapsedRealtimeMs = elapsedRealtimeMs[\s\S]{0,400}stopFusedRouteLocationUpdates\(\)/,
+  );
+});

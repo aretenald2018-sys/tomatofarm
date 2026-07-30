@@ -159,6 +159,18 @@ test('wear workout layout exposes running and strength controls, one pager of ea
   assert.match(workoutLayout, /\+15초/);
   assert.match(workoutLayout, /건너뛰기/);
 
+  // Ambient (AOD) overlay shared by the run and strength controllers (plan's W1 앰비언트 슬라이스).
+  for (const id of [
+    'wearAmbientScreen',
+    'ambientClock',
+    'ambientPrimary',
+    'ambientSecondary',
+    'ambientTertiary',
+    'ambientModeLabel',
+  ]) {
+    assert.match(workoutLayout, new RegExp(`@\\+id/${id}`), `${id} must exist on the ambient overlay`);
+  }
+
   assert.equal(
     [...workoutLayout.matchAll(/@(?:\+id|id)\/runMetricPager\b/g)].length,
     1,

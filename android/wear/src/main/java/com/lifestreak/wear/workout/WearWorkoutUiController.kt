@@ -35,6 +35,11 @@ class WearWorkoutUiController(
     private var ignoreExerciseUpdatesUntilStart = false
     private var hostInteractive = true
 
+    // Ambient (AOD) state (plan's W1 앰비언트 슬라이스) — see onEnterAmbient/onUpdateAmbient/onExitAmbient.
+    private var ambientActive = false
+    private var burnInProtectionRequired = false
+    private var ambientBurnInStep = 0
+
     /**
      * Cross-controller mutual-exclusion hooks (see the plan's "러닝 기능과의 공존 설계"). MainActivity
      * wires both to the strength controller after constructing it: [isStrengthActive] refuses a run
@@ -120,6 +125,84 @@ class WearWorkoutUiController(
         clearRunTick(v)
     }
 
+    /**
+     * Ambient entry (plan's W1): stops the 1s run tick (the foreground service keeps tracking
+     * alive on its own), hides the interactive run screens, and populates + shows the shared
+     * [R.id.wearAmbientScreen] overlay. Skips populating that overlay's content whenever the
+     * strength controller is occupying the host (see [isStrengthOccupyingScreen]) — mirrors the
+     * same mutual-exclusion contract [render] already uses for `runReadyScreen`, so only one
+     * controller ever writes to the shared ambient text views at a time.
+     */
+    fun onEnterAmbient(v: View, burnInProtectionRequired: Boolean, lowBitAmbient: Boolean) {
+        ambientActive = true
+        this.burnInProtectionRequired = burnInProtectionRequired
+        ambientBurnInStep = 0
+        clearRunTick(v)
+        v.findViewById<View>(R.id.runReadyScreen)?.visibility = View.GONE
+        v.findViewById<View>(R.id.runActiveScreen)?.visibility = View.GONE
+        v.findViewById<View>(R.id.runPausedScreen)?.visibility = View.GONE
+        v.findViewById<View>(R.id.runSummaryScreen)?.visibility = View.GONE
+        if (isStrengthOccupyingScreen()) return
+        renderAmbient(v)
+        v.findViewById<View>(R.id.wearAmbientScreen)?.visibility = View.VISIBLE
+    }
+
+    /** Periodic ambient refresh (roughly once a minute, driven by the system): refreshes the
+     * ambient text and, when burn-in protection is required, nudges the whole overlay by a small
+     * cycling ±8px offset so the same pixels aren't lit for hours on end. */
+    fun onUpdateAmbient(v: View) {
+        if (!ambientActive || isStrengthOccupyingScreen()) return
+        renderAmbient(v)
+        if (burnInProtectionRequired) applyAmbientBurnInOffset(v)
+    }
+
+    /** Ambient exit: clears ambient flags, hides the overlay, restores the normal interactive
+     * render, and re-schedules the 1s run tick if a run is actually active. */
+    fun onExitAmbient(v: View) {
+        ambientActive = false
+        burnInProtectionRequired = false
+        ambientBurnInStep = 0
+        v.findViewById<View>(R.id.wearAmbientScreen)?.apply {
+            visibility = View.GONE
+            translationX = 0f
+            translationY = 0f
+        }
+        render(v)
+        if (runState.screen == WearRunUiScreen.ACTIVE) scheduleRunTick(v)
+    }
+
+    private fun renderAmbient(v: View) {
+        val snapshot = runState.snapshot()
+        v.findViewById<TextView>(R.id.ambientClock)?.text = currentClockText()
+        val showMetrics = snapshot.screen == WearRunUiScreen.ACTIVE || snapshot.screen == WearRunUiScreen.PAUSED
+        v.findViewById<TextView>(R.id.ambientModeLabel)?.text = when (snapshot.screen) {
+            WearRunUiScreen.ACTIVE -> "러닝"
+            WearRunUiScreen.PAUSED -> "일시정지"
+            else -> ""
+        }
+        v.findViewById<TextView>(R.id.ambientPrimary)?.text = if (showMetrics) snapshot.durationText else ""
+        v.findViewById<TextView>(R.id.ambientSecondary)?.text =
+            if (showMetrics) "${snapshot.distanceText}km · ${snapshot.paceText}" else ""
+        v.findViewById<TextView>(R.id.ambientTertiary)?.text = if (showMetrics) snapshot.heartRateText else ""
+    }
+
+    private fun applyAmbientBurnInOffset(v: View) {
+        ambientBurnInStep = (ambientBurnInStep + 1) % 4
+        val offsetPx = 8f
+        val (dx, dy) = when (ambientBurnInStep) {
+            0 -> 0f to 0f
+            1 -> offsetPx to 0f
+            2 -> offsetPx to offsetPx
+            else -> 0f to offsetPx
+        }
+        v.findViewById<View>(R.id.wearAmbientScreen)?.translationX = dx
+        v.findViewById<View>(R.id.wearAmbientScreen)?.translationY = dy
+    }
+
+    private fun currentClockText(): String {
+        return DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault()).format(Instant.now())
+    }
+
     private fun bindExerciseStore(v: View) {
         sessionStoreUnsubscribe?.invoke()
         sessionStoreUnsubscribe = WearExerciseSessionStore.addListener { snapshot ->
@@ -127,6 +210,14 @@ class WearWorkoutUiController(
                 return@addListener
             }
             if (!hostInteractive) return@addListener
+            if (ambientActive) {
+                // Keep state fresh while ambient (so the next onUpdateAmbient/onExitAmbient reads
+                // live numbers) without touching any views — the periodic system-driven
+                // onUpdateAmbient call is what actually repaints wearAmbientScreen.
+                runState.restoreFromSession(snapshot)
+                updateRunLiveMetrics(snapshot)
+                return@addListener
+            }
             if (finishRequested && snapshot.status !in setOf(
                     WearExerciseSessionStatus.ENDED,
                     WearExerciseSessionStatus.ERROR,
@@ -267,6 +358,7 @@ class WearWorkoutUiController(
     }
 
     private fun render(v: View) {
+        if (ambientActive) return
         val snapshot = runState.snapshot()
         // Keep the display awake only while an active run is visible. The
         // foreground exercise service keeps tracking alive when the watch
@@ -443,11 +535,11 @@ class WearWorkoutUiController(
     }
 
     private fun scheduleRunTick(v: View) {
-        if (!hostInteractive || runState.screen != WearRunUiScreen.ACTIVE || !v.isAttachedToWindow) return
+        if (!hostInteractive || runState.screen != WearRunUiScreen.ACTIVE || !v.isAttachedToWindow || ambientActive) return
         clearRunTick(v)
         val tick = object : Runnable {
             override fun run() {
-                if (!hostInteractive || runState.screen != WearRunUiScreen.ACTIVE || !v.isAttachedToWindow) return
+                if (!hostInteractive || runState.screen != WearRunUiScreen.ACTIVE || !v.isAttachedToWindow || ambientActive) return
                 render(v)
                 handler.postDelayed(this, 1_000L)
             }

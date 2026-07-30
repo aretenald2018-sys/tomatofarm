@@ -70,4 +70,12 @@
     <dimen name="strength_text_summary_volume">18sp</dimen>
     <dimen name="strength_text_summary_hr">14sp</dimen>
     <dimen name="strength_text_summary_sync">13sp</dimen>
+
+    <!-- Ambient (AOD) overlay shared by the run and strength controllers (plan's W1 ambient
+         slice): monochrome text only, no drawables — low-bit-ambient safe. -->
+    <dimen name="ambient_text_clock">14sp</dimen>
+    <dimen name="ambient_text_label">11sp</dimen>
+    <dimen name="ambient_text_primary">34sp</dimen>
+    <dimen name="ambient_text_secondary">14sp</dimen>
+    <dimen name="ambient_text_tertiary">12sp</dimen>
 </resources>

@@ -36,6 +36,16 @@ data class WearExerciseSessionSnapshot(
     val message: String? = null,
 )
 
+/**
+ * Ambient (AOD) flag (plan's W1/W2 slices): set true/false by MainActivity's
+ * AmbientLifecycleObserver callback, and read by [WearExerciseService] to relax its live-snapshot
+ * and active-duration-checkpoint cadences while the watch is in low-power ambient mode.
+ */
+object WearAmbientState {
+    @Volatile
+    var isAmbient: Boolean = false
+}
+
 object WearExerciseSessionStore {
     private val lock = Any()
     private val mainHandler = Handler(Looper.getMainLooper())

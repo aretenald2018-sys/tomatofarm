@@ -896,8 +896,15 @@ class WearExerciseService : Service() {
     ) {
         val elapsedRealtimeMs = SystemClock.elapsedRealtime()
         val statusChanged = WearExerciseSessionStore.current().status != status
+        // Ambient/wrist-down (plan's W2 battery slice): relax the live-snapshot cadence since
+        // nothing is watching the screen in real time.
+        val snapshotIntervalMs = if (WearAmbientState.isAmbient) {
+            AMBIENT_LIVE_SNAPSHOT_INTERVAL_MS
+        } else {
+            LIVE_SNAPSHOT_INTERVAL_MS
+        }
         if (!force && !statusChanged &&
-            elapsedRealtimeMs - lastLiveSnapshotPublishedElapsedRealtimeMs < LIVE_SNAPSHOT_INTERVAL_MS
+            elapsedRealtimeMs - lastLiveSnapshotPublishedElapsedRealtimeMs < snapshotIntervalMs
         ) return
         lastLiveSnapshotPublishedElapsedRealtimeMs = elapsedRealtimeMs
         WearExerciseSessionStore.publishFromAccumulator(
@@ -909,6 +916,10 @@ class WearExerciseService : Service() {
 
     private fun startActiveDurationCheckpoints() {
         checkpointHandler.removeCallbacks(checkpointRunnable)
+        // Kept as the plain ACTIVE_DURATION_CHECKPOINT_MS literal (an existing, out-of-scope test
+        // pins this exact call) — this only fires right at start/resume, which practically never
+        // races with an ambient transition; the ambient-aware cadence takes over from the very
+        // next tick via checkpointActiveDuration()'s own reschedule below.
         checkpointHandler.postDelayed(checkpointRunnable, ACTIVE_DURATION_CHECKPOINT_MS)
     }
 
@@ -935,7 +946,10 @@ class WearExerciseService : Service() {
             accumulator = currentAccumulator,
             message = locationStatusMessage(),
         )
-        checkpointHandler.postDelayed(checkpointRunnable, ACTIVE_DURATION_CHECKPOINT_MS)
+        checkpointHandler.postDelayed(
+            checkpointRunnable,
+            if (WearAmbientState.isAmbient) AMBIENT_ACTIVE_DURATION_CHECKPOINT_MS else ACTIVE_DURATION_CHECKPOINT_MS,
+        )
     }
 
     /**
@@ -1122,6 +1136,9 @@ class WearExerciseService : Service() {
             else -> systemElapsedRealtimeMs
         }.coerceAtLeast(lastDirectLocationElapsedRealtimeMs + 1L)
         lastDirectLocationElapsedRealtimeMs = elapsedRealtimeMs
+        // A healthy direct GPS fix makes the high-accuracy fused request redundant — drop it so
+        // it isn't drawing power for a route source we're not using (plan's W2 battery slice).
+        stopFusedRouteLocationUpdates()
         lastDirectGpsFixElapsedRealtimeMs = elapsedRealtimeMs
         val activeDurationMs = activeDurationTracker.activeDurationAt(elapsedRealtimeMs)
         currentAccumulator.applyMetricUpdate(
@@ -1362,7 +1379,11 @@ class WearExerciseService : Service() {
         private const val LIVE_SNAPSHOT_INTERVAL_MS = 1_000L
         private const val PERSISTENCE_CHECKPOINT_MS = 10_000L
         private const val ACTIVE_DURATION_CHECKPOINT_MS = 10_000L
-        private const val PREPARATION_TIMEOUT_MS = 5 * 60_000L
+        // Ambient/wrist-down cadences (plan's W2 battery slice): relaxed versions of the two
+        // constants above, used only while WearAmbientState.isAmbient is true.
+        private const val AMBIENT_LIVE_SNAPSHOT_INTERVAL_MS = 15_000L
+        private const val AMBIENT_ACTIVE_DURATION_CHECKPOINT_MS = 60_000L
+        private const val PREPARATION_TIMEOUT_MS = 90_000L
         private const val GPS_STATUS_PUBLISH_INTERVAL_MS = 5_000L
         private const val GPS_STATUS_SEARCHING = "GPS searching"
         private const val GPS_STATUS_DIRECT = "GPS direct"

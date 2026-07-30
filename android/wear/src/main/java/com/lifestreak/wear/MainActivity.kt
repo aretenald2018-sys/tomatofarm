@@ -10,6 +10,11 @@ import android.view.View
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+// androidx.wear:wear:1.3.0 (already a build.gradle dependency) is expected to carry
+// AmbientLifecycleObserver; if a real build can't resolve it, the fallback is adding the
+// standalone `androidx.wear:wear-ambient` artifact.
+import androidx.wear.ambient.AmbientLifecycleObserver
+import com.lifestreak.wear.workout.WearAmbientState
 import com.lifestreak.wear.workout.WearExerciseService
 import com.lifestreak.wear.workout.WearExerciseSessionPersistence
 import com.lifestreak.wear.workout.WearExerciseSessionStatus
@@ -24,9 +29,49 @@ class MainActivity : AppCompatActivity() {
     private var restoredRunStatus: WearExerciseSessionStatus? = null
     private var runHost: View? = null
 
+    /**
+     * Fans out ambient enter/update/exit to both workout controllers (W1 of the plan's ambient
+     * slice) and keeps the visibility-following GPS warm-up (W2) honest across ambient
+     * transitions: a wrist-down (ambient) is treated like backgrounding for warm-up purposes.
+     */
+    private val ambientCallback = object : AmbientLifecycleObserver.AmbientLifecycleCallback {
+        override fun onEnterAmbient(ambientDetails: AmbientLifecycleObserver.AmbientDetails) {
+            WearAmbientState.isAmbient = true
+            val host = runHost ?: return
+            wearWorkoutUi.onEnterAmbient(
+                host,
+                ambientDetails.burnInProtectionRequired,
+                ambientDetails.deviceHasLowBitAmbient,
+            )
+            wearStrengthUi.onEnterAmbient(
+                host,
+                ambientDetails.burnInProtectionRequired,
+                ambientDetails.deviceHasLowBitAmbient,
+            )
+            if (WearExerciseSessionStore.current().status == WearExerciseSessionStatus.IDLE) {
+                WearExerciseService.cancelPreparation(this@MainActivity)
+            }
+        }
+
+        override fun onUpdateAmbient() {
+            val host = runHost ?: return
+            wearWorkoutUi.onUpdateAmbient(host)
+            wearStrengthUi.onUpdateAmbient(host)
+        }
+
+        override fun onExitAmbient() {
+            WearAmbientState.isAmbient = false
+            val host = runHost ?: return
+            wearWorkoutUi.onExitAmbient(host)
+            wearStrengthUi.onExitAmbient(host)
+            maybeWarmUpRun()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        lifecycle.addObserver(AmbientLifecycleObserver(this, ambientCallback))
         val restoredRun = WearExerciseSessionPersistence.load(this)
         if (restoredRun != null) {
             WearExerciseSessionStore.restore(restoredRun)
@@ -50,13 +95,11 @@ class MainActivity : AppCompatActivity() {
 
         if (requestWearExercisePermissionsIfNeeded()) {
             if (!restoreRunServiceIfNeeded()) {
-                // Restoration priority ①러닝 -> ②헬스 -> ③모드 선택 (plan §3).
-                val strengthRestored = wearStrengthUi.restoreIfNeeded(host)
-                if (!strengthRestored &&
-                    WearExerciseSessionStore.current().status == WearExerciseSessionStatus.IDLE
-                ) {
-                    WearExerciseService.prepareRun(this)
-                }
+                // Restoration priority ①러닝 -> ②헬스 -> ③모드 선택 (plan §3). GPS warm-up itself is
+                // no longer fired here — onResume (below) now drives it visibility-following, so it
+                // doesn't linger for PREPARATION_TIMEOUT_MS after a launch the user walked away
+                // from, and onResume runs immediately after onCreate anyway.
+                wearStrengthUi.restoreIfNeeded(host)
             }
         }
     }
@@ -65,12 +108,39 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         runHost?.let(wearWorkoutUi::onHostResumed)
         runHost?.let(wearStrengthUi::onHostResumed)
+        maybeWarmUpRun()
     }
 
     override fun onPause() {
         runHost?.let(wearWorkoutUi::onHostPaused)
         runHost?.let(wearStrengthUi::onHostPaused)
+        if (WearExerciseSessionStore.current().status == WearExerciseSessionStatus.IDLE && !isChangingConfigurations) {
+            WearExerciseService.cancelPreparation(this)
+        }
         super.onPause()
+    }
+
+    /**
+     * Visibility-following GPS warm-up (plan's W2 battery slice): keeps Health Services' warm-up
+     * alive only while the ready screen is actually resumed and on-screen, instead of the old
+     * fire-once-at-launch approach that could keep GPS hot for the old 5-minute
+     * `PREPARATION_TIMEOUT_MS` after the user had already walked away. Shared by onResume and the
+     * ambient-exit hook so re-entering from either backgrounding or ambient behaves the same way.
+     */
+    private fun maybeWarmUpRun() {
+        if (hasFineLocationPermission() &&
+            WearExerciseSessionStore.current().status == WearExerciseSessionStatus.IDLE &&
+            !wearStrengthUi.isStrengthOccupyingScreen()
+        ) {
+            WearExerciseService.prepareRun(this)
+        }
+    }
+
+    private fun hasFineLocationPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.ACCESS_FINE_LOCATION,
+        ) == PackageManager.PERMISSION_GRANTED
     }
 
     override fun onBackPressed() {
@@ -128,13 +198,10 @@ class MainActivity : AppCompatActivity() {
             grantResults.all { result -> result == PackageManager.PERMISSION_GRANTED }
         ) {
             if (!restoreRunServiceIfNeeded()) {
+                // GPS warm-up itself isn't fired here either — the onResume that follows this
+                // permission-grant callback picks it up via maybeWarmUpRun().
                 val host = runHost
-                val strengthRestored = host != null && wearStrengthUi.restoreIfNeeded(host)
-                if (!strengthRestored &&
-                    WearExerciseSessionStore.current().status == WearExerciseSessionStatus.IDLE
-                ) {
-                    WearExerciseService.prepareRun(this)
-                }
+                if (host != null) wearStrengthUi.restoreIfNeeded(host)
             }
         }
     }
