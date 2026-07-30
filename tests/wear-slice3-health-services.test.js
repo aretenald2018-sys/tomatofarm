@@ -237,3 +237,57 @@ test('wear slice D requests Health Services elevation gain and buzzes at each co
   assert.match(uiMetrics, /Vibrator\b/);
   assert.match(uiMetrics, /VibrationEffect/);
 });
+
+test('wear slice E buzzes on heart-zone departure and auto-pauses via Health Services', () => {
+  const service = readProjectFile('android/wear/src/main/java/com/lifestreak/wear/workout/WearExerciseService.kt');
+  const uiMetrics = readProjectFile('android/wear/src/main/java/com/lifestreak/wear/workout/WearRunUiMetrics.kt');
+  const endPolicy = readProjectFile('android/wear/src/main/java/com/lifestreak/wear/workout/WearExerciseEndPolicy.kt');
+  const controller = readProjectFile('android/wear/src/main/java/com/lifestreak/wear/workout/WearWorkoutUiController.kt');
+  const layout = readProjectFile('android/wear/src/main/res/layout/page_workout.xml');
+
+  // W5b heart-zone departure haptic: pure tracker in WearRunUiMetrics.kt, fed from both HR paths
+  // and wired to distinct UP/DOWN buzzes.
+  assert.match(uiMetrics, /class WearHeartZoneAlertTracker/);
+  assert.match(uiMetrics, /enum class WearHeartZoneAlertDirection/);
+  assert.match(uiMetrics, /fun seedHomeZone\(/);
+  assert.match(uiMetrics, /fun vibrateZoneUp\(/);
+  assert.match(uiMetrics, /fun vibrateZoneDown\(/);
+  assert.match(service, /private val heartZoneAlertTracker = WearHeartZoneAlertTracker\(\)/);
+  assert.match(service, /heartZoneAlertTracker\.reset\(\)/);
+  assert.match(service, /heartZoneAlertTracker\.seedHomeZone\(/);
+  assert.match(service, /fun checkHeartZoneAlert\(/);
+  assert.match(service, /WearRunHaptics\.vibrateZoneUp\(this\)/);
+  assert.match(service, /WearRunHaptics\.vibrateZoneDown\(this\)/);
+  // Fed from the Health Services HR path (publishExerciseUpdate) ...
+  assert.match(service, /heartRateBpm\?\.let \{ bpm -> checkHeartZoneAlert\(bpm, elapsedRealtimeMs\) \}/);
+  // ... and from the direct SensorManager path, so it also works in compat mode.
+  const publishDirectHeartRateBody = service.slice(
+    service.indexOf('private fun publishDirectHeartRate('),
+    service.indexOf('private fun requestedDataTypes('),
+  );
+  assert.match(publishDirectHeartRateBody, /checkHeartZoneAlert\(bpm, elapsedRealtimeMs\)/);
+
+  // W5d auto-pause slice: capability-driven config, first-observed AUTO_PAUSED transition, and the
+  // two published messages.
+  assert.doesNotMatch(service, /isAutoPauseAndResumeEnabled = false/);
+  assert.match(service, /isAutoPauseAndResumeEnabled = supportsAutoPause/);
+  assert.match(service, /supportsAutoPauseAndResume/);
+  assert.match(service, /private var manualPauseActive = false/);
+  assert.match(service, /private var autoPauseActive = false/);
+  assert.match(service, /WearExerciseAutoPausePolicy\.transition\(/);
+  assert.match(service, /WearAutoPauseTransition\.ENTERED_AUTO_PAUSE/);
+  assert.match(service, /WearAutoPauseTransition\.EXITED_AUTO_PAUSE/);
+  assert.match(service, /자동 일시정지 · 움직이면 다시 시작돼요/);
+  assert.match(service, /자동 재시작/);
+  assert.match(endPolicy, /object WearExerciseAutoPausePolicy/);
+  assert.match(endPolicy, /enum class WearAutoPauseTransition/);
+  // WearStrengthHrService's auto-pause stays disabled (untouched by this slice).
+  const strengthService = readProjectFile('android/wear/src/main/java/com/lifestreak/wear/workout/WearStrengthHrService.kt');
+  assert.match(strengthService, /isAutoPauseAndResumeEnabled = false/);
+
+  // UI: runPausedReason surfaces the auto-pause message (blank for a manual pause), reusing the
+  // existing paused screen/resume button rather than adding new navigation.
+  assert.match(layout, /@\+id\/runPausedReason/);
+  assert.match(controller, /runPausedReason/);
+  assert.match(controller, /R\.id\.runPausedReason/);
+});

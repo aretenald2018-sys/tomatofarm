@@ -62,3 +62,38 @@ internal object WearExerciseEndPolicy {
         }
     }
 }
+
+/**
+ * W5d auto-pause slice: the transition an exercise-update tick represents, relative to the
+ * service's own auto-pause bookkeeping ([WearExerciseService]'s `autoPauseActive` flag).
+ */
+internal enum class WearAutoPauseTransition {
+    /** No auto-pause-related change to act on this tick. */
+    NONE,
+    /** Health Services reports auto-paused for the first time since the last auto-resume. */
+    ENTERED_AUTO_PAUSE,
+    /** Health Services reports active again after having been auto-paused. */
+    EXITED_AUTO_PAUSE,
+}
+
+/**
+ * Pure decision for "given the previous auto-pause bookkeeping, what Health Services just
+ * reported, and whether *we* requested a (manual) pause, what transition is this" — factored out
+ * of [WearExerciseService.publishExerciseUpdate] so it's unit-testable without Android. Manual
+ * pause always takes precedence: while the user has explicitly paused, Health Services' own
+ * auto-pause state is ignored entirely so it can never fight the manual pause/resume buttons.
+ */
+internal object WearExerciseAutoPausePolicy {
+    fun transition(
+        wasAutoPaused: Boolean,
+        isAutoPausedNow: Boolean,
+        manuallyPaused: Boolean,
+    ): WearAutoPauseTransition {
+        if (manuallyPaused) return WearAutoPauseTransition.NONE
+        return when {
+            !wasAutoPaused && isAutoPausedNow -> WearAutoPauseTransition.ENTERED_AUTO_PAUSE
+            wasAutoPaused && !isAutoPausedNow -> WearAutoPauseTransition.EXITED_AUTO_PAUSE
+            else -> WearAutoPauseTransition.NONE
+        }
+    }
+}

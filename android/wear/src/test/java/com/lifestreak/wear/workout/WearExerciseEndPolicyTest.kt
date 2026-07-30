@@ -119,4 +119,85 @@ class WearExerciseEndPolicyTest {
             ),
         )
     }
+
+    // W5d auto-pause slice: WearExerciseAutoPausePolicy transitions.
+
+    @Test
+    fun entersAutoPauseTheFirstTimeHealthServicesReportsIt() {
+        assertEquals(
+            WearAutoPauseTransition.ENTERED_AUTO_PAUSE,
+            WearExerciseAutoPausePolicy.transition(
+                wasAutoPaused = false,
+                isAutoPausedNow = true,
+                manuallyPaused = false,
+            ),
+        )
+    }
+
+    @Test
+    fun doesNotReenterAutoPauseOnRepeatedUpdatesWhileAlreadyAutoPaused() {
+        assertEquals(
+            WearAutoPauseTransition.NONE,
+            WearExerciseAutoPausePolicy.transition(
+                wasAutoPaused = true,
+                isAutoPausedNow = true,
+                manuallyPaused = false,
+            ),
+        )
+    }
+
+    @Test
+    fun exitsAutoPauseWhenHealthServicesReportsActiveAgain() {
+        assertEquals(
+            WearAutoPauseTransition.EXITED_AUTO_PAUSE,
+            WearExerciseAutoPausePolicy.transition(
+                wasAutoPaused = true,
+                isAutoPausedNow = false,
+                manuallyPaused = false,
+            ),
+        )
+    }
+
+    @Test
+    fun staysNoneWhenNeitherAutoPausedNorJustExited() {
+        assertEquals(
+            WearAutoPauseTransition.NONE,
+            WearExerciseAutoPausePolicy.transition(
+                wasAutoPaused = false,
+                isAutoPausedNow = false,
+                manuallyPaused = false,
+            ),
+        )
+    }
+
+    @Test
+    fun manualPauseTakesPrecedenceOverAnyHealthServicesAutoPauseReporting() {
+        // A manual pause suppresses the transition regardless of what Health Services reports —
+        // entering, already-in, or exiting auto-pause all resolve to NONE so the manual pause path
+        // (WearExerciseService.handlePauseRun) stays the sole authority while it's in effect.
+        assertEquals(
+            WearAutoPauseTransition.NONE,
+            WearExerciseAutoPausePolicy.transition(
+                wasAutoPaused = false,
+                isAutoPausedNow = true,
+                manuallyPaused = true,
+            ),
+        )
+        assertEquals(
+            WearAutoPauseTransition.NONE,
+            WearExerciseAutoPausePolicy.transition(
+                wasAutoPaused = true,
+                isAutoPausedNow = true,
+                manuallyPaused = true,
+            ),
+        )
+        assertEquals(
+            WearAutoPauseTransition.NONE,
+            WearExerciseAutoPausePolicy.transition(
+                wasAutoPaused = true,
+                isAutoPausedNow = false,
+                manuallyPaused = true,
+            ),
+        )
+    }
 }

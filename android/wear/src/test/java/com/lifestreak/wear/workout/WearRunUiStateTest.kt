@@ -461,6 +461,102 @@ class WearRunUiStateTest {
         assertTrue(WearExerciseSessionPersistence.shouldPersist(snapshot))
     }
 
+    // --- W5b heart-zone departure alert tracker ---------------------------------------------
+
+    @Test
+    fun establishesHomeZoneAfterStableSixtySecondsThenAlertsUpAfterTwentySecondDeparture() {
+        val tracker = WearHeartZoneAlertTracker()
+
+        assertNull(tracker.onHeartRate(125, 0L))
+        assertNull(tracker.onHeartRate(125, 59_000L))
+        assertNull(tracker.onHeartRate(125, 60_000L)) // zone 2 stable 60s -> home established
+
+        assertNull(tracker.onHeartRate(165, 61_000L)) // departs to zone 4, timer starts
+        assertNull(tracker.onHeartRate(165, 75_000L)) // 14s < 20s persistence threshold
+        assertEquals(
+            WearHeartZoneAlertDirection.UP,
+            tracker.onHeartRate(165, 82_000L), // 21s >= 20s -> fires
+        )
+    }
+
+    @Test
+    fun alertsDownWhenTheNewZoneIsBelowHome() {
+        val tracker = WearHeartZoneAlertTracker()
+        tracker.seedHomeZone(bpm = 165, nowMs = 0L) // home zone 4
+
+        assertNull(tracker.onHeartRate(125, 10_000L))
+        assertEquals(
+            WearHeartZoneAlertDirection.DOWN,
+            tracker.onHeartRate(125, 31_000L), // 21s persisted
+        )
+    }
+
+    @Test
+    fun doesNotAlertOnBriefSpikesThatReturnHomeBeforePersistenceThreshold() {
+        val tracker = WearHeartZoneAlertTracker()
+        tracker.seedHomeZone(bpm = 125, nowMs = 0L) // home zone 2
+
+        assertNull(tracker.onHeartRate(165, 10_000L)) // spike starts
+        assertNull(tracker.onHeartRate(165, 20_000L)) // 10s spike, short of 20s
+        assertNull(tracker.onHeartRate(125, 25_000L)) // back home before the alert threshold
+
+        assertNull(tracker.onHeartRate(165, 100_000L)) // a second, separate brief spike
+        assertNull(tracker.onHeartRate(165, 115_000L)) // 15s, still short of 20s
+    }
+
+    @Test
+    fun enforcesCooldownBetweenAlertsThenAllowsAnotherOnceItElapses() {
+        val tracker = WearHeartZoneAlertTracker()
+        tracker.seedHomeZone(bpm = 125, nowMs = 0L) // home zone 2
+
+        assertNull(tracker.onHeartRate(165, 10_000L))
+        assertEquals(WearHeartZoneAlertDirection.UP, tracker.onHeartRate(165, 31_000L)) // first alert
+
+        assertNull(tracker.onHeartRate(125, 35_000L)) // back home, departure episode resets
+        assertNull(tracker.onHeartRate(165, 40_000L)) // departs again
+        // 21s persisted (61_000 - 40_000) but only 30s since the last alert -> cooldown suppresses.
+        assertNull(tracker.onHeartRate(165, 61_000L))
+        // 61s since the last alert (92_000 - 31_000) -> cooldown has elapsed, fires again.
+        assertEquals(WearHeartZoneAlertDirection.UP, tracker.onHeartRate(165, 92_000L))
+    }
+
+    @Test
+    fun sustainedNewZoneQuietlyBecomesTheNewHomeWithoutARepeatAlert() {
+        val tracker = WearHeartZoneAlertTracker()
+        tracker.seedHomeZone(bpm = 125, nowMs = 0L) // home zone 2
+
+        assertNull(tracker.onHeartRate(165, 10_000L))
+        assertEquals(WearHeartZoneAlertDirection.UP, tracker.onHeartRate(165, 31_000L))
+        // Still in zone 4 60s after the departure started (10_000L) -> quietly re-baselines home
+        // to zone 4 instead of firing again.
+        assertNull(tracker.onHeartRate(165, 70_000L))
+        // Now stable in the (new) home zone -> no alert.
+        assertNull(tracker.onHeartRate(165, 71_000L))
+    }
+
+    @Test
+    fun seedingEstablishesHomeZoneImmediatelyWithoutItselfFiringAnAlert() {
+        val tracker = WearHeartZoneAlertTracker()
+
+        tracker.seedHomeZone(bpm = 145, nowMs = 500_000L) // restore mid-run already in zone 3
+
+        assertNull(tracker.onHeartRate(165, 500_001L)) // departure just starting
+        assertNull(tracker.onHeartRate(165, 510_000L)) // ~10s, short of the 20s threshold
+        assertEquals(
+            WearHeartZoneAlertDirection.UP,
+            tracker.onHeartRate(165, 521_000L), // ~21s persisted -> fires as normal, no delay
+        )
+    }
+
+    @Test
+    fun doesNotAlertWhileNoHomeZoneHasBeenEstablishedYet() {
+        val tracker = WearHeartZoneAlertTracker()
+
+        assertNull(tracker.onHeartRate(125, 0L))
+        assertNull(tracker.onHeartRate(165, 5_000L)) // zone changes before 60s stability -> no home yet, no alert
+        assertNull(tracker.onHeartRate(165, 10_000L))
+    }
+
     @Test
     fun doesNotPersistIdleOrInvalidRunningSnapshots() {
         assertFalse(

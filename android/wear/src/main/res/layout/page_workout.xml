@@ -241,6 +241,18 @@
             android:textSize="32sp"
             android:textStyle="bold" />
 
+        <!-- W5d auto-pause slice: why the run paused (blank for a manual pause). -->
+        <TextView
+            android:id="@+id/runPausedReason"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:fontFamily="sans-serif"
+            android:gravity="center"
+            android:text=""
+            android:textColor="#81877D"
+            android:textSize="10sp" />
+
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"

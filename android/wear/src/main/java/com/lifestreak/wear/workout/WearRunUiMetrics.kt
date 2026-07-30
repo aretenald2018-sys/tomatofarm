@@ -215,7 +215,7 @@ private fun heartZoneDurationMs(samples: List<HeartRateSample>, index: Int): Lon
     return measuredDurationMs.coerceAtMost(HEART_ZONE_MAX_SAMPLE_MS)
 }
 
-private fun heartZoneFor(bpm: Int): String =
+internal fun heartZoneFor(bpm: Int): String =
     when {
         bpm >= 180 -> "5"
         bpm >= 160 -> "4"
@@ -245,24 +245,181 @@ private const val CURRENT_PACE_WINDOW_MS = 40_000L
 // movement (a confirmed running fix advances distance by well more than this over 40s).
 private const val MIN_CURRENT_PACE_DISTANCE_DELTA_KM = 0.001
 
+/** W5b heart-zone departure haptic: which way the runner just moved relative to their home zone. */
+internal enum class WearHeartZoneAlertDirection {
+    UP,
+    DOWN,
+}
+
 /**
- * W5c split-vibration slice: a single buzz each time the run crosses a whole kilometre (service-
- * side — see WearExerciseService — so it fires with the screen off/ambient, not just when the UI
- * happens to be visible). Mirrors WearStrengthUiController's rest-timer vibrate() helper: prefers
- * [VibratorManager] on API 31+ with a legacy [Vibrator] fallback, and is wrapped defensively
- * end-to-end so a missing vibrator service or a thrown exception just silently skips the buzz.
- * No new manifest permission is needed — see AndroidManifest.xml/the plan notes: the existing
- * rest-timer vibration already relies on the platform granting VIBRATE without a manifest entry.
+ * W5b heart-zone departure slice: pure, side-effect-free (no Android imports) so it is unit-
+ * testable without a device — mirrors [buildPaceTrend]/[currentPaceSecPerKm] above. Consumes one
+ * (bpm, nowMs) sample at a time and reuses [heartZoneFor] for zone classification (the same "1".."5"
+ * labels [buildHeartZoneRows] uses).
+ *
+ * Behavior:
+ * - A "home zone" is only established once a single zone has held for [ZONE_STABILITY_MS] (~60s) —
+ *   this also re-applies whenever the runner settles into a *new* zone for that long, so a
+ *   sustained effort-level change quietly becomes the new normal instead of alerting forever.
+ * - Once a home zone exists, an alert fires only after the runner has been in a *different* zone
+ *   continuously for [ZONE_DEPARTURE_ALERT_MS] (~20s) — a brief spike that returns to the home
+ *   zone before that never alerts.
+ * - A [ALERT_COOLDOWN_MS] (~60s) cooldown applies between alerts so a runner oscillating at a zone
+ *   boundary doesn't get buzzed continuously.
+ * - [WearHeartZoneAlertDirection.UP] vs [DOWN] is which way the new zone sits relative to home.
+ *
+ * Call [seedHomeZone] once after restoring a run (service relaunch mid-run) so the already-
+ * established zone is trusted immediately instead of waiting out another [ZONE_STABILITY_MS] —
+ * seeding itself never returns/fires an alert, so a relaunch can't cause an immediate buzz. Call
+ * [reset] at the start of a fresh run.
+ */
+internal class WearHeartZoneAlertTracker {
+    private var homeZone: String? = null
+
+    // Reused for two purposes depending on whether homeZone is established yet: (1) while
+    // bootstrapping the very first home zone, this tracks the current zone candidate and how long
+    // it's held; (2) once a home zone exists, this tracks the zone the runner has departed to.
+    private var trackedZone: String? = null
+    private var trackedZoneSinceMs: Long? = null
+    private var alertedForCurrentDeparture = false
+    private var lastAlertAtMs: Long? = null
+
+    fun onHeartRate(bpm: Int, nowMs: Long): WearHeartZoneAlertDirection? {
+        val zone = heartZoneFor(bpm)
+        val currentHome = homeZone
+
+        if (currentHome == null) {
+            trackCandidate(zone, nowMs)
+            val since = trackedZoneSinceMs ?: nowMs
+            if (nowMs - since >= ZONE_STABILITY_MS) {
+                establishHomeZone(zone)
+            }
+            return null
+        }
+
+        if (zone == currentHome) {
+            trackedZone = null
+            trackedZoneSinceMs = null
+            alertedForCurrentDeparture = false
+            return null
+        }
+
+        trackCandidate(zone, nowMs)
+        val departedSinceMs = trackedZoneSinceMs ?: return null
+        val departureDurationMs = nowMs - departedSinceMs
+
+        if (departureDurationMs >= ZONE_STABILITY_MS) {
+            // Sustained long enough that this is simply the new normal now — quietly re-baseline
+            // without another alert.
+            establishHomeZone(zone)
+            return null
+        }
+
+        if (alertedForCurrentDeparture || departureDurationMs < ZONE_DEPARTURE_ALERT_MS) return null
+
+        val lastAlert = lastAlertAtMs
+        if (lastAlert != null && nowMs - lastAlert < ALERT_COOLDOWN_MS) return null
+
+        alertedForCurrentDeparture = true
+        lastAlertAtMs = nowMs
+        return if (zoneRank(zone) > zoneRank(currentHome)) {
+            WearHeartZoneAlertDirection.UP
+        } else {
+            WearHeartZoneAlertDirection.DOWN
+        }
+    }
+
+    /** Restore-time seed: trusts the already-established zone immediately, never itself alerts. */
+    fun seedHomeZone(bpm: Int, nowMs: Long) {
+        establishHomeZone(heartZoneFor(bpm), nowMs)
+    }
+
+    fun reset() {
+        homeZone = null
+        trackedZone = null
+        trackedZoneSinceMs = null
+        alertedForCurrentDeparture = false
+        lastAlertAtMs = null
+    }
+
+    private fun trackCandidate(zone: String, nowMs: Long) {
+        if (trackedZone != zone) {
+            trackedZone = zone
+            trackedZoneSinceMs = nowMs
+        }
+    }
+
+    private fun establishHomeZone(zone: String, nowMs: Long? = null) {
+        homeZone = zone
+        trackedZone = null
+        trackedZoneSinceMs = nowMs
+        alertedForCurrentDeparture = false
+    }
+
+    private fun zoneRank(zone: String): Int = zone.toIntOrNull() ?: 0
+
+    private companion object {
+        const val ZONE_STABILITY_MS = 60_000L
+        const val ZONE_DEPARTURE_ALERT_MS = 20_000L
+        const val ALERT_COOLDOWN_MS = 60_000L
+    }
+}
+
+/**
+ * W5c split-vibration slice (extended by W5b's heart-zone departure alerts below): a single buzz
+ * each time the run crosses a whole kilometre (service-side — see WearExerciseService — so it
+ * fires with the screen off/ambient, not just when the UI happens to be visible). Mirrors
+ * WearStrengthUiController's rest-timer vibrate() helper: prefers [VibratorManager] on API 31+
+ * with a legacy [Vibrator] fallback, and is wrapped defensively end-to-end so a missing vibrator
+ * service or a thrown exception just silently skips the buzz. `android.permission.VIBRATE` is
+ * declared in the wear manifest (see AndroidManifest.xml) — without it every vibrate() call here
+ * throws a SecurityException that this same try/catch would otherwise swallow silently.
  */
 internal object WearRunHaptics {
     private const val TAG = "WearRunHaptics"
     private const val SPLIT_VIBRATION_DURATION_MS = 400L
 
+    // W5b heart-zone departure alerts: UP is two short pulses, DOWN is one longer pulse, so the
+    // two are distinguishable by feel alone (screen may be off/ambient).
+    private val ZONE_UP_PATTERN_MS = longArrayOf(0L, 120L, 100L, 120L)
+    private const val ZONE_DOWN_VIBRATION_DURATION_MS = 600L
+
     fun vibrateSplit(context: Context) {
         vibrate(context, SPLIT_VIBRATION_DURATION_MS)
     }
 
+    fun vibrateZoneUp(context: Context) {
+        vibratePattern(context, ZONE_UP_PATTERN_MS)
+    }
+
+    fun vibrateZoneDown(context: Context) {
+        vibrate(context, ZONE_DOWN_VIBRATION_DURATION_MS)
+    }
+
     private fun vibrate(context: Context, durationMs: Long) {
+        withVibrator(context) { vibrator ->
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator.vibrate(VibrationEffect.createOneShot(durationMs, VibrationEffect.DEFAULT_AMPLITUDE))
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(durationMs)
+            }
+        }
+    }
+
+    /** [patternMs] alternates off/on durations starting with an off gap, per [VibrationEffect.createWaveform]. */
+    private fun vibratePattern(context: Context, patternMs: LongArray) {
+        withVibrator(context) { vibrator ->
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator.vibrate(VibrationEffect.createWaveform(patternMs, -1))
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(patternMs, -1)
+            }
+        }
+    }
+
+    private fun withVibrator(context: Context, action: (Vibrator) -> Unit) {
         try {
             val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 (context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager)?.defaultVibrator
@@ -271,14 +428,9 @@ internal object WearRunHaptics {
                 context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
             }
             if (vibrator == null || !vibrator.hasVibrator()) return
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator.vibrate(VibrationEffect.createOneShot(durationMs, VibrationEffect.DEFAULT_AMPLITUDE))
-            } else {
-                @Suppress("DEPRECATION")
-                vibrator.vibrate(durationMs)
-            }
+            action(vibrator)
         } catch (e: Exception) {
-            Log.w(TAG, "Wear run split vibration failed", e)
+            Log.w(TAG, "Wear run vibration failed", e)
         }
     }
 }

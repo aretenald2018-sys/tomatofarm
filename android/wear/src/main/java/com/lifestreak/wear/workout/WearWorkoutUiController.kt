@@ -41,6 +41,11 @@ class WearWorkoutUiController(
     // it, so this doesn't need to live on WearRunUiState/WearRunUiSnapshot.
     private var latestElevationGainMeters: Double? = null
 
+    // W5d auto-pause slice: why the run is paused, shown under the paused elapsed time
+    // (runPausedReason) — blank for a manual pause, so this only ever holds the auto-pause
+    // message the service publishes (see WearExerciseService.AUTO_PAUSE_MESSAGE).
+    private var runPausedReason: String = ""
+
     // Ambient (AOD) state (plan's W1 앰비언트 슬라이스) — see onEnterAmbient/onUpdateAmbient/onExitAmbient.
     private var ambientActive = false
     private var burnInProtectionRequired = false
@@ -85,6 +90,7 @@ class WearWorkoutUiController(
             pendingTransferId = null
             runState.reset()
             latestElevationGainMeters = null
+            runPausedReason = ""
             WearExerciseSessionStore.reset()
             WearExerciseSessionPersistence.clear(v.context)
             WearExerciseService.prepareRun(v.context)
@@ -309,6 +315,7 @@ class WearWorkoutUiController(
         gpsStatus = "경로 자동 기록"
         gpsStatusColor = Color.parseColor("#7C8499")
         latestElevationGainMeters = null
+        runPausedReason = ""
         runState.start()
         WearExerciseService.startRun(v.context)
         render(v)
@@ -396,6 +403,7 @@ class WearWorkoutUiController(
         initializeMetricPager(v)?.submitSnapshot(snapshot, metricPagePosition)
 
         v.findViewById<TextView>(R.id.runPausedElapsed)?.text = snapshot.durationText
+        v.findViewById<TextView>(R.id.runPausedReason)?.text = runPausedReason
 
         v.findViewById<TextView>(R.id.runSummaryDuration)?.text = snapshot.durationText
         v.findViewById<TextView>(R.id.runSummaryDistance)?.text = snapshot.distanceSummaryText
@@ -560,6 +568,13 @@ class WearWorkoutUiController(
             routePoints = snapshot.routePoints,
         )
         latestElevationGainMeters = snapshot.elevationGainMeters
+        // W5d auto-pause slice: blank for a manual pause (or when not paused at all) — only the
+        // service's own auto-pause message surfaces here.
+        runPausedReason = if (snapshot.status == WearExerciseSessionStatus.PAUSED) {
+            snapshot.message?.takeIf { message -> message.contains("자동 일시정지") }.orEmpty()
+        } else {
+            ""
+        }
     }
 
     private fun scheduleRunTick(v: View) {

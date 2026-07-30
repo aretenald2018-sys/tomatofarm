@@ -76,6 +76,8 @@ test('wear workout layout exposes running and strength controls, one pager of ea
     'runMetricPager',
     'runPauseButton',
     'runPausedScreen',
+    // W5d auto-pause slice: why the run paused (blank for a manual pause).
+    'runPausedReason',
     'runResumeButton',
     'runFinalStopButton',
     'runSummaryScreen',

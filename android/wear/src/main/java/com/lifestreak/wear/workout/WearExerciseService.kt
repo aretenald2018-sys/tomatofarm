@@ -34,6 +34,7 @@ import androidx.health.services.client.data.ExerciseConfig
 import androidx.health.services.client.data.ExerciseLapSummary
 import androidx.health.services.client.data.ExerciseTrackedStatus
 import androidx.health.services.client.data.ExerciseType
+import androidx.health.services.client.data.ExerciseTypeCapabilities
 import androidx.health.services.client.data.ExerciseUpdate
 import androidx.health.services.client.data.HeartRateAccuracy
 import androidx.health.services.client.data.LocationAccuracy
@@ -57,6 +58,18 @@ class WearExerciseService : Service() {
     private var endRequested = false
     private var wallClockOffsetMs = 0L
     private val activeDurationTracker = WearExerciseActiveDurationTracker()
+    // W5b heart-zone departure haptic: one tracker per run, fed from both the Health Services HR
+    // path (publishExerciseUpdate) and the direct SensorManager path (publishDirectHeartRate) so
+    // it works in compat mode too — see checkHeartZoneAlert.
+    private val heartZoneAlertTracker = WearHeartZoneAlertTracker()
+    // W5d auto-pause slice: manualPauseActive tracks whether *we* asked to pause (via the pause
+    // button) — while true, Health Services' own AUTO_PAUSED reporting is ignored entirely so the
+    // manual pause/resume buttons always win. autoPauseActive latches once Health Services reports
+    // auto-paused so repeated update ticks don't re-fire the same transition. Auto-pause only
+    // applies when Health Services actually owns the exercise (exerciseStarted == true) — in
+    // compat mode this callback isn't even registered, so these flags are simply never consulted.
+    private var manualPauseActive = false
+    private var autoPauseActive = false
     private var lastDirectLocationElapsedRealtimeMs = 0L
     private var lastDirectGpsAccuracyM: Double? = null
     private var lastDirectGpsFixElapsedRealtimeMs = 0L
@@ -216,6 +229,9 @@ class WearExerciseService : Service() {
         lastGpsStatusPublishedElapsedRealtimeMs = 0L
         lastLiveSnapshotPublishedElapsedRealtimeMs = 0L
         lastAnnouncedSplitKm = 0
+        heartZoneAlertTracker.reset()
+        manualPauseActive = false
+        autoPauseActive = false
         healthLocationManaged = false
         healthHeartRateManaged = false
         if (lastDirectGpsAccuracyM == null) gpsStatusMessage = GPS_STATUS_SEARCHING
@@ -383,14 +399,16 @@ class WearExerciseService : Service() {
                     healthPreparationInFlight = false
                     return@addListener
                 }
-                val dataTypes = try {
-                    val runningCapabilities = capabilitiesFuture.get()
-                        .getExerciseTypeCapabilities(ExerciseType.RUNNING)
-                    requestedDataTypes().intersect(runningCapabilities.supportedDataTypes)
+                val runningCapabilities = try {
+                    capabilitiesFuture.get().getExerciseTypeCapabilities(ExerciseType.RUNNING)
                 } catch (_: Exception) {
-                    requestedDataTypes()
+                    null
                 }
-                val config = buildExerciseConfig(dataTypes)
+                val dataTypes = runningCapabilities
+                    ?.let { requestedDataTypes().intersect(runningCapabilities.supportedDataTypes) }
+                    ?: requestedDataTypes()
+                val supportsAutoPause = supportsAutoPauseAndResume(runningCapabilities)
+                val config = buildExerciseConfig(dataTypes, supportsAutoPause)
                 preparedExerciseConfig = config
                 val warmUpTypes = warmUpDataTypes(config.dataTypes)
                 if (warmUpTypes.isEmpty()) {
@@ -423,11 +441,18 @@ class WearExerciseService : Service() {
         if (config != null) startConfiguredExercise(config, pending) else startHealthExercise(pending)
     }
 
-    private fun buildExerciseConfig(dataTypes: Set<DataType<*, *>>): ExerciseConfig {
+    private fun buildExerciseConfig(
+        dataTypes: Set<DataType<*, *>>,
+        supportsAutoPause: Boolean,
+    ): ExerciseConfig {
         return ExerciseConfig(
             exerciseType = ExerciseType.RUNNING,
             dataTypes = dataTypes,
-            isAutoPauseAndResumeEnabled = false,
+            // W5d auto-pause slice: default ON whenever Health Services reports the running
+            // exercise supports it (see the supportsAutoPauseAndResume reads at both call sites
+            // below) — a missing/unreadable capability defaults this to false, i.e. pre-slice-E
+            // behavior.
+            isAutoPauseAndResumeEnabled = supportsAutoPause,
             isGpsEnabled = hasLocationPermission(),
             exerciseGoals = emptyList(),
         )
@@ -484,13 +509,14 @@ class WearExerciseService : Service() {
         val capabilitiesFuture = exerciseClient.getCapabilitiesAsync()
         capabilitiesFuture.addListener(
             {
-                val dataTypes = try {
-                    val runningCapabilities = capabilitiesFuture.get()
-                        .getExerciseTypeCapabilities(ExerciseType.RUNNING)
-                    requestedDataTypes().intersect(runningCapabilities.supportedDataTypes)
+                val runningCapabilities = try {
+                    capabilitiesFuture.get().getExerciseTypeCapabilities(ExerciseType.RUNNING)
                 } catch (_: Exception) {
-                    requestedDataTypes()
+                    null
                 }
+                val dataTypes = runningCapabilities
+                    ?.let { requestedDataTypes().intersect(runningCapabilities.supportedDataTypes) }
+                    ?: requestedDataTypes()
 
                 if (dataTypes.isEmpty()) {
                     enableDirectSensorFallbacks()
@@ -498,11 +524,26 @@ class WearExerciseService : Service() {
                     return@addListener
                 }
 
-                val config = buildExerciseConfig(dataTypes)
+                val supportsAutoPause = supportsAutoPauseAndResume(runningCapabilities)
+                val config = buildExerciseConfig(dataTypes, supportsAutoPause)
                 prepareThenStartExercise(config, nextAccumulator)
             },
             healthCallbackExecutor,
         )
+    }
+
+    /**
+     * W5d auto-pause slice: reads the running capability that drives whether auto-pause is
+     * requested at all. `supportsAutoPauseAndResume` is used here per the documented
+     * health-services-client 1.0.0 `ExerciseTypeCapabilities` surface but, like the aggregate data
+     * accessors elsewhere in this file, is not compiled against locally — verify against a real
+     * device/build. A null capabilities object (the fetch above failed) or an unreadable/renamed
+     * property both degrade to `false`, i.e. auto-pause simply stays off (pre-slice-E behavior)
+     * rather than guessing or crashing.
+     */
+    private fun supportsAutoPauseAndResume(runningCapabilities: ExerciseTypeCapabilities?): Boolean {
+        val capabilities = runningCapabilities ?: return false
+        return runCatching { capabilities.supportsAutoPauseAndResume }.getOrDefault(false)
     }
 
     private fun prepareThenStartExercise(
@@ -584,6 +625,7 @@ class WearExerciseService : Service() {
 
     private fun handlePauseRun() {
         restorePersistedSessionIfMissing(markRestartGap = true)
+        manualPauseActive = true
         val nowElapsedRealtimeMs = SystemClock.elapsedRealtime()
         accumulator?.let { currentAccumulator ->
             currentAccumulator.markRouteGap("pause")
@@ -596,10 +638,7 @@ class WearExerciseService : Service() {
                 accumulator = currentAccumulator,
             )
         } ?: WearExerciseSessionStore.markPaused()
-        stopDirectLocationUpdates()
-        stopFusedRouteLocationUpdates()
-        stopDirectHeartRateUpdates()
-        stopActiveDurationCheckpoints()
+        stopFallbackSensorsAndCheckpoints()
         if (!exerciseStarted) return
         val pauseFuture = exerciseClient.pauseExerciseAsync()
         pauseFuture.addListener(
@@ -616,8 +655,20 @@ class WearExerciseService : Service() {
         )
     }
 
+    // W5d auto-pause slice: the exact block handlePauseRun used to end with inline, now shared
+    // with the Health-Services-driven auto-pause transition in publishExerciseUpdate so the two
+    // pause paths can't drift apart.
+    private fun stopFallbackSensorsAndCheckpoints() {
+        stopDirectLocationUpdates()
+        stopFusedRouteLocationUpdates()
+        stopDirectHeartRateUpdates()
+        stopActiveDurationCheckpoints()
+    }
+
     private fun handleResumeRun() {
         restorePersistedSessionIfMissing(markRestartGap = true)
+        manualPauseActive = false
+        autoPauseActive = false
         val nowElapsedRealtimeMs = SystemClock.elapsedRealtime()
         accumulator?.let {
             it.applyMetricUpdate(
@@ -781,6 +832,67 @@ class WearExerciseService : Service() {
             )
             return
         }
+        // W5d auto-pause slice: Health Services can pause/resume a run on its own (e.g. stationary
+        // detection) independent of the manual pause button. Detected defensively via the state's
+        // `name` — same pattern as unsolicitedHealthEndMessage above, since health-services-client
+        // 1.0.0's exact AUTO_PAUSED constant/accessor isn't compiled against locally; verify against
+        // a real device/build. Skipped entirely while the user has manually paused so Health
+        // Services' own reporting can never fight the manual pause/resume buttons. Compat mode
+        // (exerciseStarted == false) never reaches this callback at all — no Health Services
+        // exercise is running to auto-pause — so auto-pause naturally never applies there.
+        if (!manualPauseActive) {
+            val isAutoPausedNow = isHealthAutoPausedState(update)
+            when (
+                WearExerciseAutoPausePolicy.transition(
+                    wasAutoPaused = autoPauseActive,
+                    isAutoPausedNow = isAutoPausedNow,
+                    manuallyPaused = manualPauseActive,
+                )
+            ) {
+                WearAutoPauseTransition.ENTERED_AUTO_PAUSE -> {
+                    autoPauseActive = true
+                    val nowElapsedRealtimeMs = SystemClock.elapsedRealtime()
+                    nextAccumulator.markRouteGap("auto-pause")
+                    nextAccumulator.applyMetricUpdate(
+                        elapsedRealtimeMs = nowElapsedRealtimeMs,
+                        activeDurationMs = activeDurationTracker.pause(nowElapsedRealtimeMs),
+                    )
+                    // Mirrors handlePauseRun's sensor/checkpoint teardown exactly (shared helper) so
+                    // moving-time pace stays correct through the auto-pause the same way it does
+                    // through a manual one (W3 consistency).
+                    stopFallbackSensorsAndCheckpoints()
+                    WearExerciseSessionStore.publishFromAccumulator(
+                        status = WearExerciseSessionStatus.PAUSED,
+                        accumulator = nextAccumulator,
+                        message = AUTO_PAUSE_MESSAGE,
+                    )
+                    return
+                }
+                WearAutoPauseTransition.EXITED_AUTO_PAUSE -> {
+                    autoPauseActive = false
+                    val nowElapsedRealtimeMs = SystemClock.elapsedRealtime()
+                    nextAccumulator.applyMetricUpdate(
+                        elapsedRealtimeMs = nowElapsedRealtimeMs,
+                        activeDurationMs = activeDurationTracker.resume(nowElapsedRealtimeMs),
+                    )
+                    startForegroundWithHealthType(buildNotification())
+                    startMissingHealthSensorFallbacks()
+                    startActiveDurationCheckpoints()
+                    WearExerciseSessionStore.publishFromAccumulator(
+                        status = WearExerciseSessionStatus.ACTIVE,
+                        accumulator = nextAccumulator,
+                        message = AUTO_RESUME_MESSAGE,
+                    )
+                    return
+                }
+                WearAutoPauseTransition.NONE -> {
+                    // Still auto-paused (Health Services keeps reporting AUTO_PAUSED on later ticks)
+                    // — nothing new to act on, and the sensors/checkpoints are already stopped, so
+                    // skip this tick's metrics entirely rather than re-processing a frozen state.
+                    if (autoPauseActive) return
+                }
+            }
+        }
         val metrics = update.latestMetrics
         // W3 pace-consistency slice: Health Services' own cumulative distance, when available,
         // beats our filtered GPS route (see WearExerciseMetricAccumulator). health-services-client
@@ -827,6 +939,9 @@ class WearExerciseService : Service() {
             healthHeartRateManaged = true
             stopDirectHeartRateUpdates()
         }
+        // W5b heart-zone departure haptic: fed here (Health Services HR path) as well as from
+        // publishDirectHeartRate (direct SensorManager path) so it works in compat mode too.
+        heartRateBpm?.let { bpm -> checkHeartZoneAlert(bpm, elapsedRealtimeMs) }
         if (locationPoints.isNotEmpty() && !healthLocationManaged) {
             healthLocationManaged = true
             stopDirectLocationUpdates()
@@ -903,6 +1018,27 @@ class WearExerciseService : Service() {
         }
     }
 
+    /**
+     * W5d auto-pause slice: same defensive `name`-based read as [unsolicitedHealthEndMessage] —
+     * health-services-client 1.0.0's exact `AUTO_PAUSED` constant/accessor isn't compiled against
+     * locally, so this degrades to "not auto-paused" for an unrecognized/renamed state rather than
+     * guessing wrong or crashing. Verify against a real device/build.
+     */
+    private fun isHealthAutoPausedState(update: ExerciseUpdate): Boolean {
+        val stateName = runCatching { update.exerciseStateInfo.state.name }.getOrNull().orEmpty()
+        return stateName.equals("AUTO_PAUSED", ignoreCase = true)
+    }
+
+    // W5b heart-zone departure haptic: fires service-side (not from the UI controller) so it
+    // buzzes even with the screen off/ambient.
+    private fun checkHeartZoneAlert(bpm: Int, nowElapsedRealtimeMs: Long) {
+        when (heartZoneAlertTracker.onHeartRate(bpm, nowElapsedRealtimeMs)) {
+            WearHeartZoneAlertDirection.UP -> WearRunHaptics.vibrateZoneUp(this)
+            WearHeartZoneAlertDirection.DOWN -> WearRunHaptics.vibrateZoneDown(this)
+            null -> Unit
+        }
+    }
+
     private fun clearExerciseCallback() {
         exerciseCallback?.let { callback ->
             exerciseClient.clearUpdateCallbackAsync(callback)
@@ -956,6 +1092,17 @@ class WearExerciseService : Service() {
         // W5c split-vibration slice: seed from the restored distance so a relaunch mid-run doesn't
         // re-buzz kilometres already passed.
         lastAnnouncedSplitKm = floor(snapshot.distanceMeters / 1_000.0).toInt().coerceAtLeast(0)
+        // W5b heart-zone departure haptic: seed the tracker from the restored heart rate so a
+        // relaunch mid-run trusts the already-established zone immediately (see
+        // WearHeartZoneAlertTracker.seedHomeZone) instead of waiting out a fresh ~60s
+        // establishment window — seeding never itself returns an alert, so this can't buzz.
+        snapshot.latestHeartRateBpm?.let { bpm -> heartZoneAlertTracker.seedHomeZone(bpm, nowElapsedRealtimeMs) }
+        // W5d auto-pause slice: a restored snapshot doesn't record whether a PAUSED status came
+        // from the user's own pause button or from Health Services' auto-pause, so conservatively
+        // treat it as manual — this can only ever suppress an auto-resume the user would otherwise
+        // have to trigger with the resume button anyway, never surprise them with an unrequested one.
+        manualPauseActive = snapshot.status == WearExerciseSessionStatus.PAUSED
+        autoPauseActive = false
         if (runningStatus) {
             restoredAccumulator.applyMetricUpdate(
                 elapsedRealtimeMs = nowElapsedRealtimeMs,
@@ -1383,6 +1530,9 @@ class WearExerciseService : Service() {
             heartRateBpm = bpm,
             activeDurationMs = activeDurationTracker.activeDurationAt(elapsedRealtimeMs),
         )
+        // W5b heart-zone departure haptic: the direct SensorManager path, so this also works in
+        // compat mode (no Health Services exercise) where publishExerciseUpdate is never called.
+        checkHeartZoneAlert(bpm, elapsedRealtimeMs)
         publishAccumulatorSnapshot(
             status = WearExerciseSessionStatus.ACTIVE,
             accumulator = currentAccumulator,
@@ -1541,6 +1691,9 @@ class WearExerciseService : Service() {
         // W4 HS-exclusivity slice.
         private const val HEALTH_OWNERSHIP_CHECK_TIMEOUT_MS = 3_000L
         private const val COMPAT_MODE_MESSAGE = "다른 앱 운동과 함께 기록 중"
+        // W5d auto-pause slice.
+        private const val AUTO_PAUSE_MESSAGE = "자동 일시정지 · 움직이면 다시 시작돼요"
+        private const val AUTO_RESUME_MESSAGE = "자동 재시작"
         const val PERMISSION_READ_HEART_RATE = "android.permission.health.READ_HEART_RATE"
 
         fun prepareRun(context: Context) {
