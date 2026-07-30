@@ -64,6 +64,8 @@ function _normalizeWearStrengthSet(raw, context, index) {
   const reps = Math.max(1, Math.min(200, Math.round(repsRaw)));
   const romPctRaw = Number(raw.romPct);
   const romPct = Number.isFinite(romPctRaw) ? _clampRoundToStep(romPctRaw, 10, 100, 5) : 100;
+  const rirRaw = Number(raw.rir);
+  const rir = Number.isFinite(rirRaw) ? Math.max(0, Math.min(10, Math.round(rirRaw))) : null;
   const setType = normalizeWorkoutSetType(raw.setType);
   const completedAtRaw = Number(raw.completedAt);
   const completedAt = Number.isFinite(completedAtRaw)
@@ -71,7 +73,9 @@ function _normalizeWearStrengthSet(raw, context, index) {
     && completedAtRaw <= context.endedAt
     ? Math.floor(completedAtRaw)
     : null;
-  return { kg, reps, rpe: null, romPct, setType, done: true, completedAt };
+  const normalized = { kg, reps, rpe: null, romPct, setType, done: true, completedAt };
+  if (rir != null) normalized.rir = rir;
+  return normalized;
 }
 
 function _normalizeWearStrengthEntry(raw, context, index) {

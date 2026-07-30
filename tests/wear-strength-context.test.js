@@ -81,6 +81,25 @@ test('each catalog exercise inlines lastSession (or null) with a 12-set cap', ()
   assert.equal(dumbbellBench.lastSession, null, 'no session on record yields null');
 });
 
+test('lastSession sets carry rir when the record has one, null otherwise', () => {
+  const context = buildDefaultContext({
+    lastSessionFor(exerciseId) {
+      if (exerciseId !== 'back_1') return null;
+      return {
+        dateKey: '2026-07-25',
+        sets: [
+          { kg: 60, reps: 10, romPct: 100, rir: 2.4, setType: 'main', done: true },
+          { kg: 65, reps: 8, romPct: 100, setType: 'main', done: true },
+        ],
+      };
+    },
+  });
+  const row = context.catalog.find(g => g.muscleId === 'back').exercises.find(e => e.exerciseId === 'back_1');
+
+  assert.equal(row.lastSession.sets[0].rir, 2, 'rir rounds to an integer');
+  assert.equal(row.lastSession.sets[1].rir, null, 'missing rir normalizes to null');
+});
+
 test('recentExerciseIds are ordered by lastSession dateKey descending and exclude sessionless exercises', () => {
   const context = buildDefaultContext();
   assert.deepEqual(context.recentExerciseIds, ['back_1', 'chest_1', 'lower_1']);

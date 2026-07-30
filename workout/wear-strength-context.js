@@ -9,10 +9,12 @@ const MAX_LAST_SESSION_SETS = 12;
 
 function _normalizeLastSessionSet(set = {}) {
   const romPct = Number(set?.romPct);
+  const rir = Number(set?.rir);
   return {
     kg: Number(set?.kg) || 0,
     reps: Number(set?.reps) || 0,
     romPct: Number.isFinite(romPct) ? romPct : 100,
+    rir: Number.isFinite(rir) ? Math.round(rir) : null,
     setType: set?.setType || 'main',
     done: set?.done === true,
   };

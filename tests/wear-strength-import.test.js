@@ -75,6 +75,29 @@ test('normalizes kg (round to 0.5), reps (int), romPct (round to 5), and default
   assert.equal(second.completedAt, null, 'completedAt defaults to null when missing');
 });
 
+test('rir passes through when valid and is omitted when absent or invalid', () => {
+  const normalized = normalizeWearStrengthPayload(basePayload({
+    entries: [{
+      exerciseId: 'chest_1',
+      name: '바벨 벤치프레스',
+      muscleId: 'chest',
+      movementId: 'barbell_bench',
+      sets: [
+        benchSet({ rir: 2 }),
+        benchSet({ rir: 14.6 }),
+        benchSet({ rir: 'abc' }),
+        benchSet(),
+      ],
+    }],
+  }), { now: 1_800_000_000_000 });
+  const sets = normalized.entries[0].sets;
+
+  assert.equal(sets[0].rir, 2);
+  assert.equal(sets[1].rir, 10, 'rir clamps to [0, 10]');
+  assert.ok(!('rir' in sets[2]), 'non-numeric rir is omitted');
+  assert.ok(!('rir' in sets[3]), 'missing rir is omitted');
+});
+
 test('kg clamps to [0, 1000] and reps clamps to [1, 200]', () => {
   const normalized = normalizeWearStrengthPayload(basePayload({
     entries: [{
