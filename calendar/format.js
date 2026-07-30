@@ -42,16 +42,26 @@ export function _hasDraftWorkoutEntry(entry) {
   );
 }
 
+// RIR은 0이 유효한 값(실패 지점까지 수행)이라 _num의 0 처리에 기대지 못한다.
+export function _workoutSetRir(set) {
+  const raw = set?.rir;
+  if (raw == null || String(raw).trim() === '') return null;
+  const number = Number(raw);
+  return Number.isFinite(number) ? number : null;
+}
+
 export function _formatSetText(set) {
   const kg = _num(set?.kg);
   const reps = _num(set?.reps);
   const rpe = _num(set?.rpe);
+  const rir = _workoutSetRir(set);
   const base = [
     kg > 0 ? `${_fmtNum(kg)}kg` : '',
     reps > 0 ? `${_fmtNum(reps)}회` : '',
   ].filter(Boolean).join(' x ');
   const rpeText = rpe > 0 ? ` · RPE ${_fmtNum(rpe)}` : '';
-  return `${base || '세트 기록'}${rpeText}`;
+  const rirText = rir != null ? ` · RIR ${_fmtNum(rir)}` : '';
+  return `${base || '세트 기록'}${rpeText}${rirText}`;
 }
 
 export function _formatDuration(seconds) {

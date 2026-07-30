@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { _formatSetText } from '../calendar/format.js';
 
 // 달력 탭 소스는 render-calendar.js + calendar/*.js로 나뉘어 있다.
 // 순수 조립 로직을 이름으로 떼어오는 이 테스트는 두 소스를 하나로 보고 찾는다.
@@ -105,6 +106,21 @@ test('export returns nothing when the range has no records', () => {
   const { _buildWorkoutRecordsExport } = buildExportApi({ dayBlocks: {} });
   assert.equal(_buildWorkoutRecordsExport('2026-07-21', 'day'), null);
   assert.equal(_buildWorkoutRecordsExport('2026-07-21', 'week'), null);
+});
+
+// 세트 시트에 입력한 RIR이 내보내기 텍스트에서 사라지던 회귀를 막는다.
+test('set text keeps the recorded RIR alongside weight and reps', () => {
+  assert.equal(_formatSetText({ kg: 120, reps: 15, rir: 3 }), '120kg x 15회 · RIR 3');
+  assert.equal(_formatSetText({ kg: 120, reps: 15, rir: '2' }), '120kg x 15회 · RIR 2');
+  // RIR 0(실패 지점)은 유효한 기록이므로 표기한다.
+  assert.equal(_formatSetText({ kg: 100, reps: 8, rir: 0 }), '100kg x 8회 · RIR 0');
+  assert.equal(_formatSetText({ kg: 100, reps: 8, rir: 1.5 }), '100kg x 8회 · RIR 1.5');
+  // RPE만 있는 레거시 세트는 기존 표기를 유지한다.
+  assert.equal(_formatSetText({ kg: 40, reps: 12, rpe: 8 }), '40kg x 12회 · RPE 8');
+  // 값이 비어 있으면 라벨을 붙이지 않는다.
+  assert.equal(_formatSetText({ kg: 60, reps: 15 }), '60kg x 15회');
+  assert.equal(_formatSetText({ kg: 60, reps: 15, rir: null }), '60kg x 15회');
+  assert.equal(_formatSetText({ kg: 60, reps: 15, rir: '' }), '60kg x 15회');
 });
 
 test('export writes to the clipboard rather than the share sheet', () => {
