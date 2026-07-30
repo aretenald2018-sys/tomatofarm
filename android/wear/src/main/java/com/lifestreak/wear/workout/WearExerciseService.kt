@@ -32,6 +32,7 @@ import androidx.health.services.client.data.DataType
 import androidx.health.services.client.data.DeltaDataType
 import androidx.health.services.client.data.ExerciseConfig
 import androidx.health.services.client.data.ExerciseLapSummary
+import androidx.health.services.client.data.ExerciseTrackedStatus
 import androidx.health.services.client.data.ExerciseType
 import androidx.health.services.client.data.ExerciseUpdate
 import androidx.health.services.client.data.HeartRateAccuracy
@@ -151,7 +152,13 @@ class WearExerciseService : Service() {
         publishPreparationStatus(GPS_STATUS_SEARCHING)
         checkpointHandler.removeCallbacks(preparationTimeoutRunnable)
         checkpointHandler.postDelayed(preparationTimeoutRunnable, PREPARATION_TIMEOUT_MS)
-        if (hasActivityRecognitionPermission()) prepareHealthExercise()
+        if (hasActivityRecognitionPermission()) {
+            // W4: skip the Health Services warm-up entirely when another app already owns the
+            // exercise — the direct/assisted GPS warm-up started just above is enough on its own.
+            checkOtherAppOwnsExercise { otherAppOwns ->
+                if (isPreparing && !otherAppOwns) prepareHealthExercise()
+            }
+        }
     }
 
     private fun handleCancelPreparation() {
@@ -228,6 +235,22 @@ class WearExerciseService : Service() {
             )
             return
         }
+        // W4 HS-exclusivity slice: if another app already owns the Health Services exercise, never
+        // call startExerciseAsync (that would silently kill their run). Enter 호환 모드 instead —
+        // rely on the direct GPS/HR sensors already started above and leave exerciseStarted false,
+        // so pause/resume/end all correctly no-op their Health Services calls.
+        checkOtherAppOwnsExercise { otherAppOwns ->
+            if (accumulator !== nextAccumulator) return@checkOtherAppOwnsExercise
+            if (otherAppOwns) {
+                enableDirectSensorFallbacks()
+                WearExerciseSessionStore.markFallback(COMPAT_MODE_MESSAGE)
+                return@checkOtherAppOwnsExercise
+            }
+            startHealthOwnedExercise(nextAccumulator)
+        }
+    }
+
+    private fun startHealthOwnedExercise(nextAccumulator: WearExerciseMetricAccumulator) {
         registerExerciseCallback()
         if (healthPreparationInFlight || healthPreparationCancelInFlight) {
             pendingExerciseStart = nextAccumulator
@@ -298,6 +321,45 @@ class WearExerciseService : Service() {
             status = WearExerciseSessionStatus.ACTIVE,
             accumulator = currentAccumulator,
             message = "GPS direct · debug route",
+        )
+    }
+
+    /**
+     * W4 HS-exclusivity slice: Health Services allows exactly one owned exercise per device.
+     * Before we warm up or start one, ask whether some *other* app already owns it
+     * ([ExerciseTrackedStatus.OTHER_APP_IN_PROGRESS]) so we don't silently kill a run someone else
+     * started (Samsung Health, Strava for Wear OS, ...). Written defensively end-to-end: a missing
+     * client, an exception from the future, an unexpected result type, or a stalled call all
+     * resolve `onResult(false)` — i.e. fail OPEN, "nobody else owns it" — so this check can only
+     * ever degrade to pre-slice-C behavior, never introduce a new way to get stuck. Verify against
+     * a real device/build: `getCurrentExerciseInfoAsync`/`ExerciseTrackedStatus` are used here per
+     * the documented health-services-client 1.0.0 surface but are not compiled against locally.
+     */
+    private fun checkOtherAppOwnsExercise(onResult: (Boolean) -> Unit) {
+        var resolved = false
+        val timeoutRunnable = Runnable {
+            if (resolved) return@Runnable
+            resolved = true
+            onResult(false)
+        }
+        val infoFuture = try {
+            exerciseClient.getCurrentExerciseInfoAsync()
+        } catch (_: Exception) {
+            onResult(false)
+            return
+        }
+        checkpointHandler.postDelayed(timeoutRunnable, HEALTH_OWNERSHIP_CHECK_TIMEOUT_MS)
+        infoFuture.addListener(
+            {
+                if (resolved) return@addListener
+                resolved = true
+                checkpointHandler.removeCallbacks(timeoutRunnable)
+                val otherAppOwns = runCatching {
+                    infoFuture.get().exerciseTrackedStatus == ExerciseTrackedStatus.OTHER_APP_IN_PROGRESS
+                }.getOrDefault(false)
+                onResult(otherAppOwns)
+            },
+            healthCallbackExecutor,
         )
     }
 
@@ -691,16 +753,23 @@ class WearExerciseService : Service() {
         val nextAccumulator = accumulator ?: return
         if (endRequested && !update.exerciseStateInfo.state.isEnded) return
         if (update.exerciseStateInfo.state.isEnded && !endRequested) {
+            // W4 HS-exclusivity slice: Health Services ended our session without us asking — most
+            // likely another app (Samsung Health, Strava, ...) took ownership, or a permission was
+            // revoked mid-run. Re-arm the direct GPS/HR fallbacks immediately so distance and heart
+            // rate keep moving instead of freezing while the timer runs, mark the route gap this
+            // causes, and keep recording — do NOT auto-finish or auto-save.
             val currentStatus = WearExerciseSessionStore.current().status
             exerciseStarted = false
             clearExerciseCallback()
+            enableDirectSensorFallbacks()
+            nextAccumulator.markRouteGap("superseded")
             WearExerciseSessionStore.publishFromAccumulator(
                 status = WearExerciseEndPolicy.sessionStatusAfterExerciseUpdate(
-                    action = WearExerciseEndAction.WAIT_FOR_FINAL_UPDATE,
+                    action = WearExerciseEndPolicy.afterUnsolicitedEnd(endRequested = endRequested),
                     currentStatus = currentStatus,
                 ),
                 accumulator = nextAccumulator,
-                message = "GPS direct · Health Services ended",
+                message = unsolicitedHealthEndMessage(update),
             )
             return
         }
@@ -798,6 +867,25 @@ class WearExerciseService : Service() {
 
         if (endAction == WearExerciseEndAction.PUBLISH_FINAL_UPDATE) {
             finishService()
+        }
+    }
+
+    /**
+     * W4: distinguish an unsolicited end caused by losing a permission mid-run from any other
+     * unsolicited end (superseded by another app being the overwhelmingly common case). Read
+     * defensively via the state's `name` rather than a dedicated `ExerciseEndReason` accessor —
+     * health-services-client 1.0.0's exact end-reason API surface (if any) is not confirmed against
+     * a real build here, so this only inspects the [ExerciseUpdate.ExerciseStateInfo.state] this
+     * file already uses for [isEnded] above, which degrades safely: an unrecognized/renamed state
+     * just falls through to the supersede message instead of crashing or guessing wrong in a worse
+     * way.
+     */
+    private fun unsolicitedHealthEndMessage(update: ExerciseUpdate): String {
+        val stateName = runCatching { update.exerciseStateInfo.state.name }.getOrNull().orEmpty()
+        return if (stateName.contains("PERMISSION", ignoreCase = true)) {
+            "권한이 해제돼 자체 GPS로 기록 중"
+        } else {
+            "다른 앱이 운동을 시작해 자체 GPS로 기록 중"
         }
     }
 
@@ -1408,6 +1496,9 @@ class WearExerciseService : Service() {
         private const val MAX_HEART_RATE_BPM = 240f
         private const val MIN_ALTITUDE_M = -500.0
         private const val MAX_ALTITUDE_M = 9_000.0
+        // W4 HS-exclusivity slice.
+        private const val HEALTH_OWNERSHIP_CHECK_TIMEOUT_MS = 3_000L
+        private const val COMPAT_MODE_MESSAGE = "다른 앱 운동과 함께 기록 중"
         const val PERMISSION_READ_HEART_RATE = "android.permission.health.READ_HEART_RATE"
 
         fun prepareRun(context: Context) {

@@ -59,4 +59,64 @@ class WearExerciseEndPolicyTest {
             ),
         )
     }
+
+    // W4 HS-exclusivity slice: unsolicited-end decision and its status mapping.
+
+    @Test
+    fun unsolicitedEndContinuesWithFallbackWhileRequestedEndPublishesFinalUpdate() {
+        assertEquals(
+            WearExerciseEndAction.CONTINUE_WITH_FALLBACK,
+            WearExerciseEndPolicy.afterUnsolicitedEnd(endRequested = false),
+        )
+        assertEquals(
+            WearExerciseEndAction.PUBLISH_FINAL_UPDATE,
+            WearExerciseEndPolicy.afterUnsolicitedEnd(endRequested = true),
+        )
+    }
+
+    @Test
+    fun continueWithFallbackMapsActiveLikeStatusesToFallbackButLeavesPausedAndTerminalStatusesAlone() {
+        assertEquals(
+            WearExerciseSessionStatus.FALLBACK,
+            WearExerciseEndPolicy.sessionStatusAfterExerciseUpdate(
+                action = WearExerciseEndAction.CONTINUE_WITH_FALLBACK,
+                currentStatus = WearExerciseSessionStatus.ACTIVE,
+            ),
+        )
+        assertEquals(
+            WearExerciseSessionStatus.FALLBACK,
+            WearExerciseEndPolicy.sessionStatusAfterExerciseUpdate(
+                action = WearExerciseEndAction.CONTINUE_WITH_FALLBACK,
+                currentStatus = WearExerciseSessionStatus.STARTING,
+            ),
+        )
+        assertEquals(
+            WearExerciseSessionStatus.FALLBACK,
+            WearExerciseEndPolicy.sessionStatusAfterExerciseUpdate(
+                action = WearExerciseEndAction.CONTINUE_WITH_FALLBACK,
+                currentStatus = WearExerciseSessionStatus.FALLBACK,
+            ),
+        )
+        assertEquals(
+            WearExerciseSessionStatus.PAUSED,
+            WearExerciseEndPolicy.sessionStatusAfterExerciseUpdate(
+                action = WearExerciseEndAction.CONTINUE_WITH_FALLBACK,
+                currentStatus = WearExerciseSessionStatus.PAUSED,
+            ),
+        )
+        assertEquals(
+            WearExerciseSessionStatus.ENDED,
+            WearExerciseEndPolicy.sessionStatusAfterExerciseUpdate(
+                action = WearExerciseEndAction.CONTINUE_WITH_FALLBACK,
+                currentStatus = WearExerciseSessionStatus.ENDED,
+            ),
+        )
+        assertEquals(
+            WearExerciseSessionStatus.ERROR,
+            WearExerciseEndPolicy.sessionStatusAfterExerciseUpdate(
+                action = WearExerciseEndAction.CONTINUE_WITH_FALLBACK,
+                currentStatus = WearExerciseSessionStatus.ERROR,
+            ),
+        )
+    }
 }

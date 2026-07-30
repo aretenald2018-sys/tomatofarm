@@ -14,7 +14,9 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import androidx.health.services.client.ExerciseClient
@@ -25,6 +27,7 @@ import androidx.health.services.client.data.DataType
 import androidx.health.services.client.data.DeltaDataType
 import androidx.health.services.client.data.ExerciseConfig
 import androidx.health.services.client.data.ExerciseLapSummary
+import androidx.health.services.client.data.ExerciseTrackedStatus
 import androidx.health.services.client.data.ExerciseType
 import androidx.health.services.client.data.ExerciseUpdate
 import androidx.health.services.client.data.HeartRateAccuracy
@@ -51,6 +54,8 @@ class WearStrengthHrService : Service() {
     private var exerciseStarted = false
     private var directListener: SensorEventListener? = null
     private var healthAttempted = false
+    private var endRequested = false
+    private val ownershipCheckHandler by lazy { Handler(Looper.getMainLooper()) }
 
     override fun onCreate() {
         super.onCreate()
@@ -85,7 +90,53 @@ class WearStrengthHrService : Service() {
         startHealthExercise()
     }
 
+    /**
+     * W4 HS-exclusivity slice: check ownership first so a strength session never silently kills
+     * another app's running/exercise session (Health Services allows exactly one at a time). Fails
+     * OPEN — any exception, unexpected result, or stalled call resolves "nobody else owns it" and
+     * falls through to the normal capability lookup, matching pre-slice-C behavior. Same defensive
+     * shape as [WearExerciseService]'s equivalent helper; duplicated rather than shared since this
+     * service deliberately doesn't depend on that class (see the class doc comment above).
+     */
+    private fun checkOtherAppOwnsExercise(onResult: (Boolean) -> Unit) {
+        var resolved = false
+        val timeoutRunnable = Runnable {
+            if (resolved) return@Runnable
+            resolved = true
+            onResult(false)
+        }
+        val infoFuture = try {
+            exerciseClient.getCurrentExerciseInfoAsync()
+        } catch (_: Exception) {
+            onResult(false)
+            return
+        }
+        ownershipCheckHandler.postDelayed(timeoutRunnable, HEALTH_OWNERSHIP_CHECK_TIMEOUT_MS)
+        infoFuture.addListener(
+            {
+                if (resolved) return@addListener
+                resolved = true
+                ownershipCheckHandler.removeCallbacks(timeoutRunnable)
+                val otherAppOwns = runCatching {
+                    infoFuture.get().exerciseTrackedStatus == ExerciseTrackedStatus.OTHER_APP_IN_PROGRESS
+                }.getOrDefault(false)
+                onResult(otherAppOwns)
+            },
+            healthCallbackExecutor,
+        )
+    }
+
     private fun startHealthExercise() {
+        checkOtherAppOwnsExercise { otherAppOwns ->
+            if (otherAppOwns) {
+                startDirectHeartRate()
+            } else {
+                startHealthExerciseAfterOwnershipCheck()
+            }
+        }
+    }
+
+    private fun startHealthExerciseAfterOwnershipCheck() {
         val capabilitiesFuture = try {
             exerciseClient.getCapabilitiesAsync()
         } catch (_: Exception) {
@@ -201,6 +252,19 @@ class WearStrengthHrService : Service() {
     }
 
     private fun publishHeartRate(update: ExerciseUpdate) {
+        // W4 HS-exclusivity slice: an unsolicited end (Health Services superseded us, or a
+        // permission was revoked) must not just let heart rate go silent — clear the callback and
+        // fall back to the direct SensorManager HR path so live HR survives.
+        val isEnded = runCatching { update.exerciseStateInfo.state.isEnded }.getOrDefault(true)
+        if (isEnded) {
+            exerciseStarted = false
+            clearExerciseCallback()
+            // Only an *unsolicited* end needs the fallback restarted — during our own handleEnd()
+            // teardown (endRequested already true) the direct sensor is being torn down too and
+            // must not be spun back up just to be stopped again moments later in onDestroy().
+            if (!endRequested) startDirectHeartRate()
+            return
+        }
         val heartRatePoint = try {
             update.latestMetrics.getData(DataType.HEART_RATE_BPM).lastOrNull()
         } catch (_: Exception) {
@@ -270,6 +334,7 @@ class WearStrengthHrService : Service() {
     }
 
     private fun handleEnd() {
+        endRequested = true
         stopDirectHeartRate()
         if (exerciseStarted) {
             exerciseStarted = false
@@ -357,6 +422,8 @@ class WearStrengthHrService : Service() {
         private const val NOTIFICATION_ID = 2101
         private const val MIN_HEART_RATE_BPM = 30f
         private const val MAX_HEART_RATE_BPM = 240f
+        // W4 HS-exclusivity slice.
+        private const val HEALTH_OWNERSHIP_CHECK_TIMEOUT_MS = 3_000L
         const val PERMISSION_READ_HEART_RATE = "android.permission.health.READ_HEART_RATE"
 
         fun start(context: Context) {

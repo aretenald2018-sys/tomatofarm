@@ -128,3 +128,81 @@ test('wear slice A wires ambient (AOD) fan-out and visibility-following GPS warm
     /lastDirectLocationElapsedRealtimeMs = elapsedRealtimeMs[\s\S]{0,400}stopFusedRouteLocationUpdates\(\)/,
   );
 });
+
+test('wear slice C checks Health Services ownership before starting and re-arms sensors when superseded', () => {
+  const service = readProjectFile('android/wear/src/main/java/com/lifestreak/wear/workout/WearExerciseService.kt');
+  const policy = readProjectFile('android/wear/src/main/java/com/lifestreak/wear/workout/WearExerciseEndPolicy.kt');
+  const strengthService = readProjectFile('android/wear/src/main/java/com/lifestreak/wear/workout/WearStrengthHrService.kt');
+  const controller = readProjectFile('android/wear/src/main/java/com/lifestreak/wear/workout/WearWorkoutUiController.kt');
+
+  // Ownership pre-check helper: queries getCurrentExerciseInfoAsync and fails OPEN.
+  assert.match(service, /fun checkOtherAppOwnsExercise\(/);
+  assert.match(service, /exerciseClient\.getCurrentExerciseInfoAsync\(\)/);
+  assert.match(service, /ExerciseTrackedStatus\.OTHER_APP_IN_PROGRESS/);
+  assert.match(service, /onResult\(false\)/);
+
+  // Prepare path skips the Health Services warm-up when another app owns the exercise.
+  assert.match(
+    service,
+    /checkOtherAppOwnsExercise \{ otherAppOwns ->[\s\S]{0,120}prepareHealthExercise\(\)/,
+  );
+
+  // Start path enters 호환 모드 instead of calling startExerciseAsync when another app owns it.
+  assert.match(
+    service,
+    /checkOtherAppOwnsExercise \{ otherAppOwns ->[\s\S]{0,400}enableDirectSensorFallbacks\(\)[\s\S]{0,200}markFallback\(COMPAT_MODE_MESSAGE\)/,
+  );
+  assert.match(service, /COMPAT_MODE_MESSAGE = "다른 앱 운동과 함께 기록 중"/);
+
+  // Existing pause/resume/end already no-op the Health Services calls when exerciseStarted is
+  // false, so compat-mode runs pause/finish correctly without any HS call.
+  assert.match(service, /if \(!exerciseStarted\) return\n\s*val pauseFuture/);
+  assert.match(service, /if \(!exerciseStarted\) return\n\s*val resumeFuture/);
+  assert.match(service, /if \(exerciseStarted\) \{\s*\n\s*val endFuture = exerciseClient\.endExerciseAsync\(\)/);
+
+  // New end-policy action for an unsolicited end, plus its status mapping.
+  assert.match(policy, /CONTINUE_WITH_FALLBACK/);
+  assert.match(policy, /fun afterUnsolicitedEnd\(endRequested: Boolean\)/);
+  assert.match(policy, /WearExerciseEndAction\.CONTINUE_WITH_FALLBACK -> when \(currentStatus\)/);
+
+  // Supersede branch: clears the callback, re-arms direct sensors, marks a route gap, and uses the
+  // new policy action + honest message — all inside the `isEnded && !endRequested` branch.
+  assert.match(
+    service,
+    /state\.isEnded && !endRequested\) \{[\s\S]{0,600}clearExerciseCallback\(\)[\s\S]{0,100}enableDirectSensorFallbacks\(\)[\s\S]{0,100}markRouteGap\("superseded"\)/,
+  );
+  assert.match(service, /WearExerciseEndPolicy\.afterUnsolicitedEnd\(endRequested = endRequested\)/);
+  assert.match(service, /unsolicitedHealthEndMessage\(update\)/);
+  assert.match(service, /"다른 앱이 운동을 시작해 자체 GPS로 기록 중"/);
+  assert.match(service, /"권한이 해제돼 자체 GPS로 기록 중"/);
+
+  // The pre-existing final-update path (requested end) must keep working unchanged.
+  assert.match(service, /force = endAction == WearExerciseEndAction\.PUBLISH_FINAL_UPDATE/);
+
+  // UI: amber supersede/compat-mode branches land before the generic route-based "경로 기록 중" line.
+  const supersedeIndex = controller.indexOf('다른 앱 운동 감지 · 자체 GPS 기록 중');
+  const compatIndex = controller.indexOf('다른 앱과 함께 기록 중');
+  const genericRouteIndex = controller.indexOf('경로 기록 중');
+  assert.ok(supersedeIndex !== -1 && compatIndex !== -1 && genericRouteIndex !== -1);
+  assert.ok(supersedeIndex < genericRouteIndex && compatIndex < genericRouteIndex);
+  assert.match(controller, /다른 앱 운동 감지 · 자체 GPS 기록 중[\s\S]{0,60}#FFB35A/);
+  assert.match(controller, /다른 앱과 함께 기록 중[\s\S]{0,60}#FFB35A/);
+
+  // Strength HR service: ownership pre-check before starting its own exercise, and an isEnded
+  // check on the exercise-update callback that falls back to the direct sensor.
+  assert.match(strengthService, /fun checkOtherAppOwnsExercise\(/);
+  assert.match(strengthService, /exerciseClient\.getCurrentExerciseInfoAsync\(\)/);
+  assert.match(strengthService, /ExerciseTrackedStatus\.OTHER_APP_IN_PROGRESS/);
+  assert.match(
+    strengthService,
+    /fun startHealthExercise\(\) \{\s*checkOtherAppOwnsExercise \{ otherAppOwns ->[\s\S]{0,150}startDirectHeartRate\(\)/,
+  );
+  const publishHeartRateBody = strengthService.slice(
+    strengthService.indexOf('fun publishHeartRate(update: ExerciseUpdate)'),
+    strengthService.indexOf('fun clearExerciseCallback'),
+  );
+  assert.match(publishHeartRateBody, /val isEnded = runCatching \{ update\.exerciseStateInfo\.state\.isEnded \}/);
+  assert.match(publishHeartRateBody, /if \(isEnded\) \{/);
+  assert.match(publishHeartRateBody, /clearExerciseCallback\(\)/);
+  assert.match(publishHeartRateBody, /startDirectHeartRate\(\)/);
+});

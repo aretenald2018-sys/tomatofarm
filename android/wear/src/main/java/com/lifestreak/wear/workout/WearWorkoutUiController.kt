@@ -506,6 +506,18 @@ class WearWorkoutUiController(
                 gpsStatus = "준비 완료"
                 gpsStatusColor = Color.parseColor("#D7FF3F")
             }
+            // W4 HS-exclusivity slice: honest amber states, checked before the generic
+            // route-count-based branch below so a supersede/compat-mode run never claims a normal
+            // Health-Services-backed recording it doesn't have.
+            message.contains("다른 앱이 운동을 시작해", ignoreCase = true) ||
+                message.contains("권한이 해제돼", ignoreCase = true) -> {
+                gpsStatus = "다른 앱 운동 감지 · 자체 GPS 기록 중"
+                gpsStatusColor = Color.parseColor("#FFB35A")
+            }
+            message.contains("다른 앱 운동과 함께 기록 중", ignoreCase = true) -> {
+                gpsStatus = "다른 앱과 함께 기록 중"
+                gpsStatusColor = Color.parseColor("#FFB35A")
+            }
             snapshot.routePoints.size >= 2 -> {
                 gpsStatus = "경로 기록 중"
                 gpsStatusColor = Color.parseColor("#D7FF3F")
