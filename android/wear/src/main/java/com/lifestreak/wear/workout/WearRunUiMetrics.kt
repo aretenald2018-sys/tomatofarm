@@ -76,7 +76,7 @@ internal fun buildPaceTrend(samples: List<WearDistanceSample>): List<WearPaceTre
             val durationMs = next.timestampMs - previous.timestampMs
             val distanceDeltaKm = next.distanceKm - previous.distanceKm
             if (durationMs <= 0L || distanceDeltaKm <= 0.0) return@mapNotNull null
-            val secondsPerKm = (durationMs / 1000.0 / distanceDeltaKm).toInt()
+            val secondsPerKm = (durationMs / 1000.0 / distanceDeltaKm).roundToInt()
             if (secondsPerKm < MIN_VALID_SECONDS_PER_KM) return@mapNotNull null
             WearPaceTrendPoint(
                 timestampMs = next.timestampMs,
@@ -123,7 +123,9 @@ internal fun formatDuration(durationMs: Long): String {
 
 private fun formatPace(durationMs: Long, distanceKm: Double): String {
     if (durationMs <= 0L || distanceKm <= 0.0 || !distanceKm.isFinite()) return "--"
-    val secondsPerKm = (durationMs / 1000.0 / distanceKm).toInt()
+    // Rounded (not truncated) to match the phone's Math.round-based pace display (W3
+    // pace-consistency slice).
+    val secondsPerKm = (durationMs / 1000.0 / distanceKm).roundToInt()
     return formatPaceSeconds(secondsPerKm)
 }
 

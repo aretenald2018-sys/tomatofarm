@@ -705,6 +705,15 @@ class WearExerciseService : Service() {
             return
         }
         val metrics = update.latestMetrics
+        // W3 pace-consistency slice: Health Services' own cumulative distance, when available,
+        // beats our filtered GPS route (see WearExerciseMetricAccumulator). health-services-client
+        // 1.0.0 exposes aggregate data types (DISTANCE_TOTAL, like ACTIVE_EXERCISE_DURATION_TOTAL)
+        // through the DataPointContainer aggregate accessor as a cumulative data point with a
+        // `.total` — written defensively so an API surface mismatch just falls back to route
+        // distance instead of crashing. Verify against a real device/build.
+        val healthDistanceMeters = runCatching {
+            metrics.getData(DataType.DISTANCE_TOTAL)?.total
+        }.getOrNull()?.takeIf { distance -> distance.isFinite() && distance >= 0.0 }
         val heartRatePoint = metrics.getData(DataType.HEART_RATE_BPM).lastOrNull()
         val heartRateAccuracy = heartRatePoint?.accuracy as? HeartRateAccuracy
         val heartRateBpm = heartRatePoint
@@ -746,6 +755,7 @@ class WearExerciseService : Service() {
             elapsedRealtimeMs = elapsedRealtimeMs,
             heartRateBpm = heartRateBpm,
             activeDurationMs = activeDurationMs,
+            healthDistanceMeters = healthDistanceMeters,
         )
         locationPoints.forEach { point ->
             val pointElapsedRealtimeMs = point.timeDurationFromBoot.toMillis()
@@ -1259,6 +1269,12 @@ class WearExerciseService : Service() {
     private fun requestedDataTypes(): Set<DataType<*, *>> {
         val dataTypes = mutableSetOf<DataType<*, *>>(
             DataType.ACTIVE_EXERCISE_DURATION_TOTAL,
+            // W3 pace-consistency slice: ask Health Services for its own cumulative distance so
+            // pace can match other running apps instead of only trusting our filtered GPS route.
+            // The capability intersection in prepareHealthExercise/startHealthExercise drops this
+            // if the watch/session doesn't actually support it. Deliberately not requesting HS's
+            // speed data type here — current pace is derived from distance samples instead.
+            DataType.DISTANCE_TOTAL,
         )
         if (hasHeartRatePermission()) {
             dataTypes.add(DataType.HEART_RATE_BPM)

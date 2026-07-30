@@ -343,6 +343,94 @@ class WearExerciseMetricAccumulatorTest {
     }
 
     @Test
+    fun healthServicesDistanceTakesPrecedenceOverTheFilteredRoute() {
+        val accumulator = WearExerciseMetricAccumulator(
+            startedAtWallClockMs = 10_000L,
+            startedAtElapsedRealtimeMs = 1_000L,
+        )
+
+        // A confirmed GPS movement of a bit over 100m (see weakFirstFixCannotPoisonLaterPreciseRunningDistance).
+        accumulator.applyMetricUpdate(
+            elapsedRealtimeMs = 1_000L,
+            routePoint = WearRoutePoint(timestampMs = 10_000L, lat = 37.5, lng = 127.0, accuracy = 5.0),
+        )
+        accumulator.applyMetricUpdate(
+            elapsedRealtimeMs = 11_000L,
+            routePoint = WearRoutePoint(timestampMs = 20_000L, lat = 37.501, lng = 127.0, accuracy = 5.0),
+        )
+        accumulator.applyMetricUpdate(
+            elapsedRealtimeMs = 12_000L,
+            healthDistanceMeters = 250.0,
+        )
+
+        val snapshot = accumulator.snapshot()
+        assertEquals(250.0, snapshot.distanceMeters, 0.0001)
+        assertEquals(250.0, snapshot.healthDistanceMeters!!, 0.0001)
+        // The filtered route distance keeps driving distanceSamples/pace-trend regardless of HS.
+        assertEquals(true, snapshot.distanceSamples.last().distanceKm < 0.2)
+    }
+
+    @Test
+    fun healthServicesDistanceIsMonotonicAndIgnoresBadValues() {
+        val accumulator = WearExerciseMetricAccumulator(
+            startedAtWallClockMs = 10_000L,
+            startedAtElapsedRealtimeMs = 1_000L,
+        )
+
+        accumulator.applyMetricUpdate(elapsedRealtimeMs = 1_000L, healthDistanceMeters = 100.0)
+        accumulator.applyMetricUpdate(elapsedRealtimeMs = 2_000L, healthDistanceMeters = 40.0)
+        assertEquals(100.0, accumulator.snapshot().distanceMeters, 0.0001)
+
+        accumulator.applyMetricUpdate(elapsedRealtimeMs = 3_000L, healthDistanceMeters = Double.NaN)
+        accumulator.applyMetricUpdate(elapsedRealtimeMs = 4_000L, healthDistanceMeters = -5.0)
+        assertEquals(100.0, accumulator.snapshot().distanceMeters, 0.0001)
+
+        accumulator.applyMetricUpdate(elapsedRealtimeMs = 5_000L, healthDistanceMeters = 180.0)
+        assertEquals(180.0, accumulator.snapshot().distanceMeters, 0.0001)
+    }
+
+    @Test
+    fun fallsBackToRouteDistanceWhenHealthServicesNeverReports() {
+        val accumulator = WearExerciseMetricAccumulator(
+            startedAtWallClockMs = 10_000L,
+            startedAtElapsedRealtimeMs = 1_000L,
+        )
+        accumulator.applyMetricUpdate(
+            elapsedRealtimeMs = 1_000L,
+            routePoint = WearRoutePoint(timestampMs = 10_000L, lat = 37.5665, lng = 126.9780),
+        )
+        accumulator.applyMetricUpdate(
+            elapsedRealtimeMs = 61_000L,
+            routePoint = WearRoutePoint(timestampMs = 70_000L, lat = 37.5680, lng = 126.9780),
+        )
+
+        val snapshot = accumulator.snapshot()
+        assertEquals(null, snapshot.healthDistanceMeters)
+        assertEquals(true, snapshot.distanceMeters > 150.0)
+    }
+
+    @Test
+    fun restoresHealthServicesDistanceFromASnapshotRoundTrip() {
+        val accumulator = WearExerciseMetricAccumulator.fromSnapshot(
+            snapshot = WearExerciseSessionSnapshot(
+                status = WearExerciseSessionStatus.ACTIVE,
+                startedAtWallClockMs = 10_000L,
+                activeDurationMs = 40_000L,
+                healthDistanceMeters = 320.0,
+            ),
+            startedAtElapsedRealtimeMs = 1_000L,
+        )
+
+        assertEquals(320.0, accumulator.snapshot().distanceMeters, 0.0001)
+
+        accumulator.applyMetricUpdate(elapsedRealtimeMs = 2_000L, healthDistanceMeters = 150.0)
+        assertEquals(320.0, accumulator.snapshot().distanceMeters, 0.0001)
+
+        accumulator.applyMetricUpdate(elapsedRealtimeMs = 3_000L, healthDistanceMeters = 400.0)
+        assertEquals(400.0, accumulator.snapshot().distanceMeters, 0.0001)
+    }
+
+    @Test
     fun restoresPersistedSnapshotAndMarksNextLocationAfterServiceRestart() {
         val accumulator = WearExerciseMetricAccumulator.fromSnapshot(
             snapshot = WearExerciseSessionSnapshot(

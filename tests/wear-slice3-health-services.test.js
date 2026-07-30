@@ -46,8 +46,12 @@ test('wear slice3 service owns ExerciseClient and streams run metrics to UI stat
   ].forEach((needle) => {
     assert.ok(service.includes(needle), `missing ${needle}`);
   });
-  assert.ok(!service.includes('DataType.DISTANCE_TOTAL'), 'distance must come from the filtered GPS route');
-  assert.ok(!service.includes('DataType.SPEED'), 'pace must come from the filtered GPS route');
+  // W3 pace-consistency slice: Health Services' cumulative distance is requested so pace can match
+  // other running apps; the capability intersection filters it out where unsupported.
+  assert.ok(service.includes('DataType.DISTANCE_TOTAL'), 'must request Health Services cumulative distance');
+  assert.match(service, /metrics\.getData\(DataType\.DISTANCE_TOTAL\)/);
+  assert.match(service, /healthDistanceMeters\s*=\s*healthDistanceMeters/);
+  assert.ok(!service.includes('DataType.SPEED'), 'current pace must come from distance samples, not an HS speed stream');
 
   [
     'WearExerciseService.startRun',

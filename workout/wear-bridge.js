@@ -165,7 +165,7 @@ function _routeGapSummary(route, summary = {}) {
   };
 }
 
-function _normalizeRouteSummary(payload, route, durationSec, distanceKm, startedAt, endedAt) {
+function _normalizeRouteSummary(payload, route, durationSec, distanceKm, startedAt, endedAt, distanceMeters) {
   const summary = payload.routeSummary && typeof payload.routeSummary === 'object'
     ? payload.routeSummary
     : {};
@@ -174,6 +174,7 @@ function _normalizeRouteSummary(payload, route, durationSec, distanceKm, started
     source: route.length ? 'wear-gps' : String(summary.source || 'unavailable'),
     pointCount: route.length,
     distanceKm,
+    distanceMeters,
     durationSec,
     startedAt,
     endedAt,
@@ -181,6 +182,15 @@ function _normalizeRouteSummary(payload, route, durationSec, distanceKm, started
     gapCount: routeGaps.gapCount,
     interrupted: routeGaps.interrupted,
   };
+}
+
+// W3 pace-consistency slice: prefer the watch's unrounded Health Services/route distance over the
+// 2-decimal distanceKm so pace math (buildRunningActivityAnalytics' options.distanceM hook) uses a
+// precise denominator instead of compounding the 2dp rounding.
+function _wearDistanceMeters(payload, distanceKm) {
+  const raw = _num(payload?.distanceMeters, NaN);
+  if (Number.isFinite(raw) && raw >= 0) return raw;
+  return Math.max(0, distanceKm) * 1_000;
 }
 
 function _optionalCalories(value) {
@@ -205,6 +215,7 @@ export function normalizeWearWorkoutPayload(raw) {
     { min: 1, max: 6 * 60 * 60 },
   );
   const distanceKm = _round(Math.max(0, _num(payload.distanceKm, 0)), 2);
+  const distanceMeters = _wearDistanceMeters(payload, distanceKm);
   const avgPaceSecPerKm = _boundedInt(payload.avgPaceSecPerKm, { min: 1, max: 99 * 60, nullable: true });
   const avgHeartRateBpm = _boundedInt(payload.avgHeartRateBpm, { min: 30, max: 240, nullable: true });
   const maxHeartRateBpm = _boundedInt(payload.maxHeartRateBpm, { min: 30, max: 240, nullable: true });
@@ -212,13 +223,14 @@ export function normalizeWearWorkoutPayload(raw) {
   const samples10s = _normalizeSamples(payload.samples10s, startedAt, endedAt);
   const calories = _optionalCalories(payload.calories ?? payload.caloriesKcal ?? payload.activeCalories);
   const routeSummary = {
-    ..._normalizeRouteSummary(payload, route, durationSec, distanceKm, startedAt, endedAt),
+    ..._normalizeRouteSummary(payload, route, durationSec, distanceKm, startedAt, endedAt, distanceMeters),
     ...buildRunningActivityAnalytics(route, {
       source: route.length ? 'wear-gps' : 'wear',
       startedAt,
       endedAt,
       durationSec,
       distanceKm,
+      distanceM: distanceMeters,
       heartRateSamples: samples10s,
       avgHeartRateBpm,
       maxHeartRateBpm,
@@ -238,6 +250,7 @@ export function normalizeWearWorkoutPayload(raw) {
     endedAt,
     durationSec,
     distanceKm,
+    distanceMeters,
     avgPaceSecPerKm,
     avgHeartRateBpm,
     maxHeartRateBpm,
@@ -280,13 +293,15 @@ function _redactedRouteSummary(payload) {
   const summary = payload?.routeSummary && typeof payload.routeSummary === 'object'
     ? payload.routeSummary
     : {};
+  const distanceKm = _round(_num(payload?.distanceKm ?? summary.distanceKm, 0), 2);
   return {
     source: summary.source || (Array.isArray(payload?.route) && payload.route.length ? 'wear-gps-redacted' : 'unavailable'),
     pointCount: Math.max(0, Math.floor(_num(summary.pointCount, Array.isArray(payload?.route) ? payload.route.length : 0))),
     segmentCount: _count(summary.segmentCount, 0),
     gapCount: _count(summary.gapCount, 0),
     interrupted: _bool(summary.interrupted) || _count(summary.gapCount, 0) > 0,
-    distanceKm: _round(_num(payload?.distanceKm ?? summary.distanceKm, 0), 2),
+    distanceKm,
+    distanceMeters: _wearDistanceMeters({ distanceMeters: payload?.distanceMeters ?? summary.distanceMeters }, distanceKm),
     durationSec: Math.max(0, Math.floor(_num(payload?.durationSec ?? summary.durationSec, 0))),
     startedAt: _boundedInt(payload?.startedAt ?? summary.startedAt, { min: 0 }),
     endedAt: _boundedInt(payload?.endedAt ?? summary.endedAt, { min: 0 }),
@@ -297,6 +312,7 @@ function _redactedRouteSummary(payload) {
 function _sanitizeQueuedPayload(payload = {}) {
   const startedAt = _boundedInt(payload?.startedAt, { min: 0 });
   const endedAt = _boundedInt(payload?.endedAt, { min: startedAt + 1 });
+  const distanceKm = _round(Math.max(0, _num(payload?.distanceKm, 0)), 2);
   const safe = {
     type: 'running',
     source: 'wear',
@@ -304,7 +320,7 @@ function _sanitizeQueuedPayload(payload = {}) {
     startedAt,
     endedAt,
     durationSec: Math.max(0, Math.floor(_num(payload?.durationSec, Math.round((endedAt - startedAt) / 1000)))),
-    distanceKm: _round(Math.max(0, _num(payload?.distanceKm, 0)), 2),
+    distanceKm,
     route: [],
     samples10s: [],
     routeSummary: _redactedRouteSummary(payload),
@@ -313,10 +329,12 @@ function _sanitizeQueuedPayload(payload = {}) {
   const avgHeartRateBpm = _boundedInt(payload?.avgHeartRateBpm, { min: 30, max: 240, nullable: true });
   const maxHeartRateBpm = _boundedInt(payload?.maxHeartRateBpm, { min: 30, max: 240, nullable: true });
   const calories = _optionalCalories(payload?.calories ?? payload?.caloriesKcal ?? payload?.activeCalories);
+  const rawDistanceMeters = _num(payload?.distanceMeters, NaN);
   if (avgPaceSecPerKm != null) safe.avgPaceSecPerKm = avgPaceSecPerKm;
   if (avgHeartRateBpm != null) safe.avgHeartRateBpm = avgHeartRateBpm;
   if (maxHeartRateBpm != null) safe.maxHeartRateBpm = maxHeartRateBpm;
   if (calories != null) safe.calories = calories;
+  if (Number.isFinite(rawDistanceMeters) && rawDistanceMeters >= 0) safe.distanceMeters = rawDistanceMeters;
   return {
     ...safe,
   };

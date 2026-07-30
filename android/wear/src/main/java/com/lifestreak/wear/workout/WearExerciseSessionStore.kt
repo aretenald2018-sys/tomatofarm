@@ -34,6 +34,10 @@ data class WearExerciseSessionSnapshot(
     val heartRateSamples: List<HeartRateSample> = emptyList(),
     val routePoints: List<WearRoutePoint> = emptyList(),
     val message: String? = null,
+    // W3 pace-consistency slice: Health Services' cumulative distance, carried through restarts so
+    // a killed-and-restored service doesn't drop back to the filtered GPS route distance. Null for
+    // sessions persisted before this field existed.
+    val healthDistanceMeters: Double? = null,
 )
 
 /**
@@ -91,6 +95,7 @@ object WearExerciseSessionStore {
                 heartRateSamples = metrics.heartRateSamples,
                 routePoints = metrics.routePoints,
                 message = message,
+                healthDistanceMeters = metrics.healthDistanceMeters,
             ),
         )
     }
@@ -222,6 +227,7 @@ object WearExerciseSessionPersistence {
             .put("heartRateSamples", heartRateSamplesToJson(snapshot.heartRateSamples))
             .put("routePoints", routePointsToJson(routePoints))
             .putNullable("message", snapshot.message)
+            .putNullable("healthDistanceMeters", snapshot.healthDistanceMeters)
             .toString()
     }
 
@@ -250,6 +256,8 @@ object WearExerciseSessionPersistence {
                     .toRoutePoints()
                     .takeLast(MAX_ROUTE_POINTS),
                 message = json.optNullableString("message"),
+                healthDistanceMeters = json.optNullableDouble("healthDistanceMeters")
+                    ?.takeIf { distance -> distance.isFinite() && distance >= 0.0 },
             )
             snapshot.takeIf { shouldPersist(it) }
         }.getOrNull()

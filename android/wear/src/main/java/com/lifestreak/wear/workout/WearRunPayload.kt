@@ -37,6 +37,7 @@ data class WearRouteSummary(
     val segmentCount: Int = 0,
     val gapCount: Int = 0,
     val interrupted: Boolean = false,
+    val distanceMeters: Double = distanceKm * 1_000.0,
 )
 
 data class WearRunSession(
@@ -54,6 +55,9 @@ data class WearRunSession(
 data class WearRunSummary(
     val durationSec: Long,
     val distanceKm: Double,
+    // Unrounded distance (W3 pace-consistency slice) so the phone can derive pace from a precise
+    // denominator instead of the 2-decimal distanceKm, kept alongside it for compatibility.
+    val distanceMeters: Double,
     val avgPaceSecPerKm: Int?,
     val avgHeartRateBpm: Int?,
     val maxHeartRateBpm: Int?,
@@ -80,6 +84,7 @@ data class WearWorkoutPayload(
             .put("endedAt", endedAtMs)
             .put("durationSec", summary.durationSec)
             .put("distanceKm", summary.distanceKm)
+            .put("distanceMeters", summary.distanceMeters)
             .putNullable("avgPaceSecPerKm", summary.avgPaceSecPerKm)
             .putNullable("avgHeartRateBpm", summary.avgHeartRateBpm)
             .putNullable("maxHeartRateBpm", summary.maxHeartRateBpm)
@@ -108,6 +113,7 @@ data class WearWorkoutPayload(
                     .put("source", summary.routeSummary.source)
                     .put("pointCount", summary.routeSummary.pointCount)
                     .put("distanceKm", summary.routeSummary.distanceKm)
+                    .put("distanceMeters", summary.routeSummary.distanceMeters)
                     .put("durationSec", summary.routeSummary.durationSec)
                     .put("startedAt", summary.routeSummary.startedAtMs)
                     .put("endedAt", summary.routeSummary.endedAtMs)
@@ -143,6 +149,10 @@ data class WearWorkoutPayload(
         private const val MAX_GPS_ERROR_RADIUS_M = 30.0
         private const val MIN_CONFIDENT_RUNNING_SPEED_MPS = 0.3
         private const val MAX_RUNNING_SPEED_MPS = 15.0
+        // Mirrors WearExerciseMetricAccumulator.MAX_DISTANCE_GPS_ACCURACY_M (W3 pace-consistency
+        // slice): this fallback path used to be more permissive than the primary accumulator path
+        // since it never hard-dropped low-accuracy fixes, which was an inconsistency.
+        private const val MAX_DISTANCE_GPS_ACCURACY_M = 15.0
         private val DATE_KEY_PATTERN = Regex("""\d{4}-\d{2}-\d{2}""")
 
         fun fromSession(session: WearRunSession): Result<WearWorkoutPayload> = runCatching {
@@ -193,6 +203,10 @@ data class WearWorkoutPayload(
                 summary = WearRunSummary(
                     durationSec = durationSec,
                     distanceKm = distanceKm,
+                    distanceMeters = distanceMeters,
+                    // Moving-time pace (pauses excluded from durationSec above) — this matches the
+                    // common default in other running apps (e.g. Strava's "moving time"), so this
+                    // isn't a bug to "fix" later.
                     avgPaceSecPerKm = if (distanceMeters > 0.0) {
                         (durationSec / (distanceMeters / 1_000.0)).roundToInt()
                     } else {
@@ -206,6 +220,7 @@ data class WearWorkoutPayload(
                         source = if (route.isNotEmpty()) "wear-gps" else "unavailable",
                         pointCount = route.size,
                         distanceKm = distanceKm,
+                        distanceMeters = distanceMeters,
                         durationSec = durationSec,
                         startedAtMs = session.startedAtMs,
                         endedAtMs = session.endedAtMs,
@@ -328,6 +343,7 @@ data class WearWorkoutPayload(
             var anchor: WearRoutePoint? = null
             var total = 0.0
             route.forEach { point ->
+                if ((point.accuracy ?: 0.0) > MAX_DISTANCE_GPS_ACCURACY_M) return@forEach
                 val previous = anchor
                 if (previous == null || isGapEdge(previous, point)) {
                     anchor = point

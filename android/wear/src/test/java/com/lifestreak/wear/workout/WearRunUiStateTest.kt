@@ -166,7 +166,9 @@ class WearRunUiStateTest {
 
         assertEquals("6'40\"", snapshot.averagePaceText)
         assertEquals("5'00\"", snapshot.fastestPaceText)
-        assertEquals(listOf(500, 461, 352, 300, 461), snapshot.paceTrend.map { it.secondsPerKm })
+        // W3 pace-consistency slice: buildPaceTrend now rounds (not truncates) seconds/km, so
+        // 60/0.13=461.54 -> 462 and 60/0.17=352.94 -> 353 (previously 461 and 352).
+        assertEquals(listOf(500, 462, 353, 300, 462), snapshot.paceTrend.map { it.secondsPerKm })
 
         assertEquals(147, snapshot.averageHeartRateBpm)
         assertEquals(185, snapshot.maxHeartRateBpm)

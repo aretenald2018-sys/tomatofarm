@@ -79,7 +79,10 @@ test('watch uses direct GPS fallback and refuses to start without precise locati
   assert.match(service, /ACTIVE_DURATION_CHECKPOINT_MS = 10_000L/);
   assert.match(service, /checkpointHandler\.postDelayed\(checkpointRunnable, ACTIVE_DURATION_CHECKPOINT_MS\)/);
   assert.match(service, /activeDurationMs = activeDurationTracker\.activeDurationAt\(elapsedRealtimeMs\)/);
-  assert.doesNotMatch(service, /metrics\.getData\(DataType\.DISTANCE_TOTAL\)/);
+  // W3 pace-consistency slice: HS cumulative distance is now requested and read (see
+  // wear-slice3-health-services.test.js), but current pace still must never come from an HS speed
+  // stream.
+  assert.match(service, /metrics\.getData\(DataType\.DISTANCE_TOTAL\)/);
   assert.doesNotMatch(service, /DataType\.SPEED/);
   assert.match(accumulator, /distanceSamples = routeDistanceSamples\(movementRoute\)/);
   assert.match(service, /private fun handlePauseRun\(\)[\s\S]*stopActiveDurationCheckpoints\(\)/);

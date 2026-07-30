@@ -245,6 +245,13 @@ function _aggregateRunningSessions(sessions) {
   const duration = _sumDurationMinSec(runs, 'runDurationMin', 'runDurationSec');
   const durationSec = duration.min * 60 + duration.sec;
   const distanceKm = runs.reduce((sum, session) => sum + _num(session.runDistance), 0);
+  // W3 pace-consistency slice: the multi-run rollup pace is derived from precise meters (when a
+  // run carries its unrounded runRouteSummary.distanceMeters) rather than the 2-decimal-rounded
+  // runDistance sum above — the displayed distance total is left untouched.
+  const preciseDistanceKm = runs.reduce((sum, session) => {
+    const meters = _num(session.runRouteSummary?.distanceMeters);
+    return sum + (meters > 0 ? meters / 1_000 : _num(session.runDistance));
+  }, 0);
   const startedValues = runs.map(session => _num(session.runStartedAt)).filter(value => value > 0);
   const endedValues = runs.map(session => _num(session.runEndedAt)).filter(value => value > 0);
   const pointCount = runs.reduce((sum, session) => (
@@ -253,8 +260,8 @@ function _aggregateRunningSessions(sessions) {
       Array.isArray(session.runRoute) ? session.runRoute.length : 0,
     )
   ), 0);
-  const avgPaceSecPerKm = distanceKm > 0 && durationSec > 0
-    ? Math.round(durationSec / distanceKm)
+  const avgPaceSecPerKm = preciseDistanceKm > 0 && durationSec > 0
+    ? Math.round(durationSec / preciseDistanceKm)
     : 0;
 
   if (runs.length === 1) {

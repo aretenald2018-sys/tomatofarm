@@ -13,6 +13,7 @@ data class WearExerciseMetricsSnapshot(
     val distanceSamples: List<WearDistanceSample>,
     val heartRateSamples: List<HeartRateSample>,
     val routePoints: List<WearRoutePoint>,
+    val healthDistanceMeters: Double? = null,
 ) {
     val distanceKm: Double = distanceMeters / 1_000.0
 }
@@ -26,6 +27,10 @@ class WearExerciseMetricAccumulator(
     private val heartRateSamplesByBucket = linkedMapOf<Long, HeartRateSample>()
     private val routePoints = linkedSetOf<WearRoutePoint>()
     private var pendingRouteGapReason: String? = null
+    // W3 pace-consistency slice: Health Services' own cumulative distance, when the platform
+    // supplies it. Monotonic (only ever moves up) like activeDurationMs above, and takes
+    // precedence over the filtered route distance in snapshot() below.
+    private var healthDistanceMeters: Double? = null
 
     fun markRouteGap(reason: String = "interruption") {
         if (routePoints.isNotEmpty()) pendingRouteGapReason = reason.take(48)
@@ -36,9 +41,13 @@ class WearExerciseMetricAccumulator(
         heartRateBpm: Int? = null,
         activeDurationMs: Long? = null,
         routePoint: WearRoutePoint? = null,
+        healthDistanceMeters: Double? = null,
     ) {
         if (activeDurationMs != null && activeDurationMs >= 0L) {
             this.activeDurationMs = maxOf(this.activeDurationMs, activeDurationMs)
+        }
+        if (healthDistanceMeters != null && healthDistanceMeters.isFinite() && healthDistanceMeters >= 0.0) {
+            this.healthDistanceMeters = maxOf(this.healthDistanceMeters ?: 0.0, healthDistanceMeters)
         }
         if (heartRateBpm != null && heartRateBpm in MIN_HEART_RATE_BPM..MAX_HEART_RATE_BPM) {
             latestHeartRateBpm = heartRateBpm
@@ -62,14 +71,19 @@ class WearExerciseMetricAccumulator(
         val normalizedRoute = normalizedRoutePoints()
         val movementRoute = confirmedMovementRoute(normalizedRoute)
         val routeDistanceMeters = routeDistanceMeters(movementRoute)
+        // Health Services' cumulative distance wins for the reported/pace-driving distance once
+        // available; the filtered polyline stays exactly as-is for route display, distanceSamples
+        // (pace-trend), and as the fallback when HS distance is absent, so those may diverge
+        // slightly from the HS total by design.
         return WearExerciseMetricsSnapshot(
             startedAtWallClockMs = startedAtWallClockMs,
-            distanceMeters = routeDistanceMeters,
+            distanceMeters = healthDistanceMeters ?: routeDistanceMeters,
             latestHeartRateBpm = latestHeartRateBpm,
             activeDurationMs = activeDurationMs,
             distanceSamples = routeDistanceSamples(movementRoute),
             heartRateSamples = heartRateSamplesByBucket.values.sortedBy { it.timestampMs },
             routePoints = normalizedRoute,
+            healthDistanceMeters = healthDistanceMeters,
         )
     }
 
@@ -218,6 +232,8 @@ class WearExerciseMetricAccumulator(
             accumulator.latestHeartRateBpm = snapshot.latestHeartRateBpm
                 ?: snapshot.heartRateSamples.lastOrNull()?.bpm
             accumulator.activeDurationMs = snapshot.activeDurationMs.coerceAtLeast(0L)
+            accumulator.healthDistanceMeters = snapshot.healthDistanceMeters
+                ?.takeIf { distance -> distance.isFinite() && distance >= 0.0 }
             snapshot.heartRateSamples
                 .filter { sample -> sample.timestampMs >= 0L && sample.bpm in MIN_HEART_RATE_BPM..MAX_HEART_RATE_BPM }
                 .forEach { sample -> accumulator.heartRateSamplesByBucket[sample.timestampMs] = sample }

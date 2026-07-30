@@ -50,6 +50,12 @@ class WearRunPayloadTest {
         assertEquals(31_000L, json.getLong("endedAt"))
         assertEquals(2, json.getJSONArray("samples10s").length())
         assertEquals(145, json.getJSONArray("samples10s").getJSONObject(0).getInt("bpm"))
+
+        // W3 pace-consistency slice: unrounded distanceMeters travels alongside distanceKm, both
+        // at the top level and inside routeSummary.
+        assertEquals(500.0, payload.summary.distanceMeters, 0.0001)
+        assertEquals(500.0, json.getDouble("distanceMeters"), 0.0001)
+        assertEquals(500.0, json.getJSONObject("routeSummary").getDouble("distanceMeters"), 0.0001)
     }
 
     @Test
@@ -202,6 +208,26 @@ class WearRunPayloadTest {
     }
 
     @Test
+    fun fallbackRouteDistanceHardDropsLowAccuracyFixesLikeThePrimaryPath() {
+        // W3 pace-consistency slice: confirmedMovementDistanceMeters() used to be more permissive
+        // than the accumulator's confirmedMovementRoute() — it only fed accuracy into the error
+        // radius formula instead of hard-dropping fixes worse than 15m, like the primary path
+        // does. A weak-accuracy fix should now be excluded entirely, not just discounted.
+        val payload = WearRunSession(
+            dateKey = "2026-07-06",
+            startedAtMs = 1_000L,
+            endedAtMs = 21_000L,
+            distanceMeters = 0.0,
+            routePoints = listOf(
+                WearRoutePoint(timestampMs = 1_000L, lat = 37.5, lng = 127.0, accuracy = 5.0),
+                WearRoutePoint(timestampMs = 11_000L, lat = 37.500898, lng = 127.0, accuracy = 20.0),
+            ),
+        ).toPayload().getOrThrow()
+
+        assertEquals(0.0, payload.summary.distanceKm, 0.0001)
+    }
+
+    @Test
     fun liveDisplayOnlyFieldsDoNotLeakIntoPhoneSavePayload() {
         var now = 1_000L
         val state = WearRunUiState { now }
@@ -260,6 +286,7 @@ class WearRunPayloadTest {
         listOf(
             "durationSec",
             "distanceKm",
+            "distanceMeters",
             "avgPaceSecPerKm",
             "avgHeartRateBpm",
             "maxHeartRateBpm",
