@@ -93,6 +93,11 @@ android/wear/src/test/java/com/lifestreak/wear/workout/*
 !android/wear/src/test/java/com/lifestreak/wear/workout/WearExerciseMetricAccumulatorTest.kt
 !android/wear/src/test/java/com/lifestreak/wear/workout/WearRunPayloadTest.kt
 !android/wear/src/test/java/com/lifestreak/wear/workout/WearRunUiStateTest.kt
+!android/wear/src/test/java/com/lifestreak/wear/workout/WearStrengthCatalogTest.kt
+!android/wear/src/test/java/com/lifestreak/wear/workout/WearStrengthHrAccumulatorTest.kt
+!android/wear/src/test/java/com/lifestreak/wear/workout/WearStrengthPayloadTest.kt
+!android/wear/src/test/java/com/lifestreak/wear/workout/WearStrengthSessionPersistenceTest.kt
+!android/wear/src/test/java/com/lifestreak/wear/workout/WearStrengthSessionStateTest.kt
 !android/wear/src/test/java/com/lifestreak/wear/workout/WearWorkoutDataLayerTest.kt
 !android/wear/src/main/
 !android/wear/src/main/AndroidManifest.xml
@@ -122,6 +127,14 @@ android/wear/src/main/java/com/lifestreak/wear/workout/*
 !android/wear/src/main/java/com/lifestreak/wear/workout/WearRunPayload.kt
 !android/wear/src/main/java/com/lifestreak/wear/workout/WearRunUiMetrics.kt
 !android/wear/src/main/java/com/lifestreak/wear/workout/WearRunUiState.kt
+!android/wear/src/main/java/com/lifestreak/wear/workout/WearStrengthCatalog.kt
+!android/wear/src/main/java/com/lifestreak/wear/workout/WearStrengthContextStore.kt
+!android/wear/src/main/java/com/lifestreak/wear/workout/WearStrengthHrAccumulator.kt
+!android/wear/src/main/java/com/lifestreak/wear/workout/WearStrengthHrService.kt
+!android/wear/src/main/java/com/lifestreak/wear/workout/WearStrengthHrStore.kt
+!android/wear/src/main/java/com/lifestreak/wear/workout/WearStrengthPayload.kt
+!android/wear/src/main/java/com/lifestreak/wear/workout/WearStrengthSessionPersistence.kt
+!android/wear/src/main/java/com/lifestreak/wear/workout/WearStrengthSessionState.kt
 !android/wear/src/main/java/com/lifestreak/wear/workout/WearWorkoutDataLayer.kt
 !android/wear/src/main/java/com/lifestreak/wear/workout/WearWorkoutUiController.kt
 !android/wear/src/main/res/

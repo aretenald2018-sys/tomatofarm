@@ -17,6 +17,7 @@ data class WearWorkoutSendResult(
 
 object WearWorkoutDataLayer {
     const val PATH_RUN_COMPLETE = "/tomato/workout/run/complete"
+    const val PATH_STRENGTH_COMPLETE = "/tomato/workout/strength/complete"
     const val PATH_RUN_SAVED_ACK = "/tomato/workout/run/saved"
     const val TRANSFER_ID_KEY = "transferId"
     private const val ASSET_KEY = "routePayload"
@@ -34,23 +35,65 @@ object WearWorkoutDataLayer {
         payload: WearWorkoutPayload,
         onComplete: (WearWorkoutSendResult) -> Unit,
     ): String {
-        val payloadBytes = payload.toJsonString().toByteArray(Charsets.UTF_8)
-        val sha256 = MessageDigest.getInstance("SHA-256")
-            .digest(payloadBytes)
-            .joinToString("") { "%02x".format(it) }
-        val transferId = "${payload.startedAtMs}-${payload.endedAtMs}-$sha256"
-        val request = PutDataMapRequest.create("$PATH_RUN_COMPLETE/$transferId").apply {
+        return sendCompletePayload(
+            context = context,
+            pathPrefix = PATH_RUN_COMPLETE,
+            payloadBytes = payload.toJsonString().toByteArray(Charsets.UTF_8),
+            startedAtMs = payload.startedAtMs,
+            endedAtMs = payload.endedAtMs,
+            onComplete = onComplete,
+        )
+    }
+
+    /**
+     * Watch -> phone strength-completion send. Same DataMap keys, same
+     * `startedAt-endedAt-sha256` transferId format, and the same saved-ack path/retry policy as
+     * [sendRunComplete] — the phone's durable file queue depends on the transferId regex
+     * `^[0-9]+-[0-9]+-[a-f0-9]{64}$`, which this construction satisfies identically.
+     */
+    fun sendStrengthComplete(
+        context: Context,
+        payload: WearStrengthPayload,
+        onComplete: (WearWorkoutSendResult) -> Unit,
+    ): String {
+        return sendCompletePayload(
+            context = context,
+            pathPrefix = PATH_STRENGTH_COMPLETE,
+            payloadBytes = payload.toJsonString().toByteArray(Charsets.UTF_8),
+            startedAtMs = payload.startedAtMs,
+            endedAtMs = payload.endedAtMs,
+            onComplete = onComplete,
+        )
+    }
+
+    private fun sendCompletePayload(
+        context: Context,
+        pathPrefix: String,
+        payloadBytes: ByteArray,
+        startedAtMs: Long,
+        endedAtMs: Long,
+        onComplete: (WearWorkoutSendResult) -> Unit,
+    ): String {
+        val sha256 = sha256Hex(payloadBytes)
+        val transferId = "$startedAtMs-$endedAtMs-$sha256"
+        val request = PutDataMapRequest.create("$pathPrefix/$transferId").apply {
             dataMap.putString(TRANSFER_ID_KEY, transferId)
             dataMap.putLong(BYTE_LENGTH_KEY, payloadBytes.size.toLong())
             dataMap.putString(SHA256_KEY, sha256)
             dataMap.putAsset(ASSET_KEY, Asset.createFromBytes(payloadBytes))
         }.asPutDataRequest().setUrgent()
 
-        putRunComplete(context.applicationContext, request, transferId, 0, onComplete)
+        putCompletePayload(context.applicationContext, request, transferId, 0, onComplete)
         return transferId
     }
 
-    private fun putRunComplete(
+    private fun sha256Hex(bytes: ByteArray): String {
+        return MessageDigest.getInstance("SHA-256")
+            .digest(bytes)
+            .joinToString("") { "%02x".format(it) }
+    }
+
+    private fun putCompletePayload(
         context: Context,
         request: PutDataRequest,
         transferId: String,
@@ -64,7 +107,7 @@ object WearWorkoutDataLayer {
             .addOnFailureListener {
                 if (attempt + 1 < MAX_SEND_ATTEMPTS) {
                     mainHandler.postDelayed(
-                        { putRunComplete(context, request, transferId, attempt + 1, onComplete) },
+                        { putCompletePayload(context, request, transferId, attempt + 1, onComplete) },
                         1_000L * (attempt + 1),
                     )
                     return@addOnFailureListener
