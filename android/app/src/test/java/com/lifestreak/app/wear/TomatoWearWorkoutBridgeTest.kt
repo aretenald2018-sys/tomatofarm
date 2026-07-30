@@ -162,6 +162,24 @@ class TomatoWearWorkoutBridgeTest {
     }
 
     @Test
+    fun listenerAcceptsRunAndStrengthCompletePrefixesOnly() {
+        val zeros = "0".repeat(64)
+        val runPath = "${TomatoWearWorkoutBridge.PATH_RUN_COMPLETE}/1-2-$zeros"
+        val strengthPath = "${TomatoWearWorkoutBridge.PATH_STRENGTH_COMPLETE}/1-2-$zeros"
+
+        assertEquals("/tomato/workout/strength/complete", TomatoWearWorkoutBridge.PATH_STRENGTH_COMPLETE)
+        assertTrue(TomatoWearWorkoutListenerService.isAcceptedCompletePathForTest(runPath))
+        assertTrue(TomatoWearWorkoutListenerService.isAcceptedCompletePathForTest(strengthPath))
+        assertFalse(TomatoWearWorkoutListenerService.isAcceptedCompletePathForTest(TomatoWearWorkoutBridge.PATH_RUN_COMPLETE))
+        assertFalse(TomatoWearWorkoutListenerService.isAcceptedCompletePathForTest(TomatoWearWorkoutBridge.PATH_STRENGTH_COMPLETE))
+        assertFalse(
+            TomatoWearWorkoutListenerService.isAcceptedCompletePathForTest("/tomato/workout/strength/context"),
+        )
+        assertFalse(TomatoWearWorkoutListenerService.isAcceptedCompletePathForTest("/tomato/app/refresh"))
+        println("WEAR_QUEUE_QA acceptedPathPrefixes=run,strength")
+    }
+
+    @Test
     fun savedAckPathAndInFlightTrackerAreStableAndDeduplicated() {
         val transferId = "1000-2000-${"a".repeat(64)}"
         val tracker = TomatoWearWorkoutBridge.SavedAckTracker()

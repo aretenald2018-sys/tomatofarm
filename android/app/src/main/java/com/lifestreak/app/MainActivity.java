@@ -5,6 +5,7 @@ import android.net.Uri;
 import android.os.Bundle;
 import com.getcapacitor.BridgeActivity;
 import com.lifestreak.app.wear.TomatoWearAppUpdatePlugin;
+import com.lifestreak.app.wear.TomatoWearStrengthContextPlugin;
 import com.lifestreak.app.wear.TomatoWearWorkoutBridge;
 import com.lifestreak.app.running.TomatoRunningLocationPlugin;
 import com.lifestreak.app.widget.SeasonWidgetPlugin;
@@ -14,6 +15,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         registerPlugin(TomatoWearAppUpdatePlugin.class);
+        registerPlugin(TomatoWearStrengthContextPlugin.class);
         registerPlugin(TomatoRunningLocationPlugin.class);
         registerPlugin(SeasonWidgetPlugin.class);
         super.onCreate(savedInstanceState);

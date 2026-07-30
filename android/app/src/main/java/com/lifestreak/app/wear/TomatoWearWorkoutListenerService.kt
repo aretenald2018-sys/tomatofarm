@@ -19,7 +19,7 @@ class TomatoWearWorkoutListenerService : WearableListenerService() {
             if (event.type != DataEvent.TYPE_CHANGED) return@forEach
             val dataItem = event.dataItem
             val path = dataItem.uri.path ?: return@forEach
-            if (!path.startsWith("${TomatoWearWorkoutBridge.PATH_RUN_COMPLETE}/")) return@forEach
+            if (!isAcceptedCompletePath(path)) return@forEach
             val dataMap = try {
                 DataMapItem.fromDataItem(dataItem).dataMap
             } catch (_: Exception) {
@@ -107,8 +107,16 @@ class TomatoWearWorkoutListenerService : WearableListenerService() {
         }
     }
 
-    private companion object {
-        const val LOG_TAG = "TomatoWearListener"
-        val ioExecutor = Executors.newSingleThreadExecutor()
+    companion object {
+        private const val LOG_TAG = "TomatoWearListener"
+        private val ioExecutor = Executors.newSingleThreadExecutor()
+
+        private fun isAcceptedCompletePath(path: String): Boolean {
+            val isRunComplete = path.startsWith("${TomatoWearWorkoutBridge.PATH_RUN_COMPLETE}/")
+            val isStrengthComplete = path.startsWith("${TomatoWearWorkoutBridge.PATH_STRENGTH_COMPLETE}/")
+            return isRunComplete || isStrengthComplete
+        }
+
+        internal fun isAcceptedCompletePathForTest(path: String): Boolean = isAcceptedCompletePath(path)
     }
 }

@@ -58,6 +58,7 @@ android/app/src/main/java/com/lifestreak/app/**
 !android/app/src/main/java/com/lifestreak/app/wear/
 android/app/src/main/java/com/lifestreak/app/wear/**
 !android/app/src/main/java/com/lifestreak/app/wear/TomatoWearAppUpdatePlugin.kt
+!android/app/src/main/java/com/lifestreak/app/wear/TomatoWearStrengthContextPlugin.kt
 !android/app/src/main/java/com/lifestreak/app/wear/TomatoWearWorkoutBridge.kt
 !android/app/src/main/java/com/lifestreak/app/wear/TomatoWearWorkoutListenerService.kt
 !android/app/src/test/

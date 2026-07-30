@@ -14,6 +14,7 @@ import java.lang.ref.WeakReference
 
 object TomatoWearWorkoutBridge {
     const val PATH_RUN_COMPLETE = "/tomato/workout/run/complete"
+    const val PATH_STRENGTH_COMPLETE = "/tomato/workout/strength/complete"
     const val PATH_RUN_SAVED_ACK = "/tomato/workout/run/saved"
     const val ASSET_KEY = "routePayload"
     const val TRANSFER_ID_KEY = "transferId"
