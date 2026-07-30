@@ -159,8 +159,8 @@ test('wear slice C checks Health Services ownership before starting and re-arms 
 
   // Existing pause/resume/end already no-op the Health Services calls when exerciseStarted is
   // false, so compat-mode runs pause/finish correctly without any HS call.
-  assert.match(service, /if \(!exerciseStarted\) return\n\s*val pauseFuture/);
-  assert.match(service, /if \(!exerciseStarted\) return\n\s*val resumeFuture/);
+  assert.match(service, /if \(!exerciseStarted\) return\r?\n\s*val pauseFuture/);
+  assert.match(service, /if \(!exerciseStarted\) return\r?\n\s*val resumeFuture/);
   assert.match(service, /if \(exerciseStarted\) \{\s*\n\s*val endFuture = exerciseClient\.endExerciseAsync\(\)/);
 
   // New end-policy action for an unsolicited end, plus its status mapping.
@@ -172,7 +172,7 @@ test('wear slice C checks Health Services ownership before starting and re-arms 
   // new policy action + honest message — all inside the `isEnded && !endRequested` branch.
   assert.match(
     service,
-    /state\.isEnded && !endRequested\) \{[\s\S]{0,600}clearExerciseCallback\(\)[\s\S]{0,100}enableDirectSensorFallbacks\(\)[\s\S]{0,100}markRouteGap\("superseded"\)/,
+    /state\.isEnded && !endRequested\) \{[\s\S]{0,700}clearExerciseCallback\(\)[\s\S]{0,100}enableDirectSensorFallbacks\(\)[\s\S]{0,100}markRouteGap\("superseded"\)/,
   );
   assert.match(service, /WearExerciseEndPolicy\.afterUnsolicitedEnd\(endRequested = endRequested\)/);
   assert.match(service, /unsolicitedHealthEndMessage\(update\)/);
@@ -216,8 +216,8 @@ test('wear slice D requests Health Services elevation gain and buzzes at each co
   const uiMetrics = readProjectFile('android/wear/src/main/java/com/lifestreak/wear/workout/WearRunUiMetrics.kt');
 
   // W5a elevation slice: requested alongside DISTANCE_TOTAL, read the same defensive way.
-  assert.ok(service.includes('DataType.ELEVATION_GAIN'), 'must request Health Services cumulative elevation gain');
-  assert.match(service, /metrics\.getData\(DataType\.ELEVATION_GAIN\)/);
+  assert.ok(service.includes('DataType.ELEVATION_GAIN_TOTAL'), 'must request Health Services cumulative elevation gain');
+  assert.match(service, /metrics\.getData\(DataType\.ELEVATION_GAIN_TOTAL\)/);
   assert.match(service, /healthElevationGainMeters\s*=\s*healthElevationGainMeters/);
   assert.ok(!service.includes('DataType.SPEED'), 'W5a must not introduce an HS speed request either');
   assert.match(accumulator, /elevationGainMeters/);

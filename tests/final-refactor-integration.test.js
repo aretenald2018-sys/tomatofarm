@@ -32,9 +32,11 @@ test('final documentation points to current boundaries and production workflow',
   assert.match(readme, /npm\.cmd run verify:assets/);
   assert.match(architecture, /view\/controller -> domain model\/service -> data\.js/);
   assert.match(architecture, /one durable physical owner/);
-  assert.match(agents, /git worktree list/);
+  // Worktree/branch and evidence-hygiene rules live in the global ~/.claude/CLAUDE.md, which is
+  // outside this repo — AGENTS.md has to keep pointing at it rather than restating them.
+  assert.match(agents, /~\/\.claude\/CLAUDE\.md/);
   assert.match(agents, /style\.css.+generated/is);
-  assert.match(agents, /durable architecture, ADR, contract, or reference material/);
+  assert.match(agents, /only integration\/release owner/);
   assert.match(compatibility, /Removal target/);
   assert.doesNotMatch(compatibility, /`app\/compatibility-bridge\.js` exposes/);
   assert.match(compatibility, /No new code may import either shim/);
