@@ -363,6 +363,11 @@ function _writeQueue(queue) {
 }
 
 export async function saveWearWorkoutPayload(raw) {
+  const parsedForRouting = typeof raw === 'string' ? JSON.parse(raw) : raw;
+  if (parsedForRouting && typeof parsedForRouting === 'object' && parsedForRouting.type === 'strength') {
+    const { saveWearStrengthPayload } = await import('./wear-strength-import.js');
+    return saveWearStrengthPayload(parsedForRouting);
+  }
   if (!deps.state || !deps.loadWorkoutDate || !deps.saveWorkoutDay) {
     throw new Error('wear workout bridge dependencies are not configured');
   }

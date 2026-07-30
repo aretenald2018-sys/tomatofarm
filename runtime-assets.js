@@ -172,6 +172,8 @@
   './workout/activity-forms.js',
   './workout/wear-bridge.js',
   './workout/wear-payload-contract.js',
+  './workout/wear-strength-import.js',
+  './workout/wear-strength-context.js',
   './workout/running-map.js',
   './workout/running-route-policy.js',
   './workout/running-route-store.js',

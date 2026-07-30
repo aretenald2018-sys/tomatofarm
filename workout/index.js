@@ -55,6 +55,7 @@ import { _initRestTimerPresets }                   from './timers.js';
 import { _initTypeFormEvents }                     from './activity-forms.js';
 import { initRunningSession, configureRunningWeightProvider } from './running-session.js';
 import { configureWearWorkoutBridge, initWearWorkoutBridge } from './wear-bridge.js';
+import { initWearStrengthContextSync } from './wear-strength-context.js';
 import { confirmAction }                           from '../utils/confirm-modal.js';
 import { getDay, getLatestCheckinWeight }          from '../data.js';
 
@@ -97,3 +98,4 @@ setTimeout(_initRestTimerPresets, 0);
 setTimeout(_initTypeFormEvents, 0);
 setTimeout(initRunningSession, 0);
 setTimeout(initWearWorkoutBridge, 0);
+setTimeout(initWearStrengthContextSync, 0);
