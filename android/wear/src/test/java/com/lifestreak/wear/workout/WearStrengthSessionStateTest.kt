@@ -12,6 +12,7 @@ class WearStrengthSessionStateTest {
         exerciseId: String = "bench-press",
         stepKg: Double = 2.5,
         lastSession: WearStrengthLastSession? = null,
+        program: WearStrengthProgram? = null,
     ): WearStrengthExercise {
         return WearStrengthExercise(
             exerciseId = exerciseId,
@@ -20,8 +21,25 @@ class WearStrengthSessionStateTest {
             movementId = "barbell-press",
             stepKg = stepKg,
             lastSession = lastSession,
+            program = program,
         )
     }
+
+    /** 5/3/1 3주차 처방을 축약한 형태: 워밍업 1 + 메인 3(마지막 AMRAP) + BBB 2. */
+    private fun wendlerProgram(): WearStrengthProgram = WearStrengthProgram(
+        kind = "wendler",
+        label = "웬들러 5/3/1 · 142.5kg x 1+ · BBB 75kg 5x10",
+        shortLabel = "웬들러 5/3/1",
+        weekLabel = "3주차",
+        sets = listOf(
+            WearStrengthProgramSet(60.0, 5, 100, "warmup", "warmup", false, null),
+            WearStrengthProgramSet(112.5, 5, 100, "main", "main", false, null),
+            WearStrengthProgramSet(127.5, 3, 100, "main", "main", false, null),
+            WearStrengthProgramSet(142.5, 1, 100, "main", "main", true, null),
+            WearStrengthProgramSet(75.0, 10, 100, "main", "supplemental", false, "bbb"),
+            WearStrengthProgramSet(75.0, 10, 100, "main", "supplemental", false, "bbb"),
+        ),
+    )
 
     // ---- start / picker --------------------------------------------------------------------
 
@@ -446,6 +464,182 @@ class WearStrengthSessionStateTest {
         state = state.logSet(0, 0, 2_000L) // 20kg x 10
         assertEquals(1, state.totalSets)
         assertEquals(200.0, state.totalVolumeKg, 0.0001)
+    }
+
+    // ---- program prescription (웬들러 주차 처방) ---------------------------------------------
+
+    @Test
+    fun addExerciseLaysOutTheWholeWeekPrescriptionWhenTheExerciseHasAProgram() {
+        val state = WearStrengthSessionState().start(1_000L).addExercise(exercise(program = wendlerProgram()))
+        val sets = state.cards[0].sets
+
+        assertEquals(6, sets.size)
+        assertEquals(listOf(60.0, 112.5, 127.5, 142.5, 75.0, 75.0), sets.map { it.kg })
+        assertEquals(listOf(5, 5, 3, 1, 10, 10), sets.map { it.reps })
+        assertEquals(
+            listOf("warmup", "main", "main", "main", "supplemental", "supplemental"),
+            sets.map { it.role },
+        )
+        assertTrue("톱세트는 AMRAP 이어야 한다", sets[3].amrap)
+        assertEquals("bbb", sets[4].supplementalKind)
+        assertTrue("처방 행은 전부 대기 상태여야 한다", sets.none { it.done })
+    }
+
+    @Test
+    fun addExerciseStillFallsBackToOneBlankRowWithoutAProgram() {
+        val state = WearStrengthSessionState().start(1_000L).addExercise(exercise(program = null))
+        val sets = state.cards[0].sets
+        assertEquals(1, sets.size)
+        assertEquals(20.0, sets[0].kg, 0.0001)
+        assertEquals(10, sets[0].reps)
+        assertNull(sets[0].role)
+    }
+
+    @Test
+    fun anEmptyProgramFallsBackToTheBlankRowRatherThanAnEmptyCard() {
+        val empty = WearStrengthProgram(kind = "wendler", label = "x", shortLabel = "x", weekLabel = "1주차", sets = emptyList())
+        val state = WearStrengthSessionState().start(1_000L).addExercise(exercise(program = empty))
+        assertEquals(1, state.cards[0].sets.size)
+    }
+
+    @Test
+    fun roleLabelMapsPrescriptionRolesToTheSameBadgesAsThePhone() {
+        val sets = WearStrengthSessionState().start(1_000L)
+            .addExercise(exercise(program = wendlerProgram()))
+            .cards[0].sets
+        assertEquals("웜업", sets[0].roleLabel())
+        assertNull("메인 세트에는 배지를 달지 않는다", sets[1].roleLabel())
+        assertEquals("BBB", sets[4].roleLabel())
+    }
+
+    /**
+     * The whole point of carrying setType/role: the phone's `_isActualWorkoutSet` drops warm-ups
+     * and deloads, so the watch summary has to drop them too or the two screens disagree about the
+     * same session.
+     */
+    @Test
+    fun warmupsCountAsLoggedRowsButNotAsWorkingSetsOrVolume() {
+        var state = WearStrengthSessionState().start(1_000L).addExercise(exercise(program = wendlerProgram()))
+        state = state.logSet(0, 0, 2_000L) // 60kg x 5 warm-up
+        assertEquals(1, state.loggedRowCount)
+        assertEquals(0, state.totalSets)
+        assertEquals(0.0, state.totalVolumeKg, 0.0001)
+
+        state = state.logSet(0, 1, 3_000L) // 112.5kg x 5 main
+        assertEquals(2, state.loggedRowCount)
+        assertEquals(1, state.totalSets)
+        assertEquals(562.5, state.totalVolumeKg, 0.0001)
+    }
+
+    @Test
+    fun aDeloadRoleIsExcludedEvenThoughItsSetTypeIsMain() {
+        val deloadOnly = WearStrengthProgram(
+            kind = "wendler",
+            label = "8/6/3 원본",
+            shortLabel = "8/6/3 원본",
+            weekLabel = "7주차",
+            sets = listOf(WearStrengthProgramSet(90.0, 5, 100, "main", "deload", false, null)),
+        )
+        val state = WearStrengthSessionState().start(1_000L)
+            .addExercise(exercise(program = deloadOnly))
+            .logSet(0, 0, 2_000L)
+        assertEquals(1, state.loggedRowCount)
+        assertEquals(0, state.totalSets)
+    }
+
+    @Test
+    fun loggedSetsCarryTheirSetTypeAndRoleIntoTheCompletionPayloadShape() {
+        val logged = WearStrengthSessionState().start(1_000L)
+            .addExercise(exercise(program = wendlerProgram()))
+            .logSet(0, 0, 2_000L)
+            .logSet(0, 4, 3_000L)
+            .cards[0].loggedSets
+
+        assertEquals("warmup", logged[0].setType)
+        assertEquals("warmup", logged[0].role)
+        assertEquals("main", logged[1].setType)
+        assertEquals("supplemental", logged[1].role)
+        assertEquals("bbb", logged[1].supplementalKind)
+    }
+
+    @Test
+    fun theRowAppendedPastTheEndOfAPrescriptionIsAPlainExtraSet() {
+        val sets = WearStrengthSessionState().start(1_000L)
+            .addExercise(exercise(program = wendlerProgram()))
+            .logSet(0, 5, 2_000L) // last BBB row
+            .cards[0].sets
+
+        assertEquals(7, sets.size)
+        val appended = sets[6]
+        assertEquals(75.0, appended.kg, 0.0001)
+        assertEquals("main", appended.setType)
+        assertNull("추가 세트를 BBB 라고 부르면 거짓말이다", appended.role)
+        assertNull(appended.supplementalKind)
+        assertEquals(false, appended.amrap)
+    }
+
+    @Test
+    fun copiedPreviousSetsAreAlwaysPlainWorkingRows() {
+        val lastSession = WearStrengthLastSession(
+            dateKey = "2026-07-28",
+            sets = listOf(WearStrengthLastSet(kg = 80.0, reps = 8, romPct = 100, setType = "main", done = true)),
+        )
+        val state = WearStrengthSessionState().start(1_000L)
+            .addExercise(exercise(program = wendlerProgram()))
+            .copyPreviousSets(0, lastSession)
+
+        assertEquals(1, state.cards[0].sets.size)
+        assertEquals("main", state.cards[0].sets[0].setType)
+        assertNull(state.cards[0].sets[0].role)
+    }
+
+    @Test
+    fun programRowsSurviveTheProcessDeathSnapshotRoundTrip() {
+        val state = WearStrengthSessionState().start(1_000L)
+            .addExercise(exercise(program = wendlerProgram()))
+            .logSet(0, 0, 2_000L)
+
+        val restored = WearStrengthSessionState.fromJson(state.toJson())
+        assertEquals(state, restored)
+        assertEquals("warmup", restored!!.cards[0].sets[0].setType)
+        assertEquals("warmup", restored.cards[0].sets[0].role)
+        assertTrue(restored.cards[0].sets[3].amrap)
+        assertEquals("bbb", restored.cards[0].sets[4].supplementalKind)
+    }
+
+    /** A snapshot written before program prescriptions existed must still restore, as a plain card. */
+    @Test
+    fun aPreProgramSnapshotRestoresRowsAsPlainWorkingSets() {
+        val json = """
+            {
+              "version": 2,
+              "screen": "ACTIVE",
+              "cards": [
+                {
+                  "exerciseId": "bench-press",
+                  "name": "바벨 벤치프레스",
+                  "muscleId": "chest",
+                  "movementId": "barbell-press",
+                  "stepKg": 2.5,
+                  "sets": [
+                    { "kg": 80, "reps": 8, "romPct": 100, "done": true, "completedAt": 2000, "rir": null }
+                  ]
+                }
+              ],
+              "activeCardIndex": 0,
+              "startedAt": 1000,
+              "endedAt": null,
+              "restEndsAtMs": null,
+              "restTotalMs": 0
+            }
+        """.trimIndent()
+
+        val restored = WearStrengthSessionState.fromJson(json)!!
+        val set = restored.cards[0].sets[0]
+        assertEquals("main", set.setType)
+        assertNull(set.role)
+        assertEquals(false, set.amrap)
+        assertEquals(1, restored.totalSets)
     }
 
     // ---- JSON round-trip + migration --------------------------------------------------------------

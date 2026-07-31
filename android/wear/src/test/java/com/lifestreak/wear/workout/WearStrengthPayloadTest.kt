@@ -26,9 +26,79 @@ class WearStrengthPayloadTest {
                     done = true,
                     completedAt = set.completedAt,
                     rir = set.rir,
+                    setType = set.setType,
+                    role = set.role,
+                    amrap = set.amrap,
+                    supplementalKind = set.supplementalKind,
                 )
             },
         )
+    }
+
+    private fun firstSetJson(card: WearStrengthCard, index: Int = 0): JSONObject {
+        val payload = WearStrengthPayload.fromSession(
+            session = session(listOf(card)),
+            avgHeartRateBpm = null,
+            maxHeartRateBpm = null,
+            samples10s = emptyList(),
+        ).getOrThrow()
+        return JSONObject(payload.toJsonString())
+            .getJSONArray("entries")
+            .getJSONObject(0)
+            .getJSONArray("sets")
+            .getJSONObject(index)
+    }
+
+    /**
+     * The payload used to hardcode `setType = "main"` for every logged row. Once a Wendler card
+     * prescribes real warm-ups, that turns every warm-up into a working set on the phone and
+     * inflates the imported session's set count and volume.
+     */
+    @Test
+    fun prescribedRowsKeepTheirSetTypeAndRoleOnTheWire() {
+        val card = cardWithSets(
+            "back-squat",
+            listOf(
+                WearStrengthLoggedSet(
+                    kg = 60.0, reps = 5, romPct = 100, completedAt = 1_700_000_100_000L,
+                    setType = "warmup", role = "warmup",
+                ),
+                WearStrengthLoggedSet(
+                    kg = 142.5, reps = 4, romPct = 100, completedAt = 1_700_000_200_000L,
+                    setType = "main", role = "main", amrap = true,
+                ),
+                WearStrengthLoggedSet(
+                    kg = 75.0, reps = 10, romPct = 100, completedAt = 1_700_000_300_000L,
+                    setType = "main", role = "supplemental", supplementalKind = "bbb",
+                ),
+            ),
+        )
+
+        val warmup = firstSetJson(card, 0)
+        assertEquals("warmup", warmup.getString("setType"))
+        assertEquals("warmup", warmup.getString("wendlerRole"))
+        assertFalse("amrap is omitted when false", warmup.has("amrap"))
+
+        val top = firstSetJson(card, 1)
+        assertEquals("main", top.getString("setType"))
+        assertTrue(top.getBoolean("amrap"))
+
+        val bbb = firstSetJson(card, 2)
+        assertEquals("supplemental", bbb.getString("wendlerRole"))
+        assertEquals("bbb", bbb.getString("supplementalKind"))
+    }
+
+    @Test
+    fun aPlainSetOmitsEveryProgramFieldSoTheContractIsUnchangedWithoutAProgram() {
+        val card = cardWithSets(
+            "bench-press",
+            listOf(WearStrengthLoggedSet(kg = 80.0, reps = 8, romPct = 100, completedAt = 1_700_000_300_000L)),
+        )
+        val set = firstSetJson(card)
+        assertEquals("main", set.getString("setType"))
+        assertFalse(set.has("wendlerRole"))
+        assertFalse(set.has("amrap"))
+        assertFalse(set.has("supplementalKind"))
     }
 
     private fun session(cards: List<WearStrengthCard>, startedAtMs: Long = 1_700_000_000_000L, endedAtMs: Long = 1_700_000_600_000L): WearStrengthSession {
@@ -154,17 +224,38 @@ class WearStrengthPayloadTest {
 
     @Test
     fun transferIdConstructionUsesTopLevelStartedAndEndedAt() {
-        val loggedSet = WearStrengthLoggedSet(kg = 20.0, reps = 10, romPct = 100, completedAt = 1L)
+        // 123ms -> 456ms used to be the fixture here, but durationSec is integer seconds, so that
+        // session rounds to 0s and `fromSession` correctly refuses it. Same assertion, at a
+        // duration a real workout can actually have.
+        val loggedSet = WearStrengthLoggedSet(kg = 20.0, reps = 10, romPct = 100, completedAt = 200_000L)
         val payload = WearStrengthPayload.fromSession(
-            session = session(listOf(cardWithSets("squat", listOf(loggedSet))), startedAtMs = 123L, endedAtMs = 456L),
+            session = session(
+                listOf(cardWithSets("squat", listOf(loggedSet))),
+                startedAtMs = 123_000L,
+                endedAtMs = 456_000L,
+            ),
             avgHeartRateBpm = null,
             maxHeartRateBpm = null,
             samples10s = emptyList(),
         ).getOrThrow()
 
-        assertEquals(123L, payload.startedAtMs)
-        assertEquals(456L, payload.endedAtMs)
+        assertEquals(123_000L, payload.startedAtMs)
+        assertEquals(456_000L, payload.endedAtMs)
+        assertEquals(333L, payload.durationSec)
         assertFalse(payload.toJsonString().isBlank())
+    }
+
+    /** The flip side of the fixture above: a sub-second session is not a workout and is rejected. */
+    @Test
+    fun aSubSecondSessionIsRejectedRatherThanSavedWithZeroDuration() {
+        val loggedSet = WearStrengthLoggedSet(kg = 20.0, reps = 10, romPct = 100, completedAt = 200L)
+        val result = WearStrengthPayload.fromSession(
+            session = session(listOf(cardWithSets("squat", listOf(loggedSet))), startedAtMs = 123L, endedAtMs = 456L),
+            avgHeartRateBpm = null,
+            maxHeartRateBpm = null,
+            samples10s = emptyList(),
+        )
+        assertTrue(result.isFailure)
     }
 
     @Test

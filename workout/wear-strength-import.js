@@ -18,6 +18,10 @@ import { normalizeWorkoutSetType } from './set-presentation.js';
 const DATE_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_ENTRIES = 30;
 const MAX_SETS_PER_ENTRY = 50;
+// workout/set-presentation.js workoutSetTypeLabel 이 아는 역할만 통과시킨다.
+const WEAR_WENDLER_ROLES = new Set([
+  'warmup', 'main', 'supplemental', 'heavy_single', 'backoff', 'deload', 'pr_attempt',
+]);
 
 export class WearStrengthImportError extends Error {
   constructor(message) {
@@ -75,6 +79,16 @@ function _normalizeWearStrengthSet(raw, context, index) {
     : null;
   const normalized = { kg, reps, rpe: null, romPct, setType, done: true, completedAt };
   if (rir != null) normalized.rir = rir;
+  // 워치가 웬들러 처방 세트를 그대로 수행한 경우의 출처 정보. `_isActualWorkoutSet` 는 8/6/3
+  // 원본의 회복 세트를 setType 이 아니라 wendlerRole 로 걸러내므로, 이걸 버리면 회복 세트가
+  // 본세트로 집계된다.
+  const wendlerRole = WEAR_WENDLER_ROLES.has(String(raw.wendlerRole || '').trim())
+    ? String(raw.wendlerRole).trim()
+    : null;
+  if (wendlerRole) normalized.wendlerRole = wendlerRole;
+  if (raw.amrap === true) normalized.amrap = true;
+  const supplementalKind = String(raw.supplementalKind || '').trim();
+  if (supplementalKind) normalized.supplementalKind = supplementalKind.slice(0, 20);
   return normalized;
 }
 

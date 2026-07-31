@@ -32,7 +32,21 @@ data class WearStrengthLoggedSet(
     val romPct: Int,
     val completedAt: Long,
     val rir: Int? = null,
-)
+    /** `main`/`warmup`/`drop`/`failure` — carried through from the row so a prescribed warm-up
+     * does not land on the phone as a working set. */
+    val setType: String = SET_TYPE_MAIN,
+    /** The phone's `wendlerRole`. Needed separately from [setType] because the 8/6/3 원본 template
+     * stores a deload row as `setType: "main"` + `wendlerRole: "deload"`, and the phone's
+     * `_isActualWorkoutSet` excludes it on the *role*. */
+    val role: String? = null,
+    val amrap: Boolean = false,
+    val supplementalKind: String? = null,
+) {
+    /** Mirrors the phone's `_isActualWorkoutSet` (calendar/format.js). */
+    val isWorkingSet: Boolean
+        get() = setType != SET_TYPE_WARMUP_VALUE && setType != SET_TYPE_DELOAD_VALUE &&
+            role != SET_TYPE_WARMUP_VALUE && role != SET_TYPE_DELOAD_VALUE
+}
 
 /**
  * One row of the set checklist: either still pending (not yet performed this session) or done
@@ -46,7 +60,35 @@ data class PlannedSet(
     val completedAt: Long? = null,
     /** Reps In Reserve, 0-5; null means unset (the phone's set model treats it the same way). */
     val rir: Int? = null,
-)
+    /** Persisted set type, round-tripped to the phone. Defaults to a plain working set. */
+    val setType: String = SET_TYPE_MAIN,
+    /** Display-only wendler role from the program prescription (`warmup`/`supplemental`/…). */
+    val role: String? = null,
+    /** Program-prescribed AMRAP row — rendered as `5+회`. */
+    val amrap: Boolean = false,
+    /** `bbb`/`fsl` when [role] is `supplemental`. */
+    val supplementalKind: String? = null,
+) {
+    /** Short badge for the checklist row: "웜업", "BBB", "메인+"… or null for a plain main set.
+     * Mirrors the phone's `workoutSetTypeLabel` (workout/set-presentation.js). */
+    fun roleLabel(): String? = when (role) {
+        "warmup" -> "웜업"
+        "heavy_single" -> "싱글"
+        "backoff" -> "백오프"
+        "deload" -> "회복"
+        "pr_attempt" -> "PR"
+        "supplemental" -> when (supplementalKind) {
+            "bbb" -> "BBB"
+            "fsl" -> "FSL"
+            else -> "보조"
+        }
+        else -> if (setType == "warmup") "웜업" else null
+    }
+}
+
+internal const val SET_TYPE_MAIN = "main"
+internal const val SET_TYPE_WARMUP_VALUE = "warmup"
+internal const val SET_TYPE_DELOAD_VALUE = "deload"
 
 data class WearStrengthCard(
     val exerciseId: String,
@@ -66,8 +108,17 @@ data class WearStrengthCard(
                 romPct = it.romPct,
                 completedAt = it.completedAt ?: 0L,
                 rir = it.rir,
+                setType = it.setType,
+                role = it.role,
+                amrap = it.amrap,
+                supplementalKind = it.supplementalKind,
             )
         }
+
+    /** Logged rows that count as training volume — warm-ups and deloads excluded, exactly as the
+     * phone's read model does (`calendar/workout-read-model.js`). */
+    val workingLoggedSets: List<WearStrengthLoggedSet>
+        get() = loggedSets.filter { it.isWorkingSet }
 }
 
 /** A finished (or in-progress-but-finishable) strength session, ready for [WearStrengthPayload]. */
@@ -94,11 +145,19 @@ data class WearStrengthSessionState(
     val activeCard: WearStrengthCard?
         get() = cards.getOrNull(activeCardIndex)
 
+    /** Working sets only, so the watch summary and the phone's imported record agree. A prescribed
+     * Wendler card is mostly warm-ups on week 1; counting them here would show "9세트" on the watch
+     * for a session the phone then renders as "3세트". */
     val totalSets: Int
+        get() = cards.sumOf { it.workingLoggedSets.size }
+
+    /** Every checked-off row including warm-ups — the "did the user actually do anything?" gate,
+     * kept separate from [totalSets] so the finish button can tell the two cases apart. */
+    val loggedRowCount: Int
         get() = cards.sumOf { it.loggedSets.size }
 
     val totalVolumeKg: Double
-        get() = cards.sumOf { card -> card.loggedSets.sumOf { it.kg * it.reps } }
+        get() = cards.sumOf { card -> card.workingLoggedSets.sumOf { it.kg * it.reps } }
 
     val isResting: Boolean
         get() = restEndsAtMs != null
@@ -150,9 +209,11 @@ data class WearStrengthSessionState(
             muscleId = exercise.muscleId,
             movementId = exercise.movementId,
             stepKg = exercise.stepKg,
-            // One blank row, like the phone's card. Pulling the previous session is an explicit
-            // action on the 지난 기록 strip ([copyPreviousSets]), never automatic.
-            sets = listOf(
+            // A program-registered exercise (웬들러 주차 처방 / 트랙) opens with that week's rows
+            // already laid out, exactly like the phone's picker. Otherwise one blank row —
+            // pulling the *previous session* stays an explicit action on the 지난 기록 strip
+            // ([copyPreviousSets]), never automatic.
+            sets = plannedSetsFromProgram(exercise.program) ?: listOf(
                 PlannedSet(kg = DEFAULT_DRAFT_KG, reps = DEFAULT_DRAFT_REPS, romPct = DEFAULT_DRAFT_ROM_PCT),
             ),
         )
@@ -170,8 +231,11 @@ data class WearStrengthSessionState(
     /**
      * Logs the pending set at (cardIdx, setIdx): marks it done with [now], and — when it was the
      * last row in the card (there is always a "next set" on offer, Strong/Hevy-style) — appends a
-     * fresh pending row carrying over its kg/reps/romPct. No-ops for an out-of-range index or a
-     * row that is already done.
+     * fresh pending row carrying over its kg/reps/romPct/setType. No-ops for an out-of-range index
+     * or a row that is already done.
+     *
+     * The appended row deliberately drops `role`/`amrap`: it is an *extra* set the user chose to
+     * do past the end of the prescription, so labelling it BBB (or AMRAP) would be a lie.
      */
     fun logSet(cardIdx: Int, setIdx: Int, now: Long): WearStrengthSessionState {
         val card = cards.getOrNull(cardIdx) ?: return this
@@ -181,7 +245,13 @@ data class WearStrengthSessionState(
         val nextSets = card.sets.toMutableList().also { it[setIdx] = loggedRow }
         if (setIdx == nextSets.lastIndex) {
             nextSets.add(
-                PlannedSet(kg = loggedRow.kg, reps = loggedRow.reps, romPct = loggedRow.romPct, rir = loggedRow.rir),
+                PlannedSet(
+                    kg = loggedRow.kg,
+                    reps = loggedRow.reps,
+                    romPct = loggedRow.romPct,
+                    rir = loggedRow.rir,
+                    setType = loggedRow.setType,
+                ),
             )
         }
         return replaceCard(cardIdx, card.copy(sets = nextSets))
@@ -238,6 +308,7 @@ data class WearStrengthSessionState(
             reps = last?.reps ?: DEFAULT_DRAFT_REPS,
             romPct = last?.romPct ?: DEFAULT_DRAFT_ROM_PCT,
             rir = last?.rir,
+            setType = last?.setType ?: SET_TYPE_MAIN,
         )
         return replaceCard(cardIdx, card.copy(sets = card.sets + newSet))
     }
@@ -455,6 +526,30 @@ data class WearStrengthSessionState(
                     reps = clampReps(it.reps),
                     romPct = clampRom(it.romPct),
                     rir = it.rir?.coerceIn(MIN_RIR, MAX_RIR),
+                    setType = SET_TYPE_MAIN,
+                )
+            }
+        }
+
+        /**
+         * That week's prescribed rows for a program-registered exercise, straight from the phone's
+         * `program` block — the watch side of the phone picker's
+         * `_testModeSetsFromPrescription` (workout/exercises.js). Every row comes back *pending*,
+         * so a Wendler card opens with the full 웜업/메인/보조 checklist still to be checked off.
+         * Null when there is no program (or none of its rows survived clamping).
+         */
+        fun plannedSetsFromProgram(program: WearStrengthProgram?): List<PlannedSet>? {
+            val rows = program?.sets.orEmpty()
+            if (rows.isEmpty()) return null
+            return rows.map {
+                PlannedSet(
+                    kg = clampKg(it.kg),
+                    reps = clampReps(it.reps),
+                    romPct = clampRom(it.romPct),
+                    setType = it.setType,
+                    role = it.role,
+                    amrap = it.amrap,
+                    supplementalKind = it.supplementalKind,
                 )
             }
         }
@@ -485,7 +580,11 @@ data class WearStrengthSessionState(
                             .put("romPct", set.romPct)
                             .put("done", set.done)
                             .putNullable("completedAt", set.completedAt)
-                            .putNullable("rir", set.rir),
+                            .putNullable("rir", set.rir)
+                            .put("setType", set.setType)
+                            .putNullable("role", set.role)
+                            .put("amrap", set.amrap)
+                            .putNullable("supplementalKind", set.supplementalKind),
                     )
                 }
             }
@@ -527,8 +626,24 @@ data class WearStrengthSessionState(
                 val done = item.optBoolean("done", false)
                 val completedAt = item.optNullableLong("completedAt")
                 val rir = item.optNullableLong("rir")?.toInt()?.coerceIn(MIN_RIR, MAX_RIR)
+                // setType/role/amrap are additive (added with program prescriptions), so a
+                // snapshot written before them restores as a plain main row rather than failing.
+                val setType = item.optTextOrEmpty("setType").takeIf { it.isNotBlank() } ?: SET_TYPE_MAIN
+                val role = item.optTextOrEmpty("role").takeIf { it.isNotBlank() }
+                val supplementalKind = item.optTextOrEmpty("supplementalKind").takeIf { it.isNotBlank() }
                 sets.add(
-                    PlannedSet(kg = kg, reps = reps, romPct = romPct, done = done, completedAt = completedAt, rir = rir),
+                    PlannedSet(
+                        kg = kg,
+                        reps = reps,
+                        romPct = romPct,
+                        done = done,
+                        completedAt = completedAt,
+                        rir = rir,
+                        setType = setType,
+                        role = role,
+                        amrap = item.optBoolean("amrap", false),
+                        supplementalKind = supplementalKind,
+                    ),
                 )
             }
             return sets

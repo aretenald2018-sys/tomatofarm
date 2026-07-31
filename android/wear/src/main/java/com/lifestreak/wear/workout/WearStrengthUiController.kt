@@ -378,7 +378,10 @@ class WearStrengthUiController(
 
     private fun finishStrength(v: View) {
         if (state.totalSets < 1) {
-            v.findViewById<TextView>(R.id.strengthActiveStatus)?.text = "완료한 세트가 없어요"
+            // Warm-ups alone do not make a workout — the phone's read model would drop the whole
+            // entry — so say which one it is instead of the flatly wrong "완료한 세트가 없어요".
+            v.findViewById<TextView>(R.id.strengthActiveStatus)?.text =
+                if (state.loggedRowCount > 0) "본세트를 아직 안 했어요" else "완료한 세트가 없어요"
             return
         }
         v.findViewById<TextView>(R.id.strengthActiveStatus)?.text = ""
@@ -697,6 +700,7 @@ class WearStrengthUiController(
                 override fun onCopyPreviousSets(cardIdx: Int) = handleCopyPreviousSets(v, cardIdx)
             },
             lastRecordLabelFor = { exerciseId -> catalog?.findExercise(exerciseId)?.lastRecordLabel() },
+            programLabelFor = { exerciseId -> catalog?.findExercise(exerciseId)?.program?.headerLabel() },
         ).also { pagerAdapter = it }
         if (pagerView.adapter !== adapter) {
             pagerView.adapter = adapter
@@ -896,7 +900,9 @@ class WearStrengthUiController(
         val card = state.cards.getOrNull(cardIdx) ?: return ""
         val nextIdx = card.sets.indexOfFirst { !it.done }
         val nextSet = card.sets.getOrNull(nextIdx) ?: return ""
-        return "다음: ${nextIdx + 1}세트 ${formatStrengthKg(nextSet.kg)}kg×${nextSet.reps}"
+        val role = nextSet.roleLabel()?.let { " ($it)" }.orEmpty()
+        val reps = if (nextSet.amrap) "${nextSet.reps}+" else "${nextSet.reps}"
+        return "다음: ${nextIdx + 1}세트 ${formatStrengthKg(nextSet.kg)}kg×$reps$role"
     }
 
     private fun formatRestClock(remainingMs: Long): String {

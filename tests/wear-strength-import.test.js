@@ -6,6 +6,7 @@ import {
   planWearStrengthSave,
 } from '../workout/wear-strength-import.js';
 import { WORKOUT_PAYLOAD_KEYS } from '../workout/save-schema.js';
+import { _isActualWorkoutSet } from '../calendar/format.js';
 
 const STARTED_AT = 1_783_400_000_000;
 const ENDED_AT = STARTED_AT + 40 * 60 * 1000; // 40 minutes
@@ -126,6 +127,36 @@ test('setType normalizes to the shared vocabulary, defaulting to main', () => {
   }));
   const types = normalized.entries[0].sets.map(set => set.setType);
   assert.deepEqual(types, ['drop', 'failure', 'main', 'main']);
+});
+
+test('wendlerRole/amrap/supplementalKind survive the import so the phone can classify the row', () => {
+  const normalized = normalizeWearStrengthPayload(basePayload({
+    entries: [{
+      exerciseId: 'lower_1',
+      name: '백스쿼트',
+      muscleId: 'lower',
+      movementId: 'back_squat',
+      sets: [
+        { kg: 60, reps: 5, setType: 'warmup', wendlerRole: 'warmup', completedAt: STARTED_AT + 1000 },
+        { kg: 142.5, reps: 4, setType: 'main', wendlerRole: 'main', amrap: true, completedAt: STARTED_AT + 2000 },
+        { kg: 75, reps: 10, setType: 'main', wendlerRole: 'supplemental', supplementalKind: 'bbb', completedAt: STARTED_AT + 3000 },
+        // 8/6/3 원본의 회복 세트: setType 은 main, 역할만 deload.
+        { kg: 90, reps: 5, setType: 'main', wendlerRole: 'deload', completedAt: STARTED_AT + 4000 },
+        { kg: 100, reps: 5, setType: 'main', wendlerRole: 'not-a-role', completedAt: STARTED_AT + 5000 },
+      ],
+    }],
+  }));
+  const sets = normalized.entries[0].sets;
+
+  assert.equal(sets[0].wendlerRole, 'warmup');
+  assert.equal(sets[1].amrap, true);
+  assert.equal(sets[2].supplementalKind, 'bbb');
+  assert.equal(sets[3].wendlerRole, 'deload');
+  assert.equal(sets[4].wendlerRole, undefined, 'unknown roles are dropped, not stored');
+  assert.equal(sets[0].amrap, undefined, 'amrap is omitted when false');
+
+  // 이게 진짜 목적: 폰의 본세트 판정이 워치 기록에도 그대로 적용된다.
+  assert.deepEqual(sets.map(_isActualWorkoutSet), [false, true, true, false, true]);
 });
 
 test('completedAt outside [startedAt, endedAt] becomes null', () => {

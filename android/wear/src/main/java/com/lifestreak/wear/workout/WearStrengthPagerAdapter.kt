@@ -25,6 +25,7 @@ import com.lifestreak.wear.R
 class WearStrengthPagerAdapter(
     private val callbacks: Callbacks,
     private val lastRecordLabelFor: (String) -> String?,
+    private val programLabelFor: (String) -> String? = { null },
 ) : RecyclerView.Adapter<WearStrengthPagerAdapter.CardViewHolder>() {
 
     interface Callbacks {
@@ -58,7 +59,7 @@ class WearStrengthPagerAdapter(
     }
 
     override fun onBindViewHolder(holder: CardViewHolder, position: Int) {
-        holder.bind(position, cards[position], callbacks, lastRecordLabelFor)
+        holder.bind(position, cards[position], callbacks, lastRecordLabelFor, programLabelFor)
     }
 
     class CardViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
@@ -69,8 +70,15 @@ class WearStrengthPagerAdapter(
             card: WearStrengthCard,
             callbacks: Callbacks,
             lastRecordLabelFor: (String) -> String?,
+            programLabelFor: (String) -> String?,
         ) {
             itemView.findViewById<TextView>(R.id.strengthCardExerciseName)?.text = card.name
+
+            val programLabel = programLabelFor(card.exerciseId)?.takeIf { it.isNotBlank() }
+            itemView.findViewById<TextView>(R.id.strengthCardProgramLabel)?.apply {
+                text = programLabel.orEmpty()
+                visibility = if (programLabel != null) View.VISIBLE else View.GONE
+            }
 
             // The whole 지난 기록 strip is the copy button, same as the phone's card. Hidden outright
             // when the exercise has no previous session, so it never offers a no-op tap.
@@ -106,8 +114,19 @@ class WearStrengthPagerAdapter(
             callbacks: Callbacks,
         ) {
             row.findViewById<TextView>(R.id.setRowIndex)?.text = (setIdx + 1).toString()
+
+            // "웜업"/"BBB"/"PR"… for a prescribed row; hidden for a plain working set so an
+            // unprescribed card renders exactly as before.
+            val roleLabel = set.roleLabel()
+            row.findViewById<TextView>(R.id.setRowRole)?.apply {
+                text = roleLabel.orEmpty()
+                visibility = if (roleLabel != null) View.VISIBLE else View.GONE
+            }
+
             val valuesView = row.findViewById<TextView>(R.id.setRowValues)
-            valuesView?.text = "${formatStrengthKg(set.kg)}kg × ${set.reps}회"
+            // AMRAP top set reads "5+회" — the reps are a floor, not a target.
+            val repsText = if (set.amrap) "${set.reps}+회" else "${set.reps}회"
+            valuesView?.text = "${formatStrengthKg(set.kg)}kg × $repsText"
             val checkView = row.findViewById<TextView>(R.id.setRowCheck)
             if (set.done) {
                 valuesView?.setTextColor(Color.parseColor(COLOR_MUTED))
@@ -120,7 +139,8 @@ class WearStrengthPagerAdapter(
                 checkView?.setBackgroundResource(R.drawable.wear_cardio_circle_muted)
             }
             checkView?.setOnClickListener { callbacks.onToggleSet(cardIdx, setIdx) }
-            valuesView?.setOnClickListener {
+            // The whole values column (badge + numbers), not just the numbers TextView.
+            row.findViewById<View>(R.id.setRowValuesGroup)?.setOnClickListener {
                 if (!set.done) callbacks.onEditSet(cardIdx, setIdx)
             }
         }

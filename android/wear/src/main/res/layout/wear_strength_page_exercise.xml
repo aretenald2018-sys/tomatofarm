@@ -5,65 +5,85 @@
   from wear_strength_set_row.xml (one per WearStrengthCard.sets entry) plus a trailing
   wear_strength_set_row_add.xml "+ 세트 추가" row. Ids below are looked up from
   WearStrengthPagerAdapter — keep them in sync if renamed.
+
+  The header (name / program label / 지난 기록 strip) lives *inside* the ScrollView on purpose. As
+  fixed siblings above it they cost the set list ~35dp of a ~128dp content area, which left a
+  Wendler card — 11 prescribed rows on a 5/3/1 week — showing well under one full row at rest.
+  Scrolled into the list, the header moves out of the way and the rows get the whole height.
 -->
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
+    android:clipToPadding="false"
     android:paddingStart="@dimen/strength_safe_area_horizontal"
     android:paddingTop="@dimen/strength_card_top_inset"
     android:paddingEnd="@dimen/strength_safe_area_horizontal"
-    android:paddingBottom="@dimen/strength_card_bottom_inset">
+    android:paddingBottom="@dimen/strength_card_bottom_inset"
+    android:scrollbars="none">
 
-    <TextView
-        android:id="@+id/strengthCardExerciseName"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:ellipsize="end"
-        android:fontFamily="sans-serif-medium"
-        android:gravity="center"
-        android:maxLines="1"
-        android:text="운동명"
-        android:textColor="#F7F8F4"
-        android:textSize="@dimen/strength_text_exercise_name"
-        android:textStyle="bold" />
+        android:orientation="vertical">
 
-    <!-- Tappable: copies the previous session's whole set list onto this card, mirroring the
-         phone's 지난 기록 strip. -->
-    <TextView
-        android:id="@+id/strengthCardLastRecord"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:autoSizeMaxTextSize="@dimen/strength_text_last_record"
-        android:autoSizeMinTextSize="10sp"
-        android:autoSizeStepGranularity="1sp"
-        android:autoSizeTextType="uniform"
-        android:background="@drawable/wear_strength_pill_muted"
-        android:clickable="true"
-        android:ellipsize="end"
-        android:focusable="true"
-        android:gravity="center"
-        android:maxLines="1"
-        android:paddingStart="10dp"
-        android:paddingTop="6dp"
-        android:paddingEnd="10dp"
-        android:paddingBottom="6dp"
-        android:text=""
-        android:textColor="#A5ABA1" />
+        <TextView
+            android:id="@+id/strengthCardExerciseName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:fontFamily="sans-serif-medium"
+            android:gravity="center"
+            android:maxLines="1"
+            android:text="운동명"
+            android:textColor="#F7F8F4"
+            android:textSize="@dimen/strength_text_exercise_name"
+            android:textStyle="bold" />
 
-    <ScrollView
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_marginTop="10dp"
-        android:layout_weight="1"
-        android:clipToPadding="false"
-        android:scrollbars="none">
+        <!-- Non-interactive: which program prescription filled this card's rows, e.g.
+             "3주차 · 웬들러 5/3/1". Deliberately the short form — the actual weights are already
+             on every row below. GONE when the exercise has no registered program. -->
+        <TextView
+            android:id="@+id/strengthCardProgramLabel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:ellipsize="end"
+            android:gravity="center"
+            android:maxLines="1"
+            android:text=""
+            android:textColor="#D7FF3F"
+            android:textSize="@dimen/strength_text_card_program"
+            android:visibility="gone" />
+
+        <!-- Tappable: copies the previous session's whole set list onto this card, mirroring the
+             phone's 지난 기록 strip. -->
+        <TextView
+            android:id="@+id/strengthCardLastRecord"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:autoSizeMaxTextSize="@dimen/strength_text_last_record"
+            android:autoSizeMinTextSize="10sp"
+            android:autoSizeStepGranularity="1sp"
+            android:autoSizeTextType="uniform"
+            android:background="@drawable/wear_strength_pill_muted"
+            android:clickable="true"
+            android:ellipsize="end"
+            android:focusable="true"
+            android:gravity="center"
+            android:maxLines="1"
+            android:paddingStart="10dp"
+            android:paddingTop="6dp"
+            android:paddingEnd="10dp"
+            android:paddingBottom="6dp"
+            android:text=""
+            android:textColor="#A5ABA1" />
 
         <LinearLayout
             android:id="@+id/strengthCardSetList"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
             android:orientation="vertical" />
-    </ScrollView>
-</LinearLayout>
+    </LinearLayout>
+</ScrollView>

@@ -1,7 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  One set-checklist row: set number | "80kg × 8회" (tappable while pending -> edit screen) |
-  circular check button (tappable -> log/undo). Bound by WearStrengthPagerAdapter.CardViewHolder.
+  One set-checklist row: set number | ("웜업"/"BBB" role + "80kg × 8회") | circular check button.
+  Bound by WearStrengthPagerAdapter.CardViewHolder.
+
+  The role badge is stacked *above* the values rather than beside them. On a 44mm watch the row has
+  only ~104dp between the index and the check button, and a side-by-side badge ate a third of it —
+  enough to autosize "60kg × 5회" down to unreadable. Vertically it costs nothing horizontally, and
+  the row already had the height to spare.
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/setRowRoot"
@@ -23,24 +28,45 @@
         android:textColor="#81877D"
         android:textSize="@dimen/strength_text_set_row_index" />
 
-    <TextView
-        android:id="@+id/setRowValues"
+    <!-- Tappable while pending -> opens the edit screen. The whole column is the target, so the
+         role badge does not carve a dead zone out of it. -->
+    <LinearLayout
+        android:id="@+id/setRowValuesGroup"
         android:layout_width="0dp"
-        android:layout_height="match_parent"
+        android:layout_height="wrap_content"
         android:layout_marginStart="10dp"
         android:layout_weight="1"
-        android:autoSizeMaxTextSize="@dimen/strength_text_set_row_values"
-        android:autoSizeMinTextSize="12sp"
-        android:autoSizeStepGranularity="1sp"
-        android:autoSizeTextType="uniform"
         android:clickable="true"
         android:focusable="true"
-        android:fontFamily="sans-serif-condensed"
-        android:gravity="center_vertical"
-        android:maxLines="1"
-        android:text="80kg × 8회"
-        android:textColor="#F7F8F4"
-        android:textStyle="bold" />
+        android:orientation="vertical">
+
+        <!-- Program role badge (웜업 / BBB / PR …). GONE for a plain working set, so an
+             unprescribed card renders exactly as it did before. -->
+        <TextView
+            android:id="@+id/setRowRole"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:maxLines="1"
+            android:text=""
+            android:textColor="#A5ABA1"
+            android:textSize="@dimen/strength_text_set_row_role"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/setRowValues"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/strength_set_row_values_height"
+            android:autoSizeMaxTextSize="@dimen/strength_text_set_row_values"
+            android:autoSizeMinTextSize="12sp"
+            android:autoSizeStepGranularity="1sp"
+            android:autoSizeTextType="uniform"
+            android:fontFamily="sans-serif-condensed"
+            android:gravity="center_vertical"
+            android:maxLines="1"
+            android:text="80kg × 8회"
+            android:textColor="#F7F8F4"
+            android:textStyle="bold" />
+    </LinearLayout>
 
     <TextView
         android:id="@+id/setRowCheck"

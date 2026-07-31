@@ -17,6 +17,11 @@ data class WearStrengthSetEntry(
     /** Reps In Reserve; omitted from the JSON entirely when null (additive field, phone contract
      * tolerates it either way). */
     val rir: Int? = null,
+    /** Program provenance for a prescribed row, emitted with the phone's own field names so an
+     * imported set is indistinguishable from one logged on the phone. All omitted when absent. */
+    val wendlerRole: String? = null,
+    val amrap: Boolean = false,
+    val supplementalKind: String? = null,
 )
 
 data class WearStrengthEntry(
@@ -96,10 +101,17 @@ data class WearStrengthPayload(
                                 kg = set.kg,
                                 reps = set.reps,
                                 romPct = set.romPct,
-                                setType = "main",
+                                // Not a hardcoded "main": a Wendler card's prescribed warm-ups are
+                                // real rows here, and the phone's volume/top-set maths excludes
+                                // warm-ups (calendar/format.js `_isActualWorkoutSet`). Sending them
+                                // as working sets would inflate every wear-imported session.
+                                setType = set.setType,
                                 done = true,
                                 completedAt = set.completedAt,
                                 rir = set.rir,
+                                wendlerRole = set.role,
+                                amrap = set.amrap,
+                                supplementalKind = set.supplementalKind,
                             )
                         },
                     )
@@ -160,6 +172,9 @@ private fun strengthSetsToJson(sets: List<WearStrengthSetEntry>): JSONArray {
                 .put("done", set.done)
                 .put("completedAt", set.completedAt)
             if (set.rir != null) setJson.put("rir", set.rir)
+            if (set.wendlerRole != null) setJson.put("wendlerRole", set.wendlerRole)
+            if (set.amrap) setJson.put("amrap", true)
+            if (set.supplementalKind != null) setJson.put("supplementalKind", set.supplementalKind)
             put(setJson)
         }
     }

@@ -14,9 +14,11 @@
     <dimen name="strength_text_mode_label">12sp</dimen>
     <dimen name="strength_text_mode_icon">28sp</dimen>
 
-    <!-- Checklist page text (exercise name / last-record label). -->
+    <!-- Checklist page text (exercise name / program label / last-record label). -->
     <dimen name="strength_text_exercise_name">18sp</dimen>
+    <dimen name="strength_text_card_program">11sp</dimen>
     <dimen name="strength_text_last_record">14sp</dimen>
+    <dimen name="strength_text_set_row_role">11sp</dimen>
 
     <!-- Checklist page insets. The top status arc and the bottom action row are siblings drawn
          over the pager, not part of the page, so the page has to start below the arc and let its
@@ -31,6 +33,9 @@
     <dimen name="strength_set_row_check_size">40dp</dimen>
     <dimen name="strength_text_set_row_index">15sp</dimen>
     <dimen name="strength_text_set_row_values">20sp</dimen>
+    <!-- Fixed so the values TextView's uniform autosizing has a bounded height to shrink into;
+         with the 11sp role badge stacked above it this still fits the 52dp row. -->
+    <dimen name="strength_set_row_values_height">26dp</dimen>
 
     <!-- Bottom action row (운동 추가 / 운동 종료). -->
     <dimen name="strength_action_button_height">40dp</dimen>

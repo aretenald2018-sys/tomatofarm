@@ -242,9 +242,209 @@ class WearStrengthCatalogTest {
     }
 
     @Test(expected = IllegalArgumentException::class)
-    fun rejectsWrongPayloadVersion() {
+    fun rejectsPayloadVersionBelowTheSupportedFloor() {
         WearStrengthCatalog.parse(
-            """{"payloadVersion":2,"type":"strength-context","generatedAt":1,"catalog":[],"recentExerciseIds":[]}""",
+            """{"payloadVersion":0,"type":"strength-context","generatedAt":1,"catalog":[],"recentExerciseIds":[]}""",
         )
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun rejectsMissingPayloadVersion() {
+        WearStrengthCatalog.parse(
+            """{"type":"strength-context","generatedAt":1,"catalog":[],"recentExerciseIds":[]}""",
+        )
+    }
+
+    /**
+     * The phone ships independently of the watch app. A strict `==` version check meant the first
+     * additive phone-side bump would blank the exercise picker on every watch that had not been
+     * updated yet, so a newer envelope is parsed best-effort instead of rejected.
+     */
+    @Test
+    fun acceptsNewerPayloadVersionSoAnOlderWatchKeepsItsCatalog() {
+        val json = """
+            {
+              "payloadVersion": 99,
+              "type": "strength-context",
+              "generatedAt": 1,
+              "catalog": [
+                {
+                  "muscleId": "chest",
+                  "muscleName": "가슴",
+                  "exercises": [
+                    { "exerciseId": "curl", "name": "컬", "movementId": "m", "stepKg": 2.5, "somethingNew": 1 }
+                  ]
+                }
+              ],
+              "recentExerciseIds": []
+            }
+        """.trimIndent()
+
+        val catalog = WearStrengthCatalog.parse(json)
+        assertEquals("curl", catalog.catalogGroups[0].exercises[0].exerciseId)
+    }
+
+    // ---- JSON null handling ----------------------------------------------------------------
+
+    /**
+     * Android's bundled org.json turns a JSON `null` into the literal string `"null"` via
+     * `optString`. The phone emits `movementId: null` for any exercise with no mapped movement, so
+     * without a guard those exercises used to carry a `movementId` of `"null"` all the way back
+     * into the phone's saved record.
+     */
+    @Test
+    fun jsonNullTextFieldsParseAsEmptyNotTheStringNull() {
+        val json = """
+            {
+              "payloadVersion": 1,
+              "type": "strength-context",
+              "generatedAt": 1,
+              "catalog": [
+                {
+                  "muscleId": "chest",
+                  "muscleName": "가슴",
+                  "exercises": [
+                    { "exerciseId": "curl", "name": "컬", "movementId": null, "muscleId": "chest", "stepKg": 2.5 }
+                  ]
+                }
+              ],
+              "recentExerciseIds": []
+            }
+        """.trimIndent()
+
+        val exercise = WearStrengthCatalog.parse(json).findExercise("curl")!!
+        assertEquals("", exercise.movementId)
+        assertEquals("chest", exercise.muscleId)
+    }
+
+    // ---- program (이번 주 처방) ---------------------------------------------------------------
+
+    private fun wendlerContextJson(): String = """
+        {
+          "payloadVersion": 1,
+          "type": "strength-context",
+          "generatedAt": 1,
+          "catalog": [
+            {
+              "muscleId": "lower",
+              "muscleName": "하체",
+              "exercises": [
+                {
+                  "exerciseId": "back-squat",
+                  "name": "백스쿼트",
+                  "muscleId": "lower",
+                  "movementId": "back_squat",
+                  "stepKg": 2.5,
+                  "lastSession": null,
+                  "program": {
+                    "kind": "wendler",
+                    "label": "웬들러 5/3/1 · 142.5kg x 1+ · BBB 75kg 5x10",
+                    "shortLabel": "웬들러 5/3/1",
+                    "weekLabel": "3주차",
+                    "sets": [
+                      { "kg": 60, "reps": 5, "romPct": 100, "setType": "warmup", "role": "warmup", "amrap": false },
+                      { "kg": 142.5, "reps": 1, "romPct": 100, "setType": "main", "role": "main", "amrap": true },
+                      { "kg": 75, "reps": 10, "romPct": 100, "setType": "main", "role": "supplemental", "amrap": false, "supplementalKind": "bbb" },
+                      { "kg": 90, "reps": 5, "romPct": 100, "setType": "main", "role": "bogus" },
+                      { "kg": 50, "reps": 0 },
+                      "not-an-object"
+                    ]
+                  }
+                },
+                {
+                  "exerciseId": "leg-press",
+                  "name": "레그프레스",
+                  "muscleId": "lower",
+                  "movementId": "leg_press",
+                  "stepKg": 5
+                }
+              ]
+            }
+          ],
+          "recentExerciseIds": []
+        }
+    """.trimIndent()
+
+    @Test
+    fun parsesProgramRowsWithRolesAmrapAndSupplementalKind() {
+        val program = WearStrengthCatalog.parse(wendlerContextJson()).findExercise("back-squat")!!.program!!
+
+        assertEquals("wendler", program.kind)
+        assertEquals("3주차", program.weekLabel)
+        assertEquals(4, program.sets.size) // reps<=0 and the non-object row are skipped
+
+        assertEquals("warmup", program.sets[0].role)
+        assertEquals("warmup", program.sets[0].setType)
+        assertTrue(program.sets[1].amrap)
+        assertEquals(142.5, program.sets[1].kg, 0.0001)
+        assertEquals("bbb", program.sets[2].supplementalKind)
+        assertNull("unknown roles fall back to null", program.sets[3].role)
+    }
+
+    /** The header is one line on a ~200dp screen, so it uses the short label, not the full one. */
+    @Test
+    fun programHeaderLabelJoinsWeekAndTheShortLabel() {
+        val program = WearStrengthCatalog.parse(wendlerContextJson()).findExercise("back-squat")!!.program!!
+        assertEquals("3주차 · 웬들러 5/3/1", program.headerLabel())
+    }
+
+    /** A context pushed by a phone build that predates `shortLabel` still renders a header. */
+    @Test
+    fun programHeaderLabelFallsBackToTheLongLabelWhenShortIsAbsent() {
+        val json = """
+            {
+              "payloadVersion": 1,
+              "type": "strength-context",
+              "generatedAt": 1,
+              "catalog": [
+                {
+                  "muscleId": "lower",
+                  "muscleName": "하체",
+                  "exercises": [
+                    {
+                      "exerciseId": "squat", "name": "스쿼트", "movementId": "m", "stepKg": 2.5,
+                      "program": {
+                        "kind": "wendler", "label": "웬들러 5/3/1 · 100kg x 5+", "weekLabel": "1주차",
+                        "sets": [{ "kg": 100, "reps": 5, "romPct": 100, "setType": "main", "role": "main" }]
+                      }
+                    }
+                  ]
+                }
+              ],
+              "recentExerciseIds": []
+            }
+        """.trimIndent()
+        val program = WearStrengthCatalog.parse(json).findExercise("squat")!!.program!!
+        assertEquals("1주차 · 웬들러 5/3/1 · 100kg x 5+", program.headerLabel())
+    }
+
+    @Test
+    fun exerciseWithoutAProgramParsesToNull() {
+        assertNull(WearStrengthCatalog.parse(wendlerContextJson()).findExercise("leg-press")!!.program)
+    }
+
+    @Test
+    fun programWithNoUsableRowsParsesToNullSoTheCardFallsBackToABlankRow() {
+        val json = """
+            {
+              "payloadVersion": 1,
+              "type": "strength-context",
+              "generatedAt": 1,
+              "catalog": [
+                {
+                  "muscleId": "chest",
+                  "muscleName": "가슴",
+                  "exercises": [
+                    {
+                      "exerciseId": "curl", "name": "컬", "movementId": "m", "stepKg": 2.5,
+                      "program": { "kind": "wendler", "label": "x", "weekLabel": "1주차", "sets": [] }
+                    }
+                  ]
+                }
+              ],
+              "recentExerciseIds": []
+            }
+        """.trimIndent()
+        assertNull(WearStrengthCatalog.parse(json).findExercise("curl")!!.program)
     }
 }
