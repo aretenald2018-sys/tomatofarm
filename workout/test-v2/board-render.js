@@ -72,6 +72,10 @@ const S = {
   cardCommitting: false,
 };
 
+// 세트 입력에서 마지막으로 블러가 일어난 시각. 백드롭 탭이 "키보드 닫기"인지
+// "시트 닫기"인지 구분하는 데 쓴다 (_ensureRoots의 클릭 핸들러 참조).
+let _sheetSetInputBlurAt = 0;
+
 const _todayKey = () => toKey(new Date());
 const _toast = (msg, type = 'info') => { if (typeof showToast === 'function') showToast(msg, 2200, type); };
 const _num = (id, fallback = 0) => {
@@ -247,11 +251,21 @@ function _ensureRoots() {
     sh.className = 'tm2-root tm2-sheet-layer';
     document.body.appendChild(sh);
     sh.addEventListener('click', (e) => {
-      if (e.target === sh) { closeSheet(); return; }
+      if (e.target === sh) {
+        // 입력 키보드를 닫으려는 백드롭 탭(방금 세트 입력에서 블러됨)은
+        // 시트까지 닫지 않는다. 한 번 더 탭하면 그때 닫힌다.
+        if (Date.now() - _sheetSetInputBlurAt < 400) return;
+        closeSheet();
+        return;
+      }
       if (e.target.closest('.tm2-sheet')) return;
       _onAction(e);
     });
     sh.addEventListener('change', _onSheetChange);
+    sh.addEventListener('input', _onSheetInput);
+    sh.addEventListener('focusout', (e) => {
+      if (e.target?.closest?.('[data-tm2-wset-field]')) _sheetSetInputBlurAt = Date.now();
+    });
   }
 }
 
@@ -1196,18 +1210,19 @@ function _stampCurrentWendlerMeta({ manualOverride = null } = {}) {
   };
 }
 
-function _onSheetChange(e) {
-  const inp = e.target.closest('[data-tm2-wset-field]');
-  if (!inp || !S.card?.entryIdx && S.card?.entryIdx !== 0) return;
+// 세트 입력값을 상태에 반영한다. normalizeInput은 change(커밋) 시에만 켠다 —
+// 타이핑 중에 input.value를 다시 쓰면 커서가 튀고 입력이 끊긴다.
+function _applySheetSetField(inp, { normalizeInput = false } = {}) {
+  if (!inp || !S.card?.entryIdx && S.card?.entryIdx !== 0) return false;
   const entry = WS.workout.exercises?.[S.card.entryIdx];
   const idx = Number(inp.dataset.si);
   const field = inp.dataset.tm2WsetField;
-  if (!entry || !Array.isArray(entry.sets) || !entry.sets[idx]) return;
+  if (!entry || !Array.isArray(entry.sets) || !entry.sets[idx]) return false;
   const n = Number(inp.value);
   const next = (() => {
     if (field === 'romPct') {
       const pct = Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : 100;
-      inp.value = String(pct);
+      if (normalizeInput) inp.value = String(pct);
       return pct;
     }
     if (!Number.isFinite(n) || n < 0) return '';
@@ -1217,8 +1232,23 @@ function _onSheetChange(e) {
     ...entry.sets[idx],
     [field]: next,
   };
+  return true;
+}
+
+function _onSheetChange(e) {
+  const inp = e.target.closest('[data-tm2-wset-field]');
+  if (!_applySheetSetField(inp, { normalizeInput: true })) return;
   _stampCurrentWendlerMeta();
   _saveWorkoutDraft();
+}
+
+// 타이핑 즉시 드래프트를 상태에 반영한다. change(블러) 전에 세트 완료 토글·세트
+// 추가 등으로 카드가 리렌더되거나 시트가 닫혀도 입력해 둔 값이 사라지지 않는다.
+// 네트워크 저장은 키 입력마다 하지 않고 기존 change 커밋에 맡긴다.
+function _onSheetInput(e) {
+  const inp = e.target?.closest?.('[data-tm2-wset-field]');
+  if (!inp) return;
+  _applySheetSetField(inp);
 }
 
 function _cloneWendlerSetForRole(role) {
@@ -1251,11 +1281,24 @@ function _addWendlerSet(role) {
   _saveWorkoutDraft();
 }
 
+// 완료 토글은 구조가 변하지 않으므로 행 클래스만 제자리에서 바꾼다.
+// 카드 전체 innerHTML 리빌드는 화면 깜빡임 + 입력 중 포커스/키보드 소실을 만든다.
+function _patchWendlerSetRowDone(idx, done) {
+  const host = document.getElementById('tm2-card-host');
+  const check = host?.querySelector?.(`[data-action="tm2:wset-done"][data-si="${idx}"]`);
+  const row = check?.closest?.('.tm2-wset-row');
+  if (!row) return false;
+  check.classList.toggle('tm2-on', done);
+  row.classList.toggle('tm2-done', done);
+  return true;
+}
+
 function _toggleWendlerSet(idx) {
   const entry = WS.workout.exercises?.[S.card?.entryIdx];
   if (!entry?.sets?.[idx]) return;
-  entry.sets[idx].done = !entry.sets[idx].done;
-  _rerenderWendlerCardHost();
+  const done = !entry.sets[idx].done;
+  entry.sets[idx].done = done;
+  if (!_patchWendlerSetRowDone(idx, done)) _rerenderWendlerCardHost();
   _saveWorkoutDraft();
 }
 

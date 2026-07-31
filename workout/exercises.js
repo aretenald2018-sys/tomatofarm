@@ -1313,6 +1313,17 @@ export function wtUpdateSetRir(entryIdx, si, val, sourceInput = null) {
   wtUpdateSet(entryIdx, si, 'rpe', _rirToRpe(val), sourceInput);
 }
 
+// 완료 토글에 풀 렌더가 필요한 경우: 마운트된 행이 없거나, 전문가 일반 행에서
+// 완료 시에만 마크업에 들어가는 RIR select가 아직 없어 새로 생겨야 할 때.
+// 맥스 행(ex-max-v2-set)은 RIR 입력이 상시 존재하므로 항상 제자리 패치 가능.
+function _workoutSetDoneToggleNeedsRender(entryIdx, si) {
+  const rows = _workoutSetRows(entryIdx, si);
+  if (!rows.length) return true;
+  const set = S.workout.exercises?.[entryIdx]?.sets?.[si];
+  if (!set || set.done !== true || set.setType === 'warmup' || !_isExpertUiEnabled()) return false;
+  return rows.some(row => !row.classList.contains('ex-max-v2-set') && !row.querySelector('.set-rpe-select'));
+}
+
 function _setSetDoneState(entryIdx, si, nextDone) {
   const set = S.workout.exercises?.[entryIdx]?.sets?.[si];
   if (!set) return;
@@ -1328,10 +1339,18 @@ function _setSetDoneState(entryIdx, si, nextDone) {
   if (!result.changed) return;
   _refreshWorkoutTimeline('set done toggle');
   wtPersistActiveWorkoutDraft('set done toggle');
-  if (_isMaxEntryMode(entryIdx)) {
-    if (!_rerenderMaxEntryOwner(entryIdx)) _renderExerciseList();
+  // 완료 토글은 대부분 구조 변경이 아니다. 카드 전체 리빌드는 깜빡임과
+  // 스크롤 점프를 만들고, 입력 중이던 값·포커스·키보드를 날린다.
+  // 마운트된 행이 있으면 제자리 패치, 구조가 바뀌는 경우만 풀 렌더.
+  if (_workoutSetDoneToggleNeedsRender(entryIdx, si)) {
+    if (_isMaxEntryMode(entryIdx)) {
+      if (!_rerenderMaxEntryOwner(entryIdx)) _renderExerciseList();
+    }
+    else _renderSets(entryIdx);
+  } else {
+    _syncWorkoutSetPresentation(entryIdx, si);
+    _syncWorkoutEntryDerivedPresentation(entryIdx);
   }
-  else _renderSets(entryIdx);
   if (shouldDone) {
     _maybeShowMaxSetCoach(entryIdx, si);
     const entry = S.workout.exercises[entryIdx];
