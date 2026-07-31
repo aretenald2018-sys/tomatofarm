@@ -180,6 +180,13 @@ class WearStrengthUiController(
             render(v)
             return true
         }
+        // Nothing logged yet on the active carousel: back leaves strength mode entirely and re-arms
+        // the run warm-up. Without this the ready screen — and with it 러닝 — is unreachable once a
+        // card exists, because 운동 종료 is the only other way out and it saves a workout.
+        if (state.screen == WearStrengthScreen.ACTIVE && state.totalSets < 1) {
+            cancelStrengthMode(v)
+            return true
+        }
         if (state.screen != WearStrengthScreen.PICKER) return false
         if (state.cards.isNotEmpty()) {
             state = state.closePicker()
@@ -506,6 +513,23 @@ class WearStrengthUiController(
         render(v)
     }
 
+    /** 지난 기록 strip: pulls that exercise's previous session onto the card (phone parity). */
+    private fun handleCopyPreviousSets(v: View, cardIdx: Int) {
+        val exerciseId = state.cards.getOrNull(cardIdx)?.exerciseId ?: return
+        val lastSession = catalog?.findExercise(exerciseId)?.lastSession
+        val next = state.copyPreviousSets(cardIdx, lastSession)
+        if (next === state) {
+            v.findViewById<TextView>(R.id.strengthActiveStatus)?.text = "지난 세트 기록이 없어요"
+            return
+        }
+        closeEditScreen(v)
+        state = next
+        v.findViewById<TextView>(R.id.strengthActiveStatus)?.text =
+            "지난 기록 ${next.cards[cardIdx].sets.size}세트를 가져왔어요"
+        persist(v)
+        render(v)
+    }
+
     // ---- Set-edit overlay ---------------------------------------------------------------------
 
     private fun setEditingField(v: View, field: EditField) {
@@ -641,8 +665,7 @@ class WearStrengthUiController(
     }
 
     private fun resetPickerToTopLevel() {
-        val cat = catalog
-        pickerAdapter?.submitTopLevel(cat?.recentExercises.orEmpty(), cat?.catalogGroups.orEmpty())
+        pickerAdapter?.submitTopLevel(catalog?.catalogGroups.orEmpty())
     }
 
     private fun initializePicker(v: View) {
@@ -671,6 +694,7 @@ class WearStrengthUiController(
                 override fun onToggleSet(cardIdx: Int, setIdx: Int) = handleToggleSet(v, cardIdx, setIdx)
                 override fun onEditSet(cardIdx: Int, setIdx: Int) = handleEditSet(v, cardIdx, setIdx)
                 override fun onAddSet(cardIdx: Int) = handleAddSet(v, cardIdx)
+                override fun onCopyPreviousSets(cardIdx: Int) = handleCopyPreviousSets(v, cardIdx)
             },
             lastRecordLabelFor = { exerciseId -> catalog?.findExercise(exerciseId)?.lastRecordLabel() },
         ).also { pagerAdapter = it }
@@ -755,8 +779,7 @@ class WearStrengthUiController(
     }
 
     private fun renderPickerEmptyState(v: View) {
-        val cat = catalog
-        val hasCatalog = cat != null && (cat.catalogGroups.isNotEmpty() || cat.recentExercises.isNotEmpty())
+        val hasCatalog = catalog?.catalogGroups?.isNotEmpty() == true
         v.findViewById<View>(R.id.strengthContextEmptyView)?.visibility =
             if (state.screen == WearStrengthScreen.PICKER && !hasCatalog) View.VISIBLE else View.GONE
         v.findViewById<View>(R.id.strengthPickerList)?.visibility =
@@ -896,10 +919,13 @@ class WearStrengthUiController(
 }
 
 /**
- * Two-level picker adapter: top level shows "최근" quick-access rows (max [MAX_RECENT_ROWS]) then
- * muscle-group rows; tapping a group swaps in that group's exercise rows with a back row on top.
- * A single adapter instance owns both levels (per the plan's Phase 4 wording) so the
- * [androidx.wear.widget.WearableRecyclerView]'s rotary/curved-scroll behavior is never re-attached.
+ * Two-level picker adapter: top level shows muscle-group rows; tapping a group swaps in that
+ * group's exercise rows with a back row on top. A single adapter instance owns both levels (per the
+ * plan's Phase 4 wording) so the [androidx.wear.widget.WearableRecyclerView]'s rotary/curved-scroll
+ * behavior is never re-attached.
+ *
+ * No "최근" shortcut list: pulling a previous session is a per-exercise action on the card
+ * ([WearStrengthSessionState.copyPreviousSets]), matching the phone's 지난 기록 strip.
  */
 private class StrengthPickerAdapter(
     private val onExerciseTap: (WearStrengthExercise) -> Unit,
@@ -907,8 +933,6 @@ private class StrengthPickerAdapter(
 ) : RecyclerView.Adapter<StrengthPickerAdapter.RowHolder>() {
 
     private sealed class Row {
-        data class Header(val label: String) : Row()
-        data class Recent(val exercise: WearStrengthExercise) : Row()
         data class Group(val group: WearStrengthMuscleGroup) : Row()
         object Back : Row()
         data class Exercise(val exercise: WearStrengthExercise) : Row()
@@ -916,14 +940,8 @@ private class StrengthPickerAdapter(
 
     private var rows: List<Row> = emptyList()
 
-    fun submitTopLevel(recent: List<WearStrengthExercise>, groups: List<WearStrengthMuscleGroup>) {
-        val nextRows = mutableListOf<Row>()
-        if (recent.isNotEmpty()) {
-            nextRows.add(Row.Header("최근"))
-            recent.take(MAX_RECENT_ROWS).forEach { nextRows.add(Row.Recent(it)) }
-        }
-        groups.forEach { nextRows.add(Row.Group(it)) }
-        rows = nextRows
+    fun submitTopLevel(groups: List<WearStrengthMuscleGroup>) {
+        rows = groups.map { Row.Group(it) }
         notifyDataSetChanged()
     }
 
@@ -940,14 +958,12 @@ private class StrengthPickerAdapter(
     override fun getItemCount(): Int = rows.size
 
     override fun getItemViewType(position: Int): Int = when (rows[position]) {
-        is Row.Header -> VIEW_TYPE_HEADER
         is Row.Group, is Row.Back -> VIEW_TYPE_GROUP
-        is Row.Recent, is Row.Exercise -> VIEW_TYPE_EXERCISE
+        is Row.Exercise -> VIEW_TYPE_EXERCISE
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RowHolder {
         val layoutRes = when (viewType) {
-            VIEW_TYPE_HEADER -> R.layout.wear_strength_picker_row_header
             VIEW_TYPE_GROUP -> R.layout.wear_strength_picker_row_group
             else -> R.layout.wear_strength_picker_row_exercise
         }
@@ -957,17 +973,12 @@ private class StrengthPickerAdapter(
 
     override fun onBindViewHolder(holder: RowHolder, position: Int) {
         when (val row = rows[position]) {
-            is Row.Header -> {
-                holder.itemView.findViewById<TextView>(R.id.strengthPickerRowHeaderLabel)?.text = row.label
-                holder.itemView.setOnClickListener(null)
-            }
             is Row.Group -> bindGroupRow(holder.itemView, icon = "●", label = row.group.muscleName) {
                 enterGroup(row.group)
             }
             Row.Back -> bindGroupRow(holder.itemView, icon = "‹", label = "부위 목록") {
                 onBackTap()
             }
-            is Row.Recent -> bindExerciseRow(holder.itemView, row.exercise)
             is Row.Exercise -> bindExerciseRow(holder.itemView, row.exercise)
         }
     }
@@ -989,9 +1000,7 @@ private class StrengthPickerAdapter(
     class RowHolder(itemView: View) : RecyclerView.ViewHolder(itemView)
 
     private companion object {
-        const val VIEW_TYPE_HEADER = 0
         const val VIEW_TYPE_GROUP = 1
         const val VIEW_TYPE_EXERCISE = 2
-        const val MAX_RECENT_ROWS = 8
     }
 }

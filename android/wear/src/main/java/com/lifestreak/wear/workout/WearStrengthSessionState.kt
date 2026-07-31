@@ -150,7 +150,11 @@ data class WearStrengthSessionState(
             muscleId = exercise.muscleId,
             movementId = exercise.movementId,
             stepKg = exercise.stepKg,
-            sets = buildPlannedSets(exercise.lastSession),
+            // One blank row, like the phone's card. Pulling the previous session is an explicit
+            // action on the 지난 기록 strip ([copyPreviousSets]), never automatic.
+            sets = listOf(
+                PlannedSet(kg = DEFAULT_DRAFT_KG, reps = DEFAULT_DRAFT_REPS, romPct = DEFAULT_DRAFT_ROM_PCT),
+            ),
         )
         val insertAt = (afterIndex + 1).coerceIn(0, cards.size)
         val nextCards = cards.toMutableList().apply { add(insertAt, newCard) }
@@ -238,6 +242,18 @@ data class WearStrengthSessionState(
         return replaceCard(cardIdx, card.copy(sets = card.sets + newSet))
     }
 
+    /**
+     * Replaces [cardIdx]'s rows with every working set of [lastSession] — the watch side of the
+     * phone's "지난 기록 · 전체 세트 복사" strip (calendar/detail-template.js). Replace, not append,
+     * and each copied row comes back pending so it still has to be checked off. No-op when the
+     * previous session has nothing worth copying.
+     */
+    fun copyPreviousSets(cardIdx: Int, lastSession: WearStrengthLastSession?): WearStrengthSessionState {
+        val card = cards.getOrNull(cardIdx) ?: return this
+        val copied = plannedSetsFrom(lastSession) ?: return this
+        return replaceCard(cardIdx, card.copy(sets = copied))
+    }
+
     /** Starts (or restarts) the rest timer; defaults to 90s. */
     fun startRest(now: Long, durationMs: Long = DEFAULT_REST_MS): WearStrengthSessionState {
         return copy(restEndsAtMs = now + durationMs, restTotalMs = durationMs)
@@ -318,6 +334,7 @@ data class WearStrengthSessionState(
         const val MAX_RIR = 5
         const val DEFAULT_RIR_ON_SET = 2
         private const val SET_TYPE_WARMUP = "warmup"
+        private const val SET_TYPE_DELOAD = "deload"
 
         fun fromJson(raw: String): WearStrengthSessionState? {
             return try {
@@ -423,11 +440,15 @@ data class WearStrengthSessionState(
         private fun clampRom(value: Int): Int = value.coerceIn(MIN_ROM_PCT, MAX_ROM_PCT)
         private fun roundToHalf(value: Double): Double = (value * 2.0).roundToInt() / 2.0
 
-        private fun buildPlannedSets(lastSession: WearStrengthLastSession?): List<PlannedSet> {
-            val workingSets = lastSession?.sets?.filter { it.done && it.setType != SET_TYPE_WARMUP }.orEmpty()
-            if (workingSets.isEmpty()) {
-                return listOf(PlannedSet(kg = DEFAULT_DRAFT_KG, reps = DEFAULT_DRAFT_REPS, romPct = DEFAULT_DRAFT_ROM_PCT))
-            }
+        /**
+         * The previous session's working sets, or null when it has none worth copying. Mirrors the
+         * phone's `_isActualWorkoutSet` (calendar/format.js): warm-up and deload rows never count.
+         */
+        fun plannedSetsFrom(lastSession: WearStrengthLastSession?): List<PlannedSet>? {
+            val workingSets = lastSession?.sets
+                ?.filter { it.done && it.setType != SET_TYPE_WARMUP && it.setType != SET_TYPE_DELOAD }
+                .orEmpty()
+            if (workingSets.isEmpty()) return null
             return workingSets.map {
                 PlannedSet(
                     kg = clampKg(it.kg),

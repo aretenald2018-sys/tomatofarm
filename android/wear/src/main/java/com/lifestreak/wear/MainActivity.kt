@@ -7,6 +7,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.View
+import androidx.activity.addCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -93,6 +94,17 @@ class MainActivity : AppCompatActivity() {
         wearWorkoutUi.bind(host)
         wearStrengthUi.bind(host)
 
+        // Predictive back is on by default at this target SDK, so onBackPressed() is never called
+        // and every back gesture just dismissed the Activity — leaving the edit/rest overlays and
+        // strength mode itself with no way out. The dispatcher path still works.
+        onBackPressedDispatcher.addCallback(this) {
+            if (!wearStrengthUi.handleBackPressed(host)) {
+                isEnabled = false
+                onBackPressedDispatcher.onBackPressed()
+                isEnabled = true
+            }
+        }
+
         if (requestWearExercisePermissionsIfNeeded()) {
             if (!restoreRunServiceIfNeeded()) {
                 // Restoration priority ①러닝 -> ②헬스 -> ③모드 선택 (plan §3). GPS warm-up itself is
@@ -141,12 +153,6 @@ class MainActivity : AppCompatActivity() {
             this,
             Manifest.permission.ACCESS_FINE_LOCATION,
         ) == PackageManager.PERMISSION_GRANTED
-    }
-
-    override fun onBackPressed() {
-        val host = runHost
-        if (host != null && wearStrengthUi.handleBackPressed(host)) return
-        super.onBackPressed()
     }
 
     private fun requestWearExercisePermissionsIfNeeded(): Boolean {

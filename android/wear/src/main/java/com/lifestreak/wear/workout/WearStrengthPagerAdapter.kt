@@ -36,6 +36,9 @@ class WearStrengthPagerAdapter(
 
         /** The trailing "+ 세트 추가" row. */
         fun onAddSet(cardIdx: Int)
+
+        /** The 지난 기록 strip — replaces this card's rows with the previous session's sets. */
+        fun onCopyPreviousSets(cardIdx: Int)
     }
 
     private var cards: List<WearStrengthCard> = emptyList()
@@ -68,8 +71,19 @@ class WearStrengthPagerAdapter(
             lastRecordLabelFor: (String) -> String?,
         ) {
             itemView.findViewById<TextView>(R.id.strengthCardExerciseName)?.text = card.name
-            itemView.findViewById<TextView>(R.id.strengthCardLastRecord)?.text =
-                lastRecordLabelFor(card.exerciseId).orEmpty()
+
+            // The whole 지난 기록 strip is the copy button, same as the phone's card. Hidden outright
+            // when the exercise has no previous session, so it never offers a no-op tap.
+            val label = lastRecordLabelFor(card.exerciseId)
+            itemView.findViewById<TextView>(R.id.strengthCardLastRecord)?.apply {
+                text = label.orEmpty()
+                visibility = if (label != null) View.VISIBLE else View.GONE
+                isClickable = label != null
+                contentDescription = label?.let { "$it, 전체 세트 복사" }
+                setOnClickListener(
+                    if (label != null) View.OnClickListener { callbacks.onCopyPreviousSets(cardIdx) } else null,
+                )
+            }
 
             val list = setList ?: return
             list.removeAllViews()

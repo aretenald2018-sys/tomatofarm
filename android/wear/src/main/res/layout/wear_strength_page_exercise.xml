@@ -28,17 +28,29 @@
         android:textSize="@dimen/strength_text_exercise_name"
         android:textStyle="bold" />
 
+    <!-- Tappable: copies the previous session's whole set list onto this card, mirroring the
+         phone's 지난 기록 strip. -->
     <TextView
         android:id="@+id/strengthCardLastRecord"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="2dp"
+        android:layout_marginTop="4dp"
+        android:autoSizeMaxTextSize="@dimen/strength_text_last_record"
+        android:autoSizeMinTextSize="10sp"
+        android:autoSizeStepGranularity="1sp"
+        android:autoSizeTextType="uniform"
+        android:background="@drawable/wear_strength_pill_muted"
+        android:clickable="true"
         android:ellipsize="end"
+        android:focusable="true"
         android:gravity="center"
         android:maxLines="1"
+        android:paddingStart="10dp"
+        android:paddingTop="6dp"
+        android:paddingEnd="10dp"
+        android:paddingBottom="6dp"
         android:text=""
-        android:textColor="#81877D"
-        android:textSize="@dimen/strength_text_last_record" />
+        android:textColor="#A5ABA1" />
 
     <ScrollView
         android:layout_width="match_parent"

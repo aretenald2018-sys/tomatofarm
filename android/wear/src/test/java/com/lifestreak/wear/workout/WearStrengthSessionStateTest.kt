@@ -3,6 +3,7 @@ package com.lifestreak.wear.workout
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -42,7 +43,7 @@ class WearStrengthSessionStateTest {
         assertEquals(WearStrengthScreen.ACTIVE, withCard.closePicker().screen)
     }
 
-    // ---- addExercise / prefill --------------------------------------------------------------
+    // ---- addExercise / 지난 기록 복사 ----------------------------------------------------------
 
     @Test
     fun addExerciseCreatesCardAndSwitchesToActive() {
@@ -51,6 +52,20 @@ class WearStrengthSessionStateTest {
         assertEquals(1, state.cards.size)
         assertEquals(0, state.activeCardIndex)
         assertEquals("bench-press", state.activeCard?.exerciseId)
+    }
+
+    @Test
+    fun addExerciseAlwaysStartsWithOneBlankRowEvenWhenAPreviousSessionExists() {
+        // 폰 카드와 동일하게, 추가 시점에는 자동으로 지난 기록을 채우지 않는다.
+        val lastSession = WearStrengthLastSession(
+            dateKey = "2026-07-28",
+            sets = listOf(WearStrengthLastSet(kg = 80.0, reps = 8, romPct = 100, setType = "main", done = true)),
+        )
+        val state = WearStrengthSessionState().start(1_000L).addExercise(exercise(lastSession = lastSession))
+        val sets = state.activeCard!!.sets
+        assertEquals(1, sets.size)
+        assertEquals(20.0, sets[0].kg, 0.0001)
+        assertEquals(10, sets[0].reps)
     }
 
     @Test
@@ -67,7 +82,7 @@ class WearStrengthSessionStateTest {
     }
 
     @Test
-    fun addExercisePrefillsOneRowPerLastSessionWorkingSet() {
+    fun copyPreviousSetsCreatesOneRowPerLastSessionWorkingSet() {
         // 지난 세션 [80x8, 80x8, 82.5x6] -> 정확히 3개의 대기 행, 각자의 romPct/rir을 유지.
         val lastSession = WearStrengthLastSession(
             dateKey = "2026-07-28",
@@ -77,7 +92,9 @@ class WearStrengthSessionStateTest {
                 WearStrengthLastSet(kg = 82.5, reps = 6, romPct = 90, setType = "main", done = true, rir = 1),
             ),
         )
-        val state = WearStrengthSessionState().start(1_000L).addExercise(exercise(lastSession = lastSession))
+        val state = WearStrengthSessionState().start(1_000L)
+            .addExercise(exercise(lastSession = lastSession))
+            .copyPreviousSets(0, lastSession)
         val sets = state.activeCard!!.sets
         assertEquals(3, sets.size)
         assertTrue(sets.all { !it.done })
@@ -88,20 +105,51 @@ class WearStrengthSessionStateTest {
     }
 
     @Test
-    fun addExercisePrefillExcludesWarmupsAndNotDoneSets() {
+    fun copyPreviousSetsExcludesWarmupDeloadAndNotDoneSets() {
         val lastSession = WearStrengthLastSession(
             dateKey = "2026-07-28",
             sets = listOf(
                 WearStrengthLastSet(kg = 40.0, reps = 10, romPct = 100, setType = "warmup", done = true),
+                WearStrengthLastSet(kg = 45.0, reps = 10, romPct = 100, setType = "deload", done = true),
                 WearStrengthLastSet(kg = 80.0, reps = 8, romPct = 100, setType = "main", done = true),
                 WearStrengthLastSet(kg = 82.5, reps = 6, romPct = 90, setType = "main", done = false),
             ),
         )
-        val state = WearStrengthSessionState().start(1_000L).addExercise(exercise(lastSession = lastSession))
+        val state = WearStrengthSessionState().start(1_000L)
+            .addExercise(exercise(lastSession = lastSession))
+            .copyPreviousSets(0, lastSession)
         val sets = state.activeCard!!.sets
         assertEquals(1, sets.size)
         assertEquals(80.0, sets[0].kg, 0.0001)
         assertEquals(8, sets[0].reps)
+    }
+
+    @Test
+    fun copyPreviousSetsReplacesExistingRowsAndIsANoOpWithoutAWorkingSet() {
+        val empty = WearStrengthLastSession(
+            dateKey = "2026-07-28",
+            sets = listOf(WearStrengthLastSet(kg = 40.0, reps = 10, romPct = 100, setType = "warmup", done = true)),
+        )
+        val added = WearStrengthSessionState().start(1_000L)
+            .addExercise(exercise(lastSession = empty))
+            .addPlannedSet(0)
+        assertEquals(2, added.activeCard!!.sets.size)
+
+        // 복사할 본세트가 없으면 카드를 건드리지 않는다.
+        assertSame(added, added.copyPreviousSets(0, empty))
+        assertSame(added, added.copyPreviousSets(0, null))
+        assertSame(added, added.copyPreviousSets(9, empty))
+
+        // 있으면 append가 아니라 replace.
+        val real = WearStrengthLastSession(
+            dateKey = "2026-07-28",
+            sets = listOf(WearStrengthLastSet(kg = 80.0, reps = 8, romPct = 100, setType = "main", done = true)),
+        )
+        val copied = added.copyPreviousSets(0, real)
+        assertEquals(1, copied.activeCard!!.sets.size)
+        assertEquals(80.0, copied.activeCard!!.sets[0].kg, 0.0001)
+        assertEquals(false, copied.activeCard!!.sets[0].done)
+        assertNull(copied.activeCard!!.sets[0].completedAt)
     }
 
     @Test
