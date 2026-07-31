@@ -402,3 +402,66 @@ test('local paired install helper can sideload phone and wear debug APKs', () =>
   assert.match(verifier, /phonePackageInstalledAfter/);
   assert.match(verifier, /watchPackageInstalledAfter/);
 });
+
+// ── adb 기기 목록 파싱 (무선 디버깅) ─────────────────────────────
+// 워치는 유선 연결이 없어 무선 디버깅이 유일한 경로다. 그때 시리얼이 mDNS 서비스 이름이라
+// 공백과 괄호가 들어간다 — 시리얼을 "첫 공백까지"로 자르면 붙어 있는 워치가 0개로 보인다.
+
+test('device lines with an mDNS wireless serial keep the whole serial and the right state', async () => {
+  const { parseDevices } = await import('../scripts/verify-wear-refresh-adb.mjs');
+  const output = [
+    'List of devices attached',
+    'adb-RFAY108BY4P-6gPUVx (2)._adb-tls-connect._tcp device product:fresh7ulkx model:SM_L315N device:fresh7ul transport_id:10',
+  ].join('\n');
+
+  const devices = parseDevices(output);
+  assert.equal(devices.length, 1);
+  assert.equal(devices[0].serial, 'adb-RFAY108BY4P-6gPUVx (2)._adb-tls-connect._tcp');
+  assert.equal(devices[0].state, 'device', 'a wireless watch must not be filtered out as a non-device');
+  assert.match(devices[0].details, /model:SM_L315N/);
+});
+
+test('the details key device:<name> is not mistaken for the state column', async () => {
+  const { parseDevices } = await import('../scripts/verify-wear-refresh-adb.mjs');
+  const [parsed] = parseDevices('emulator-5554 device product:sdk model:AOSP device:generic transport_id:1');
+  assert.equal(parsed.serial, 'emulator-5554');
+  assert.equal(parsed.state, 'device');
+  assert.match(parsed.details, /device:generic/);
+});
+
+test('plain, ip:port and non-device states still parse', async () => {
+  const { parseDevices } = await import('../scripts/verify-wear-refresh-adb.mjs');
+  const devices = parseDevices([
+    'List of devices attached',
+    '192.168.0.106:36941\tdevice',
+    'R3CN90ABCDE\tunauthorized',
+    'adb-XYZ._adb-tls-connect._tcp offline',
+  ].join('\n'));
+
+  assert.deepEqual(devices.map((d) => [d.serial, d.state]), [
+    ['192.168.0.106:36941', 'device'],
+    ['R3CN90ABCDE', 'unauthorized'],
+    ['adb-XYZ._adb-tls-connect._tcp', 'offline'],
+  ]);
+});
+
+test('a wireless watch line still classifies as a watch', async () => {
+  const { parseDevices, classifyDevice } = await import('../scripts/verify-wear-refresh-adb.mjs');
+  const [device] = parseDevices(
+    'adb-RFAY108BY4P-6gPUVx (2)._adb-tls-connect._tcp device product:fresh7ulkx model:SM_L315N transport_id:10',
+  );
+  assert.equal(classifyDevice({ ...device, characteristics: 'nosdcard,watch', model: 'SM-L315N' }), 'watch');
+});
+
+test('install falls back to --no-streaming when the wireless link drops mid-stream', () => {
+  const verifier = readProjectFile('scripts/verify-wear-refresh-adb.mjs');
+  assert.match(verifier, /STREAMED_INSTALL_FAILURE/);
+  assert.match(verifier, /abb_exec\|device offline/);
+  assert.match(verifier, /'install', '-r', '--no-streaming'/);
+});
+
+test('importing the verifier does not run its CLI', async () => {
+  const module = await import('../scripts/verify-wear-refresh-adb.mjs');
+  assert.equal(typeof module.parseDevices, 'function');
+  assert.equal(typeof module.classifyDevice, 'function');
+});

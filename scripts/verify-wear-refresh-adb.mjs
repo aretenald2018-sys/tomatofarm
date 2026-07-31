@@ -140,15 +140,43 @@ function runAdb(adb, adbArgs, { serial = null, timeoutMs = 15000, binary = false
   };
 }
 
+// adb 상태 토큰. 시리얼과 상태를 가르는 기준으로 쓴다 — 시리얼을 "첫 공백까지"로 자르면
+// 무선 디버깅 mDNS 이름(`adb-XXXX-YYYY (2)._adb-tls-connect._tcp`)처럼 공백이 든 시리얼이
+// 통째로 잘려 state 가 어긋나고, 붙어 있는 기기가 0개로 보인다.
+const ADB_DEVICE_STATES = [
+  'device',
+  'offline',
+  'unauthorized',
+  'authorizing',
+  'connecting',
+  'bootloader',
+  'recovery',
+  'sideload',
+  'rescue',
+  'host',
+  'unknown',
+];
+
+function parseDeviceLine(line) {
+  // 상태 토큰은 독립 단어로만 인정한다. `-l` 상세의 `device:fresh7ul` 같은 key:value 는
+  // 뒤가 공백이 아니라 `:` 이므로 걸리지 않는다.
+  const statePattern = new RegExp(`^(.*?)\\s+(${ADB_DEVICE_STATES.join('|')})(?=\\s|$)(?:\\s+(.*))?$`);
+  const match = line.match(statePattern);
+  if (match) {
+    return { serial: match[1].trim(), state: match[2], details: (match[3] || '').trim() };
+  }
+  // `no permissions; see [...]` 처럼 공백이 든 상태 문구는 위 목록에 없다. 마지막 수단으로
+  // 예전 동작(첫 토큰 = 시리얼)을 유지해 최소한 시리얼은 살린다.
+  const [serial, state, ...details] = line.split(/\s+/);
+  return { serial, state, details: details.join(' ') };
+}
+
 function parseDevices(text) {
   return String(text)
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => line && !line.startsWith('List of devices'))
-    .map((line) => {
-      const [serial, state, ...details] = line.split(/\s+/);
-      return { serial, state, details: details.join(' ') };
-    });
+    .map(parseDeviceLine);
 }
 
 function getprop(adb, serial, propName) {
@@ -212,11 +240,30 @@ function packageInstalled(adb, serial, packageName) {
   return result.status === 0 && String(result.stdout).includes(`package:`);
 }
 
+// 스트리밍 설치가 무선 링크를 못 견디고 끊어졌을 때의 흔적. 워치는 유선 연결이 없어
+// 무선 디버깅이 유일한 경로라 실제로 자주 걸린다.
+const STREAMED_INSTALL_FAILURE = /abb_exec|device offline|connect error|closed/i;
+
 function installApk(adb, serial, apkPath) {
-  return runAdb(adb, ['install', '-r', apkPath], {
+  const streamed = runAdb(adb, ['install', '-r', apkPath], {
     serial,
     timeoutMs: 120000,
   });
+  if (streamed.status === 0) return streamed;
+  const output = `${streamed.stdout || ''}\n${streamed.stderr || ''}`;
+  if (!STREAMED_INSTALL_FAILURE.test(output)) return streamed;
+
+  // APK 를 먼저 밀어 넣고 기기에서 설치한다(`--no-streaming`). 링크가 잠깐 끊겨도
+  // 재개되는 push 라 무선 워치에서 성공률이 크게 다르다.
+  const pushed = runAdb(adb, ['install', '-r', '--no-streaming', apkPath], {
+    serial,
+    timeoutMs: 300000,
+  });
+  return {
+    ...pushed,
+    stdout: `${streamed.stdout || ''}\n[retry --no-streaming]\n${pushed.stdout || ''}`.trim(),
+    stderr: `${streamed.stderr || ''}\n[retry --no-streaming]\n${pushed.stderr || ''}`.trim(),
+  };
 }
 
 function readWatchReceipt(adb, serial, packageName) {
@@ -580,31 +627,39 @@ async function verifyMissing(adb, args) {
   return passed ? 0 : 1;
 }
 
-const args = parseArgs(process.argv.slice(2));
-if (args.help) {
-  console.log(usage());
-  process.exit(0);
-}
+// 순수 파서는 테스트에서 직접 부를 수 있게 내보낸다(아래 CLI 블록은 import 시 실행되지 않는다).
+export { parseDeviceLine, parseDevices, classifyDevice };
 
-const adb = resolveAdb();
-if (!adb) {
-  const evidence = await writeEvidence(args, 'adb-device-probe-latest.txt', [
-    'not verified yet: adb was not found.',
-    'Set ADB or install Android SDK platform-tools.',
-  ]);
-  console.error('adb was not found.');
-  console.error(`evidence=${path.relative(root, evidence).replaceAll(path.sep, '/')}`);
-  process.exit(2);
-}
+const invokedAsCli = process.argv[1]
+  && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
 
-let status = 2;
-if (args.mode === 'probe') status = await probe(adb, args);
-else if (args.mode === 'install') status = await installPair(adb, args);
-else if (args.mode === 'install-watch') status = await installWatch(adb, args);
-else if (args.mode === 'installed') status = await verifyInstalled(adb, args);
-else if (args.mode === 'missing') status = await verifyMissing(adb, args);
-else {
-  console.error(`Unknown mode: ${args.mode}`);
-  console.error(usage());
+if (invokedAsCli) {
+  const args = parseArgs(process.argv.slice(2));
+  if (args.help) {
+    console.log(usage());
+    process.exit(0);
+  }
+
+  const adb = resolveAdb();
+  if (!adb) {
+    const evidence = await writeEvidence(args, 'adb-device-probe-latest.txt', [
+      'not verified yet: adb was not found.',
+      'Set ADB or install Android SDK platform-tools.',
+    ]);
+    console.error('adb was not found.');
+    console.error(`evidence=${path.relative(root, evidence).replaceAll(path.sep, '/')}`);
+    process.exit(2);
+  }
+
+  let status = 2;
+  if (args.mode === 'probe') status = await probe(adb, args);
+  else if (args.mode === 'install') status = await installPair(adb, args);
+  else if (args.mode === 'install-watch') status = await installWatch(adb, args);
+  else if (args.mode === 'installed') status = await verifyInstalled(adb, args);
+  else if (args.mode === 'missing') status = await verifyMissing(adb, args);
+  else {
+    console.error(`Unknown mode: ${args.mode}`);
+    console.error(usage());
+  }
+  process.exit(status);
 }
-process.exit(status);
