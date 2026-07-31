@@ -97,6 +97,15 @@ function collectCssRefs(text, importer, refs) {
   for (const match of text.matchAll(cssImport)) addRef(refs, importer, match[1], 'css-import');
 }
 
+// modal-manager.js는 MODALS 테이블의 path를 import(config.path)로 동적 로드한다.
+// 변수 경로라 일반 import 스캔에 잡히지 않으므로 테이블을 직접 파싱한다.
+function collectModalRegistryRefs(text, importer, refs) {
+  const block = text.match(/MODALS\s*=\s*Object\.freeze\(\[([\s\S]*?)\]\)/)?.[1] || '';
+  for (const match of block.matchAll(/path:\s*['"]([^'"]+)['"]/g)) {
+    addRef(refs, importer, match[1], 'dynamic-module');
+  }
+}
+
 function collectSwRefs(text, importer, refs) {
   const block = text.match(/TOMATO_STATIC_ASSETS\s*=\s*Object\.freeze\(\[([\s\S]*?)\]\)/)?.[1] || '';
   for (const match of block.matchAll(/['"]([^'"]+)['"]/g)) addRef(refs, importer, match[1], 'sw-static-asset');
@@ -120,8 +129,28 @@ for (const file of files) {
   if (ext === '.html') collectHtmlRefs(text, file, refs);
   if (ext === '.css') collectCssRefs(text, file, refs);
   if (rel(file) === 'runtime-assets.js') collectSwRefs(text, file, refs);
+  if (rel(file) === 'modal-manager.js') collectModalRegistryRefs(text, file, refs);
   if (rel(file).startsWith('.github/')) collectCommandRefs(text, file, refs);
 }
+
+// 매니페스트 폐쇄성: 매니페스트에 실린 파일이 import/참조하는 런타임 파일은
+// 반드시 매니페스트에도 있어야 한다. 빠지면 저장소에는 존재해 개별 파일 검사는
+// 통과하지만, www/APK 번들에서 dynamic import가 404 난다 (예: 2026-07 modals 12종
+// 누락 → APK에서 종목 추가가 "네트워크 확인" 오류로만 보였던 사고).
+const manifestFiles = new Set(
+  refs.filter((ref) => ref.kind === 'sw-static-asset' && ref.target).map((ref) => ref.target)
+);
+const bundledRefKinds = new Set(['module', 'dynamic-module', 'html-asset', 'css-import']);
+const missingFromManifest = [...new Map(
+  refs
+    .filter((ref) => (
+      bundledRefKinds.has(ref.kind)
+      && manifestFiles.has(ref.importer)
+      && /\.(?:js|mjs|css)$/.test(ref.target)
+      && !manifestFiles.has(ref.target)
+    ))
+    .map((ref) => [ref.target, ref])
+).values()];
 
 const missing = refs.filter((ref) => !existsSync(path.join(root, ref.target)));
 const directories = refs.filter((ref) => (
@@ -143,6 +172,15 @@ if (missing.length || directories.length) {
   console.error('[runtime-assets] Missing or invalid runtime references:');
   for (const ref of missing) console.error(`  - missing ${ref.target} from ${ref.importer} (${ref.kind}: ${ref.spec})`);
   for (const ref of directories) console.error(`  - directory ${ref.target} from ${ref.importer} (${ref.kind}: ${ref.spec})`);
+  process.exit(1);
+}
+
+if (missingFromManifest.length) {
+  console.error('[runtime-assets] Files referenced by bundled code but missing from the runtime-assets manifest:');
+  for (const ref of missingFromManifest) {
+    console.error(`  - ${ref.target} (referenced by ${ref.importer}, ${ref.kind}: ${ref.spec})`);
+  }
+  console.error('[runtime-assets] Add them to runtime-assets.js so www/ and the APK bundle include them.');
   process.exit(1);
 }
 
