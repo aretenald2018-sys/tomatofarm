@@ -34,6 +34,9 @@ const requiredMarkdown = new Set([
   'docs/adr/2026-05-15-exercise-ssot.md',
   'docs/workout-data-lineage.md',
   'workout/expert/AGENTS.md',
+  // Claude Code는 AGENTS.md를 자동 로드하지 않는다. AGENTS.md가 있는 폴더에는
+  // `@AGENTS.md` 한 줄짜리 CLAUDE.md가 짝으로 있어야 규칙이 전달된다.
+  'workout/expert/CLAUDE.md',
 ]);
 const durableMarkdownPrefixes = [
   'docs/adr/',
