@@ -107,6 +107,9 @@ internal fun buildPaceTrend(samples: List<WearDistanceSample>): List<WearPaceTre
  *   rather than reporting a stale pace.
  * - If the distance delta inside the window is negligible (below [MIN_CURRENT_PACE_DISTANCE_DELTA_KM]),
  *   this also returns null instead of an absurdly large number.
+ * - Symmetrically, a pace faster than MIN_VALID_SECONDS_PER_KM (3:00/km) is a GPS artefact rather
+ *   than a runner, so it also reads null instead of flashing an impossible number on the wrist.
+ *   Same floor [buildPaceTrend] applies, deliberately.
  */
 internal fun currentPaceSecPerKm(
     samples: List<WearDistanceSample>,

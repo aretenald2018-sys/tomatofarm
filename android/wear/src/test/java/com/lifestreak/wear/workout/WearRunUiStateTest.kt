@@ -195,16 +195,16 @@ class WearRunUiStateTest {
         now += 40_000L
 
         state.updateLiveMetrics(
-            distanceKm = 0.40,
+            distanceKm = 0.16,
             distanceSamples = listOf(
                 WearDistanceSample(timestampMs = 0L, distanceKm = 0.0),
-                WearDistanceSample(timestampMs = 40_000L, distanceKm = 0.40),
+                WearDistanceSample(timestampMs = 40_000L, distanceKm = 0.16),
             ),
         )
 
         val snapshot = state.snapshot()
-        assertEquals(100, snapshot.currentPaceSecPerKm)
-        assertEquals("1'40\"", snapshot.currentPaceText)
+        assertEquals(250, snapshot.currentPaceSecPerKm)
+        assertEquals("4'10\"", snapshot.currentPaceText)
     }
 
     // --- W5c current-pace pure function -----------------------------------------------------
@@ -213,15 +213,15 @@ class WearRunUiStateTest {
     fun currentPaceUsesTheNewestAndOldestSampleInsideTheTrailingWindow() {
         val samples = listOf(
             WearDistanceSample(timestampMs = 0L, distanceKm = 0.0),
-            WearDistanceSample(timestampMs = 10_000L, distanceKm = 0.10),
-            WearDistanceSample(timestampMs = 20_000L, distanceKm = 0.20),
-            WearDistanceSample(timestampMs = 30_000L, distanceKm = 0.30),
-            WearDistanceSample(timestampMs = 40_000L, distanceKm = 0.40),
+            WearDistanceSample(timestampMs = 10_000L, distanceKm = 0.04),
+            WearDistanceSample(timestampMs = 20_000L, distanceKm = 0.08),
+            WearDistanceSample(timestampMs = 30_000L, distanceKm = 0.12),
+            WearDistanceSample(timestampMs = 40_000L, distanceKm = 0.16),
         )
 
         // Window of 40s ending at the newest sample (40_000L) reaches back to 0L, so
-        // oldest=0.0km@0ms, newest=0.40km@40_000ms -> 40s / 0.4km = 100s/km.
-        assertEquals(100, currentPaceSecPerKm(samples, nowMs = 40_000L, windowMs = 40_000L))
+        // oldest=0.0km@0ms, newest=0.16km@40_000ms -> 40s / 0.16km = 250s/km (4'10"/km).
+        assertEquals(250, currentPaceSecPerKm(samples, nowMs = 40_000L, windowMs = 40_000L))
     }
 
     @Test
@@ -230,15 +230,36 @@ class WearRunUiStateTest {
             WearDistanceSample(timestampMs = 0L, distanceKm = 0.0),
             WearDistanceSample(timestampMs = 10_000L, distanceKm = 0.30), // fast start, outside the window
             WearDistanceSample(timestampMs = 50_000L, distanceKm = 0.40),
-            WearDistanceSample(timestampMs = 60_000L, distanceKm = 0.50),
-            WearDistanceSample(timestampMs = 70_000L, distanceKm = 0.60),
-            WearDistanceSample(timestampMs = 80_000L, distanceKm = 0.70),
+            WearDistanceSample(timestampMs = 60_000L, distanceKm = 0.44),
+            WearDistanceSample(timestampMs = 70_000L, distanceKm = 0.48),
+            WearDistanceSample(timestampMs = 80_000L, distanceKm = 0.52),
         )
 
         // Window [40_000, 80_000]: the oldest sample inside is 50_000L@0.40km (10_000L@0.30km
-        // falls outside it), newest is 80_000L@0.70km -> 30s / 0.30km = 100s/km. If the excluded
-        // fast-start sample leaked in, the pace would come out faster than this.
-        assertEquals(100, currentPaceSecPerKm(samples, nowMs = 80_000L, windowMs = 40_000L))
+        // falls outside it), newest is 80_000L@0.52km -> 30s / 0.12km = 250s/km. Had the excluded
+        // fast-start sample leaked in it would be 70s / 0.22km = 318s/km, so this pins the window.
+        assertEquals(250, currentPaceSecPerKm(samples, nowMs = 80_000L, windowMs = 40_000L))
+    }
+
+    /**
+     * `currentPaceSecPerKm` shares [buildPaceTrend]'s "faster than 3:00/km is a GPS artefact, not a
+     * runner" floor, and returns null rather than flashing an impossible number on the wrist. The
+     * three tests above used to assert 100s/km (36km/h — faster than a world-record sprint) and so
+     * failed against that floor; this pins the real boundary instead.
+     */
+    @Test
+    fun currentPaceReturnsNullForAPhysicallyImpossiblePace() {
+        val impossible = listOf(
+            WearDistanceSample(timestampMs = 0L, distanceKm = 0.0),
+            WearDistanceSample(timestampMs = 40_000L, distanceKm = 0.40), // 36km/h
+        )
+        assertNull(currentPaceSecPerKm(impossible, nowMs = 40_000L, windowMs = 40_000L))
+
+        val atTheFloor = listOf(
+            WearDistanceSample(timestampMs = 0L, distanceKm = 0.0),
+            WearDistanceSample(timestampMs = 36_000L, distanceKm = 0.20), // exactly 180s/km
+        )
+        assertEquals(180, currentPaceSecPerKm(atTheFloor, nowMs = 36_000L, windowMs = 40_000L))
     }
 
     @Test
