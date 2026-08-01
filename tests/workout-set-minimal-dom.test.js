@@ -21,6 +21,8 @@ const calendarJs = [
   '../calendar/set-keyboard.js',
 ].map(path => readFileSync(new URL(path, import.meta.url), 'utf8')).join('\n\n');
 const setPresentationJs = readFileSync(new URL('../workout/set-presentation.js', import.meta.url), 'utf8');
+const appJs = readFileSync(new URL('../app.js', import.meta.url), 'utf8');
+const workoutSaveJs = readFileSync(new URL('../workout/save.js', import.meta.url), 'utf8');
 const styleCss = readAppCssSync();
 const testArtifactRoot = process.env.TOMATO_TEST_ARTIFACT_DIR
   ? path.resolve(process.env.TOMATO_TEST_ARTIFACT_DIR)
@@ -76,6 +78,9 @@ function buildHarnessScript() {
     '_renderWorkoutSetRows',
     '_workoutPreviousSetSummary',
     '_renderWorkoutExerciseDetailCard',
+    '_renderWorkoutExerciseSlides',
+    '_patchWorkoutSheetSetSurfaces',
+    '_renderWorkoutSheetAfterSetEdit',
     '_clearWorkoutSetEditorsForExercise',
     '_runWorkoutHomeSheetCardAction',
     '_workoutDayExportMenuParts',
@@ -121,6 +126,10 @@ function buildHarnessScript() {
     '_updateWorkoutExerciseSetFromSheet',
     '_setWorkoutExerciseSetTypeFromSheet',
     '_removeWorkoutExerciseSetFromSheet',
+    '_saveWorkoutHomeSessionResult',
+    '_toggleWorkoutExerciseSetDoneFromSheet',
+    '_clearWorkoutSheetSetRestMetadata',
+    '_syncWorkoutRestAfterSheetSet',
     '_copyPreviousWorkoutSetForSheet',
     '_copyPreviousWorkoutRecordSetsForSheet',
     '_copyPreviousWorkoutExerciseSetsFromSheet',
@@ -208,7 +217,6 @@ function buildHarnessScript() {
     function _toggleWorkoutHomeSheet() {}
     function _openWorkoutHomeRunning() { return false; }
     function _addWorkoutHomeSession() { return false; }
-    function _toggleWorkoutExerciseSetDoneFromSheet() { return false; }
     function _completeWorkoutExerciseFromSheet() { return false; }
     function _editWorkoutExerciseCard() { return false; }
     function _toggleWorkoutDetailCard() { return false; }
@@ -222,6 +230,15 @@ function buildHarnessScript() {
     function _previousWorkoutRecordForRow() { return window.__previousRecord || null; }
     function _workoutEntryName(entry = {}) { return String(entry?.name || entry?.exerciseId || ''); }
     function getCache() { return window.__cache || {}; }
+    function getDietPlan() { return null; }
+    function _sortedCheckins() { return []; }
+    function _renderWorkoutDetailSummaryCard() { return '<div class="wt-day-summary-card"></div>'; }
+    function _mountWorkoutSummaryElapsedTimers() {}
+    // 부분 갱신은 시트 모델을 다시 읽어 카드만 갈아끼운다. 하네스는 종목 하나만
+    // 세우므로 같은 모양의 모델을 돌려준다.
+    function _workoutHomeDetailModel() {
+      return { sessionIndex: 0, wx: { exercises: [_rowFromEntry()] } };
+    }
     function _defaultWorkoutSheetSet(prev = {}) {
       return { kg: prev.kg ?? '', reps: prev.reps ?? '', setType: prev.setType || 'main', done: false };
     }
@@ -229,8 +246,48 @@ function buildHarnessScript() {
       delete entry.exerciseCompletedAt;
       window.__completionMarkerCleared = true;
     }
+    // ── 완료 토글 전체 경로용 경계 스텁 ──────────────────────────
+    // 실제 _saveWorkoutHomeSessionResult / _syncWorkoutRestAfterSheetSet 소스를
+    // 그대로 태우기 위한 최소 경계. 저장/휴식 타이머는 호출 기록만 남긴다.
+    const _workoutDetailCollapsed = new Set();
+    const S = { workout: { sessionIndex: 0, get exercises() { return [window.__entry]; } } };
+    window.__todayKey = null;
+    window.__sheetSavedEvents = [];
+    window.__saveWorkoutDayCalls = [];
+    window.__restTimerStarts = [];
+    window.__restTimerClears = [];
+    window.__restTimelineCalls = [];
+    function _isTodayKey(key) { return key === window.__todayKey; }
+    function _isSameWorkoutStateDate() { return true; }
+    function wtRefreshWorkoutTimelineDuration(context) { window.__restTimelineCalls.push(context); }
+    function wtRestTimerStart(seconds, context, meta) { window.__restTimerStarts.push({ context, meta }); }
+    function wtRestTimerClearSetRecord(entryIdx, setIdx) { window.__restTimerClears.push({ entryIdx, setIdx }); }
+    // workout/save.js saveWorkoutDay의 경계 재현: 저장 후 sheet:saved를 낸다.
+    // renderHandled를 빠뜨리면 아래 renderAll 재현 리스너가 전체 렌더를 돌리므로,
+    // 완료 토글 경로가 이 옵션을 잃는 회귀가 렌더 횟수로 드러난다.
+    async function saveWorkoutDay(options = {}) {
+      window.__saveWorkoutDayCalls.push(options);
+      document.dispatchEvent(options?.renderHandled === true
+        ? new CustomEvent('sheet:saved', { detail: { renderHandled: true } })
+        : new CustomEvent('sheet:saved'));
+      return true;
+    }
+    async function saveDay() { return { state: 'synced' }; }
+    function _workoutHomeDay() { return {}; }
+    function _workoutSessionSavePayload() { return {}; }
+    function _mealOkPatchForWorkoutHomeDay() { return {}; }
+    function _syncWorkoutHomeSavedSessionState() {}
+    function _captureWorkoutSheetInputState() { return null; }
+    function _restoreWorkoutSheetInputState(state) { window.__restoreCalls.push(state); }
+    function _waitWorkoutSheetFocusTransition() { return Promise.resolve(); }
 
     ${sourceBundle}
+
+    // 기존 테스트들은 완료 토글이 아무것도 하지 않는 스텁이라는 전제로 돈다.
+    // 번들의 실제 구현은 __realToggleWorkoutSetDone으로 보관해 전체 경로
+    // 테스트에서만 되살린다.
+    window.__realToggleWorkoutSetDone = _toggleWorkoutExerciseSetDoneFromSheet;
+    _toggleWorkoutExerciseSetDoneFromSheet = function () { return false; };
 
     window.__entry = { name: '벤치프레스', exerciseId: 'bench-press', sets: [] };
     window.__previousRecord = null;
@@ -259,9 +316,24 @@ function buildHarnessScript() {
         event.stopPropagation();
       }, { passive: false });
     }
+    // app.js의 sheet:saved 리스너 재현: renderHandled가 붙은 저장은 renderAll
+    // (전체 렌더)을 건너뛴다. 이 재현이 있어야 "완료 체크 → 전체 렌더 0회"를
+    // 저장 이벤트까지 포함한 실제 경로로 검증할 수 있다.
+    document.addEventListener('sheet:saved', (event) => {
+      window.__sheetSavedEvents.push(event?.detail ?? null);
+      if (event?.detail?.renderHandled === true) return;
+      renderWorkoutCalendarHome();
+    });
     async function _mutateWorkoutExerciseFromSheet(targetKey, targetSessionIndex, exerciseIndex, mutator, options = {}) {
       const ok = mutator(window.__entry);
       window.__mutateCalls.push({ targetKey, targetSessionIndex, exerciseIndex, options });
+      // 전체 경로 검증용: 실제 소스로 추출한 _saveWorkoutHomeSessionResult를 태워
+      // 부분 갱신과 sheet:saved 발행 판단까지 검증한다. 기존 테스트는 스텁 경로.
+      if (window.__useRealSaveResult) {
+        if (ok === false) return false;
+        await _saveWorkoutHomeSessionResult(targetKey, { aggregate: {} }, { ...options, sessionIndex: 0 });
+        return ok;
+      }
       if (options?.skipRender !== true && (options?.optimisticRender || !window.__deferSetMutationRender)) {
         renderWorkoutCalendarHome();
       } else {
@@ -953,4 +1025,106 @@ test('set type menu click mutates only the target set type and clears completion
   assert.equal(result.mutateCalls[0].targetSessionIndex, 0);
   assert.equal(result.mutateCalls[0].exerciseIndex, '0');
   assert.deepEqual(result.mutateCalls[0].options, { preserveSheetScroll: true });
+});
+
+// 완료 체크(✓)는 세트 값 편집과 같은 부분 갱신 경로를 타야 한다. 예전에는
+// 낙관적 저장과 휴식 동기화 저장이 각각 sheet:saved → app.js renderAll을 불러
+// 시트가 통째로 다시 그려졌고, 그때마다 스크롤이 0으로 튀며 화면이 깜빡였다.
+test('tapping the done check patches the row in place without any full calendar render', async () => {
+  // 하네스의 renderAll 재현이 실제 app.js 리스너와 같은 규칙임을 소스로 못박는다.
+  assert.match(appJs, /addEventListener\('sheet:saved', \(event\) => \{[\s\S]{0,300}?renderHandled[\s\S]{0,120}?renderAll\(\)/);
+  // 하네스의 saveWorkoutDay 경계 재현이 실제 workout/save.js 발행 규칙과 같음도 확인한다.
+  assert.match(workoutSaveJs, /renderHandled\s*\?\s*new CustomEvent\('sheet:saved', \{ detail: \{ renderHandled: true \} \}\)/);
+
+  const result = await runHarnessPage(async (page) => {
+    await page.evaluate(() => {
+      window.__entry = {
+        name: '벤치프레스',
+        exerciseId: 'bench-press',
+        sets: [
+          { kg: 70, reps: 10, rir: 2, romPct: 100, setType: 'main', done: false },
+          { kg: 40, reps: 12, rir: 2, romPct: 100, setType: 'main', done: false },
+        ],
+      };
+      // 오늘 날짜로 취급해 휴식 타이머 동기화(_syncWorkoutRestAfterSheetSet)의
+      // saveWorkoutDay 경로까지 실제 소스로 태운다.
+      window.__todayKey = '2026-07-04';
+      window.__useRealSaveResult = true;
+      window._toggleWorkoutExerciseSetDoneFromSheet = window.__realToggleWorkoutSetDone;
+      window.renderWorkoutCalendarHome();
+      window.__renderCalls = 0;
+      window.__sheetSavedEvents = [];
+      window.__scroller = document.querySelector('.wt-day-sheet-scroll');
+      window.__sheet = document.querySelector('[data-wt-day-sheet]');
+    });
+
+    async function tapSelector(selector) {
+      const handle = await page.waitForSelector(selector, { visible: true });
+      const box = await handle.boundingBox();
+      assert.ok(box, `${selector} should have a bounding box`);
+      await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+    }
+
+    await tapSelector('[data-wt-set-done-toggle][data-set-index="0"]');
+    await page.waitForFunction(() => (
+      window.__entry.sets[0]?.done === true && window.__saveWorkoutDayCalls.length === 1
+    ), { timeout: 2000 });
+    const afterOn = await page.evaluate(() => ({
+      renderCalls: window.__renderCalls,
+      sameScroller: window.__scroller === document.querySelector('.wt-day-sheet-scroll'),
+      sameSheet: window.__sheet === document.querySelector('[data-wt-day-sheet]'),
+      rowDone: document.querySelector('[data-wt-set-swipe-row][data-set-index="0"]')?.classList.contains('is-done') ?? null,
+      checkPressed: document.querySelector('[data-wt-set-done-toggle][data-set-index="0"]')?.getAttribute('aria-pressed'),
+      completedAtIsNumber: Number.isFinite(Number(window.__entry.sets[0]?.completedAt)),
+      otherSetDone: window.__entry.sets[1]?.done,
+      sheetSavedEvents: window.__sheetSavedEvents,
+      saveWorkoutDayCalls: window.__saveWorkoutDayCalls,
+      restTimerStarts: window.__restTimerStarts.length,
+    }));
+
+    // 해제도 같은 부분 갱신 경로를 타야 한다.
+    await tapSelector('[data-wt-set-done-toggle][data-set-index="0"]');
+    await page.waitForFunction(() => (
+      window.__entry.sets[0]?.done === false && window.__saveWorkoutDayCalls.length === 2
+    ), { timeout: 2000 });
+    const afterOff = await page.evaluate(() => ({
+      renderCalls: window.__renderCalls,
+      sameScroller: window.__scroller === document.querySelector('.wt-day-sheet-scroll'),
+      sameSheet: window.__sheet === document.querySelector('[data-wt-day-sheet]'),
+      rowDone: document.querySelector('[data-wt-set-swipe-row][data-set-index="0"]')?.classList.contains('is-done') ?? null,
+      checkPressed: document.querySelector('[data-wt-set-done-toggle][data-set-index="0"]')?.getAttribute('aria-pressed'),
+      hasCompletedAt: 'completedAt' in (window.__entry.sets[0] || {}),
+      restTimerClears: window.__restTimerClears.length,
+      sheetSavedEvents: window.__sheetSavedEvents,
+    }));
+
+    return { afterOn, afterOff };
+  });
+
+  // 완료로 켤 때: 전체 렌더 0회, 스크롤 컨테이너와 시트 엘리먼트 유지.
+  assert.equal(result.afterOn.renderCalls, 0);
+  assert.equal(result.afterOn.sameScroller, true);
+  assert.equal(result.afterOn.sameSheet, true);
+  // 행 완료 상태는 실제로 바뀐다 — is-done 스타일과 aria-pressed, completedAt.
+  assert.equal(result.afterOn.rowDone, true);
+  assert.equal(result.afterOn.checkPressed, 'true');
+  assert.equal(result.afterOn.completedAtIsNumber, true);
+  assert.equal(result.afterOn.otherSetDone, false);
+  // 휴식 타이머 동기화는 그대로 동작하고, 두 저장 모두 renderHandled로 나간다.
+  assert.equal(result.afterOn.restTimerStarts, 1);
+  assert.deepEqual(result.afterOn.saveWorkoutDayCalls, [{ silent: true, renderHandled: true }]);
+  assert.deepEqual(result.afterOn.sheetSavedEvents, [
+    { renderHandled: true },
+    { renderHandled: true },
+  ]);
+  // 해제할 때도 전체 렌더 없이 행이 되돌아오고 휴식 기록이 정리된다.
+  assert.equal(result.afterOff.renderCalls, 0);
+  assert.equal(result.afterOff.sameScroller, true);
+  assert.equal(result.afterOff.sameSheet, true);
+  assert.equal(result.afterOff.rowDone, false);
+  assert.equal(result.afterOff.checkPressed, 'false');
+  assert.equal(result.afterOff.hasCompletedAt, false);
+  assert.equal(result.afterOff.restTimerClears, 1);
+  assert.equal(result.afterOff.sheetSavedEvents.length, 4);
+  assert.ok(result.afterOff.sheetSavedEvents.every(detail => detail?.renderHandled === true));
 });

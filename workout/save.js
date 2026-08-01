@@ -540,7 +540,7 @@ function _prepareSave({ syncWorkoutDetails, keepDraftExercises = false }) {
 
 // ── 명시적 저장 (운동 도메인) ───────────────────────────────────
 export async function saveWorkoutDay(options = {}) {
-  const { silent = false, keepDraftExercises = false } = options || {};
+  const { silent = false, keepDraftExercises = false, renderHandled = false } = options || {};
   const startedKey = _workoutDateKeyFromState();
   const ctx = _prepareSave({ syncWorkoutDetails: true, keepDraftExercises });
   if (!ctx) return false;
@@ -588,7 +588,12 @@ export async function saveWorkoutDay(options = {}) {
 
   if (btn) { btn.disabled = false; btn.textContent = '저장'; }
   _refreshTabDots();
-  document.dispatchEvent(new CustomEvent('sheet:saved'));
+  // renderHandled: 호출자가 화면 갱신을 이미 끝낸 저장(예: 달력 시트의 부분 갱신
+  // 뒤 휴식 메타데이터 저장). app.js의 renderAll 리스너가 전체 렌더를 건너뛰도록
+  // 표시만 남기고, 위젯 동기화 등 다른 리스너에는 그대로 전달한다.
+  document.dispatchEvent(renderHandled
+    ? new CustomEvent('sheet:saved', { detail: { renderHandled: true } })
+    : new CustomEvent('sheet:saved'));
 
   if (!silent) {
     if (daySaveState === 'pending') {

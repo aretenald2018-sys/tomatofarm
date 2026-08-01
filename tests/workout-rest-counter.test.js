@@ -72,7 +72,9 @@ test('workout day sheet set completion enters the shared rest and idle-limit flo
   assert.match(helper, /wtRefreshWorkoutTimelineDuration\('calendar sheet set done'\)/);
   assert.match(helper, /wtRestTimerStart\(null/);
   assert.match(helper, /wtRestTimerClearSetRecord\(entryIdx, targetSetIndex\)/);
-  assert.match(helper, /await saveWorkoutDay\(\{ silent: true \}\)/);
+  // renderHandled: 완료 체크의 휴식 메타데이터 저장이 sheet:saved → renderAll로
+  // 시트를 다시 그리지 않도록 표시한다. 부분 갱신이 이미 화면을 맞춘 상태다.
+  assert.match(helper, /await saveWorkoutDay\(\{ silent: true, renderHandled: true \}\)/);
   assert.match(toggle, /await _syncWorkoutRestAfterSheetSet\(key, sessionIndex, exerciseIndex, setIndex, savedDone\)/);
   assert.match(complete, /await _syncWorkoutRestAfterSheetSet\(key, sessionIndex, exerciseIndex, lastCompletedSetIndex, true\)/);
 });

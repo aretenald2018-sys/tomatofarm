@@ -526,7 +526,13 @@ async function renderAll() {
   }
 }
 
-document.addEventListener('sheet:saved',   renderAll);
+// renderHandled가 붙은 저장은 호출자가 화면을 이미 부분 갱신으로 맞춘 상태다.
+// 여기서 renderAll을 돌리면 #workout-calendar-root가 통째로 교체돼 열려 있는
+// 기록 시트의 스크롤이 0으로 튀고 깜빡인다(세트 완료 체크가 그랬다).
+document.addEventListener('sheet:saved', (event) => {
+  if (event?.detail?.renderHandled === true) return;
+  void renderAll();
+});
 document.addEventListener('cooking:saved', renderAll);
 document.addEventListener('app:render-requested', renderAll);
 let _workoutDataRefreshTimer = null;

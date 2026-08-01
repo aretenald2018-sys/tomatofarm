@@ -129,6 +129,9 @@ import {
   configureWorkoutDetailTemplate,
   workoutDetailState,
   _renderWorkoutHomeDetailHtml,
+  _renderWorkoutExerciseSlides,
+  _renderWorkoutDetailSummaryCard,
+  _workoutHomeDetailModel,
 } from './calendar/detail-template.js';
 import {
   WORKOUT_SHEET_SET_INPUT_SELECTOR,
@@ -454,7 +457,10 @@ async function _syncWorkoutRestAfterSheetSet(key, sessionIndex, exerciseIndex, s
     wtRefreshWorkoutTimelineDuration('calendar sheet set undone');
   }
 
-  await saveWorkoutDay({ silent: true });
+  // 시트는 호출 전 낙관적 저장에서 이미 부분 갱신됐고, 이 저장은 휴식
+  // 메타데이터만 쓴다. renderHandled 없이 저장하면 sheet:saved → renderAll이
+  // 시트를 다시 그려 완료 체크 때마다 화면이 맨 위로 튀고 깜빡인다.
+  await saveWorkoutDay({ silent: true, renderHandled: true });
   return true;
 }
 
@@ -542,15 +548,31 @@ async function _saveWorkoutHomeSessionResult(key, result, options = {}) {
     _syncWorkoutHomeSavedSessionState(key, result, options.sessionIndex);
     const nextRestoreState = restoreState;
     _workoutDetailCollapsed.clear();
+    let patchedInPlace = false;
     if (options?.skipRender !== true) {
-      renderWorkoutCalendarHome();
-      if (nextRestoreState) _restoreWorkoutSheetInputState(nextRestoreState);
+      // 세트 값만 바뀐 낙관적 갱신은 시트 구조를 건드리지 않는다. 부분 갱신이
+      // 먹으면 스크롤/입력 상태를 되돌릴 일도 없다.
+      // _renderWorkoutSheetAfterSetEdit는 "전체 렌더로 넘어갔는가"를 돌려준다.
+      const fellBackToFullRender = _renderWorkoutSheetAfterSetEdit();
+      if (fellBackToFullRender) {
+        if (nextRestoreState) _restoreWorkoutSheetInputState(nextRestoreState);
+      } else {
+        patchedInPlace = true;
+      }
     }
     await savePromise;
     // A previous field can finish saving after the user already moved to the
     // next keypad field. Avoid app-level renderAll() replacing that live input;
     // the final field commit will dispatch the normal saved event when idle.
     if (_workoutSetKeyboardActiveInput()) return;
+    if (patchedInPlace) {
+      // 완료 체크처럼 부분 갱신이 이미 화면을 맞춘 저장에 app.js의 sheet:saved
+      // 리스너(renderAll)까지 태우면 시트가 통째로 교체돼 스크롤이 0으로 튀고
+      // 깜빡인다. 위젯 동기화 같은 다른 리스너는 계속 들어야 하므로 이벤트는
+      // renderHandled 표시만 붙여 그대로 내보낸다.
+      document.dispatchEvent(new CustomEvent('sheet:saved', { detail: { renderHandled: true } }));
+      return;
+    }
     document.dispatchEvent(new CustomEvent('sheet:saved'));
     return;
   }
@@ -1221,7 +1243,44 @@ function _mountWorkoutSummaryElapsedTimers(root = document) {
 // 값이 걸린 두 곳 — 회차 요약 카드와 종목 카드 슬라이드 — 만 갈아끼운다. 스크롤
 // 컨테이너와 시트 엘리먼트는 그대로 두므로 스크롤 위치도, 시트에 걸린 위임
 // 리스너도 살아 있다. 갈아끼울 자리를 못 찾으면 false를 돌려 전체 렌더로 넘긴다.
+function _patchWorkoutSheetSetSurfaces() {
+  if (typeof document === 'undefined') return false;
+  const root = document.getElementById('workout-calendar-root');
+  const sheet = root?.querySelector?.('[data-wt-day-sheet]');
+  const track = sheet?.querySelector?.('[data-wt-day-exercise-carousel-track]');
+  if (!track) return false;
+
+  const key = _workoutHomeSelectedKey;
+  const model = _workoutHomeDetailModel({
+    cache: getCache() || {},
+    plan: getDietPlan() || null,
+    checkins: _sortedCheckins(),
+    key,
+  });
+  // 종목이 사라지거나 늘어난 변화는 캐러셀 껍데기까지 바뀐다. 전체 렌더에 맡긴다.
+  const rows = Array.isArray(model.wx?.exercises) ? model.wx.exercises : [];
+  if (!rows.length || rows.length !== track.children.length) return false;
+
+  const scrollLeft = track.scrollLeft;
+  track.innerHTML = _renderWorkoutExerciseSlides(key, model.sessionIndex, rows);
+  track.scrollLeft = scrollLeft;
+
+  const summary = sheet.querySelector('.wt-day-sheet-summary') || sheet.querySelector('.wt-day-head');
+  if (summary) {
+    const card = summary.querySelector('.wt-day-summary-card');
+    if (card) card.outerHTML = _renderWorkoutDetailSummaryCard(model.wx);
+    _mountWorkoutSummaryElapsedTimers(root);
+  }
+  return true;
+}
+
 // 세트 편집 뒤 화면 갱신. 부분 갱신이 가능하면 그걸 쓰고, 아니면 전체를 다시 그린다.
+function _renderWorkoutSheetAfterSetEdit() {
+  if (_patchWorkoutSheetSetSurfaces()) return false;
+  renderWorkoutCalendarHome();
+  return true;
+}
+
 // ═════════════════════════════════════════════════════════════
 // 일자 상세 요약 모달
 // ═════════════════════════════════════════════════════════════
@@ -2192,7 +2251,9 @@ async function _focusWorkoutSetInlineFieldFromSheet(key, sessionIndex, exerciseI
   _workoutHomeSessionIndex = targetSessionIndex;
   _workoutHomeSheetState = 'full';
   _syncWorkoutHomeNavState({ history: 'replace', action: 'sheet:set-inline-field' });
-  if (!shouldCommitActiveInput) renderWorkoutCalendarHome();
+  // 값 버튼을 입력칸으로 바꾸는 건 그 행 안에서 끝나는 변화다. 달력까지 다시
+  // 그리면 행을 옮길 때마다 화면이 통째로 교체돼 깜빡인다.
+  if (!shouldCommitActiveInput) _renderWorkoutSheetAfterSetEdit();
   const focusInput = () => {
     _restoreWorkoutSheetScrollState(restoreState);
     if (typeof document === 'undefined') return false;
