@@ -781,7 +781,7 @@ function _estimateSetKg(ex, rpeTarget, reps) {
 
   try {
     const todayKey = dateKey(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
-    const last = _getLastSessionCalc(getCache(todayKey), ex.id, todayKey);
+    const last = _getLastSessionCalc(getCache(todayKey, ex.id), ex.id, todayKey);
     const mainSets = (last?.sets || []).filter(s =>
       s && s.setType !== 'warmup' && (Number(s.kg) || 0) > 0
     );

@@ -18,6 +18,7 @@ import {
   getSeasonRegistry,
   getSeasonRunningPlan,
   getSeasonTestBoardV2,
+  getSeasonWorkoutPlan,
   loadRunningRoute,
   saveDay,
 } from './data.js';
@@ -26,7 +27,7 @@ import {
   SUBPATTERN_TO_MAJOR,
 } from './calc.js';
 import { dateKey, TODAY, isFuture, isBeforeStart } from './data/data-date.js';
-import { findSeasonForDate, startOfSeasonWeek } from './data/season-model.js';
+import { findSeasonForDate, findSeasonsForDate, startOfSeasonWeek } from './data/season-model.js';
 import { buildSeasonOverview } from './data/season-overview.js';
 import { openModal, closeModal } from './utils/dom.js';
 import { confirmAction } from './utils/confirm-modal.js';
@@ -81,6 +82,9 @@ import {
   _formatDurationShort,
   _isBlankWorkoutSheetNumber,
   _isoWeekNumber,
+  _seasonOverviewDateLabel,
+  _seasonOverviewStateIcon,
+  _seasonOverviewStateLabel,
   _workoutSheetInputValue,
   _workoutSheetRawNumber,
 } from './calendar/format.js';
@@ -212,6 +216,61 @@ const MAX_WEAK_LABEL = {
 };
 
 const CALENDAR_MODES = new Set(['summary', 'workout']);
+
+function _renderSeasonOverviewHtml(input) {
+  const snapshots = Array.isArray(input) ? input : [input];
+  const primary = snapshots[0] || {};
+  const season = primary.season || {};
+  const allWeeks = snapshots.flatMap(snapshot => snapshot.weeks || []);
+  return `<div class="modal-sheet workout-season-overview-sheet" role="dialog" aria-modal="true" aria-labelledby="season-overview-title">
+    <header class="season-overview-head"><div><span>SEASON OVERVIEW</span><h2 id="season-overview-title">${_esc(snapshots.length > 1 ? `${snapshots.length}개 병행 시즌` : (season.name || '시즌 목표'))}</h2><small>${_esc(season.startDate)}–${_esc(season.endDate)} · ${snapshots.length > 1 ? '종목별 목표' : `${season.weeks || allWeeks.length}주`}</small></div><button type="button" data-season-overview-close aria-label="닫기">×</button></header>
+    <div class="season-overview-summary"><span><b>${allWeeks.filter(week => week.state === 'achieved').length}</b><small>완료 주차</small></span><span><b>${snapshots.reduce((total, snapshot) => total + Number(snapshot.workoutDays || 0), 0)}</b><small>운동 기록일</small></span><span><b>${allWeeks.length}</b><small>전체 주차</small></span></div>
+    <div class="season-overview-body">
+      ${snapshots.map(snapshot => {
+        const currentSeason = snapshot.season || {};
+        const weeks = snapshot.weeks || [];
+        return `<section class="season-overview-program"><header class="season-overview-program-head"><strong>${_esc(currentSeason.name || '시즌 목표')}</strong><small>${_esc(currentSeason.startDate)}–${_esc(currentSeason.endDate)}</small></header>${weeks.map(week => `<section class="season-overview-week is-${_esc(week.state)}">
+        <header><div><strong>${week.index}주차</strong><small>${_seasonOverviewDateLabel(week.startDate)}–${_seasonOverviewDateLabel(week.endDate)}</small></div><em><i>${_seasonOverviewStateIcon(week.state)}</i>${_seasonOverviewStateLabel(week.state)}</em></header>
+        <div class="season-overview-items">${week.items.map(item => `<div class="season-overview-item is-${_esc(item.state)}"><span><i>${_seasonOverviewStateIcon(item.state)}</i><b>${_esc(item.label)}</b></span><small>${_esc(item.detail)} · ${_seasonOverviewStateLabel(item.state)}</small></div>`).join('')}</div>
+      </section>`).join('') || '<p class="season-overview-empty">이 시즌에 설정된 주차 목표가 없습니다.</p>'}</section>`;
+      }).join('')}
+    </div>
+  </div>`;
+}
+
+// 시즌 카드를 누르면 그 날짜에 걸린 시즌(병행 시즌이면 전부)의 주차별 달성 현황을 편다.
+function _openWorkoutSeasonOverview(seasonId) {
+  const registry = getSeasonRegistry();
+  const seasonIds = String(seasonId || '').split(',').map(value => value.trim()).filter(Boolean);
+  const seasons = seasonIds.length
+    ? seasonIds.map(id => registry.seasons.find(item => item.id === id)).filter(Boolean)
+    : findSeasonsForDate(registry, dateKey(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate()));
+  if (!seasons.length) return;
+  const snapshots = seasons.map(season => buildSeasonOverview({
+    cache: getCache() || {},
+    season,
+    board: getSeasonTestBoardV2(season.id) || {},
+    workoutPlan: getSeasonWorkoutPlan(season.id) || {},
+    runningPlan: getSeasonRunningPlan(season.id) || {},
+    todayKey: dateKey(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate()),
+  }));
+  let modal = document.getElementById('workout-season-overview-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'workout-season-overview-modal';
+    modal.className = 'modal-backdrop workout-season-overview-modal';
+    modal.addEventListener('click', event => {
+      if (event.target === modal || event.target.closest?.('[data-season-overview-close]')) {
+        modal.hidden = true;
+        modal.classList.remove('open');
+      }
+    });
+    document.body.appendChild(modal);
+  }
+  modal.innerHTML = _renderSeasonOverviewHtml(snapshots);
+  modal.hidden = false;
+  modal.classList.add('open');
+}
 
 // 위젯/딥링크에서 목표입력 시트로 바로 들어오는 진입점. 주차는 캘린더 레일이
 // 넘겨주던 값과 같은 의미로, 지정하지 않으면 시트가 현재 주차로 동작한다.
@@ -635,7 +694,8 @@ function _renderWorkoutCalendar(root, { cache, plan, checkins, y, m, firstDow, d
   const selectedParsed = _parseDateKey(_workoutHomeSelectedKey);
   const todayKey = dateKey(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
   const seasonRegistry = getSeasonRegistry();
-  const currentSeason = findSeasonForDate(seasonRegistry, todayKey);
+  const currentSeasons = findSeasonsForDate(seasonRegistry, todayKey);
+  const currentSeason = currentSeasons[0] || null;
 
   if (isWorkoutHome && (!selectedParsed || selectedParsed.y !== y || selectedParsed.m !== m || selectedParsed.d < 1 || selectedParsed.d > daysCount)) {
     const todayInView = TODAY.getFullYear() === y && TODAY.getMonth() === m;
@@ -778,9 +838,9 @@ function _renderWorkoutCalendar(root, { cache, plan, checkins, y, m, firstDow, d
     ? 'data-wt-calendar-action="go-today"'
     : 'data-cal-action="go-today"';
   const seasonControlHtml = isWorkoutHome ? `
-    <div class="cal-season-control ${currentSeason ? 'has-current-season' : 'needs-season'}">
+    <div class="cal-season-control ${currentSeason ? 'has-current-season' : 'needs-season'}" ${currentSeason ? `data-wt-season-overview="${_esc(currentSeasons.map(item => item.id).join(','))}" role="button" tabindex="0" aria-label="${_esc(currentSeasons.length > 1 ? `${currentSeasons.length}개 병행 시즌 목표와 주차별 달성 현황 열기` : `${currentSeason.name} 목표와 주차별 달성 현황 열기`)}"` : ''}>
       <span class="cal-season-emblem" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 20V5.2c4-2.4 7.2 2.4 12 0v9.3c-4.8 2.4-8-2.4-12 0"/><path d="m11.7 8.4.8 1.7 1.8.3-1.3 1.3.3 1.8-1.6-.9-1.6.9.3-1.8-1.3-1.3 1.8-.3.8-1.7Z"/></svg></span>
-      <div class="cal-season-copy"><span>${currentSeason ? 'CURRENT SEASON' : 'SEASON SETUP'}</span><strong>${_esc(currentSeason?.name || '새 시즌 설정 필요')}</strong>${currentSeason ? `<small>${currentSeason.startDate}–${currentSeason.endDate}</small>` : '<small>기록은 유지하고 새 목표를 세우며 시작합니다.</small>'}</div>
+      <div class="cal-season-copy"><span>${currentSeason ? 'CURRENT SEASON' : 'SEASON SETUP'}</span><strong>${_esc(currentSeasons.length > 1 ? `${currentSeasons.length}개 병행 시즌` : (currentSeason?.name || '새 시즌 설정 필요'))}</strong>${currentSeason ? `<small>${currentSeason.startDate}–${currentSeason.endDate}${currentSeasons.length > 1 ? ` · ${currentSeasons.map(item => item.name).join(' · ')}` : ''}</small>` : '<small>기록은 유지하고 새 목표를 세우며 시작합니다.</small>'}</div>
       <div class="cal-season-actions">
         ${currentSeason ? `<button type="button" class="cal-season-settings" data-wt-season-edit="${_esc(currentSeason.id)}" aria-label="${_esc(currentSeason.name)} 설정 수정" title="시즌 설정 수정"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.1"/><path d="M19.2 13.5a7.8 7.8 0 0 0 .1-1.5 7.8 7.8 0 0 0-.1-1.5l2-1.5-2-3.4-2.4 1a8.4 8.4 0 0 0-2.5-1.5L14 2.5h-4L9.7 5.1a8.4 8.4 0 0 0-2.5 1.5l-2.4-1-2 3.4 2 1.5A7.8 7.8 0 0 0 4.7 12c0 .5 0 1 .1 1.5l-2 1.5 2 3.4 2.4-1a8.4 8.4 0 0 0 2.5 1.5l.3 2.6h4l.3-2.6a8.4 8.4 0 0 0 2.5-1.5l2.4 1 2-3.4-2-1.5Z"/></svg></button>` : ''}
         <button type="button" class="cal-season-primary" data-wt-season-manager>${currentSeason ? '다음 시즌' : '시즌 시작'}</button>
@@ -2094,6 +2154,13 @@ function _bindWorkoutCycleRailActions(root) {
       openWorkoutSeasonWizard();
       return;
     }
+    const seasonOverviewBtn = target?.closest?.('[data-wt-season-overview]');
+    if (seasonOverviewBtn) {
+      event.preventDefault();
+      event.stopPropagation();
+      _openWorkoutSeasonOverview(seasonOverviewBtn.getAttribute('data-wt-season-overview'));
+      return;
+    }
     const btn = target?.closest?.('[data-cal-cycle-target]');
     if (!btn) return;
     event.preventDefault();
@@ -2101,6 +2168,16 @@ function _bindWorkoutCycleRailActions(root) {
     Promise.resolve(_openWorkoutCycleTargetSettings(btn.getAttribute('data-cal-cycle-target'))).catch((e) => {
       console.warn('[workout-calendar] cycle target click failed:', e);
     });
+  }, true);
+  // 시즌 카드는 div라 키보드 진입이 필요하다. 안쪽 설정/시작 버튼은 자기 동작을 유지한다.
+  actionRoot.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    const target = event.target instanceof Element ? event.target : event.target?.parentElement;
+    const seasonOverviewBtn = target?.closest?.('[data-wt-season-overview]');
+    if (!seasonOverviewBtn || target?.closest?.('[data-wt-season-edit], [data-wt-season-manager]')) return;
+    event.preventDefault();
+    event.stopPropagation();
+    _openWorkoutSeasonOverview(seasonOverviewBtn.getAttribute('data-wt-season-overview'));
   }, true);
 }
 

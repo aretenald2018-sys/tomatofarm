@@ -560,10 +560,28 @@ export const getAllMuscles = () => {
 // 헬스 자극부위(유산소 활동 제외) — Expert/종목추가/장비 모달에서 사용.
 export const getMuscleParts = () => getAllMuscles().filter(m => (m.kind || 'part') === 'part');
 export const getCache     = ()      => _cache;
-export function getSeasonDecisionCache(referenceDateKey = null) {
+export function getSeasonDecisionCache(referenceDateKey = null, exerciseId = null) {
   const todayKey = dateKey(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
   const reference = /^\d{4}-\d{2}-\d{2}$/.test(String(referenceDateKey || '')) ? String(referenceDateKey) : todayKey;
-  return selectSeasonDecisionCache(_cache, _settings.season_registry || {}, reference);
+  const scope = String(exerciseId || '').trim();
+  return selectSeasonDecisionCache(
+    _cache,
+    _settings.season_registry || {},
+    reference,
+    scope ? { exerciseId: scope } : {},
+  );
+}
+// 여러 종목을 한 번에 볼 때는 각 종목이 적용받는 구간의 합집합을 쓴다.
+function _seasonDecisionCacheForExercises(exerciseIds, referenceDateKey = null) {
+  const ids = [...new Set((Array.isArray(exerciseIds) ? exerciseIds : [])
+    .map(exerciseId => String(exerciseId || '').trim())
+    .filter(Boolean))];
+  if (!ids.length) return getSeasonDecisionCache(referenceDateKey);
+  const merged = {};
+  for (const exerciseId of ids) {
+    Object.assign(merged, getSeasonDecisionCache(referenceDateKey, exerciseId));
+  }
+  return merged;
 }
 export const getAllDateKeys = () => Object.keys(_cache).filter(k => /^\d{4}-\d{2}-\d{2}$/.test(k));
 export const getDay       = (y,m,d) => _cache[dateKey(y,m,d)] || {};
@@ -703,13 +721,17 @@ export const dietDayOk = (y,m,d) => _dietDayOk(getDay(y,m,d), getDietPlan(), y, 
 
 export const calcVolume = _calcVolume;
 export const calcVolumeAll = _calcVolumeAll;
-export const getVolumeHistory = (exerciseId) => _getVolumeHistory(getSeasonDecisionCache(), exerciseId);
-export const getLastSession = (exerciseId, excludeDateKey = null) => _getLastSession(getSeasonDecisionCache(excludeDateKey), exerciseId, excludeDateKey);
+export const getVolumeHistory = (exerciseId) => _getVolumeHistory(getSeasonDecisionCache(null, exerciseId), exerciseId);
+export const getLastSession = (exerciseId, excludeDateKey = null) => _getLastSession(getSeasonDecisionCache(excludeDateKey, exerciseId), exerciseId, excludeDateKey);
 export const getLastActivitySession = (type, excludeDateKey = null) => _getLastActivitySession(getSeasonDecisionCache(excludeDateKey), type, excludeDateKey);
 // 전문가 모드 분석 함수 (순수함수는 calc.js, 여기서는 _cache/_exList 자동 주입)
-export const getVolumeHistoryByMovement = (movementId) => _getVolumeHistoryByMovement(getSeasonDecisionCache(), _exList, movementId);
-export const getVolumeHistoryMulti = (exerciseIds) => _getVolumeHistoryMulti(getSeasonDecisionCache(), exerciseIds);
-export const detectPRs = (exerciseId) => _detectPRs(getSeasonDecisionCache(), exerciseId);
+export const getVolumeHistoryByMovement = (movementId) => _getVolumeHistoryByMovement(
+  _seasonDecisionCacheForExercises(_exList.filter(ex => ex?.movementId === movementId).map(ex => ex.id)),
+  _exList,
+  movementId,
+);
+export const getVolumeHistoryMulti = (exerciseIds) => _getVolumeHistoryMulti(_seasonDecisionCacheForExercises(exerciseIds), exerciseIds);
+export const detectPRs = (exerciseId) => _detectPRs(getSeasonDecisionCache(null, exerciseId), exerciseId);
 // MOVEMENTS 인자는 호출부에서 주입 (config.js 순환참조 회피)
 export const calcBalanceByPattern = (movements, weekRange) => _calcBalanceByPattern(_cache, _exList, movements, weekRange);
 

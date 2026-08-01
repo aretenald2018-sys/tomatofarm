@@ -105,3 +105,53 @@ test('표본이 부족하면 성장률을 만들지 않고 collecting 상태를 
   assert.equal(running.trend.status, 'collecting');
   assert.equal(strength.volumeTrend.status, 'collecting');
 });
+
+test('종목별 기간이 있으면 향상도는 그 종목 구간의 기록으로만 잰다', () => {
+  const cache = {
+    '2026-07-10': liftDay(120, 1, 'squat'), // 스쿼트 구간(7월) 안
+    '2026-08-10': liftDay(200, 1, 'squat'), // 스쿼트 구간 밖 → 무시돼야 한다
+    '2026-07-10b': undefined,
+    '2026-08-12': liftDay(140, 1, 'row'), // 로우 구간(8월) 안
+    '2026-07-12': liftDay(300, 1, 'row'), // 로우 구간 밖 → 무시돼야 한다
+  };
+  delete cache['2026-07-10b'];
+  const registry = {
+    seasons: [{
+      id: 'windowed',
+      name: '구간 시즌',
+      startDate: '2026-07-01',
+      endDate: '2026-08-31',
+      exerciseIds: ['squat', 'row'],
+      exerciseWindows: {
+        squat: { startDate: '2026-07-01', endDate: '2026-07-31' },
+        row: { startDate: '2026-08-01', endDate: '2026-08-31' },
+      },
+    }],
+  };
+  const stats = selectSeasonStrengthStats(cache, registry, '2026-08-15', {
+    weeklySessionTarget: 4,
+    startingOneRmByExercise: { squat: 100, row: 100 },
+    exerciseLabels: { squat: '스쿼트', row: '바벨로우' },
+  });
+  const bySquat = stats.liftDeltas.find(row => row.exerciseId === 'squat');
+  const byRow = stats.liftDeltas.find(row => row.exerciseId === 'row');
+  // 8월 스쿼트 200kg은 스쿼트 구간 밖이므로 반영되지 않는다.
+  assert.equal(bySquat.currentOneRmKg, 120);
+  // 7월 로우 300kg은 로우 구간 밖이므로 반영되지 않는다.
+  assert.equal(byRow.currentOneRmKg, 140);
+});
+
+test('종목별 기간이 없으면 향상도는 기존대로 시즌 전체에서 잰다', () => {
+  const cache = {
+    '2026-07-10': liftDay(120, 1, 'squat'),
+    '2026-08-10': liftDay(200, 1, 'squat'),
+  };
+  const registry = {
+    seasons: [{ id: 'plain', name: '일반 시즌', startDate: '2026-07-01', endDate: '2026-08-31' }],
+  };
+  const stats = selectSeasonStrengthStats(cache, registry, '2026-08-15', {
+    startingOneRmByExercise: { squat: 100 },
+    exerciseLabels: { squat: '스쿼트' },
+  });
+  assert.equal(stats.liftDeltas[0].currentOneRmKg, 200);
+});

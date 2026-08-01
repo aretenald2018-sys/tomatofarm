@@ -29,6 +29,7 @@ import {
 } from './season-reset.js';
 import { inferW863Profile, W863_ORIGINAL_PROFILES } from './w863-original.js';
 import { showToast } from '../ui/toast.js';
+import { confirmAction } from '../utils/confirm-modal.js';
 
 const STEP_LABELS = ['기간', '종목·목표', '선택 확인', '러닝', '최종 확인'];
 const WENDLER_PLATE_STEP_KG = 1.25;
@@ -75,6 +76,12 @@ function _seasonWeeks(season = {}) {
 }
 
 function _goalPaceText(plan = {}) {
+  const fixedPace = Number(plan.targetPaceSecPerKm);
+  if (plan.paceGoalMode === 'adaptive') {
+    const rate = Number(plan.adaptiveRatePct);
+    return rate > 0 ? `직전 주 대비 ${rate}% 개선` : '개선률을 입력해 주세요';
+  }
+  if (fixedPace > 0) return `${Math.floor(fixedPace / 60)}′${String(fixedPace % 60).padStart(2, '0')}″/km`;
   const minutes = Number(plan.targetTimeMin);
   const distance = Number(plan.raceDistanceKm);
   if (!(minutes > 0) || !(distance > 0)) return '완주 목표 — 기록 목표를 선택하면 자동 계산';
@@ -127,6 +134,49 @@ function _goalTrackIds(override = {}) {
   if (override.program === 'wendler') return Number(override.wendler?.oneRmKg) > 0 ? ['volume'] : [];
   if (override.program !== 'stair') return [];
   return ['volume', 'intensity'].filter(track => _normalTrackReady(override.tracks?.[track]));
+}
+
+// ── 종목별 기간 ─────────────────────────────────────────────────
+// 비워두면 그 종목은 시즌 전체 기간을 쓴다. 저장 시 시즌 범위로 잘린다.
+function _exerciseWindowValue(exerciseId, field) {
+  const window = _state?.exerciseWindows?.[exerciseId];
+  if (window?.[field]) return window[field];
+  return field === 'startDate' ? _state?.season?.startDate || '' : _state?.season?.endDate || '';
+}
+
+function _exerciseWindowHint(exerciseId) {
+  const window = _state?.exerciseWindows?.[exerciseId];
+  if (!window?.startDate && !window?.endDate) return '시즌 전체 기간을 사용합니다';
+  const start = _exerciseWindowValue(exerciseId, 'startDate');
+  const end = _exerciseWindowValue(exerciseId, 'endDate');
+  if (start > end) return '시작일이 종료일보다 늦습니다';
+  return `${start.replace(/-/g, '.')} ~ ${end.replace(/-/g, '.')}`;
+}
+
+function _setExerciseWindow(exerciseId, field, rawValue) {
+  if (!_state) return;
+  if (!_state.exerciseWindows) _state.exerciseWindows = {};
+  const seasonStart = _state.season.startDate;
+  const seasonEnd = _state.season.endDate;
+  const current = { ..._state.exerciseWindows[exerciseId] };
+  const value = String(rawValue || '').trim();
+  if (!value) delete current[field];
+  else current[field] = value < seasonStart ? seasonStart : value > seasonEnd ? seasonEnd : value;
+  const startDate = current.startDate || seasonStart;
+  const endDate = current.endDate || seasonEnd;
+  // 시즌 기간과 같아지면 종목별 기간을 둘 이유가 없다.
+  if (startDate === seasonStart && endDate === seasonEnd) delete _state.exerciseWindows[exerciseId];
+  else _state.exerciseWindows[exerciseId] = { startDate, endDate };
+}
+
+// 저장 직전에 시즌 담당 종목만 남긴다.
+function _collectExerciseWindows() {
+  const windows = {};
+  for (const exerciseId of _state.selectedExerciseIds) {
+    const window = _state.exerciseWindows?.[exerciseId];
+    if (window?.startDate && window?.endDate) windows[exerciseId] = { ...window };
+  }
+  return windows;
 }
 
 function _refreshSelectedExerciseIds() {
@@ -260,6 +310,12 @@ function _initialState(editingSeasonId = null) {
       ? { ...editingSeason }
       : { name: _seasonName(startDate), startDate, endDate: addSeasonDays(startDate, 41) },
     benchmarkMappings: {},
+    mode: 'wizard',
+    manageOpenExerciseId: null,
+    // 종목별 기간. 편집 시 기존 값을 이어받고, 없으면 시즌 전체 기간을 쓴다.
+    exerciseWindows: editingSeason?.exerciseWindows
+      ? Object.fromEntries(Object.entries(editingSeason.exerciseWindows).map(([id, window]) => [id, { ...window }]))
+      : {},
     exerciseSetup: null,
     overrides: editingSeason ? _overridesFromBoard(board || {}) : {},
     weeklySessionTarget: Number(existingWorkoutPlan?.weeklySessionTarget) || 3,
@@ -270,6 +326,9 @@ function _initialState(editingSeasonId = null) {
       targetDate: editingSeason?.endDate || addSeasonDays(startDate, 41),
       raceDistanceKm: null,
       targetTimeMin: null,
+      paceGoalMode: 'fixed',
+      targetPaceSecPerKm: null,
+      adaptiveRatePct: 2,
       baselineWeeklyDistanceKm: 10,
       weeklyDistanceKm: 15,
       weeklySessions: 3,
@@ -324,7 +383,7 @@ function _periodStep() {
     : `<p class="season-empty-copy">${_state.editingSeasonId ? '현재 시즌의 기간과 목표를 안전하게 수정할 수 있어요.' : '등록된 시즌이 없습니다. 첫 시즌을 오늘부터 시작할 수 있어요.'}</p>`;
   const weeks = _seasonWeeks(_state.season);
   return `
-    <div class="season-step-copy"><strong>${_state.editingSeasonId ? '시즌 기간 수정' : '새 시즌 기간'}</strong><p>헬스 성장판에 맞춰 6주 또는 7주를 권장합니다. 기록은 그대로 유지됩니다.</p></div>
+    <div class="season-step-copy"><strong>${_state.editingSeasonId ? '시즌 기간 수정' : '새 시즌 기간'}</strong><p>헬스 성장판에 맞춰 6주 또는 7주를 권장합니다. 같은 기간에도 다른 운동 종목을 선택하면 시즌을 병행할 수 있어요.</p></div>
     ${existing}
     <label class="season-field"><span>시즌 이름</span><input data-season-field="name" value="${_esc(_state.season.name)}" maxlength="40"></label>
     <div class="season-length-presets" aria-label="시즌 기간 빠른 선택">
@@ -392,6 +451,12 @@ function _exerciseStep() {
           </header>
           <div class="season-recent-reference${history ? '' : ' is-empty'}"><span>최근 수행${history ? ` · ${_esc(history.dateKey.slice(5).replace('-', '.'))}` : ''}</span><strong>${_esc(_recentSetSummary(history))}</strong></div>
           <div class="season-card-settings">
+            ${selected ? `<div class="season-exercise-window">
+              <span class="season-window-title">종목 기간</span>
+              <label class="season-compact-field"><span>시작</span><input type="date" data-season-exercise-window="start" min="${_esc(_state.season.startDate)}" max="${_esc(_state.season.endDate)}" value="${_esc(_exerciseWindowValue(id, 'startDate'))}"></label>
+              <label class="season-compact-field"><span>종료</span><input type="date" data-season-exercise-window="end" min="${_esc(_state.season.startDate)}" max="${_esc(_state.season.endDate)}" value="${_esc(_exerciseWindowValue(id, 'endDate'))}"></label>
+              <small class="season-window-hint">${_esc(_exerciseWindowHint(id))}</small>
+            </div>` : ''}
             <label class="season-compact-field season-program-field"><span>목표 방식</span><select data-season-program="program"><option value="none" ${config.program === 'none' ? 'selected' : ''}>목표 없음</option><option value="stair" ${isStair ? 'selected' : ''}>일반 · 3주 증량</option><option value="wendler" ${isWendler ? 'selected' : ''}>8/6/3</option></select></label>
             ${isWendler ? `<div class="season-wendler-goal"><div class="season-wendler-summary"><span>1RM <b>${_esc(wendler.oneRmKg)}kg</b></span><span>TM <b>${_esc(tmKg)}kg</b></span></div><button type="button" class="season-wendler-open" data-season-action="open-wendler" data-exercise-id="${_esc(id)}">목표 설정</button></div>` : ''}
             ${isStair ? `<div class="season-track-grid">${[['volume', '볼륨 트랙'], ['intensity', '강도 트랙']].map(([track, label]) => {
@@ -435,7 +500,17 @@ function _selectionReviewStep() {
               const goal = config.tracks[track];
               return `${track === 'volume' ? '볼륨' : '강도'} ${goal.kg}kg · ${goal.sets}세트 · +${goal.incrementKg}kg`;
             }).join(' / ');
-          return `<div class="season-review-item"><span><b>${_esc(configuration.label)}</b><small>${_esc(detail)}</small></span><i>확인</i></div>`;
+          const id = configuration.exerciseId;
+          return `<div class="season-review-item" data-season-exercise-card="${_esc(id)}">
+            <span><b>${_esc(configuration.label)}</b><small>${_esc(detail)}</small></span>
+            <i>확인</i>
+            <div class="season-review-window">
+              <span class="season-review-window-label">종목 기간</span>
+              <label><input type="date" data-season-exercise-window="start" min="${_esc(_state.season.startDate)}" max="${_esc(_state.season.endDate)}" value="${_esc(_exerciseWindowValue(id, 'startDate'))}"></label>
+              <label><input type="date" data-season-exercise-window="end" min="${_esc(_state.season.startDate)}" max="${_esc(_state.season.endDate)}" value="${_esc(_exerciseWindowValue(id, 'endDate'))}"></label>
+              <small class="season-window-hint">${_esc(_exerciseWindowHint(id))}</small>
+            </div>
+          </div>`;
         }).join('')}
       </section>`).join('')}</div>` : '<div class="season-review-empty">설정된 운동 목표가 없습니다. 이전 단계에서 한 종목 이상 목표를 설정해 주세요.</div>'}`;
 }
@@ -470,7 +545,7 @@ function _runningStep() {
   const activeGoal = RUNNING_GOALS[plan.goalType] || RUNNING_GOALS.base;
   const raceGoal = plan.goalType !== 'base';
   return `
-    <div class="season-step-copy"><strong>6–7주 러닝 목표 블록</strong><p>대회 거리와 목표 기록, 현재 주간 거리에서 시즌 목표까지 이어지는 핵심 지표를 설정합니다.</p></div>
+    <div class="season-step-copy"><strong>6–7주 러닝 목표 블록</strong><p>러닝의 중심 목표를 km당 페이스로 설정합니다. 직접 목표 페이스를 정하거나, 직전 주보다 안전한 범위에서 점진적으로 개선하는 프로그램을 선택할 수 있어요.</p></div>
     <div class="season-running-presets" aria-label="러닝 목표 유형">
       ${Object.entries(RUNNING_GOALS).map(([id, goal]) => `<button type="button" class="${id === plan.goalType ? 'is-active' : ''}" data-season-action="running-preset" data-running-goal="${id}"><b>${goal.label}</b><small>${id === 'base' ? '거리 기반' : `${goal.distanceKm}km`}</small></button>`).join('')}
     </div>
@@ -486,6 +561,17 @@ function _runningStep() {
       </div>
       ${plan.completionGoal === 'time' ? `<div class="season-race-time-row"><div class="season-duration-block"><span>목표 기록</span><div class="season-duration-inputs"><label><input type="number" inputmode="numeric" min="0" max="23" data-season-running-duration-field="hours" value="${Number(plan.targetTimeMin) > 0 ? Math.floor(Number(plan.targetTimeMin) / 60) : ''}" placeholder="0"><b>시간</b></label><label><input type="number" inputmode="numeric" min="0" max="59" data-season-running-duration-field="minutes" value="${Number(plan.targetTimeMin) > 0 ? Math.round(Number(plan.targetTimeMin) % 60) : ''}" placeholder="00"><b>분</b></label></div></div><div class="season-pace-output"><span>목표 페이스</span><strong data-season-running-pace>${_esc(_goalPaceText(plan))}</strong></div></div>` : `<div class="season-race-finish-note">기록 압박 없이 ${_esc(activeGoal.label)} 완주를 시즌 목표로 설정합니다.</div>`}
     </section>` : '<div class="season-running-base-note"><b>기초 거리 만들기</b><span>대회일 없이 주간 거리·롱런·빈도를 6–7주 동안 안정적으로 쌓습니다.</span></div>'}
+    <section class="season-pace-goal">
+      <header><strong>1km당 목표 페이스</strong><span>이번 시즌의 러닝 기준</span></header>
+      <div class="season-goal-toggle" role="group" aria-label="러닝 페이스 목표 방식">
+        <button type="button" class="${plan.paceGoalMode !== 'adaptive' ? 'is-active' : ''}" data-season-action="running-pace-mode" data-running-pace-mode="fixed">목표 페이스 직접 설정</button>
+        <button type="button" class="${plan.paceGoalMode === 'adaptive' ? 'is-active' : ''}" data-season-action="running-pace-mode" data-running-pace-mode="adaptive">점진적 개선 프로그램</button>
+      </div>
+      ${plan.paceGoalMode === 'adaptive'
+        ? `<div class="season-adaptive-pace"><label class="season-field"><span>직전 주 대비 개선률</span><span class="season-input-unit"><input type="number" min="0.5" max="10" step="0.5" data-season-running="adaptiveRatePct" value="${Number(plan.adaptiveRatePct) || 2}"><b>%/주</b></span></label><p>주간 훈련량은 급격히 늘리지 않고, 최근 기록을 기준으로 목표 페이스를 최대 10% 이내에서 서서히 낮춥니다.</p></div>`
+        : `<div class="season-pace-input-row"><label class="season-field"><span>목표 분/km</span><span class="season-input-unit"><input type="number" min="3" max="20" data-season-running-pace-field="minutes" value="${Number(plan.targetPaceSecPerKm) > 0 ? Math.floor(Number(plan.targetPaceSecPerKm) / 60) : ''}" placeholder="예: 6"><b>분</b></span></label><label class="season-field"><span>초</span><span class="season-input-unit"><input type="number" min="0" max="59" data-season-running-pace-field="seconds" value="${Number(plan.targetPaceSecPerKm) > 0 ? Number(plan.targetPaceSecPerKm) % 60 : ''}" placeholder="예: 30"><b>초/km</b></span></label></div>`}
+      <p class="season-pace-preview">현재 설정: <strong data-season-running-pace>${_esc(_goalPaceText(plan))}</strong></p>
+    </section>
     <section class="season-running-metrics">
       <header><strong>훈련 메트릭</strong><span>현재 → 시즌 목표</span></header>
       <div class="season-field-row season-field-row-4">
@@ -525,18 +611,96 @@ function _stepBody() {
   return [_periodStep, _exerciseStep, _selectionReviewStep, _runningStep, _previewStep][_state.step]();
 }
 
+// ── 시즌 관리(이미 만들어진 시즌) ────────────────────────────────
+// 진입하자마자 구성이 다 보이고, 고치고 싶은 줄만 펼쳐서 그 자리에서 바꾼다.
+function _manageGoalSummary(exerciseId) {
+  const config = _state.overrides[exerciseId] || {};
+  if (config.program === 'wendler') {
+    return `8/6/3 · 1RM ${config.wendler?.oneRmKg || 0}kg`;
+  }
+  const tracks = _goalTrackIds(config);
+  if (!tracks.length) return '목표 없음';
+  return tracks.map(track => {
+    const goal = config.tracks[track];
+    return `${track === 'volume' ? '볼륨' : '강도'} ${goal.kg}kg·${goal.sets}세트`;
+  }).join(' / ');
+}
+
+function _manageBody() {
+  const selected = _state.exerciseSetup.configurations
+    .filter(configuration => _state.selectedExerciseIds.has(configuration.exerciseId));
+  const seasonDays = _inclusiveSeasonDays(_state.season);
+  const rows = selected.map((configuration) => {
+    const id = configuration.exerciseId;
+    const open = _state.manageOpenExerciseId === id;
+    const hasWindow = !!_state.exerciseWindows?.[id];
+    return `<div class="season-manage-row${open ? ' is-open' : ''}" data-season-exercise-card="${_esc(id)}">
+      <button type="button" class="season-manage-row-head" data-season-action="toggle-manage-row" data-exercise-id="${_esc(id)}" aria-expanded="${open ? 'true' : 'false'}">
+        <span class="season-manage-row-copy">
+          <b>${_esc(configuration.label)}</b>
+          <small>${_esc(_manageGoalSummary(id))}</small>
+        </span>
+        <span class="season-manage-row-period${hasWindow ? ' is-custom' : ''}">${_esc(hasWindow ? _exerciseWindowHint(id) : '시즌 전체')}</span>
+      </button>
+      ${open ? `<div class="season-manage-row-body">
+        <div class="season-manage-window">
+          <span class="season-window-title">종목 기간</span>
+          <label class="season-compact-field"><span>시작</span><input type="date" data-season-exercise-window="start" min="${_esc(_state.season.startDate)}" max="${_esc(_state.season.endDate)}" value="${_esc(_exerciseWindowValue(id, 'startDate'))}"></label>
+          <label class="season-compact-field"><span>종료</span><input type="date" data-season-exercise-window="end" min="${_esc(_state.season.startDate)}" max="${_esc(_state.season.endDate)}" value="${_esc(_exerciseWindowValue(id, 'endDate'))}"></label>
+          <small class="season-window-hint">${_esc(_exerciseWindowHint(id))}</small>
+        </div>
+        <div class="season-manage-row-actions">
+          ${hasWindow ? `<button type="button" data-season-action="clear-exercise-window" data-exercise-id="${_esc(id)}">시즌 전체로</button>` : ''}
+          <button type="button" data-season-action="edit-exercise-goal" data-exercise-id="${_esc(id)}">목표 수정</button>
+          <button type="button" class="is-danger" data-season-action="remove-exercise" data-exercise-id="${_esc(id)}">시즌에서 빼기</button>
+        </div>
+      </div>` : ''}
+    </div>`;
+  }).join('');
+
+  return `
+    <div class="season-manage">
+      <section class="season-manage-block">
+        <header><strong>시즌 기간</strong><button type="button" data-season-action="go-to-wizard" data-season-step="0">수정</button></header>
+        <div class="season-manage-period">
+          <b>${_esc(_state.season.name || '이름 없는 시즌')}</b>
+          <small>${_esc(_state.season.startDate)} ~ ${_esc(_state.season.endDate)} · ${seasonDays}일</small>
+        </div>
+      </section>
+
+      <section class="season-manage-block">
+        <header><strong>운동 종목 ${selected.length}개</strong><button type="button" data-season-action="go-to-wizard" data-season-step="1">종목 추가</button></header>
+        ${selected.length ? `<div class="season-manage-rows">${rows}</div>` : '<div class="season-review-empty">이 시즌에 설정된 종목이 없습니다. “종목 추가”로 시작해 주세요.</div>'}
+      </section>
+
+      <section class="season-manage-block">
+        <header><strong>러닝 목표</strong><button type="button" data-season-action="go-to-wizard" data-season-step="3">수정</button></header>
+        <div class="season-manage-period">
+          <small>주 ${_esc(_state.runningPlan?.weeklyDistanceKm || 0)}km · ${_esc(_state.runningPlan?.weeklySessions || 0)}회 · 헬스 주 ${_esc(_state.weeklySessionTarget || 0)}회</small>
+        </div>
+      </section>
+
+      <button type="button" class="season-manage-full" data-season-action="go-to-wizard" data-season-step="0">전체 설정 다시 보기</button>
+    </div>`;
+}
+
 function _render() {
   _refreshSelectedExerciseIds();
   const modal = _modal();
   const sheet = modal.querySelector('.workout-season-sheet');
+  const isManage = _state.mode === 'manage';
   const isFinal = _state.step === STEP_LABELS.length - 1;
+  const title = isManage ? '시즌 관리' : _state.editingSeasonId ? '시즌 설정 수정' : '새 시즌 시작';
   sheet.innerHTML = `
-    <header class="season-sheet-head"><div><span>WORKOUT SEASON</span><h2 id="workout-season-title">${_state.editingSeasonId ? '시즌 설정 수정' : '새 시즌 시작'}</h2></div><button type="button" data-season-action="close" aria-label="닫기">×</button></header>
-    ${_stepper()}
-    <div class="season-sheet-body">${_stepBody()}</div>
+    <header class="season-sheet-head"><div><span>WORKOUT SEASON</span><h2 id="workout-season-title">${title}</h2></div><button type="button" data-season-action="close" aria-label="닫기">×</button></header>
+    ${isManage ? '' : _stepper()}
+    <div class="season-sheet-body">${isManage ? _manageBody() : _stepBody()}</div>
     <footer class="season-sheet-actions">
-      <button type="button" class="season-secondary" data-season-action="${_state.step ? 'back' : 'close'}">${_state.step ? '이전' : '취소'}</button>
-      <button type="button" class="season-primary" data-season-action="${isFinal ? 'save' : 'next'}" ${_state.saving ? 'disabled' : ''}>${_state.saving ? '저장 중…' : isFinal ? (_state.editingSeasonId ? '수정 내용 저장' : '이 설정으로 시즌 시작') : '다음'}</button>
+      ${isManage
+        ? `<button type="button" class="season-secondary" data-season-action="close">닫기</button>
+           <button type="button" class="season-primary" data-season-action="save" ${_state.saving ? 'disabled' : ''}>${_state.saving ? '저장 중…' : '변경 사항 저장'}</button>`
+        : `<button type="button" class="season-secondary" data-season-action="${_state.step ? 'back' : (_state.editingSeasonId ? 'back-to-manage' : 'close')}">${_state.step ? '이전' : (_state.editingSeasonId ? '관리로' : '취소')}</button>
+           <button type="button" class="season-primary" data-season-action="${isFinal ? 'save' : 'next'}" ${_state.saving ? 'disabled' : ''}>${_state.saving ? '저장 중…' : isFinal ? (_state.editingSeasonId ? '수정 내용 저장' : '이 설정으로 시즌 시작') : '다음'}</button>`}
     </footer>
     ${_wendlerEditorHtml()}`;
 }
@@ -682,6 +846,13 @@ function _handleInput(event) {
     if (tmOutput) tmOutput.textContent = `${Number(draft.tmKg) || 0}kg`;
     return;
   }
+  const windowEdge = target.getAttribute('data-season-exercise-window');
+  if (configuredExerciseId && windowEdge) {
+    _setExerciseWindow(configuredExerciseId, windowEdge === 'start' ? 'startDate' : 'endDate', target.value);
+    const hint = exerciseRoot?.querySelector('.season-window-hint');
+    if (hint) hint.textContent = _exerciseWindowHint(configuredExerciseId);
+    return;
+  }
   const normalTrack = target.getAttribute('data-season-normal-track');
   const normalField = target.getAttribute('data-season-normal-field');
   if (configuredExerciseId && normalTrack && normalField) {
@@ -698,6 +869,10 @@ function _handleInput(event) {
     _state.runningPlan[runningField] = stringFields.has(runningField)
       ? target.value
       : (target.value === '' ? null : Number(target.value));
+    if (runningField === 'adaptiveRatePct') {
+      const preview = target.closest('.season-pace-goal')?.querySelector('[data-season-running-pace]');
+      if (preview) preview.textContent = _goalPaceText(_state.runningPlan);
+    }
   }
   if (target.hasAttribute('data-season-running-duration-field')) {
     const durationRoot = target.closest('.season-duration-inputs');
@@ -708,41 +883,74 @@ function _handleInput(event) {
     const pace = target.closest('.season-race-time-row')?.querySelector('[data-season-running-pace]');
     if (pace) pace.textContent = _goalPaceText(_state.runningPlan);
   }
+  if (target.hasAttribute('data-season-running-pace-field')) {
+    const paceRoot = target.closest('.season-pace-input-row');
+    const minutes = Number(paceRoot?.querySelector('[data-season-running-pace-field="minutes"]')?.value) || 0;
+    const seconds = Number(paceRoot?.querySelector('[data-season-running-pace-field="seconds"]')?.value) || 0;
+    const paceSeconds = (Math.max(0, Math.min(20, minutes)) * 60) + Math.max(0, Math.min(59, seconds));
+    _state.runningPlan.targetPaceSecPerKm = paceSeconds > 0 ? paceSeconds : null;
+    const preview = target.closest('.season-pace-goal')?.querySelector('[data-season-running-pace]');
+    if (preview) preview.textContent = _goalPaceText(_state.runningPlan);
+  }
 }
 
-function _validateCurrentStep() {
-  if (_state.step === 0) {
+function _validateStep(step) {
+  if (step === 0) {
     if (!_state.season.name.trim()) return '시즌 이름을 입력해 주세요.';
     if (_inclusiveSeasonDays(_state.season) < 7) return '시즌 기간은 최소 1주 이상이어야 합니다.';
     if (_state.editingSeasonId && _state.season.endDate < _todayKey()) return '현재 시즌 종료일은 오늘 이전으로 바꿀 수 없습니다.';
+  }
+  if (step === 2) {
+    if (!_state.selectedExerciseIds.size) return '목표를 설정한 운동을 한 종목 이상 선택해 주세요.';
+    const previewSeason = {
+      ..._state.season,
+      id: _state.editingSeasonId || 'preview-season',
+      exerciseIds: [..._state.selectedExerciseIds],
+    };
     const result = validateSeasonRegistry({
       ..._state.registry,
       seasons: _state.editingSeasonId
-        ? _state.registry.seasons.map(season => season.id === _state.editingSeasonId ? { ...season, ..._state.season } : season)
-        : [..._state.registry.seasons, { id: 'preview-season', ..._state.season }],
+        ? _state.registry.seasons.map(season => season.id === _state.editingSeasonId ? previewSeason : season)
+        : [..._state.registry.seasons, previewSeason],
     });
     if (!result.valid) return result.errors.some(error => error.includes('overlap'))
-      ? '기존 시즌과 날짜가 겹칩니다.'
-      : '시작일과 종료일을 확인해 주세요.';
+      ? '선택한 종목이 기존 시즌과 겹칩니다. 다른 종목을 선택하면 같은 기간에도 시즌을 병행할 수 있어요.'
+      : '시즌 기간과 종목을 확인해 주세요.';
   }
-  if (_state.step === 2 && !_state.selectedExerciseIds.size) return '목표를 설정한 운동을 한 종목 이상 선택해 주세요.';
-  if (_state.step === 3) {
+  if (step === 3) {
     const plan = _state.runningPlan;
     if (!(Number(plan.weeklyDistanceKm) > 0) || !(Number(plan.weeklySessions) > 0)) return '러닝 거리와 횟수 목표를 확인해 주세요.';
     if (plan.completionGoal === 'time' && !(Number(plan.targetTimeMin) > 0)) return '목표 기록을 입력해 주세요.';
+    if (plan.paceGoalMode === 'adaptive' && (!(Number(plan.adaptiveRatePct) >= 0.5) || Number(plan.adaptiveRatePct) > 10)) return '점진적 개선률은 0.5–10% 범위로 입력해 주세요.';
+    if (plan.paceGoalMode !== 'adaptive' && (!(Number(plan.targetPaceSecPerKm) >= 180) || Number(plan.targetPaceSecPerKm) > 1200)) return 'km당 목표 페이스를 분·초로 입력해 주세요.';
+  }
+  return null;
+}
+
+function _validateCurrentStep() {
+  return _validateStep(_state.step);
+}
+
+// 관리 시트는 단계를 걷지 않으므로 저장 시 모든 관문을 한 번에 확인한다.
+function _validateAllSteps() {
+  for (const step of [0, 2, 3]) {
+    const error = _validateStep(step);
+    if (error) return error;
   }
   return null;
 }
 
 async function _save() {
   if (_state.saving) return;
-  const error = _validateCurrentStep();
+  const error = _state.mode === 'manage' ? _validateAllSteps() : _validateCurrentStep();
   if (error) return showToast(error, 2400, 'error');
   _state.saving = true;
   _render();
   try {
     const input = {
-      season: _state.editingSeasonId ? { ..._state.season, id: _state.editingSeasonId } : _state.season,
+      season: _state.editingSeasonId
+        ? { ..._state.season, id: _state.editingSeasonId, exerciseIds: [..._state.selectedExerciseIds], exerciseWindows: _collectExerciseWindows() }
+        : { ..._state.season, exerciseIds: [..._state.selectedExerciseIds], exerciseWindows: _collectExerciseWindows() },
       clientRequestId: _state.clientRequestId,
       selectedExerciseIds: [..._state.selectedExerciseIds],
       registeredExerciseIds: _state.exercises.map(exercise => String(exercise.id)),
@@ -766,11 +974,11 @@ async function _save() {
     console.warn('[season] save failed:', error);
     _state.saving = false;
     _render();
-    showToast(error?.message?.includes('overlap') ? '기존 시즌과 날짜가 겹칩니다.' : '시즌 저장에 실패했어요.', 2600, 'error');
+    showToast(error?.message?.includes('overlap') ? '같은 운동 종목의 시즌 기간이 겹칩니다. 다른 종목은 같은 기간에 병행할 수 있어요.' : '시즌 저장에 실패했어요.', 3200, 'error');
   }
 }
 
-function _handleClick(event) {
+async function _handleClick(event) {
   event.stopPropagation();
   const button = event.target.closest?.('[data-season-action]');
   if (!button || !_state) return;
@@ -788,6 +996,50 @@ function _handleClick(event) {
   }
   if (action === 'go-to-step') {
     _state.step = Math.max(0, Math.min(STEP_LABELS.length - 1, Number(button.getAttribute('data-season-step')) || 0));
+    return _render();
+  }
+  // ── 시즌 관리 시트 ──────────────────────────────────────────────
+  if (action === 'toggle-manage-row') {
+    const exerciseId = button.getAttribute('data-exercise-id');
+    _state.manageOpenExerciseId = _state.manageOpenExerciseId === exerciseId ? null : exerciseId;
+    return _render();
+  }
+  if (action === 'clear-exercise-window') {
+    const exerciseId = button.getAttribute('data-exercise-id');
+    if (_state.exerciseWindows) delete _state.exerciseWindows[exerciseId];
+    return _render();
+  }
+  if (action === 'edit-exercise-goal') {
+    // 같은 _state를 그대로 들고 위저드 종목 단계로 넘어간다. 입력한 값이 유지된다.
+    const exerciseId = button.getAttribute('data-exercise-id');
+    const configuration = _configurationFor(exerciseId);
+    if (configuration) _state.activeGroupId = configuration.groupId;
+    _state.mode = 'wizard';
+    _state.step = 1;
+    return _render();
+  }
+  if (action === 'remove-exercise') {
+    const exerciseId = button.getAttribute('data-exercise-id');
+    const configuration = _configurationFor(exerciseId);
+    const confirmed = await confirmAction({
+      title: '시즌에서 빼기',
+      message: `${configuration?.label || '이 종목'}의 시즌 목표를 지웁니다. 운동 기록은 지워지지 않습니다.`,
+      confirmLabel: '빼기',
+      destructive: true,
+    });
+    if (!confirmed) return;
+    _state.overrides[exerciseId] = { program: 'none' };
+    if (_state.exerciseWindows) delete _state.exerciseWindows[exerciseId];
+    if (_state.manageOpenExerciseId === exerciseId) _state.manageOpenExerciseId = null;
+    return _render();
+  }
+  if (action === 'go-to-wizard') {
+    _state.mode = 'wizard';
+    _state.step = Math.max(0, Math.min(STEP_LABELS.length - 1, Number(button.getAttribute('data-season-step')) || 0));
+    return _render();
+  }
+  if (action === 'back-to-manage') {
+    _state.mode = 'manage';
     return _render();
   }
   if (action === 'running-preset') {
@@ -810,6 +1062,10 @@ function _handleClick(event) {
   }
   if (action === 'running-completion') {
     _state.runningPlan.completionGoal = button.getAttribute('data-running-completion') === 'time' ? 'time' : 'finish';
+    return _render();
+  }
+  if (action === 'running-pace-mode') {
+    _state.runningPlan.paceGoalMode = button.getAttribute('data-running-pace-mode') === 'adaptive' ? 'adaptive' : 'fixed';
     return _render();
   }
   if (action === 'select-group') {
@@ -845,6 +1101,8 @@ function _handleClick(event) {
 
 export function openWorkoutSeasonWizard(options = {}) {
   _state = _initialState(options.editingSeasonId || null);
+  // 이미 만들어진 시즌은 5단계를 다시 걷게 하지 않는다. 한 화면에서 바로 고친다.
+  _state.mode = options.mode || (_state.editingSeasonId ? 'manage' : 'wizard');
   const modal = _modal();
   modal.hidden = false;
   modal.classList.add('open');

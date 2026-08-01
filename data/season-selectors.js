@@ -14,9 +14,11 @@ import {
 import {
   addSeasonDays,
   filterCacheToSeason,
+  filterCacheToSeasonExercise,
   findSeasonById,
   findSeasonForDate,
   isSeasonDateKey,
+  seasonExerciseRange,
   startOfSeasonWeek,
 } from './season-model.js';
 
@@ -234,9 +236,18 @@ export function selectSeasonStrengthStats(cache = {}, registry = {}, todayKey, p
     ? plan.startingOneRmByExercise
     : {};
   const labels = plan?.exerciseLabels && typeof plan.exerciseLabels === 'object' ? plan.exerciseLabels : {};
+  // 종목별 기간이 지정된 종목은 자기 구간 안의 기록으로만 향상도를 잰다.
+  const _bestOneRmFor = (exerciseId) => {
+    const range = seasonExerciseRange(season, exerciseId);
+    if (!range || (range.startDate === season.startDate && range.endDate === season.endDate)) {
+      return seasonSummary.bestOneRmByExercise[exerciseId];
+    }
+    const windowed = _strengthSummary(Object.entries(filterCacheToSeasonExercise(cache, season, exerciseId)));
+    return windowed.bestOneRmByExercise[exerciseId];
+  };
   const liftDeltas = Object.entries(baselines).map(([exerciseId, baselineValue]) => {
     const baselineOneRmKg = _num(baselineValue);
-    const currentOneRmKg = _num(seasonSummary.bestOneRmByExercise[exerciseId]);
+    const currentOneRmKg = _num(_bestOneRmFor(exerciseId));
     return {
       exerciseId,
       label: String(labels[exerciseId] || exerciseId),

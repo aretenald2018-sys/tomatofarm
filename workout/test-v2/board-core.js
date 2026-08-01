@@ -573,13 +573,23 @@ function _roundStairKg(value, incrementKg = 0) {
 }
 
 /** 활성 사이클에 벤치마크의 기본 계획 스텝 생성. progressionWeeks가 있으면 해당 주기마다 증량한다. */
-function _planBenchmarkSteps(board, benchmark, cycle, fromWeek = null) {
+// window는 종목별 시즌 구간(선택). 지정되면 그 구간 밖 주차에는 처방을 만들지 않는다.
+// 보드 문서에 저장되지 않는 빌드 시점 입력이다.
+function _planBenchmarkSteps(board, benchmark, cycle, fromWeek = null, window = null) {
   if (benchmark.program === 'wendler') return; // 웬들러는 파생
   for (const t of benchmark.tracks) {
     const seed = benchmark.seed[t] || { kg: 0, reps: 12 };
     const incrementKg = trackIncrementKgOf(benchmark, t);
-    const weekStart = fromWeek || cycle.startDate;
-    const remainingWeeks = Math.max(1, cycle.weeks - weeksBetween(cycle.startDate, weekStart));
+    let weekStart = fromWeek || cycle.startDate;
+    if (window?.startDate) {
+      const windowWeekStart = mondayOf(window.startDate);
+      if (windowWeekStart > weekStart) weekStart = windowWeekStart;
+    }
+    let remainingWeeks = Math.max(1, cycle.weeks - weeksBetween(cycle.startDate, weekStart));
+    if (window?.endDate) {
+      const weeksUntilWindowEnd = weeksBetween(weekStart, mondayOf(window.endDate)) + 1;
+      remainingWeeks = Math.max(1, Math.min(remainingWeeks, weeksUntilWindowEnd));
+    }
     const progressionWeeks = Math.max(0, Math.round(Number(benchmark.progressionWeeks) || 0));
     if (!progressionWeeks) {
       board.steps.push(_makeStep(benchmark, t, cycle, seed.kg, seed.reps, weekStart, remainingWeeks));
@@ -620,9 +630,17 @@ export function buildBoardFromOnboarding({ selections = [], startDate, source = 
     createdAt: null, // 호출부에서 Date.now() 주입 가능
   };
   const groupsUsed = new Set();
+  // 종목별 시즌 구간은 계획에만 쓰고 보드 문서에는 남기지 않는다.
+  const windowByBenchmarkId = new Map();
   selections.forEach((cand, i) => {
     const bm = _makeBenchmark({ ...cand, progressionStartDate: cand.progressionStartDate || start }, i);
     board.benchmarks.push(bm);
+    if (cand.windowStartDate || cand.windowEndDate) {
+      windowByBenchmarkId.set(bm.id, {
+        startDate: cand.windowStartDate || null,
+        endDate: cand.windowEndDate || null,
+      });
+    }
     groupsUsed.add(bm.groupId);
   });
   for (const gid of groupsUsed) {
@@ -633,7 +651,7 @@ export function buildBoardFromOnboarding({ selections = [], startDate, source = 
       _normalizeWendlerBenchmark(board, bm, { fallbackStartDate: cycle.startDate });
     }
     for (const bm of groupBenchmarks) {
-      _planBenchmarkSteps(board, bm, cycle);
+      _planBenchmarkSteps(board, bm, cycle, null, windowByBenchmarkId.get(bm.id) || null);
     }
   }
   return board;

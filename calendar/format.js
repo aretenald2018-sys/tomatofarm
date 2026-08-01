@@ -82,6 +82,30 @@ export function _formatDurationShort(seconds) {
   return `${Math.round(sec / 60)}분`;
 }
 
+export function _seasonOverviewStateLabel(state) {
+  return {
+    achieved: '달성',
+    partial: '진행 중',
+    'not-achieved': '미달성',
+    planned: '달성 전',
+    attempted: '시도',
+  }[state] || '확인';
+}
+
+export function _seasonOverviewStateIcon(state) {
+  return {
+    achieved: '✓',
+    partial: '△',
+    'not-achieved': '!',
+    planned: '○',
+    attempted: '△',
+  }[state] || '○';
+}
+
+export function _seasonOverviewDateLabel(dateKey) {
+  return String(dateKey || '').replace(/^(\d{4})-(\d{2})-(\d{2})$/, '$2/$3');
+}
+
 export function _isoWeekNumber(date) {
   const value = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
   const day = value.getUTCDay() || 7;

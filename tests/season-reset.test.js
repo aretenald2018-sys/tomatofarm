@@ -355,3 +355,50 @@ test('일반 목표의 일부 값이 비어 있으면 해당 트랙은 목표로
   assert.deepEqual(benchmark.tracks, ['volume']);
   assert.equal(benchmark.seed.volume.kg, 40);
 });
+
+test('종목별 기간은 진행 시계와 처방 주차를 그 종목 구간으로 옮긴다', () => {
+  const board = buildSeasonWorkoutBoard({
+    previousBoard: previousBoard(),
+    seasonId: 'summer-2026',
+    startDate: '2026-07-06', // 월요일
+    selectedExerciseIds: ['squat', 'row'],
+    overrides: {
+      // 웬들러 종목도 자기 구간에서 시작해야 한다.
+      squat: { wendler: { oneRmKg: 115, profileId: 'squat', incrementKg: 5, roundKg: 5 } },
+      row: { program: 'stair', tracks: { volume: { kg: 55, reps: 10 } } },
+    },
+    // 로우만 8월부터 3주간 진행한다.
+    exerciseWindows: { row: { startDate: '2026-08-03', endDate: '2026-08-23' } },
+    createdAt: 1,
+  });
+
+  const squat = board.benchmarks.find(benchmark => benchmark.exerciseId === 'squat');
+  const row = board.benchmarks.find(benchmark => benchmark.exerciseId === 'row');
+
+  // 구간이 없는 웬들러 종목은 시즌 시작을 그대로 쓴다.
+  assert.equal(squat.wendler.programStartDate, '2026-07-06');
+  // 구간이 있는 종목은 자기 구간 시작에서 진행을 센다.
+  assert.equal(row.progressionStartDate, '2026-08-03');
+
+  const rowWeeks = board.steps.filter(step => step.benchmarkId === row.id).map(step => step.weekStart).sort();
+  assert.ok(rowWeeks.length > 0);
+  // 구간 시작 전 주차에는 처방을 만들지 않는다.
+  assert.equal(rowWeeks[0], '2026-08-03');
+  // 구간 종료 뒤 주차에도 만들지 않는다.
+  assert.ok(rowWeeks[rowWeeks.length - 1] <= '2026-08-17', `last row week ${rowWeeks[rowWeeks.length - 1]}`);
+});
+
+test('종목별 기간이 없으면 보드는 기존과 동일하게 시즌 시작에서 계획된다', () => {
+  const base = {
+    previousBoard: previousBoard(),
+    seasonId: 'summer-2026',
+    startDate: '2026-07-06',
+    selectedExerciseIds: ['row'],
+    overrides: { row: { tracks: { volume: { kg: 55, reps: 10 } } } },
+    createdAt: 1,
+  };
+  const withoutWindows = buildSeasonWorkoutBoard(base);
+  const withEmptyWindows = buildSeasonWorkoutBoard({ ...base, exerciseWindows: {} });
+  const stepWeeks = board => board.steps.map(step => step.weekStart).sort().join(',');
+  assert.equal(stepWeeks(withEmptyWindows), stepWeeks(withoutWindows));
+});

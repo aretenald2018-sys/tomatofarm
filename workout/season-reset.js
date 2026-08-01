@@ -358,12 +358,19 @@ export function buildSeasonWorkoutBoard({
   selectedExerciseIds = null,
   benchmarkMappings = {},
   overrides = {},
+  exerciseWindows = {},
   createdAt = Date.now(),
 } = {}) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(startDate || ''))) {
     throw new TypeError('season startDate must use YYYY-MM-DD');
   }
   const programStartDate = mondayOf(startDate);
+  // 종목별 기간이 있으면 그 종목의 진행 시계는 자기 구간에서 시작한다.
+  const _windowFor = (exerciseId) => {
+    const window = exerciseWindows?.[exerciseId];
+    if (!window?.startDate && !window?.endDate) return null;
+    return window;
+  };
   const selected = selectedExerciseIds == null
     ? null
     : new Set((Array.isArray(selectedExerciseIds) ? selectedExerciseIds : []).map(String));
@@ -402,9 +409,13 @@ export function buildSeasonWorkoutBoard({
         track,
         configuredTrackGoals[track]?.sets || Math.max(1, Math.round(Number(override.setsDefault) || Number(benchmark?.setsDefault) || 4)),
       ]));
+      const window = _windowFor(configuration.exerciseId);
+      const benchmarkStartDate = window?.startDate ? mondayOf(window.startDate) : programStartDate;
       return {
         exerciseId: configuration.exerciseId,
         movementId: configuration.movementId,
+        windowStartDate: window?.startDate || null,
+        windowEndDate: window?.endDate || null,
         muscleId: configuration.muscleId,
         groupId: configuration.groupId,
         label: configuration.label,
@@ -417,10 +428,10 @@ export function buildSeasonWorkoutBoard({
           ? _positive(override.incrementKg, _positive(benchmark?.incrementKg))
           : incrementKgByTrack[firstTrack],
         progressionWeeks: isWendler ? null : SEASON_NORMAL_PROGRESSION_WEEKS,
-        progressionStartDate: isWendler ? null : programStartDate,
+        progressionStartDate: isWendler ? null : benchmarkStartDate,
         meta: _clone(benchmark?.meta || {}),
         ...(isWendler
-          ? { wendler: _wendlerConfig(benchmark, override, programStartDate, configuration) }
+          ? { wendler: _wendlerConfig(benchmark, override, benchmarkStartDate, configuration) }
           : {}),
       };
     });
