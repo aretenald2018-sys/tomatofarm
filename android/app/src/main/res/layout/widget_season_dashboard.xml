@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- 홈 화면에서 맨눈으로 읽혀야 하므로 본문은 10sp 아래로 내리지 않는다.
-     크기를 키운 대신 카드는 식단/근력/러닝 3개로 줄이고, 러닝 카드는
-     날짜·평균 페이스가 찍힌 추이 그래프를 오른쪽에 가로로 넓게 둔다. -->
+     카드는 식단/근력/러닝 3개. 카드 헤더는 [아이콘 배지 + 제목 + 우측 요약]이고,
+     근력 목표 한 줄은 [체크 마크 + 종목명(굵게) + 처방(회색)] 을 구분선으로 나눈다.
+     도넛은 고정 dp가 아니라 SeasonDashboardWidget이 그린 비트맵을 fitCenter로 얹는다.
+     위젯을 줄이면 링이 통째로 작아질 뿐 위아래가 잘리지 않는다. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
@@ -14,7 +16,9 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
-        android:orientation="horizontal">
+        android:orientation="horizontal"
+        android:paddingStart="2dp"
+        android:paddingEnd="2dp">
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
@@ -51,23 +55,32 @@
             android:textSize="22sp" />
     </LinearLayout>
 
+    <!-- ── 오늘 식단 ── -->
     <LinearLayout
         android:id="@+id/widget_diet_card"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_marginTop="6dp"
+        android:layout_marginTop="7dp"
         android:layout_weight="1.3"
         android:background="@drawable/widget_panel_bg"
         android:orientation="vertical"
-        android:padding="10dp">
+        android:padding="11dp">
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
             android:orientation="horizontal">
             <TextView
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:background="@drawable/widget_badge_green"
+                android:gravity="center"
+                android:text="🍽"
+                android:textSize="12sp" />
+            <TextView
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:layout_marginStart="7dp"
                 android:layout_weight="1"
                 android:text="오늘 식단"
                 android:textColor="@color/widget_text"
@@ -77,14 +90,15 @@
                 android:id="@+id/widget_diet_meals"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:background="@drawable/widget_pill_bg"
-                android:paddingStart="8dp"
+                android:background="@drawable/widget_pill_green"
+                android:paddingStart="9dp"
                 android:paddingTop="3dp"
-                android:paddingEnd="8dp"
+                android:paddingEnd="9dp"
                 android:paddingBottom="3dp"
                 android:text="기록한 식사 0회"
-                android:textColor="@color/widget_secondary"
-                android:textSize="10sp" />
+                android:textColor="@color/widget_success"
+                android:textSize="10sp"
+                android:textStyle="bold" />
         </LinearLayout>
         <LinearLayout
             android:layout_width="match_parent"
@@ -96,15 +110,12 @@
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
                 android:layout_weight="1">
-                <ProgressBar
-                    android:id="@+id/widget_diet_progress"
-                    style="?android:attr/progressBarStyle"
-                    android:layout_width="112dp"
-                    android:layout_height="112dp"
-                    android:layout_gravity="center"
-                    android:indeterminateOnly="false"
-                    android:max="100"
-                    android:progressDrawable="@drawable/widget_ring_progress" />
+                <ImageView
+                    android:id="@+id/widget_diet_ring"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:contentDescription="오늘 섭취 칼로리 비율"
+                    android:scaleType="fitCenter" />
                 <LinearLayout
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
@@ -112,23 +123,19 @@
                     android:gravity="center_horizontal"
                     android:orientation="vertical">
                     <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="섭취 칼로리"
-                        android:textColor="@color/widget_secondary"
-                        android:textSize="10sp" />
-                    <TextView
                         android:id="@+id/widget_diet_value"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:includeFontPadding="false"
                         android:text="0"
                         android:textColor="@color/widget_text"
-                        android:textSize="28sp"
+                        android:textSize="22sp"
                         android:textStyle="bold" />
                     <TextView
                         android:id="@+id/widget_diet_kcal_target"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:includeFontPadding="false"
                         android:text="/ 2,500 kcal"
                         android:textColor="@color/widget_secondary"
                         android:textSize="10sp" />
@@ -136,9 +143,11 @@
                         android:id="@+id/widget_diet_kcal_percent"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:layout_marginTop="1dp"
+                        android:includeFontPadding="false"
                         android:text="0%"
                         android:textColor="@color/widget_success"
-                        android:textSize="14sp"
+                        android:textSize="13sp"
                         android:textStyle="bold" />
                 </LinearLayout>
                 <TextView
@@ -151,19 +160,28 @@
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_weight="1.25"
+                android:layout_marginStart="4dp"
+                android:layout_weight="1.35"
                 android:orientation="vertical">
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
                     android:orientation="horizontal">
+                    <TextView
+                        android:layout_width="7dp"
+                        android:layout_height="7dp"
+                        android:background="@drawable/widget_dot_green"
+                        android:text="" />
                     <TextView
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
+                        android:layout_marginStart="6dp"
                         android:layout_weight="1"
                         android:text="탄수화물"
                         android:textColor="@color/widget_text"
-                        android:textSize="12sp" />
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
                     <TextView
                         android:id="@+id/widget_diet_carbs_value"
                         android:layout_width="wrap_content"
@@ -194,14 +212,22 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="10dp"
+                    android:gravity="center_vertical"
                     android:orientation="horizontal">
+                    <TextView
+                        android:layout_width="7dp"
+                        android:layout_height="7dp"
+                        android:background="@drawable/widget_dot_purple"
+                        android:text="" />
                     <TextView
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
+                        android:layout_marginStart="6dp"
                         android:layout_weight="1"
                         android:text="단백질"
                         android:textColor="@color/widget_text"
-                        android:textSize="12sp" />
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
                     <TextView
                         android:id="@+id/widget_diet_protein_value"
                         android:layout_width="wrap_content"
@@ -232,14 +258,22 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="10dp"
+                    android:gravity="center_vertical"
                     android:orientation="horizontal">
+                    <TextView
+                        android:layout_width="7dp"
+                        android:layout_height="7dp"
+                        android:background="@drawable/widget_dot_orange"
+                        android:text="" />
                     <TextView
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
+                        android:layout_marginStart="6dp"
                         android:layout_weight="1"
                         android:text="지방"
                         android:textColor="@color/widget_text"
-                        android:textSize="12sp" />
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
                     <TextView
                         android:id="@+id/widget_diet_fat_value"
                         android:layout_width="wrap_content"
@@ -270,23 +304,35 @@
         </LinearLayout>
     </LinearLayout>
 
+    <!-- ── 이번 주 근력 목표 ── -->
     <LinearLayout
         android:id="@+id/widget_strength_card"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_marginTop="6dp"
+        android:layout_marginTop="7dp"
         android:layout_weight="1.25"
         android:background="@drawable/widget_panel_bg"
         android:orientation="vertical"
-        android:padding="10dp">
+        android:paddingStart="11dp"
+        android:paddingTop="11dp"
+        android:paddingEnd="11dp"
+        android:paddingBottom="6dp">
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
             android:orientation="horizontal">
             <TextView
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:background="@drawable/widget_badge_purple"
+                android:gravity="center"
+                android:text="🏋"
+                android:textSize="12sp" />
+            <TextView
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:layout_marginStart="7dp"
                 android:layout_weight="1"
                 android:text="이번 주 근력 목표"
                 android:textColor="@color/widget_text"
@@ -298,65 +344,280 @@
                 android:layout_height="wrap_content"
                 android:text="0 / 5 목표 달성"
                 android:textColor="@color/widget_text"
-                android:textSize="15sp"
+                android:textSize="14sp"
                 android:textStyle="bold" />
         </LinearLayout>
-        <TextView
-            android:id="@+id/widget_strength_check_1"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_marginTop="4dp"
-            android:layout_weight="1"
-            android:ellipsize="end"
-            android:gravity="center_vertical"
-            android:maxLines="1"
-            android:text="○ 다음 목표"
-            android:textColor="@color/widget_muted"
-            android:textSize="12sp" />
-        <TextView
-            android:id="@+id/widget_strength_check_2"
+
+        <LinearLayout
+            android:id="@+id/widget_strength_row_1"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
-            android:ellipsize="end"
-            android:gravity="center_vertical"
-            android:maxLines="1"
-            android:text="○ 다음 목표"
-            android:textColor="@color/widget_muted"
-            android:textSize="12sp" />
-        <TextView
-            android:id="@+id/widget_strength_check_3"
+            android:orientation="vertical">
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="@color/widget_divider"
+                android:text="" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+                <TextView
+                    android:id="@+id/widget_strength_mark_1"
+                    android:layout_width="15dp"
+                    android:layout_height="15dp"
+                    android:background="@drawable/widget_check_off"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:text=""
+                    android:textColor="@color/widget_panel"
+                    android:textSize="10sp"
+                    android:textStyle="bold" />
+                <TextView
+                    android:id="@+id/widget_strength_check_1"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:layout_weight="0.62"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:text="다음 목표"
+                    android:textColor="@color/widget_text"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+                <TextView
+                    android:id="@+id/widget_strength_detail_1"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:layout_weight="1"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:text=""
+                    android:textColor="@color/widget_secondary"
+                    android:textSize="11sp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/widget_strength_row_2"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
-            android:ellipsize="end"
-            android:gravity="center_vertical"
-            android:maxLines="1"
-            android:text="○ 다음 목표"
-            android:textColor="@color/widget_muted"
-            android:textSize="12sp" />
-        <TextView
-            android:id="@+id/widget_strength_check_4"
+            android:orientation="vertical">
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="@color/widget_divider"
+                android:text="" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+                <TextView
+                    android:id="@+id/widget_strength_mark_2"
+                    android:layout_width="15dp"
+                    android:layout_height="15dp"
+                    android:background="@drawable/widget_check_off"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:text=""
+                    android:textColor="@color/widget_panel"
+                    android:textSize="10sp"
+                    android:textStyle="bold" />
+                <TextView
+                    android:id="@+id/widget_strength_check_2"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:layout_weight="0.62"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:text="다음 목표"
+                    android:textColor="@color/widget_text"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+                <TextView
+                    android:id="@+id/widget_strength_detail_2"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:layout_weight="1"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:text=""
+                    android:textColor="@color/widget_secondary"
+                    android:textSize="11sp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/widget_strength_row_3"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
-            android:ellipsize="end"
-            android:gravity="center_vertical"
-            android:maxLines="1"
-            android:text="○ 다음 목표"
-            android:textColor="@color/widget_muted"
-            android:textSize="12sp" />
-        <TextView
-            android:id="@+id/widget_strength_check_5"
+            android:orientation="vertical">
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="@color/widget_divider"
+                android:text="" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+                <TextView
+                    android:id="@+id/widget_strength_mark_3"
+                    android:layout_width="15dp"
+                    android:layout_height="15dp"
+                    android:background="@drawable/widget_check_off"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:text=""
+                    android:textColor="@color/widget_panel"
+                    android:textSize="10sp"
+                    android:textStyle="bold" />
+                <TextView
+                    android:id="@+id/widget_strength_check_3"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:layout_weight="0.62"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:text="다음 목표"
+                    android:textColor="@color/widget_text"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+                <TextView
+                    android:id="@+id/widget_strength_detail_3"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:layout_weight="1"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:text=""
+                    android:textColor="@color/widget_secondary"
+                    android:textSize="11sp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/widget_strength_row_4"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
-            android:ellipsize="end"
-            android:gravity="center_vertical"
-            android:maxLines="1"
-            android:text="○ 다음 목표"
-            android:textColor="@color/widget_muted"
-            android:textSize="12sp" />
+            android:orientation="vertical">
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="@color/widget_divider"
+                android:text="" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+                <TextView
+                    android:id="@+id/widget_strength_mark_4"
+                    android:layout_width="15dp"
+                    android:layout_height="15dp"
+                    android:background="@drawable/widget_check_off"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:text=""
+                    android:textColor="@color/widget_panel"
+                    android:textSize="10sp"
+                    android:textStyle="bold" />
+                <TextView
+                    android:id="@+id/widget_strength_check_4"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:layout_weight="0.62"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:text="다음 목표"
+                    android:textColor="@color/widget_text"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+                <TextView
+                    android:id="@+id/widget_strength_detail_4"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:layout_weight="1"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:text=""
+                    android:textColor="@color/widget_secondary"
+                    android:textSize="11sp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/widget_strength_row_5"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="@color/widget_divider"
+                android:text="" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+                <TextView
+                    android:id="@+id/widget_strength_mark_5"
+                    android:layout_width="15dp"
+                    android:layout_height="15dp"
+                    android:background="@drawable/widget_check_off"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:text=""
+                    android:textColor="@color/widget_panel"
+                    android:textSize="10sp"
+                    android:textStyle="bold" />
+                <TextView
+                    android:id="@+id/widget_strength_check_5"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:layout_weight="0.62"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:text="다음 목표"
+                    android:textColor="@color/widget_text"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+                <TextView
+                    android:id="@+id/widget_strength_detail_5"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:layout_weight="1"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:text=""
+                    android:textColor="@color/widget_secondary"
+                    android:textSize="11sp" />
+            </LinearLayout>
+        </LinearLayout>
+
         <ProgressBar
             android:id="@+id/widget_strength_progress"
             android:layout_width="1dp"
@@ -370,23 +631,32 @@
             android:visibility="gone" />
     </LinearLayout>
 
+    <!-- ── 이번 주 러닝 ── -->
     <LinearLayout
         android:id="@+id/widget_running_card"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_marginTop="6dp"
+        android:layout_marginTop="7dp"
         android:layout_weight="1.05"
         android:background="@drawable/widget_panel_bg"
         android:orientation="vertical"
-        android:padding="10dp">
+        android:padding="11dp">
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
             android:orientation="horizontal">
             <TextView
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:background="@drawable/widget_badge_blue"
+                android:gravity="center"
+                android:text="🏃"
+                android:textSize="12sp" />
+            <TextView
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:layout_marginStart="7dp"
                 android:layout_weight="1"
                 android:text="이번 주 러닝"
                 android:textColor="@color/widget_text"
@@ -396,14 +666,14 @@
                 android:id="@+id/widget_running_improvement"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:background="@drawable/widget_improvement_bg"
+                android:background="@drawable/widget_pill_blue"
                 android:paddingStart="9dp"
                 android:paddingTop="3dp"
                 android:paddingEnd="9dp"
                 android:paddingBottom="3dp"
                 android:text="페이스 개선 —"
-                android:textColor="@color/widget_success"
-                android:textSize="11sp"
+                android:textColor="@color/widget_blue"
+                android:textSize="10sp"
                 android:textStyle="bold" />
         </LinearLayout>
         <LinearLayout
@@ -469,13 +739,28 @@
             android:visibility="gone" />
     </LinearLayout>
 
-    <TextView
-        android:id="@+id/widget_sync_time"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:gravity="end"
-        android:text="동기화 대기"
-        android:textColor="@color/widget_muted"
-        android:textSize="10sp" />
+        android:layout_marginTop="5dp"
+        android:gravity="center_vertical|end"
+        android:orientation="horizontal"
+        android:paddingEnd="2dp">
+        <TextView
+            android:id="@+id/widget_sync_time"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="동기화 대기"
+            android:textColor="@color/widget_muted"
+            android:textSize="10sp" />
+        <TextView
+            android:id="@+id/widget_sync_refresh"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="5dp"
+            android:contentDescription="위젯 새로고침"
+            android:text="↻"
+            android:textColor="@color/widget_muted"
+            android:textSize="12sp" />
+    </LinearLayout>
 </LinearLayout>

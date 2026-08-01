@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 달성 목표 표시: 초록 원 + 흰 체크(글자는 Kotlin에서 "✓"로 채운다). -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
+    <solid android:color="@color/widget_success" />
+    <stroke android:width="1.5dp" android:color="@color/widget_success" />
+</shape>

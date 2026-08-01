@@ -10,8 +10,10 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PointF
+import android.graphics.RectF
 import android.graphics.Typeface
 import android.os.Bundle
+import android.util.TypedValue
 import android.view.View
 import android.widget.RemoteViews
 import androidx.core.content.ContextCompat
@@ -168,31 +170,83 @@ class SeasonDashboardWidget : AppWidgetProvider() {
             return bitmap
         }
 
+        // 칼로리 도넛. 고정 dp ProgressBar는 카드보다 크면 위아래가 잘렸으므로,
+        // 직접 그린 비트맵을 ImageView(scaleType=fitCenter)에 얹는다. 카드가 얕아지면
+        // 링이 통째로 작아질 뿐 잘리지 않는다.
+        private fun dietRingBitmap(context: Context, percent: Int, sizePx: Int): Bitmap {
+            val size = sizePx.coerceIn(96, 400)
+            val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bitmap)
+            val stroke = size * 0.115f
+            val inset = stroke / 2f
+            val rect = RectF(inset, inset, size - inset, size - inset)
+            canvas.drawArc(rect, 0f, 360f, false, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.STROKE
+                strokeWidth = stroke
+                color = ContextCompat.getColor(context, R.color.widget_success_soft)
+            })
+            val swept = percent.coerceIn(0, 100) / 100f * 360f
+            if (swept > 0f) {
+                canvas.drawArc(rect, -90f, swept, false, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    style = Paint.Style.STROKE
+                    strokeWidth = stroke
+                    strokeCap = Paint.Cap.ROUND
+                    color = ContextCompat.getColor(context, R.color.widget_success)
+                })
+            }
+            return bitmap
+        }
+
+        // 링 안 글자도 링과 같이 줄어야 구멍 밖으로 넘치지 않는다. 다만 본문 최소
+        // 10sp 규칙은 그대로 지키고, 그보다 작아져야 할 상황이면 목표 kcal 줄을
+        // 접어 숫자와 퍼센트만 남긴다.
+        private fun renderDietRing(context: Context, views: RemoteViews, percent: Int, ringDp: Float) {
+            val sizePx = (ringDp * context.resources.displayMetrics.density).roundToInt()
+            views.setImageViewBitmap(R.id.widget_diet_ring, dietRingBitmap(context, percent, sizePx))
+            views.setTextViewTextSize(R.id.widget_diet_value, TypedValue.COMPLEX_UNIT_SP, (ringDp * 0.27f).coerceIn(14f, 21f))
+            views.setTextViewTextSize(R.id.widget_diet_kcal_percent, TypedValue.COMPLEX_UNIT_SP, (ringDp * 0.16f).coerceIn(10f, 13f))
+            views.setViewVisibility(R.id.widget_diet_kcal_target, if (ringDp < 56f) View.GONE else View.VISIBLE)
+        }
+
+        // 근력 목표 한 줄 = [체크 마크][종목명][처방]. 행 컨테이너를 통째로 숨기면
+        // 그 행의 구분선까지 같이 사라진다.
+        private val STRENGTH_ROWS = arrayOf(
+            intArrayOf(R.id.widget_strength_row_1, R.id.widget_strength_mark_1, R.id.widget_strength_check_1, R.id.widget_strength_detail_1),
+            intArrayOf(R.id.widget_strength_row_2, R.id.widget_strength_mark_2, R.id.widget_strength_check_2, R.id.widget_strength_detail_2),
+            intArrayOf(R.id.widget_strength_row_3, R.id.widget_strength_mark_3, R.id.widget_strength_check_3, R.id.widget_strength_detail_3),
+            intArrayOf(R.id.widget_strength_row_4, R.id.widget_strength_mark_4, R.id.widget_strength_check_4, R.id.widget_strength_detail_4),
+            intArrayOf(R.id.widget_strength_row_5, R.id.widget_strength_mark_5, R.id.widget_strength_check_5, R.id.widget_strength_detail_5),
+        )
+
+        private fun hideStrengthRows(views: RemoteViews) {
+            STRENGTH_ROWS.forEach { views.setViewVisibility(it[0], View.GONE) }
+        }
+
         private fun renderStrengthGoals(context: Context, views: RemoteViews, weeklyGoal: JSONObject) {
             val achieved = weeklyGoal.optInt("achievedCount", 0)
             val total = weeklyGoal.optInt("totalCount", 0)
             views.setTextViewText(R.id.widget_strength_value, "$achieved / $total 목표 달성")
             val items = weeklyGoal.optJSONArray("items")
-            val ids = intArrayOf(
-                R.id.widget_strength_check_1,
-                R.id.widget_strength_check_2,
-                R.id.widget_strength_check_3,
-                R.id.widget_strength_check_4,
-                R.id.widget_strength_check_5,
-            )
-            ids.forEachIndexed { index, id ->
+            STRENGTH_ROWS.forEachIndexed { index, row ->
                 val item = items?.optJSONObject(index)
                 if (item == null) {
-                    views.setViewVisibility(id, View.GONE)
+                    views.setViewVisibility(row[0], View.GONE)
                     return@forEachIndexed
                 }
-                views.setViewVisibility(id, View.VISIBLE)
-                val done = item.optString("state") == "achieved"
-                val label = item.optString("label").ifBlank { "목표" }
-                val detail = item.optString("detail")
-                val text = if (detail.isBlank()) label else "$label  $detail"
-                views.setTextViewText(id, (if (done) "✓ " else "○ ") + text)
-                views.setTextColor(id, ContextCompat.getColor(context, if (done) R.color.widget_success else R.color.widget_muted))
+                views.setViewVisibility(row[0], View.VISIBLE)
+                val state = item.optString("state")
+                val done = state == "achieved"
+                views.setInt(
+                    row[1], "setBackgroundResource",
+                    if (done) R.drawable.widget_check_on else R.drawable.widget_check_off,
+                )
+                views.setTextViewText(row[1], if (done) "✓" else "")
+                views.setTextViewText(row[2], item.optString("label").ifBlank { "목표" })
+                views.setTextColor(
+                    row[2],
+                    ContextCompat.getColor(context, if (done) R.color.widget_success else R.color.widget_text),
+                )
+                views.setTextViewText(row[3], item.optString("detail"))
             }
         }
 
@@ -204,36 +258,59 @@ class SeasonDashboardWidget : AppWidgetProvider() {
             views.setProgressBar(progressId, 100, percent, false)
         }
 
-        private fun empty(context: Context, views: RemoteViews, message: String, sync: String = "동기화 대기") {
+        // 페이스 배지. diffSec < 0 이면 이전보다 빨라진 것(개선), > 0 이면 느려진 것.
+        // 값이 없으면 중립(파랑)으로 둔다.
+        private fun paceBadge(context: Context, views: RemoteViews, diffSec: Int?) {
+            val background = when {
+                diffSec == null || diffSec == 0 -> R.drawable.widget_pill_blue
+                diffSec < 0 -> R.drawable.widget_pill_green
+                else -> R.drawable.widget_pill_orange
+            }
+            val textColor = when {
+                diffSec == null || diffSec == 0 -> R.color.widget_blue
+                diffSec < 0 -> R.color.widget_success
+                else -> R.color.widget_orange
+            }
+            val label = when {
+                diffSec == null -> "페이스 개선 —"
+                diffSec < 0 -> "페이스 개선 ↑ ${-diffSec}초"
+                diffSec > 0 -> "페이스 개선 ↓ ${diffSec}초"
+                else -> "페이스 개선 유지"
+            }
+            views.setInt(R.id.widget_running_improvement, "setBackgroundResource", background)
+            views.setTextColor(R.id.widget_running_improvement, ContextCompat.getColor(context, textColor))
+            views.setTextViewText(R.id.widget_running_improvement, label)
+        }
+
+        private fun empty(context: Context, views: RemoteViews, message: String, ringDp: Float, sync: String = "동기화 대기") {
             views.setTextViewText(R.id.widget_season_title, "오늘/이번 주 요약")
             views.setTextViewText(R.id.widget_season_meta, message)
             views.setTextViewText(R.id.widget_diet_value, "—")
             views.setTextViewText(R.id.widget_diet_kcal_target, "목표 미설정")
             views.setTextViewText(R.id.widget_diet_kcal_percent, "0%")
             views.setTextViewText(R.id.widget_diet_meals, "기록한 식사 0회")
-            views.setProgressBar(R.id.widget_diet_progress, 100, 0, false)
+            renderDietRing(context, views, 0, ringDp)
             listOf(R.id.widget_diet_carbs_value, R.id.widget_diet_protein_value, R.id.widget_diet_fat_value).forEach { views.setTextViewText(it, "—") }
             listOf(R.id.widget_diet_carbs_percent, R.id.widget_diet_protein_percent, R.id.widget_diet_fat_percent).forEach { views.setTextViewText(it, "0%") }
             listOf(R.id.widget_diet_carbs_progress, R.id.widget_diet_protein_progress, R.id.widget_diet_fat_progress).forEach { views.setProgressBar(it, 100, 0, false) }
             views.setTextViewText(R.id.widget_strength_value, "0 / 0 목표 달성")
-            listOf(R.id.widget_strength_check_1, R.id.widget_strength_check_2, R.id.widget_strength_check_3, R.id.widget_strength_check_4, R.id.widget_strength_check_5)
-                .forEach { views.setViewVisibility(it, View.GONE) }
+            hideStrengthRows(views)
             views.setTextViewText(R.id.widget_running_subtitle, "평균 페이스 (km당)")
             views.setTextViewText(R.id.widget_running_value, "기록 없음")
             views.setTextViewText(R.id.widget_running_last, "러닝을 기록해 주세요")
-            views.setTextViewText(R.id.widget_running_improvement, "페이스 개선 —")
+            paceBadge(context, views, null)
             views.setImageViewResource(R.id.widget_running_chart, R.drawable.widget_run_chart)
             views.setTextViewText(R.id.widget_sync_time, sync)
         }
 
-        private fun render(context: Context, views: RemoteViews, snapshot: JSONObject, chartWidthPx: Int, chartHeightPx: Int) {
+        private fun render(context: Context, views: RemoteViews, snapshot: JSONObject, chartWidthPx: Int, chartHeightPx: Int, ringDp: Float) {
             val generatedAt = snapshot.optLong("generatedAt", 0L)
             if (generatedAt <= 0L || System.currentTimeMillis() - generatedAt > STALE_AFTER_MS) {
-                empty(context, views, "앱을 열어 업데이트하세요", "오래된 데이터")
+                empty(context, views, "앱을 열어 업데이트하세요", ringDp, "오래된 데이터")
                 return
             }
             if (snapshot.optString("state") != "ready") {
-                empty(context, views, snapshot.optString("message", "새 시즌을 설정해 주세요"))
+                empty(context, views, snapshot.optString("message", "새 시즌을 설정해 주세요"), ringDp)
                 return
             }
 
@@ -255,7 +332,7 @@ class SeasonDashboardWidget : AppWidgetProvider() {
             views.setTextViewText(R.id.widget_diet_kcal_target, String.format(Locale.KOREA, "/ %,d kcal", kcalTarget.roundToInt()))
             views.setTextViewText(R.id.widget_diet_kcal_percent, "$kcalProgress%")
             views.setTextViewText(R.id.widget_diet_meals, "기록한 식사 " + food.optInt("recordedMeals", 0) + "회")
-            views.setProgressBar(R.id.widget_diet_progress, 100, kcalProgress, false)
+            renderDietRing(context, views, kcalProgress, ringDp)
             renderMacro(views, R.id.widget_diet_carbs_value, R.id.widget_diet_carbs_percent, R.id.widget_diet_carbs_progress, food.optDouble("carbsG", 0.0), food.optDouble("carbsTargetG", 0.0))
             renderMacro(views, R.id.widget_diet_protein_value, R.id.widget_diet_protein_percent, R.id.widget_diet_protein_progress, food.optDouble("proteinG", 0.0), food.optDouble("proteinTargetG", 0.0))
             renderMacro(views, R.id.widget_diet_fat_value, R.id.widget_diet_fat_percent, R.id.widget_diet_fat_progress, food.optDouble("fatG", 0.0), food.optDouble("fatTargetG", 0.0))
@@ -272,14 +349,12 @@ class SeasonDashboardWidget : AppWidgetProvider() {
                 views.setTextViewText(R.id.widget_running_subtitle, "최근 ${runs.size}회 최고 페이스")
                 views.setTextViewText(R.id.widget_running_value, pace(bestPace) + "/km")
                 views.setTextViewText(R.id.widget_running_last, if (baselinePace.isFinite()) "이전 " + pace(baselinePace) + "/km" else "km당 평균")
-                val diff = if (baselinePace.isFinite()) (bestPace - baselinePace).roundToInt() else null
-                val diffText = if (diff != null) (if (diff > 0) "+" else "") + diff + "초" else "—"
-                views.setTextViewText(R.id.widget_running_improvement, "페이스 개선 $diffText")
+                paceBadge(context, views, if (baselinePace.isFinite()) (bestPace - baselinePace).roundToInt() else null)
             } else {
                 views.setTextViewText(R.id.widget_running_subtitle, "평균 페이스 (km당)")
                 views.setTextViewText(R.id.widget_running_value, "기록 없음")
                 views.setTextViewText(R.id.widget_running_last, "러닝을 기록해 주세요")
-                views.setTextViewText(R.id.widget_running_improvement, "페이스 개선 —")
+                paceBadge(context, views, null)
             }
             val chart = runChartBitmap(context, recent, chartWidthPx, chartHeightPx)
             if (chart != null) views.setImageViewBitmap(R.id.widget_running_chart, chart)
@@ -297,13 +372,32 @@ class SeasonDashboardWidget : AppWidgetProvider() {
             val views = RemoteViews(context.packageName, layout)
             views.setOnClickPendingIntent(R.id.widget_root, actionIntent(context, "workout", widgetId * 10))
             views.setOnClickPendingIntent(R.id.widget_refresh, actionIntent(context, "refresh", widgetId * 10 + 1))
+            views.setOnClickPendingIntent(R.id.widget_sync_refresh, actionIntent(context, "refresh", widgetId * 10 + 4))
             views.setOnClickPendingIntent(R.id.widget_running_card, actionIntent(context, "running", widgetId * 10 + 2))
             views.setOnClickPendingIntent(R.id.widget_strength_card, actionIntent(context, "workout", widgetId * 10 + 3))
             val raw = SeasonWidgetStore.read(context)
             val chart = chartSizePx(context, widthDp, heightDp, compact)
-            if (raw.isNullOrBlank()) empty(context, views, "앱을 열어 동기화하세요")
-            else try { render(context, views, JSONObject(raw), chart.first, chart.second) } catch (_: Exception) { empty(context, views, "데이터를 다시 동기화하세요") }
+            val ringDp = dietRingDp(widthDp, heightDp, compact)
+            if (raw.isNullOrBlank()) empty(context, views, "앱을 열어 동기화하세요", ringDp)
+            else try { render(context, views, JSONObject(raw), chart.first, chart.second, ringDp) } catch (_: Exception) { empty(context, views, "데이터를 다시 동기화하세요", ringDp) }
             manager.updateAppWidget(widgetId, views)
+        }
+
+        // 식단 카드 안 도넛 자리의 대략적인 크기(dp). 레이아웃의 weight와 padding을
+        // 되짚어 추정한다. 비트맵 해상도와 가운데 글자 크기를 정하는 데만 쓰므로
+        // 추정이 조금 빗나가도 링은 fitCenter라 잘리지 않는다.
+        private fun dietRingDp(widgetWidthDp: Int, widgetHeightDp: Int, compact: Boolean): Float {
+            val byHeight = if (compact) {
+                val cardsDp = (widgetHeightDp - 78).coerceAtLeast(120).toFloat()
+                cardsDp * 1.35f / 2.35f - 38f
+            } else {
+                val cardsDp = (widgetHeightDp - 101).coerceAtLeast(180).toFloat()
+                cardsDp * 1.3f / 3.6f - 44f
+            }
+            // 가로: 루트/카드 패딩을 뺀 뒤 도넛 칸과 매크로 칸의 weight 비율로 나눈다.
+            val innerWidthDp = (widgetWidthDp.coerceAtLeast(200) - if (compact) 38 else 46).toFloat()
+            val byWidth = innerWidthDp / (if (compact) 2.2f else 2.35f)
+            return minOf(byHeight, byWidth).coerceIn(34f, 92f)
         }
 
         // 차트 비트맵은 ImageView와 같은 픽셀 크기로 그려야 (scaleType=fitXY) 라벨이
@@ -312,25 +406,34 @@ class SeasonDashboardWidget : AppWidgetProvider() {
         private fun chartSizePx(context: Context, widgetWidthDp: Int, widgetHeightDp: Int, compact: Boolean): Pair<Int, Int> {
             val density = context.resources.displayMetrics.density
             val chartWeight = if (compact) 1.3f else 1.4f
-            val innerWidthDp = (widgetWidthDp.coerceAtLeast(200) - if (compact) 32 else 40).toFloat()
+            // 가로: 루트 패딩(10/8 ×2) + 러닝 카드 패딩(11/9 ×2)을 뺀 뒤 weight로 나눈다.
+            val innerWidthDp = (widgetWidthDp.coerceAtLeast(200) - if (compact) 34 else 42).toFloat()
             val chartWidthDp = innerWidthDp * chartWeight / (1f + chartWeight)
             // 세로: 카드 밖(패딩·헤더·동기화 줄)을 뺀 나머지를 카드 weight 비율로 나눈다.
             val chartHeightDp = if (compact) {
-                val cardsDp = (widgetHeightDp - 75).coerceAtLeast(120).toFloat()
+                val cardsDp = (widgetHeightDp - 78).coerceAtLeast(120).toFloat()
                 (cardsDp * 1f / 2.35f - 36f).coerceIn(36f, 90f)
             } else {
-                val cardsDp = (widgetHeightDp - 97).coerceAtLeast(180).toFloat()
-                (cardsDp * 1.05f / 3.6f - 44f).coerceIn(50f, 150f)
+                val cardsDp = (widgetHeightDp - 101).coerceAtLeast(180).toFloat()
+                (cardsDp * 1.05f / 3.6f - 46f).coerceIn(50f, 150f)
             }
             return Pair((chartWidthDp * density).roundToInt(), (chartHeightDp * density).roundToInt())
         }
 
         // 테스트 전용: 스냅샷 JSON으로 RemoteViews를 만들어 렌더 결과를 비트맵으로 검증한다.
         @androidx.annotation.VisibleForTesting
-        internal fun buildRemoteViewsForTest(context: Context, snapshotJson: String): RemoteViews {
-            val views = RemoteViews(context.packageName, R.layout.widget_season_dashboard)
-            val chart = chartSizePx(context, 360, 540, false)
-            try { render(context, views, JSONObject(snapshotJson), chart.first, chart.second) } catch (_: Exception) { empty(context, views, "render error") }
+        internal fun buildRemoteViewsForTest(
+            context: Context,
+            snapshotJson: String,
+            widthDp: Int = 360,
+            heightDp: Int = 540,
+            compact: Boolean = false,
+        ): RemoteViews {
+            val layout = if (compact) R.layout.widget_season_dashboard_compact else R.layout.widget_season_dashboard
+            val views = RemoteViews(context.packageName, layout)
+            val chart = chartSizePx(context, widthDp, heightDp, compact)
+            val ringDp = dietRingDp(widthDp, heightDp, compact)
+            try { render(context, views, JSONObject(snapshotJson), chart.first, chart.second, ringDp) } catch (_: Exception) { empty(context, views, "render error", ringDp) }
             return views
         }
     }

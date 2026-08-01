@@ -12,6 +12,12 @@
     <color name="widget_orange">#FFF47A3C</color>
     <color name="widget_track">#FFE5E9ED</color>
     <color name="widget_border">#FFDDE3E8</color>
-    <color name="widget_success_soft">#1F2F9A60</color>
+    <!-- 카드 헤더 아이콘 배지 / 필 배경 (연한 톤) -->
+    <color name="widget_success_soft">#FFE6F5EC</color>
+    <color name="widget_purple_soft">#FFEDE9FB</color>
+    <color name="widget_blue_soft">#FFE5EFFD</color>
+    <color name="widget_orange_soft">#FFFDEDE4</color>
+    <color name="widget_divider">#FFEEF1F4</color>
+    <!-- 시즌 대시보드에서는 더 쓰지 않지만 widget_improvement_bg가 아직 참조한다. -->
     <color name="widget_success_border">#4D2F9A60</color>
 </resources>

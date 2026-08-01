@@ -9,6 +9,4 @@
     <color name="widget_success">#FF62C98E</color>
     <color name="widget_track">#FF343C43</color>
     <color name="widget_border">#FF3A434A</color>
-    <color name="widget_success_soft">#2E62C98E</color>
-    <color name="widget_success_border">#5C62C98E</color>
 </resources>
