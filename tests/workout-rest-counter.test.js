@@ -346,6 +346,13 @@ export async function saveDay(key, payload, opts = {}) {
 export async function saveRunningRoute() {
   throw new Error('manual workout must not persist a running route');
 }
+export class RunningRouteWriteError extends Error {
+  constructor(cause) {
+    super('Failed to commit the complete running route');
+    this.name = 'RunningRouteWriteError';
+    this.cause = cause;
+  }
+}
 export function dateKey(y, m, d) { return keyOf(y, m, d); }
 export function isFuture() { return false; }
 export function trackEvent() {}

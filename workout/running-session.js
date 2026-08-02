@@ -1356,19 +1356,36 @@ async function _saveSummary() {
   const placeSummary = await _ensureRunningPlaceSummary(summary);
   _syncWorkoutRunData(summary, placeSummary);
   _render();
+  let routeWriteFailed = false;
+  let failureMessage = '';
   try {
-    if (!targetDateKey) throw new Error('running save skipped: restored workout date is unavailable');
+    if (!targetDateKey) {
+      failureMessage = '러닝 날짜를 확인하지 못해 저장하지 못했어요. 앱을 다시 열어 다시 시도해주세요.';
+      throw new Error('running save skipped: restored workout date is unavailable');
+    }
     const { saveWorkoutDay } = await import('./save.js');
     const saved = await saveWorkoutDay({ silent: true });
     if (!saved) throw new Error('running save skipped: workout date is unavailable or invalid');
-    await _showToast('러닝 기록 저장 완료', 2200, 'success');
+    // workout/save.js가 경로 청크 저장 실패를 rethrow 하지 않고 S.workout.runData
+    // 위에 남겨둔 플래그. day 문서(요약 + 240점 프리뷰)는 이미 저장됐지만, 전체
+    // 경로 원본은 커밋되지 못했다는 뜻이라 사용자에게 알리고 드래프트를 남긴다.
+    routeWriteFailed = !!S.workout.runData?.routeWriteFailed;
+    if (routeWriteFailed) {
+      _session.lastError = '요약 기록은 저장했지만 전체 경로 저장에는 실패했어요. 다시 저장을 시도해주세요.';
+      _showToast(_session.lastError, 3200, 'error');
+    } else {
+      await _showToast('러닝 기록 저장 완료', 2200, 'success');
+    }
   } catch (e) {
     console.error('[running-session] save failed:', e);
+    const message = failureMessage || '러닝 기록 저장에 실패했어요. 다시 시도해주세요.';
+    _session.lastError = message;
+    _showToast(message, 3200, 'error');
     _session.saving = false;
     _render();
     return;
   }
-  wtCloseRunningSession();
+  wtCloseRunningSession({ keepDraft: routeWriteFailed });
   if (targetDateKey) {
     try {
       openWorkoutDaySheet(targetDateKey, {
@@ -1628,9 +1645,11 @@ export function wtRestoreRunningSessionIfActive() {
   return _restoreRunningDraftIfAvailable();
 }
 
-export function wtCloseRunningSession() {
+export function wtCloseRunningSession(options = {}) {
   const root = _root();
-  _clearRunningDraft();
+  // 경로 청크 저장이 실패했을 때는 재시도할 수 있게 드래프트를 남겨둔다
+  // (_saveSummary 참고). 그 외에는 항상 지운다.
+  if (!options.keepDraft) _clearRunningDraft();
   _resetLiveSession();
   _session.open = false;
   _publishRunningLiveState(false);

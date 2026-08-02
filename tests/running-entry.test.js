@@ -237,7 +237,7 @@ test('running summary save opens the saved workout day detail sheet', () => {
   assert.match(runningSessionJs, /const saved = await saveWorkoutDay\(\{ silent: true \}\)/);
   assert.match(runningSessionJs, /if \(!saved\) throw new Error\('running save skipped: workout date is unavailable or invalid'\)/);
   assert.match(runningSessionJs, /openWorkoutDaySheet\(targetDateKey, \{[\s\S]*sessionIndex:\s*targetSessionIndex,[\s\S]*action:\s*'running:save-detail'/);
-  assert.match(runningSessionJs, /wtCloseRunningSession\(\);[\s\S]*if \(targetDateKey\)/);
+  assert.match(runningSessionJs, /wtCloseRunningSession\(\{ keepDraft: routeWriteFailed \}\);[\s\S]*if \(targetDateKey\)/);
   assert.match(saveJs, /if \(!ctx\) return false/);
   assert.match(saveJs, /return true;\s*\n}/);
 });
@@ -283,7 +283,7 @@ test('running session persists unsaved live records across app reloads', () => {
   assert.ok(popupIndex > restoreCallIndex, 'running draft restore must run before ordinary popups');
   assert.match(appJs, /if \(!runningSessionRestored\) \{\s*loadWorkoutDate\(TODAY\.getFullYear\(\), TODAY\.getMonth\(\), TODAY\.getDate\(\)\);\s*\}/);
   assert.match(runningSessionJs, /function _finishRun\(\)[\s\S]*_persistRunningDraft\('finish'\)/);
-  assert.match(runningSessionJs, /export function wtCloseRunningSession\(\) \{[\s\S]*_clearRunningDraft\(\);[\s\S]*_resetLiveSession\(\);/);
+  assert.match(runningSessionJs, /export function wtCloseRunningSession\(options = \{\}\) \{[\s\S]*_clearRunningDraft\(\);[\s\S]*_resetLiveSession\(\);/);
 });
 
 test('running records save into a dedicated running session with place and device metrics', () => {

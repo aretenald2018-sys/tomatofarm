@@ -250,6 +250,17 @@ export async function deleteNutritionItem(itemId) {
 export const getCookingRecords = () => fakeDataStore.cookingRecords;
 
 // ── 러닝 경로 ────────────────────────────────────────────────────
+// save.js가 경로 청크 커밋 실패를 구분해 day 문서 저장은 계속 진행하도록
+// import하는 타입. 이 하네스는 saveRunningRoute를 실패시키지 않으므로 실제로
+// throw 되지는 않지만, ESM import 바인딩이 성립하려면 export가 있어야 한다.
+export class RunningRouteWriteError extends Error {
+  constructor(cause) {
+    super('Failed to commit the complete running route');
+    this.name = 'RunningRouteWriteError';
+    this.code = 'RUNNING_ROUTE_WRITE_FAILED';
+    this.cause = cause;
+  }
+}
 export async function loadRunningRoute(ref) {
   const id = typeof ref === 'string' ? ref : ref?.id || ref?.path || '';
   return clone(fakeDataStore.runningRoutes[id] || null);

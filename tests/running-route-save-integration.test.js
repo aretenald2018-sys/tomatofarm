@@ -85,7 +85,9 @@ function replaceImport(source, specifier, replacement, required = true) {
   return source.replace(quoted, JSON.stringify(replacement));
 }
 
-async function runSaveHarness({ runData, existingDay = {}, savedRef = routeRef(), routeError = null }) {
+async function runSaveHarness({
+  runData, existingDay = {}, savedRef = routeRef(), routeError = null, routeErrorIsWriteFailure = false,
+}) {
   const tempDir = await mkdtemp(path.join(tmpdir(), 'tomato-running-route-save-'));
   const previous = {
     state: globalThis.__routeSaveState,
@@ -93,6 +95,7 @@ async function runSaveHarness({ runData, existingDay = {}, savedRef = routeRef()
     existingDay: globalThis.__routeExistingDay,
     savedRef: globalThis.__routeSavedRef,
     routeError: globalThis.__routeSaveError,
+    routeErrorIsWriteFailure: globalThis.__routeSaveErrorIsWriteFailure,
     document: globalThis.document,
     window: globalThis.window,
     CustomEvent: globalThis.CustomEvent,
@@ -104,15 +107,27 @@ async function runSaveHarness({ runData, existingDay = {}, savedRef = routeRef()
     globalThis.__routeExistingDay = existingDay;
     globalThis.__routeSavedRef = savedRef;
     globalThis.__routeSaveError = routeError;
+    globalThis.__routeSaveErrorIsWriteFailure = routeErrorIsWriteFailure;
     globalThis.window = { _mealPhotos: {}, showToast() {} };
     globalThis.document = { getElementById() { return null; }, dispatchEvent() {} };
     globalThis.CustomEvent = class CustomEvent { constructor(type) { this.type = type; } };
 
     const stateStub = await writeModule(tempDir, 'state.js', 'export const S = globalThis.__routeSaveState;\n');
     const dataStub = await writeModule(tempDir, 'data.js', `
+export class RunningRouteWriteError extends Error {
+  constructor(cause) {
+    super('Failed to commit the complete running route');
+    this.name = 'RunningRouteWriteError';
+    this.code = 'RUNNING_ROUTE_WRITE_FAILED';
+    this.cause = cause;
+  }
+}
 export async function saveRunningRoute(points) {
   globalThis.__routeSaveCalls.push({ type: 'saveRunningRoute', points: structuredClone(points) });
-  if (globalThis.__routeSaveError) throw globalThis.__routeSaveError;
+  if (globalThis.__routeSaveError) {
+    if (globalThis.__routeSaveErrorIsWriteFailure) throw new RunningRouteWriteError(globalThis.__routeSaveError);
+    throw globalThis.__routeSaveError;
+  }
   return structuredClone(globalThis.__routeSavedRef);
 }
 export async function saveDay(key, payload, options) {
@@ -186,6 +201,7 @@ export function showCenterToast() {}
     globalThis.__routeExistingDay = previous.existingDay;
     globalThis.__routeSavedRef = previous.savedRef;
     globalThis.__routeSaveError = previous.routeError;
+    globalThis.__routeSaveErrorIsWriteFailure = previous.routeErrorIsWriteFailure;
     globalThis.document = previous.document;
     globalThis.window = previous.window;
     globalThis.CustomEvent = previous.CustomEvent;
@@ -429,6 +445,36 @@ test('route storage failure aborts the workout day write loudly', async () => {
   assert.match(out.error?.message || '', /route storage unavailable/);
   assert.equal(out.calls.filter(call => call.type === 'saveRunningRoute').length, 1);
   assert.equal(out.calls.filter(call => call.type === 'saveDay').length, 0);
+});
+
+test('a RunningRouteWriteError falls back to a preview-only day save and flags the caller', async () => {
+  const fullRoute = canonicalRoute();
+  const routeError = new Error('network unavailable mid-commit');
+  const out = await runSaveHarness({
+    runData: {
+      distance: 7.4,
+      durationMin: 42,
+      durationSec: 12,
+      memo: '',
+      source: 'gps',
+      route: fullRoute,
+      routeRef: null,
+      routeSummary: { source: 'gps', pointCount: 620 },
+    },
+    routeError,
+    routeErrorIsWriteFailure: true,
+  });
+
+  // 청크 커밋은 시도되고 실패하지만, day 문서 저장은 그대로 진행된다 — 요약 기록을
+  // 전부 잃는 것보다 경로 원본만 못 남기는 편이 낫다.
+  assert.equal(out.error, null);
+  assert.deepEqual(out.calls.map(call => call.type), ['saveRunningRoute', 'saveDay']);
+  const payload = out.calls.find(call => call.type === 'saveDay').payload;
+  assert.equal(payload.runRouteRef, null);
+  assert.equal(payload.runRoute.length, 240);
+  assert.equal(payload.runRouteSummary.pointCount, 620);
+  // 호출자(러닝 화면)가 실패를 알 수 있도록 S.workout.runData 위에 플래그를 남긴다.
+  assert.equal(out.state.workout.runData.routeWriteFailed, true);
 });
 
 test('malformed preview ref fails before route or day persistence', async () => {
