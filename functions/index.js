@@ -84,7 +84,19 @@ function mirrorTomatoDocument(event) {
     sourceDb: getFirestore(),
     sourceProjectId: currentFirebaseProjectId(),
     peerServiceAccountValue: () => TOMATO_SYNC_PEER_SERVICE_ACCOUNT.value(),
-  })(event);
+  })(event).catch((error) => {
+    // Secret Manager may hold a {"disabled":true} placeholder (the deploy
+    // pipeline seeds one so codebase-wide secret validation passes before the
+    // real TomatoDev service account is provisioned). An unconfigured peer
+    // must read as "mirroring off", not as a crash that Eventarc retries.
+    if (/is incomplete/.test(String(error?.message || ""))) {
+      console.error("[tomatoSync] peer service account is not configured — mirroring disabled", {
+        path: event.data?.after?.ref?.path || event.data?.before?.ref?.path || null,
+      });
+      return { state: "sync-unconfigured" };
+    }
+    throw error;
+  });
 }
 
 // Keep the paths explicit: Firestore event patterns must end at a document and
