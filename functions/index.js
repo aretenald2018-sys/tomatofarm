@@ -13,7 +13,11 @@ const {
   refreshAllLinkedDashboards,
   verifyInternalRequest,
 } = require("./dashboard/service");
-const { createMirrorHandler } = require("./sync/firestore-mirror");
+const {
+  createMirrorHandler,
+  isExpiredSyncEvent,
+  isSyncOnlyMutation,
+} = require("./sync/firestore-mirror");
 const { resolveTomatoDataOwnerId } = require("./dashboard/owner");
 
 initializeApp();
@@ -61,7 +65,21 @@ const TOMATO_SYNC_TRIGGER_OPTIONS = {
   secrets: [TOMATO_SYNC_PEER_SERVICE_ACCOUNT],
 };
 
+// Retry stays on for the mirror (dropping a first failure silently diverges
+// the two projects and nothing reconciles them later), but each event gets a
+// bounded window instead of Eventarc's full 24h: past it the event is acked
+// with an error log so a sustained peer-project quota exhaustion cannot turn
+// every write in the database into a day-long redelivery storm.
+const TOMATO_SYNC_MAX_EVENT_AGE_MS = 6 * 60 * 60 * 1000;
+
 function mirrorTomatoDocument(event) {
+  if (isExpiredSyncEvent(event.time, Date.now(), TOMATO_SYNC_MAX_EVENT_AGE_MS)) {
+    console.error("[tomatoSync] abandoning redelivery past max event age", {
+      eventTime: event.time,
+      path: event.data?.after?.ref?.path || event.data?.before?.ref?.path || null,
+    });
+    return { state: "abandoned-expired-retry" };
+  }
   return createMirrorHandler({
     sourceDb: getFirestore(),
     sourceProjectId: currentFirebaseProjectId(),
@@ -98,6 +116,16 @@ const DASHBOARD_TRIGGER_OPTIONS = {
 };
 
 function _queueDashboardSourceChange(event, reason) {
+  // The peer mirror stamps __tomatoSync back onto every source document it
+  // forwards, which re-fires these triggers with an unchanged payload. Without
+  // this guard every real write costs two full dashboard rebuilds (and two
+  // budget-project job transactions), which is what pushed the budget project
+  // into the 2026-07 quota exhaustion in the first place.
+  const before = event.data?.before;
+  const after = event.data?.after;
+  if (before?.exists && after?.exists && isSyncOnlyMutation(before.data(), after.data())) {
+    return { state: "ignored-sync-marker" };
+  }
   return queueDashboardRefresh({
     tomatoDb: getFirestore(),
     serviceAccountValue: BUDGET_FIREBASE_SERVICE_ACCOUNT.value(),

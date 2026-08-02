@@ -6,7 +6,9 @@ const {
   SYNC_FIELD,
   compareVersion,
   eventVersion,
+  isExpiredSyncEvent,
   isInternalMirrorMutation,
+  isSyncOnlyMutation,
   pathHash,
   shouldMirrorPath,
 } = require("../sync/firestore-mirror");
@@ -55,6 +57,34 @@ test("only a changed mirror marker suppresses a reflected write", () => {
     "tomatodev-arete",
     "exercise-management",
   ), true, "the function's own marker update must not loop");
+});
+
+test("a sync-marker-only stamp is distinguished from a real payload change", () => {
+  const payload = { exercises: [{ name: "squat", sets: [{ reps: 5, kg: 100 }] }], memo: "pr day" };
+  assert.equal(isSyncOnlyMutation(
+    { ...payload, [SYNC_FIELD]: production },
+    { ...payload, [SYNC_FIELD]: development },
+  ), true, "the mirror writing its marker back must not queue a dashboard rebuild");
+
+  assert.equal(isSyncOnlyMutation(
+    { ...payload, [SYNC_FIELD]: production },
+    { ...payload, memo: "deload day", [SYNC_FIELD]: development },
+  ), false, "a payload change alongside a marker change must still rebuild");
+
+  assert.equal(isSyncOnlyMutation(
+    { exercises: [{ name: "squat" }] },
+    { exercises: [{ name: "squat" }, { name: "bench" }] },
+  ), false, "nested growth without any marker must rebuild");
+
+  assert.equal(isSyncOnlyMutation(null, { [SYNC_FIELD]: development }), false);
+});
+
+test("redelivered events expire after the bounded retry window", () => {
+  const now = Date.parse("2026-07-19T12:00:00.000Z");
+  const maxAge = 6 * 60 * 60 * 1000;
+  assert.equal(isExpiredSyncEvent("2026-07-19T11:00:00.000Z", now, maxAge), false, "fresh events run");
+  assert.equal(isExpiredSyncEvent("2026-07-19T05:00:00.000Z", now, maxAge), true, "day-long redelivery is abandoned");
+  assert.equal(isExpiredSyncEvent("not-a-timestamp", now, maxAge), false, "unparseable time defers to eventVersion()");
 });
 
 test("event versions and tombstone keys require stable event identity", () => {

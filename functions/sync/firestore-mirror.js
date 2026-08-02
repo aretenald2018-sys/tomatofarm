@@ -65,6 +65,39 @@ function documentVersion(data) {
   return isVersion(data?.[SYNC_FIELD]) ? data[SYNC_FIELD] : null;
 }
 
+function deepEqual(left, right) {
+  if (left === right) return true;
+  if (!left || !right || typeof left !== "object" || typeof right !== "object") return false;
+  if (Array.isArray(left) !== Array.isArray(right)) return false;
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  if (leftKeys.length !== rightKeys.length) return false;
+  return leftKeys.every((key) =>
+    Object.prototype.hasOwnProperty.call(right, key) && deepEqual(left[key], right[key]));
+}
+
+// True when the only difference between the two payloads is the sync marker —
+// the mirror stamping __tomatoSync back onto the source document. Downstream
+// triggers without the isInternalMirrorMutation filter (the dashboard refresh
+// family) use this to avoid rebuilding twice for every real write.
+function isSyncOnlyMutation(beforeData, afterData) {
+  if (!beforeData || !afterData) return false;
+  const { [SYNC_FIELD]: beforeMarker, ...beforeRest } = beforeData;
+  const { [SYNC_FIELD]: afterMarker, ...afterRest } = afterData;
+  return deepEqual(beforeRest, afterRest);
+}
+
+// Eventarc redelivers a failed event for up to 24 hours. During a sustained
+// quota exhaustion every redelivery fails identically, so a retry-enabled
+// trigger must bound how long it keeps failing an event before acking it
+// (2026-07 incident: two weeks of RESOURCE_EXHAUSTED redeliveries billed as
+// CPU time). An unparseable event time never expires — eventVersion() rejects
+// it explicitly later.
+function isExpiredSyncEvent(eventTime, nowEpochMs, maxAgeMs) {
+  const epoch = asEpoch(eventTime);
+  return epoch > 0 && nowEpochMs - epoch > maxAgeMs;
+}
+
 function shouldMirrorPath(path) {
   const segments = String(path || "").split("/").filter(Boolean);
   if (segments[0] === "users") return segments.length === 4 || segments.length === 6;
@@ -182,7 +215,9 @@ module.exports = {
   compareVersion,
   createMirrorHandler,
   eventVersion,
+  isExpiredSyncEvent,
   isInternalMirrorMutation,
+  isSyncOnlyMutation,
   pathHash,
   shouldMirrorPath,
 };
