@@ -85,9 +85,15 @@ exports.syncTomatoSharedDocument = onDocumentWritten(
   mirrorTomatoDocument,
 );
 
+// retry stays off: a 2026-07 Firestore quota exhaustion on the budget project
+// turned every dashboard-trigger failure into an Eventarc retry storm (82k
+// invocations / ~19,146원 CPU billing over two weeks) because each retry hit
+// the same exhausted quota and failed again. A dropped refresh here is safe —
+// the next real write bumps requestedRevision and reprocesses it, and
+// dashboardDailyRefresh reconciles every linked owner within 24h regardless.
 const DASHBOARD_TRIGGER_OPTIONS = {
   region: "asia-northeast3",
-  retry: true,
+  retry: false,
   secrets: [BUDGET_FIREBASE_SERVICE_ACCOUNT],
 };
 
