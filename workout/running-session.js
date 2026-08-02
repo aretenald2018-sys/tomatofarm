@@ -24,7 +24,8 @@ import {
   RUNNING_SESSION_ID,
   WORKOUT_RUNNING_SESSION_INDEX,
 } from './session-policy.js';
-import { applyRunningDataToWorkout } from './running-model.js';
+import { applyRunningDataToWorkout, findRunningSessionIndex } from './running-model.js';
+import { getWorkoutSessions } from './sessions.js';
 import { formatRunningDuration, formatRunningPace } from './running-presentation.js';
 import { parseDateKey } from '../utils/date-key.js';
 import { runningInputFromPhoneSummary } from './running-input.js';
@@ -72,6 +73,8 @@ const RUNNING_AUDIO_MIN_MS = 3500;
 const _session = {
   open: false,
   phase: 'start',
+  // 저장 대상 러닝 칸. 시작할 때 확정하고, 초기화하면 다시 비운다.
+  sessionIndex: null,
   watchId: null,
   tickId: null,
   startedAt: null,
@@ -504,8 +507,44 @@ function _ensureRunningWorkoutDate(dateKey, options = {}) {
   return _workoutDateKeyFromState();
 }
 
+// 데이터 파사드는 지연 로드한다. 러닝 화면 모듈이 Firebase까지 끌고 오면
+// 하네스/오프라인 부팅에서 모듈 자체가 실패한다.
+let _getDayFromData = null;
+function _warmRunningDayLookup() {
+  if (_getDayFromData) return;
+  import('../data.js')
+    .then((module) => {
+      if (typeof module.getDay === 'function') _getDayFromData = module.getDay;
+    })
+    .catch((error) => {
+      console.warn('[running-session] day lookup unavailable:', error?.message || error);
+    });
+}
+
+// 폰 러닝은 언제나 러닝 첫 칸(index 2)에 저장돼서, 같은 날 두 번째 러닝이
+// 첫 러닝을 덮어쓰고 저장 후 남은 상태가 다른 러닝까지 지웠다. 진행 중인 런은
+// 자기 칸을 고정해 쓰고, 새 런은 비어 있는 다음 러닝 칸을 잡는다.
+function _resolveRunningSessionIndex() {
+  const stored = Number(_session.sessionIndex);
+  if (Number.isFinite(stored) && stored >= WORKOUT_RUNNING_SESSION_INDEX) return stored;
+  const key = _workoutDateKeyFromState();
+  const parsed = key ? parseDateKey(key) : null;
+  if (!parsed || typeof _getDayFromData !== 'function') return WORKOUT_RUNNING_SESSION_INDEX;
+  try {
+    const day = _getDayFromData(parsed.y, parsed.m, parsed.d) || {};
+    const sessions = getWorkoutSessions(day);
+    const startedAt = Number(_session.startedAt);
+    return findRunningSessionIndex(sessions, (session) => (
+      Number.isFinite(startedAt) && startedAt > 0 && Number(session?.runStartedAt) === startedAt
+    ));
+  } catch (error) {
+    console.warn('[running-session] running session index resolve failed:', error);
+    return WORKOUT_RUNNING_SESSION_INDEX;
+  }
+}
+
 function _workoutSessionIndexFromState() {
-  return WORKOUT_RUNNING_SESSION_INDEX;
+  return _resolveRunningSessionIndex();
 }
 
 function _currentRunningDraftOwnerId() {
@@ -703,7 +742,7 @@ function _applyRunningDraft(draft) {
 function _restoreRunningDraftIfAvailable() {
   const draft = _readRunningDraft();
   if (!draft || !_applyRunningDraft(draft)) return false;
-  S.workout.sessionIndex = WORKOUT_RUNNING_SESSION_INDEX;
+  S.workout.sessionIndex = _resolveRunningSessionIndex();
   S.workout.sessionId = RUNNING_SESSION_ID;
   if (_session.phase === 'active') {
     if (!_nativeRunningLocationPlugin()) _markRouteGap('restore');
@@ -822,7 +861,7 @@ function _syncWorkoutRunData(summary, placeSummary = _session.placeSummary) {
     routeRef,
     placeSummary: placeSummary || _runningPlaceFallback(summary),
   }), {
-    sessionIndex: WORKOUT_RUNNING_SESSION_INDEX,
+    sessionIndex: _resolveRunningSessionIndex(),
     sessionId: RUNNING_SESSION_ID,
   });
 }
@@ -834,6 +873,7 @@ function _resetLiveSession(options = {}) {
   _lastRunningDraftPersistAt = 0;
   Object.assign(_session, {
     phase: 'start',
+    sessionIndex: null,
     watchId: null,
     tickId: null,
     startedAt: null,
@@ -1215,6 +1255,9 @@ function _beginRunningSession(goal, audioGuide, previewPoint) {
   _session.phase = 'active';
   _session.startedAt = _now();
   _session.pausedMs = 0;
+  // 시작 시점에 저장할 칸을 확정한다. 이후 저장/복구가 같은 칸만 건드린다.
+  _session.sessionIndex = _resolveRunningSessionIndex();
+  S.workout.sessionIndex = _session.sessionIndex;
   _seedRunningStartPoint();
   _startWatch();
   _startTicker();
@@ -1361,7 +1404,31 @@ function _renderRunningLiveOverview(distance, stats) {
   `;
 }
 
+// 화면을 여는 것과 러닝을 시작하는 것은 다른 행동이다. 시작 전에는 GPS를 켜지
+// 않고, 사용자가 명시적으로 누를 시작 버튼만 보여준다.
+function _renderReady() {
+  const goalText = _session.goal?.type === 'free' ? '자유 러닝' : _runningGoalLabel(_session.goal);
+  return `
+    <article class="wt-day-ex-card wt-max-read-card wt-running-read-card wt-running-live-card" data-running-screen="ready">
+      <div class="wt-max-card-kicker wt-running-card-kicker">
+        <span><i></i>OUTDOOR RUN</span>
+        <em class="wt-running-live-state">시작 전</em>
+      </div>
+      <div class="wt-running-ready-copy">
+        <strong>러닝 시작을 누르면 GPS 측정이 시작돼요</strong>
+        <span>${_escapeHtml(goalText || '자유 러닝')}</span>
+      </div>
+      ${_session.lastError ? `<p class="wt-running-live-status is-error">${_escapeHtml(_session.lastError)}</p>` : ''}
+      <div class="wt-max-actions">
+        <button type="button" class="wt-max-action-primary" data-running-action="start">러닝 시작</button>
+        <button type="button" class="wt-max-action-secondary" data-running-action="close">닫기</button>
+      </div>
+    </article>
+  `;
+}
+
 function _renderProgress() {
+  if (_session.phase === 'start') return _renderReady();
   const summary = _currentSummary();
   const elapsed = _elapsedSec();
   const isPaused = _session.phase === 'paused';
@@ -1501,6 +1568,7 @@ function _handleAction(action) {
 
 export function initRunningSession() {
   const root = _root();
+  _warmRunningDayLookup();
   _bindRunningDraftEvents();
   if (!root || root.dataset.runningSessionBound === '1') return;
   root.dataset.runningSessionBound = '1';
@@ -1536,7 +1604,10 @@ export function wtOpenRunningSession() {
   S.workout.sessionIndex = WORKOUT_RUNNING_SESSION_INDEX;
   S.workout.sessionId = RUNNING_SESSION_ID;
   _session.open = true;
-  _startRun();
+  // 화면만 연다. 예전에는 여기서 바로 _startRun()을 불러, 러닝 탭이나 위젯으로
+  // 들어오기만 해도 GPS가 켜지고 러닝한 것처럼 기록됐다.
+  _session.phase = 'start';
+  _render();
   return true;
 }
 

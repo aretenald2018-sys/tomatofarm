@@ -1014,6 +1014,26 @@
   background: #d7ff3f;
   color: #111;
 }
+/* 시작 전 화면 — GPS를 켜기 전이라는 상태를 분명히 보여준다. */
+.wt-running-ready-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 18px 0 4px;
+}
+.wt-running-ready-copy strong {
+  font-size: 16px;
+  line-height: 22px;
+  font-weight: 800;
+  /* 러닝 라이브 카드는 어두운 배경이다. 본문은 밝은 색이어야 읽힌다. */
+  color: #f7f8f4;
+}
+.wt-running-ready-copy span {
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 700;
+  color: #a4aaa0;
+}
 .wt-running-live-status {
   margin: 14px 0 0;
   padding: 0;

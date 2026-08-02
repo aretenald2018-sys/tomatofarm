@@ -60,6 +60,9 @@ try {
   state.S.shared.date = { y: 2026, m: 6, d: 10 };
   const session = await import(${JSON.stringify(sessionUrl)});
   session.wtOpenRunningSession();
+  // 화면을 여는 것만으로는 GPS가 켜지지 않는다. 사용자가 누르는 시작 버튼까지 눌러야
+  // 위치 구독이 생긴다.
+  document.querySelector('[data-running-action="start"]').click();
   const inlineCardBeforeFinish = document.querySelector('.wt-running-live-card')?.className || '';
   window.__draftWrites = 0;
 
