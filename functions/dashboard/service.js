@@ -13,7 +13,22 @@ const {
 } = require("./owner");
 
 const BUDGET_APP_NAME = "budget-dashboard";
+// Concurrency guard: stops two overlapping processDashboardJob runs for the
+// same owner from both loading sources and writing a snapshot at once.
 const LOCK_TTL_MS = 2 * 60 * 1000;
+// Frequency guard: independent from LOCK_TTL_MS above. The lock prevents two
+// rebuilds from running *at the same time*; this window prevents a *correct,
+// unlocked* call from starting a brand-new rebuild too soon after the last one
+// finished (e.g. every set-check during a workout). See queueDashboardRefresh.
+const COALESCE_WINDOW_MS = 60 * 1000;
+// Depth guard: processDashboardJob may re-invoke itself to catch up on
+// revisions requested while it held (and then released) its lock. Cap that
+// self-recursion so a sustained burst of writes cannot keep one invocation
+// running/reading indefinitely. Anything still pending past the cap is left
+// on the job doc — the next queueDashboardRefresh call (real write or the
+// daily reconcile) starts a fresh invocation that reads the latest
+// requestedRevision and catches up in one pass.
+const MAX_JOB_RECURSION_DEPTH = 2;
 
 function parseServiceAccount(value) {
   const parsed = typeof value === "string" ? JSON.parse(value) : { ...(value || {}) };
@@ -120,6 +135,16 @@ async function ensureDashboardLink(budgetDb, ownerId, budgetUid) {
   return { ownerId, budgetUid };
 }
 
+// Pure predicate pulled out of queueDashboardRefresh so the coalescing
+// decision itself is unit-testable without a live Firestore/service-account
+// (queueDashboardRefresh otherwise only gets a real budgetDb by constructing
+// a credentialed app from serviceAccountValue, which a plain unit test cannot
+// safely fake).
+function shouldCoalesceDashboardRefresh(lastProcessedAtEpochMs, nowEpochMs, windowMs = COALESCE_WINDOW_MS) {
+  const last = Number(lastProcessedAtEpochMs || 0);
+  return last > 0 && (Number(nowEpochMs) - last) < windowMs;
+}
+
 async function queueDashboardRefresh({ tomatoDb, serviceAccountValue, ownerId, budgetUid = null, reason = "source-change", nowEpochMs = Date.now() }) {
   ownerId = canonicalTomatoOwnerId(ownerId);
   if (!ownerId) throw new Error("dashboard ownerId is required");
@@ -143,9 +168,15 @@ async function queueDashboardRefresh({ tomatoDb, serviceAccountValue, ownerId, b
   }
   if (!linkedBudgetUid) return { state: "unlinked", ownerId };
   const jobRef = budgetDb.doc(`dashboardJobs/${ownerId}`);
+  // Read the job doc's own record of when a rebuild last actually completed
+  // (processDashboardJob stamps processedAtEpochMs right after writeSnapshot
+  // succeeds — no new field needed) to decide, inside the same transaction
+  // that registers this request, whether this call should coalesce.
+  let coalesced = false;
   await budgetDb.runTransaction(async (transaction) => {
     const snapshot = await transaction.get(jobRef);
     const current = snapshot.exists ? snapshot.data() : {};
+    coalesced = shouldCoalesceDashboardRefresh(current.processedAtEpochMs, nowEpochMs);
     transaction.set(jobRef, {
       ownerId,
       budgetUid: linkedBudgetUid,
@@ -155,6 +186,16 @@ async function queueDashboardRefresh({ tomatoDb, serviceAccountValue, ownerId, b
       updatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
   });
+  if (coalesced) {
+    // A rebuild finished inside the last COALESCE_WINDOW_MS: this write's
+    // revision request is now on the job doc (requestedRevision was just
+    // bumped above) but is left unprocessed. It is picked up by whichever
+    // comes first: the next queueDashboardRefresh call once outside this
+    // window, or dashboardDailyRefresh's daily reconcile. Trade-off: a
+    // snapshot can lag up to ~60s past the last write plus however long
+    // until the next trigger fires; the daily reconcile is the backstop.
+    return { state: "coalesced", ownerId, budgetUid: linkedBudgetUid };
+  }
   return processDashboardJob({ tomatoDb, budgetDb, messaging, ownerId, nowEpochMs });
 }
 
@@ -228,7 +269,7 @@ async function notifyDevices(budgetDb, messaging, budgetUid, revision) {
   return { sent: response.successCount, removed: invalid.length };
 }
 
-async function processDashboardJob({ tomatoDb, budgetDb, messaging, ownerId, nowEpochMs = Date.now() }) {
+async function processDashboardJob({ tomatoDb, budgetDb, messaging, ownerId, nowEpochMs = Date.now(), depth = 0 }) {
   const lockId = crypto.randomUUID();
   const initial = await claimJob(budgetDb, ownerId, lockId, nowEpochMs);
   if (!initial) return { state: "queued", ownerId };
@@ -266,7 +307,22 @@ async function processDashboardJob({ tomatoDb, budgetDb, messaging, ownerId, now
     await releaseJob(budgetDb, ownerId, lockId, { state: "ready" });
     const pending = (await budgetDb.doc(`dashboardJobs/${ownerId}`).get()).data() || {};
     if (Number(pending.requestedRevision || 0) > processedRevision) {
-      return processDashboardJob({ tomatoDb, budgetDb, messaging, ownerId, nowEpochMs: Date.now() });
+      if (depth >= MAX_JOB_RECURSION_DEPTH) {
+        // Depth cap reached: leave requestedRevision as recorded on the job
+        // doc (already released/unlocked above) instead of recursing again.
+        // The next queueDashboardRefresh call — a real write's trigger, or
+        // dashboardDailyRefresh's daily reconcile — starts a fresh call with
+        // depth reset to 0 and reads this same requestedRevision, so the
+        // backlog is not lost, only deferred.
+        return {
+          state: "deferred",
+          ownerId,
+          processedRevision,
+          snapshotRevision: latestSnapshotRevision,
+          pendingRevision: Number(pending.requestedRevision || 0),
+        };
+      }
+      return processDashboardJob({ tomatoDb, budgetDb, messaging, ownerId, nowEpochMs: Date.now(), depth: depth + 1 });
     }
     return { state: "ready", ownerId, processedRevision, snapshotRevision: latestSnapshotRevision };
   } catch (error) {
@@ -319,5 +375,8 @@ module.exports = {
   processDashboardJob,
   queueDashboardRefresh,
   refreshAllLinkedDashboards,
+  shouldCoalesceDashboardRefresh,
   verifyInternalRequest,
+  COALESCE_WINDOW_MS,
+  MAX_JOB_RECURSION_DEPTH,
 };
