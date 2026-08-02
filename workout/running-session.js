@@ -771,6 +771,13 @@ function _bindRunningDraftEvents() {
       if (document.hidden) {
         if (!_nativeRunningLocationPlugin()) _markRouteGap('visibility-hidden');
         _persistRunningDraft('visibility hidden');
+      } else if (_session.nativeLocationStarted) {
+        // 화면이 꺼진 동안 포그라운드 서비스가 계속 쌓아둔 GPS 점을 복귀하자마자
+        // 한 번 드레인한다. 다음 폴링(NATIVE_LOCATION_POLL_MS)까지 기다리면 그
+        // 사이 구간이 화면에 비지 않은 것처럼 보인다.
+        _drainNativeLocationUpdates().catch(error => {
+          console.warn('[running-session] visible-return native drain failed:', error);
+        });
       }
     });
   }
@@ -961,10 +968,12 @@ function _nativePointToRoutePoint(point = {}) {
   });
 }
 
-function _isUsableLiveGpsPoint(point, now = _now()) {
+function _isUsableLiveGpsPoint(point, now = _now(), options = {}) {
   if (!point) return false;
-  const ageMs = now - Number(point.ts);
-  if (!Number.isFinite(ageMs) || ageMs > MAX_LIVE_GPS_AGE_MS) return false;
+  if (!options.skipAgeCheck) {
+    const ageMs = now - Number(point.ts);
+    if (!Number.isFinite(ageMs) || ageMs > MAX_LIVE_GPS_AGE_MS) return false;
+  }
   const accuracy = Number(point.accuracy);
   if (Number.isFinite(accuracy) && accuracy > MAX_LIVE_GPS_ACCURACY_M) return false;
   const last = _session.route[_session.route.length - 1];
@@ -980,7 +989,10 @@ function _ingestNativeLocationResult(result = {}) {
   let changed = false;
   points.forEach(raw => {
     const point = _nativePointToRoutePoint(raw);
-    if (!_isUsableLiveGpsPoint(point)) return;
+    // 네이티브 스토어에서 드레인된 점은 화면이 꺼진 동안 쌓인 "버퍼된 이력"이다.
+    // 실시간 age 필터(MAX_LIVE_GPS_AGE_MS)를 그대로 적용하면 백그라운드 구간이
+    // 통째로 폐기되므로, accuracy·추정 속도 필터만 순서대로 적용한다.
+    if (!_isUsableLiveGpsPoint(point, _now(), { skipAgeCheck: true })) return;
     if (_pushRoutePoint(point)) changed = true;
   });
   const nextIndex = Number(result.nextIndex);
