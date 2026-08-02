@@ -382,8 +382,9 @@ async function _computeRanking() {
   return { ranked: filtered.length, weekStart };
 }
 
-// 매시간 자동 실행
-exports.computeWeeklyRanking = onSchedule("every 1 hours", async () => {
+// 6시간마다 자동 실행 (매시간 실행 시 매회 _accounts 전체 + 계정당 ~8 getDoc +
+// _guilds 전체를 읽는 비용이 커서 주기만 완화 — 로직은 변경하지 않음)
+exports.computeWeeklyRanking = onSchedule("every 6 hours", async () => {
   await _computeRanking();
 });
 
