@@ -13,6 +13,8 @@ export async function recordLogin() {
   trackEvent('session', 'session_start');
   try {
     await setDoc(doc(db, '_accounts', uid), { lastLoginAt: Date.now() }, { merge: true });
+    const { invalidateAccountListCache } = await import('./data-account.js');
+    invalidateAccountListCache();
   } catch(e) { console.warn('[track] login:', e); }
 }
 
@@ -21,6 +23,8 @@ export async function recordTutorialDone() {
   const uid = getCurrentUserRef().id;
   try {
     await setDoc(doc(db, '_accounts', uid), { tutorialDoneAt: Date.now() }, { merge: true });
+    const { invalidateAccountListCache } = await import('./data-account.js');
+    invalidateAccountListCache();
   } catch(e) { console.warn('[track] tutorial:', e); }
 }
 
@@ -91,5 +95,7 @@ export async function recordAction(action) {
     const log = (data.actionLog || []).slice(-29);
     log.push({ action, at: Date.now() });
     await setDoc(doc(db, '_accounts', uid), { actionLog: log }, { merge: true });
+    const { invalidateAccountListCache } = await import('./data-account.js');
+    invalidateAccountListCache();
   } catch(e) { console.warn('[track] action:', e); }
 }

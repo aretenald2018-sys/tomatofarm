@@ -5,7 +5,8 @@
 import { getCurrentUser, getMyNotifications, getAccountList,
          getPendingRequests, acceptFriendRequest, removeFriend,
          markNotificationRead, deleteNotification, recordAction,
-         approveGuildJoinRequest, findCommentProfileOwner }  from '../data.js';
+         approveGuildJoinRequest, findCommentProfileOwner,
+         invalidateAccountListCache }  from '../data.js';
 import { resolveNickname, formatTimeAgo, showToast, haptic, escapeHtml } from './utils.js';
 import { openFriendProfile, openMyGuestbook, sendFriendFromIntro } from './friend-profile.js';
 import { openPatchnote } from '../modals/patchnote-modal.js';
@@ -47,13 +48,19 @@ function _bindNotificationActions(list) {
   });
 }
 
-export async function refreshNotifCenter() {
+// opts.force=true 는 FCM 푸시 수신 디바운스(pwa-fcm.js)가 10초 정지 뒤 실제로
+// 실행할 때 사용한다 — A2 캐시(60s TTL)를 우회해 최신 pending/notifs 를 가져오고,
+// getAccountList() 는 시그니처를 바꿀 수 없어(잠긴 테스트) 대신 읽기 직전에
+// 캐시를 무효화해 같은 효과를 낸다.
+export async function refreshNotifCenter(opts = {}) {
   const user = getCurrentUser();
   if (!user) return;
 
+  if (opts.force) invalidateAccountListCache();
+
   const [pendingR, notifsR, accountsR] = await Promise.allSettled([
-    getPendingRequests(),
-    getMyNotifications(),
+    getPendingRequests(opts),
+    getMyNotifications(opts),
     getAccountList()
   ]);
   const pending  = pendingR.status  === 'fulfilled' ? pendingR.value  : [];

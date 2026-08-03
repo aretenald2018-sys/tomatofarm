@@ -28,7 +28,11 @@ test('chat history persists in Firestore and supports owner-checked deletion', (
 
   assert.match(chatBlock, /setDoc\(doc\(db, '_chat_messages', id\), entry\)/);
   assert.match(chatBlock, /onSnapshot\(chatQuery/);
-  assert.match(chatBlock, /orderBy\('createdAt', 'asc'\)/);
+  // 최근 CHAT_HISTORY_LIMIT 건만 내림차순+limit 로 구독해 전체 히스토리 read 를
+  // 막고, 콜백 전에 오름차순으로 뒤집어 소비자가 받는 순서는 유지한다.
+  assert.match(chatBlock, /orderBy\('createdAt', 'desc'\)/);
+  assert.match(chatBlock, /limit\(CHAT_HISTORY_LIMIT\)/);
+  assert.match(chatBlock, /messages\.reverse\(\)/);
   assert.match(chatBlock, /export async function deleteChatMessage/);
   assert.match(chatBlock, /myIds\.has\(ownerId\)/);
   assert.match(chatBlock, /deleteDoc\(messageRef\)/);

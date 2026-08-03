@@ -8,12 +8,35 @@ import {
 } from './data-core.js';
 import { isAdminConsoleAccount } from './account-unification.js';
 import { getCurrentUser, isAdmin, setCurrentUser } from './data-auth.js';
+import { invalidateFriendsCache } from './data-social-friends.js';
+import { invalidateNotificationsCache, invalidateLikesScanCache } from './data-social-interact.js';
+
+// ── _accounts 전역 스캔 TTL 캐시 (60s) ────────────────────────────
+// renderHome 경로마다 getAccountList()가 반복 호출되며 _accounts 를 매번
+// 풀스캔했다. cheers config 캐시(data-social-interact.js, TTL 10s)와 같은
+// 패턴으로 스캔 결과 자체를 캐시하고, admin-console 필터는 호출마다 새로
+// 적용한다. 쓰기 경로(saveAccount/deleteUserAccount, 그리고 data-social-log.js
+// 의 로그인/튜토리얼/액션 로그 기록)가 성공하면 invalidateAccountListCache() 로
+// 무효화하고, 계정 전환 시에는 data-api.js의 setCurrentUser 래퍼가 무효화한다.
+const ACCOUNT_LIST_CACHE_TTL_MS = 60 * 1000;
+let _accountListScanCache = null;
+let _accountListScanCacheAt = 0;
+
+export function invalidateAccountListCache() {
+  _accountListScanCache = null;
+  _accountListScanCacheAt = 0;
+}
 
 async function _readAllAccounts() {
+  if (_accountListScanCache && (Date.now() - _accountListScanCacheAt) < ACCOUNT_LIST_CACHE_TTL_MS) {
+    return _accountListScanCache;
+  }
   try {
     const snap = await getDocs(collection(db, '_accounts'));
     const accounts = [];
     snap.forEach(d => accounts.push(d.data()));
+    _accountListScanCache = accounts;
+    _accountListScanCacheAt = Date.now();
     return accounts;
   } catch { return []; }
 }
@@ -37,6 +60,7 @@ export async function getAccountListIncludingAdminConsole() {
 // 비우는 경로는 명시적으로 null 을 넣으므로 merge 에서도 그대로 지워진다.
 export async function saveAccount(account) {
   await setDoc(doc(db, '_accounts', account.id), account, { merge: true });
+  invalidateAccountListCache();
 }
 
 export async function refreshCurrentUserFromDB() {
@@ -157,7 +181,13 @@ export async function deleteUserAccount(userId) {
       }
     } catch(e) { console.warn(`[deleteUser] ${gc.name} 삭제 실패:`, e.message); }
   }
+  // 위 루프가 _friend_requests/_likes/_notifications 에서도 문서를 지웠으므로
+  // 해당 컬렉션들의 스캔 캐시(A2)도 함께 무효화한다.
+  invalidateFriendsCache();
+  invalidateLikesScanCache();
+  invalidateNotificationsCache();
 
   await deleteDoc(doc(db, '_accounts', userId));
+  invalidateAccountListCache();
   console.log(`[deleteUser] ${userId} 계정 및 데이터 완전 삭제 완료`);
 }

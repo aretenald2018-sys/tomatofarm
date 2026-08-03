@@ -323,7 +323,7 @@ export async function updateGuildLeader(guildId, newLeaderId) {
 }
 
 export async function createGuildJoinRequest(guildId, guildName, userId, userName) {
-  const { sendNotification } = await import('./data-social-interact.js');
+  const { sendNotification, invalidateNotificationsCache } = await import('./data-social-interact.js');
   const { getAccountList } = await import('./data-account.js');
   const requestId = `${guildId}_${userId}_${Date.now()}`;
   const request = {
@@ -339,6 +339,7 @@ export async function createGuildJoinRequest(guildId, guildName, userId, userNam
     guildId, guildName, requestId,
     message: `${guildName} 길드 가입이 진행 중입니다.`,
   });
+  invalidateNotificationsCache();
   const accounts = await getAccountList();
   for (const acc of accounts) {
     const memberGuilds = acc.guilds || [];
@@ -354,7 +355,7 @@ export async function createGuildJoinRequest(guildId, guildName, userId, userNam
 }
 
 export async function approveGuildJoinRequest(requestId) {
-  const { sendNotification } = await import('./data-social-interact.js');
+  const { sendNotification, invalidateNotificationsCache } = await import('./data-social-interact.js');
   const { getAccountList, saveAccount } = await import('./data-account.js');
   try {
     const snap = await getDoc(doc(db, '_guild_requests', requestId));
@@ -380,6 +381,7 @@ export async function approveGuildJoinRequest(requestId) {
     await updateGuildMemberCount(request.guildId, 1);
     const pendingNotifId = `guild_pending_${request.guildId}_${request.userId}`;
     try { await deleteDoc(doc(db, '_notifications', pendingNotifId)); } catch {}
+    invalidateNotificationsCache();
     await sendNotification(request.userId, {
       type: 'guild_join_approved', from: _socialId(),
       guildId: request.guildId, guildName: request.guildName,
@@ -425,12 +427,14 @@ export async function getMyPendingGuildRequests(userId) {
 
 export async function withdrawGuildJoinRequest(guildId, userId) {
   if (!guildId || !userId) return { removedRequestCount: 0, notificationRemoved: false };
+  const { invalidateNotificationsCache } = await import('./data-social-interact.js');
 
   const notificationId = `guild_pending_${guildId}_${userId}`;
   let notificationRemoved = false;
   try {
     await deleteDoc(doc(db, '_notifications', notificationId));
     notificationRemoved = true;
+    invalidateNotificationsCache();
   } catch {}
 
   let removedRequestCount = 0;
@@ -592,6 +596,7 @@ export async function adminRemoveGuildMember(guildId, userId) {
 
 export async function deleteGuild(guildId) {
   const { getAccountList, saveAccount } = await import('./data-account.js');
+  const { invalidateNotificationsCache } = await import('./data-social-interact.js');
   try {
     const accounts = await getAccountList();
     for (const acc of accounts) {
@@ -621,6 +626,7 @@ export async function deleteGuild(guildId) {
         return data.guildId === guildId || data.guildName === guildId;
       })
       .map((d) => deleteDoc(doc(db, '_notifications', d.id))));
+    invalidateNotificationsCache();
 
     await deleteDoc(doc(db, '_guilds', guildId));
     invalidateGuildStatsCache();

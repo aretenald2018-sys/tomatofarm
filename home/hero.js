@@ -264,7 +264,28 @@ async function _buildParticipants(user) {
   return [...byKey.values()];
 }
 
+// 참가자별 누적 활성일수는 참가자마다 getFriendData(id,'workouts') 로 그 사람의
+// workouts 컬렉션 전체를 읽는다. renderHome은 앱 시작·탭 복귀·저장 1회마다
+// 다시 돌므로, 이 캐시가 없으면 참가자 수 x 렌더 횟수만큼 풀스캔이 반복된다.
+// "나"의 활성일수는 로컬 캐시(getAllDateKeys/getDay)만 읽는 0-네트워크 계산이라
+// 캐시 적중 시에도 항상 새로 계산한다 — 방금 저장한 오늘 기록이 최대 5분간
+// 반영되지 않는 것을 막기 위함. 캐시는 로그인 계정이 바뀌면(ownerId 불일치)
+// 자동으로 미스 처리된다.
+const CUMULATIVE_ROWS_CACHE_TTL_MS = 5 * 60 * 1000;
+let _cumulativeRowsCache = null; // { ownerId, rows, at }
+
 async function _buildCumulativeRows(user) {
+  const ownerId = user?.id || null;
+  if (
+    _cumulativeRowsCache
+    && _cumulativeRowsCache.ownerId === ownerId
+    && (Date.now() - _cumulativeRowsCache.at) < CUMULATIVE_ROWS_CACHE_TTL_MS
+  ) {
+    return _cumulativeRowsCache.rows
+      .map((row) => (row.isMe ? { ...row, days: _countLocalCumulativeActiveDays() } : row))
+      .sort((a, b) => b.days - a.days);
+  }
+
   const participants = await _buildParticipants(user);
   const results = await Promise.allSettled(
     participants.map(async (p) => {
@@ -273,10 +294,13 @@ async function _buildCumulativeRows(user) {
       return { ...p, days };
     })
   );
-  return results
+  const rows = results
     .filter((r) => r.status === 'fulfilled')
     .map((r) => ({ ...r.value, userId: r.value.id }))
     .sort((a, b) => b.days - a.days);
+
+  _cumulativeRowsCache = { ownerId, rows, at: Date.now() };
+  return rows;
 }
 
 async function _buildWeeklyBoard(user) {

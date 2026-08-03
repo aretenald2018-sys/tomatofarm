@@ -36,6 +36,12 @@ let _pendingSyncListenersReady = false;
 const REMOTE_ACK_WINDOW_MS = 8000;
 const OFFLINE_HINT_ACK_WINDOW_MS = 1200;
 
+// 안전망: acknowledgePendingDayWrites가 저널을 지우지 못하는 상태(localStorage
+// quota, WebView 저장소 제한, 탭 경합 등)가 계속되면 같은 payload를 이 횟수까지만
+// 재전송하고 pending으로 빠진다. 정상 흐름(엔트리가 계속 줄어드는 경우)은 보통
+// 1~2회 안에 synced로 끝나므로 이 값에 도달하지 않는다.
+const PENDING_DAY_DRAIN_ATTEMPT_LIMIT = 10;
+
 function _ownerDateQueueKey(ownerId, key) {
   return `${encodeURIComponent(ownerId)}:${key}`;
 }
@@ -207,8 +213,9 @@ function _trackInFlightRemoteDayWrite(queueKey, remoteWrite) {
 
 async function _drainPendingDayWrites(ownerId, key, dayRef) {
   const queueKey = _ownerDateQueueKey(ownerId, key);
+  let previousEntryCount = null;
 
-  while (true) {
+  for (let attempt = 0; attempt < PENDING_DAY_DRAIN_ATTEMPT_LIMIT; attempt += 1) {
     const storage = _pendingStorage();
     const entries = listPendingDayWrites(storage, { ownerId, dateKey: key });
     if (!entries.length) return { state: 'synced', ownerId, dateKey: key };
@@ -218,6 +225,19 @@ async function _drainPendingDayWrites(ownerId, key, dayRef) {
     if (_inFlightRemoteDayWrites.has(queueKey)) {
       return { state: 'pending', ownerId, dateKey: key };
     }
+
+    // ack-stall 가드: 직전 재전송 이후에도 저널 건수가 줄지 않았다면
+    // acknowledgePendingDayWrites 가 저널을 지우지 못하고 있다는 뜻이다
+    // (localStorage quota 초과, WebView 저장소 제한, 탭 경합 등). 같은 payload를
+    // 계속 재전송하지 않고 pending 으로 빠져 다음 flush 트리거(online/focus/
+    // storage 이벤트)에 맡긴다.
+    if (previousEntryCount !== null && entries.length >= previousEntryCount) {
+      console.warn('[data] pending day ack-stall — journal not shrinking after resend, halting:', {
+        ownerId, dateKey: key, entries: entries.length,
+      });
+      return { state: 'pending', ownerId, dateKey: key };
+    }
+    previousEntryCount = entries.length;
 
     const pendingCache = mergePendingDayWritesIntoCache({}, entries);
     const payload = pendingCache[key];
@@ -255,6 +275,11 @@ async function _drainPendingDayWrites(ownerId, key, dayRef) {
       return { state: 'pending', ownerId, dateKey: key };
     }
   }
+
+  console.warn('[data] pending day drain attempt limit reached — halting resend:', {
+    ownerId, dateKey: key, limit: PENDING_DAY_DRAIN_ATTEMPT_LIMIT,
+  });
+  return { state: 'pending', ownerId, dateKey: key };
 }
 
 function _requestPendingDayFlush(ownerId, key, { dayRef = null, rethrow = false } = {}) {

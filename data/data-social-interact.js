@@ -4,28 +4,54 @@
 
 import {
   db, doc, setDoc, deleteDoc, getDoc, collection, getDocs,
-  query, orderBy, onSnapshot, getCurrentUserRef, _fbOp,
+  query, orderBy, limit, onSnapshot, getCurrentUserRef, _fbOp,
 } from './data-core.js';
 import { isAdmin, _simpleHash } from './data-auth.js';
 import { _socialId, _isMySocialId } from './data-social-friends.js';
 import { resolvePrivateDataOwnerId } from './shared-account-owner.js';
 
+// ── 전역 컬렉션 스캔 TTL 캐시 공통 상수 (60s) ──────────────────────
+// cheers config 캐시(아래, TTL 10s)와 같은 패턴: renderHome 경로마다 반복
+// 호출되는 컬렉션 풀스캔의 결과 자체를 캐시하고, 호출별 필터는 캐시된 배열
+// 위에서 새로 적용한다.
+const READ_SCAN_CACHE_TTL_MS = 60 * 1000;
+
 // ── 알림 ────────────────────────────────────────────────────────
+let _notificationsScanCache = null;
+let _notificationsScanCacheAt = 0;
+
+// 쓰기 경로(sendNotification/markNotificationRead/deleteNotification, 그리고
+// data-social-guild.js 의 길드 알림 write/삭제, data-account.js 의
+// deleteUserAccount)가 성공하면 호출해 다음 읽기에서 최신 상태를 스캔하게 한다.
+export function invalidateNotificationsCache() {
+  _notificationsScanCache = null;
+  _notificationsScanCacheAt = 0;
+}
+
+async function _scanNotifications({ force = false } = {}) {
+  if (!force && _notificationsScanCache && (Date.now() - _notificationsScanCacheAt) < READ_SCAN_CACHE_TTL_MS) {
+    return _notificationsScanCache;
+  }
+  const snap = await getDocs(collection(db, '_notifications'));
+  const notifs = [];
+  snap.forEach(d => notifs.push(d.data()));
+  _notificationsScanCache = notifs;
+  _notificationsScanCacheAt = Date.now();
+  return notifs;
+}
+
 export async function sendNotification(toUserId, data) {
   const notifId = `${toUserId}_${Date.now()}`;
   await setDoc(doc(db, '_notifications', notifId), {
     id: notifId, to: toUserId, read: false, createdAt: Date.now(), ...data,
   });
+  invalidateNotificationsCache();
 }
 
-export async function getMyNotifications() {
+export async function getMyNotifications(opts = {}) {
   if (!getCurrentUserRef()) return [];
-  const snap = await getDocs(collection(db, '_notifications'));
-  const notifs = [];
-  snap.forEach(d => {
-    const data = d.data();
-    if (_isMySocialId(data.to)) notifs.push(data);
-  });
+  const all = await _scanNotifications(opts);
+  const notifs = all.filter(data => _isMySocialId(data.to));
   notifs.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   return notifs;
 }
@@ -33,12 +59,14 @@ export async function getMyNotifications() {
 export async function markNotificationRead(notifId) {
   if (!notifId) return;
   await setDoc(doc(db, '_notifications', notifId), { read: true, readAt: Date.now() }, { merge: true });
+  invalidateNotificationsCache();
 }
 
 export async function deleteNotification(notifId) {
   if (!notifId) return false;
   try {
     await deleteDoc(doc(db, '_notifications', notifId));
+    invalidateNotificationsCache();
     return true;
   } catch (error) {
     console.warn('[notification] delete:', error);
@@ -116,6 +144,8 @@ export async function getAdminOutreachHistory() {
 const CHAT_NOTICE_PREFIX = '<공지>';
 const CHAT_MESSAGE_MAX_LENGTH = 300;
 const CHAT_CHANNELS = new Set(['notice', 'bug', 'free']);
+// 세션마다 전체 채팅 히스토리를 read 하지 않도록 최근 N건만 구독한다.
+const CHAT_HISTORY_LIMIT = 100;
 
 function _normalizeChatDraft(rawMessage, requestedChannel = 'free') {
   const raw = String(rawMessage || '').trim();
@@ -192,7 +222,14 @@ export function subscribeChatMessages(onMessages, onError) {
     return () => {};
   }
 
-  const chatQuery = query(collection(db, '_chat_messages'), orderBy('createdAt', 'asc'));
+  // 최신 CHAT_HISTORY_LIMIT 건만 내림차순으로 구독해 전체 히스토리 read 를
+  // 막는다. 소비자(home/chat.js)는 오래된 → 최신 순서를 그대로 기대하므로
+  // 콜백에 넘기기 전 오름차순으로 뒤집어 기존 순서 계약을 유지한다.
+  const chatQuery = query(
+    collection(db, '_chat_messages'),
+    orderBy('createdAt', 'desc'),
+    limit(CHAT_HISTORY_LIMIT),
+  );
   return onSnapshot(chatQuery, (snapshot) => {
     const messages = snapshot.docs.map((snapshotDoc) => {
       const data = snapshotDoc.data() || {};
@@ -209,6 +246,7 @@ export function subscribeChatMessages(onMessages, onError) {
         isNotice,
       };
     });
+    messages.reverse();
     onMessages?.(messages);
   }, (error) => {
     console.warn('[chat] subscribe:', error);
@@ -518,6 +556,30 @@ export async function deleteComment(commentId) {
 }
 
 // ── 좋아요 ──────────────────────────────────────────────────────
+// _likes 전역 스캔 TTL 캐시 (60s). getLikes/getUnseenCheers 가 같은 스캔을
+// 공유한다 — 타깃 수만큼 반복 호출돼도 60초당 스캔 1회로 수렴시킨다.
+let _likesScanCache = null;
+let _likesScanCacheAt = 0;
+
+// toggleLike 의 모든 write 분기(레거시 이전, emoji 변경, 취소, 신규 생성)와
+// data-account.js 의 deleteUserAccount 가 성공하면 호출한다.
+export function invalidateLikesScanCache() {
+  _likesScanCache = null;
+  _likesScanCacheAt = 0;
+}
+
+async function _scanLikes({ force = false } = {}) {
+  if (!force && _likesScanCache && (Date.now() - _likesScanCacheAt) < READ_SCAN_CACHE_TTL_MS) {
+    return _likesScanCache;
+  }
+  const snap = await getDocs(collection(db, '_likes'));
+  const likes = [];
+  snap.forEach(d => likes.push(d.data()));
+  _likesScanCache = likes;
+  _likesScanCacheAt = Date.now();
+  return likes;
+}
+
 export async function toggleLike(targetUserId, dateKey, field, emoji) {
   if (!getCurrentUserRef()) return;
   const fromId = _socialId();
@@ -530,21 +592,25 @@ export async function toggleLike(targetUserId, dateKey, field, emoji) {
     if (legacySnap?.exists()) {
       await deleteDoc(doc(db, '_likes', legacyId));
       await setDoc(likeDoc, { ...legacySnap.data(), id: likeId, from: fromId });
+      invalidateLikesScanCache();
       return true;
     }
   }
   if (snap.exists()) {
     if (emoji && snap.data().emoji !== emoji) {
       await setDoc(likeDoc, { ...snap.data(), emoji }, { merge: true });
+      invalidateLikesScanCache();
       return true;
     }
     await deleteDoc(likeDoc);
+    invalidateLikesScanCache();
     return false;
   } else {
     await setDoc(likeDoc, {
       id: likeId, from: fromId, to: targetUserId,
       dateKey, field, emoji: emoji || '👏', createdAt: Date.now(),
     });
+    invalidateLikesScanCache();
     if (!_isMySocialId(targetUserId)) {
       await sendNotification(targetUserId, {
         type: 'like', from: fromId, dateKey, field,
@@ -572,30 +638,22 @@ export async function getCheerStatus(friendId, dk) {
   return { iSent, theyCheerd };
 }
 
-export async function getLikes(targetUserId, dateKey) {
+export async function getLikes(targetUserId, dateKey, opts = {}) {
   try {
-    const snap = await getDocs(collection(db, '_likes'));
-    const likes = [];
-    snap.forEach(d => {
-      const data = d.data();
-      if (data.to === targetUserId && data.dateKey === dateKey) likes.push(data);
-    });
-    return likes;
+    const all = await _scanLikes(opts);
+    return all.filter(data => data.to === targetUserId && data.dateKey === dateKey);
   } catch { return []; }
 }
 
-export async function getUnseenCheers(lastSeenAt = 0) {
+export async function getUnseenCheers(lastSeenAt = 0, opts = {}) {
   if (!getCurrentUserRef()) return [];
   try {
-    const snap = await getDocs(collection(db, '_likes'));
-    const cheers = [];
-    snap.forEach(d => {
-      const data = d.data();
-      if (data.field !== 'cheer') return;
-      if (!_isMySocialId(data.to)) return;
-      if ((data.createdAt || 0) <= (lastSeenAt || 0)) return;
-      cheers.push(data);
-    });
+    const all = await _scanLikes(opts);
+    const cheers = all.filter(data => (
+      data.field === 'cheer'
+      && _isMySocialId(data.to)
+      && (data.createdAt || 0) > (lastSeenAt || 0)
+    ));
     cheers.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
     return cheers;
   } catch {
