@@ -13,7 +13,11 @@ const {
   refreshAllLinkedDashboards,
   verifyInternalRequest,
 } = require("./dashboard/service");
-const { createMirrorHandler } = require("./sync/firestore-mirror");
+const {
+  createMirrorHandler,
+  isExpiredSyncEvent,
+  isSyncOnlyMutation,
+} = require("./sync/firestore-mirror");
 const { resolveTomatoDataOwnerId } = require("./dashboard/owner");
 
 initializeApp();
@@ -61,12 +65,38 @@ const TOMATO_SYNC_TRIGGER_OPTIONS = {
   secrets: [TOMATO_SYNC_PEER_SERVICE_ACCOUNT],
 };
 
+// Retry stays on for the mirror (dropping a first failure silently diverges
+// the two projects and nothing reconciles them later), but each event gets a
+// bounded window instead of Eventarc's full 24h: past it the event is acked
+// with an error log so a sustained peer-project quota exhaustion cannot turn
+// every write in the database into a day-long redelivery storm.
+const TOMATO_SYNC_MAX_EVENT_AGE_MS = 6 * 60 * 60 * 1000;
+
 function mirrorTomatoDocument(event) {
+  if (isExpiredSyncEvent(event.time, Date.now(), TOMATO_SYNC_MAX_EVENT_AGE_MS)) {
+    console.error("[tomatoSync] abandoning redelivery past max event age", {
+      eventTime: event.time,
+      path: event.data?.after?.ref?.path || event.data?.before?.ref?.path || null,
+    });
+    return { state: "abandoned-expired-retry" };
+  }
   return createMirrorHandler({
     sourceDb: getFirestore(),
     sourceProjectId: currentFirebaseProjectId(),
     peerServiceAccountValue: () => TOMATO_SYNC_PEER_SERVICE_ACCOUNT.value(),
-  })(event);
+  })(event).catch((error) => {
+    // Secret Manager may hold a {"disabled":true} placeholder (the deploy
+    // pipeline seeds one so codebase-wide secret validation passes before the
+    // real TomatoDev service account is provisioned). An unconfigured peer
+    // must read as "mirroring off", not as a crash that Eventarc retries.
+    if (/is incomplete/.test(String(error?.message || ""))) {
+      console.error("[tomatoSync] peer service account is not configured — mirroring disabled", {
+        path: event.data?.after?.ref?.path || event.data?.before?.ref?.path || null,
+      });
+      return { state: "sync-unconfigured" };
+    }
+    throw error;
+  });
 }
 
 // Keep the paths explicit: Firestore event patterns must end at a document and
@@ -85,13 +115,29 @@ exports.syncTomatoSharedDocument = onDocumentWritten(
   mirrorTomatoDocument,
 );
 
+// retry stays off: a 2026-07 Firestore quota exhaustion on the budget project
+// turned every dashboard-trigger failure into an Eventarc retry storm (82k
+// invocations / ~19,146원 CPU billing over two weeks) because each retry hit
+// the same exhausted quota and failed again. A dropped refresh here is safe —
+// the next real write bumps requestedRevision and reprocesses it, and
+// dashboardDailyRefresh reconciles every linked owner within 24h regardless.
 const DASHBOARD_TRIGGER_OPTIONS = {
   region: "asia-northeast3",
-  retry: true,
+  retry: false,
   secrets: [BUDGET_FIREBASE_SERVICE_ACCOUNT],
 };
 
 function _queueDashboardSourceChange(event, reason) {
+  // The peer mirror stamps __tomatoSync back onto every source document it
+  // forwards, which re-fires these triggers with an unchanged payload. Without
+  // this guard every real write costs two full dashboard rebuilds (and two
+  // budget-project job transactions), which is what pushed the budget project
+  // into the 2026-07 quota exhaustion in the first place.
+  const before = event.data?.before;
+  const after = event.data?.after;
+  if (before?.exists && after?.exists && isSyncOnlyMutation(before.data(), after.data())) {
+    return { state: "ignored-sync-marker" };
+  }
   return queueDashboardRefresh({
     tomatoDb: getFirestore(),
     serviceAccountValue: BUDGET_FIREBASE_SERVICE_ACCOUNT.value(),
@@ -336,16 +382,16 @@ async function _computeRanking() {
   return { ranked: filtered.length, weekStart };
 }
 
-// 매시간 자동 실행
-exports.computeWeeklyRanking = onSchedule("every 1 hours", async () => {
+// 6시간마다 자동 실행 (매시간 실행 시 매회 _accounts 전체 + 계정당 ~8 getDoc +
+// _guilds 전체를 읽는 비용이 커서 주기만 완화 — 로직은 변경하지 않음)
+exports.computeWeeklyRanking = onSchedule("every 6 hours", async () => {
   await _computeRanking();
 });
 
-// 수동 새로고침 엔드포인트
-exports.refreshWeeklyRanking = onRequest({ cors: true }, async (req, res) => {
-  const result = await _computeRanking();
-  res.json({ ok: true, ...result });
-});
+// refreshWeeklyRanking(무인증 공개 HTTP 수동 새로고침)은 제거됨: 저장소 어디에도
+// 호출자가 없고(클라이언트는 _weekly_ranking/current 문서를 직접 읽음), 호출당
+// 전체 계정 × 7일치 문서를 읽는 무인증 엔드포인트라 외부 반복 호출만으로 읽기
+// 쿼터를 소진시킬 수 있는 비용 노출면이었다. 갱신은 위 스케줄러가 담당한다.
 
 // ── Groq fallback helper (OpenAI-호환 chat completions) ──────────────
 // Gemini가 quota/5xx로 실패했을 때 호출.
