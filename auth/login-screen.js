@@ -374,13 +374,14 @@ export async function initLoginScreen() {
     }
   }
 
+  // change/blur의 즉시 조회는 제거했다 — input의 300ms 디바운스가 이미 같은
+  // 결과를 커버하고, change/blur는 매 keystroke 뒤 focus 이동/탭전환마다
+  // getAccountListIncludingAdminConsole() 를 0ms로 한 번 더 쏘던 경로였다.
   [lastNameEl, firstNameEl].forEach(el => {
     el.addEventListener('input', () => {
       clearTimeout(_checkTimer);
       _checkTimer = setTimeout(checkAccountExists, 300);
     });
-    el.addEventListener('change', checkAccountExists);
-    el.addEventListener('blur', checkAccountExists);
   });
 
   // 로딩 숨기기, 로그인 표시 후 원격 유지보수는 백그라운드에서 실행한다.
