@@ -22,10 +22,10 @@ import { dateKey, TODAY } from './data-date.js';
 import { findSeasonForDate, selectSeasonDecisionCache } from './season-model.js';
 import { _getQuarterKeyNow, _sortExList } from './data-helpers.js';
 import { bodyCheckinSequence, getEffectiveDailyBodyCheckins } from './body-checkins.js';
-import { isAdmin } from './data-auth.js';
-import { getAccountList, saveAccount } from './data-account.js';
-import { _socialId, _isMySocialId } from './data-social-friends.js';
-import { sendNotification } from './data-social-interact.js';
+import { isAdmin, setCurrentUser as _authSetCurrentUser } from './data-auth.js';
+import { getAccountList, saveAccount, invalidateAccountListCache } from './data-account.js';
+import { _socialId, _isMySocialId, invalidateFriendsCache } from './data-social-friends.js';
+import { sendNotification, invalidateNotificationsCache, invalidateLikesScanCache } from './data-social-interact.js';
 import { resolvePrivateDataOwnerId } from './shared-account-owner.js';
 
 import {
@@ -74,13 +74,28 @@ export {
   getCurrentUser, getAdminConsoleId, getPersonalAccountId, getPersonalLegacyAliasId,
   isAdmin, isSameInstance, isPersonalInstance,
   HOME_CARD_CONFIG, shouldShow,
-  setCurrentUser, loadSavedUser,
+  loadSavedUser,
   markSessionUnlocked, clearSessionUnlock, isSessionUnlocked,
   clearLegacySessionUnlockFlags, SESSION_UNLOCK_KEY,
   disableInstalledAppSessionFallback,
   restoreUserFromBackup, waitForAuthPersistence,
   accountNeedsPassword, verifyPassword, hashPassword,
 } from './data-auth.js';
+
+// setCurrentUser는 "로그인 사용자 전환"의 유일한 진입점이다. data-auth.js의
+// setCurrentUser는 auth-lifecycle-race.test.js가 동기 반환을 직접 검증하므로
+// 그 파일은 건드리지 않고, 여기서 A2 전역 스캔 캐시(계정/친구·요청/알림/좋아요)
+// 를 함께 무효화하는 얇은 래퍼로 감싼다. 계정 전환 없이 같은 계정을 다시 읽는
+// refreshCurrentUserFromDB() 는 data-account.js에서 data-auth.js의 setCurrentUser
+// 를 직접 부르므로 이 래퍼를 거치지 않는다 — 동일 계정 재확인이라 무효화가
+// 필요 없다.
+export function setCurrentUser(user) {
+  _authSetCurrentUser(user);
+  invalidateAccountListCache();
+  invalidateFriendsCache();
+  invalidateNotificationsCache();
+  invalidateLikesScanCache();
+}
 // core
 export { getDataOwnerId } from './data-core.js';
 export {
@@ -94,7 +109,7 @@ export {
 // account
 export {
   getAccountList, getAccountListIncludingAdminConsole, saveAccount, refreshCurrentUserFromDB,
-  recoverDeletedAccounts, deleteUserAccount,
+  recoverDeletedAccounts, deleteUserAccount, invalidateAccountListCache,
 } from './data-account.js';
 // social
 export {
