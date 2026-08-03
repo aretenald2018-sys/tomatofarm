@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { listPendingDayWrites } from '../data/pending-day-writes.js';
+import { listPendingDayWrites, PENDING_DAY_WRITE_PREFIX } from '../data/pending-day-writes.js';
 
 const DATE_KEY = '2026-07-17';
 const DAY_PATH_A = `users/A/workouts/${DATE_KEY}`;
@@ -34,6 +34,36 @@ class MemoryStorage {
 
   removeItem(key) {
     this.values.delete(String(key));
+  }
+}
+
+// Regression fixture for the ack-stall guard: acknowledgePendingDayWrites can
+// read the journal fine but never actually clears an entry (localStorage quota
+// on the delete path, WebView storage restrictions, a competing tab holding a
+// stale snapshot). removeItem always throws, exactly like the try/catch in
+// _drainPendingDayWrites' setDoc().then() callback is written to tolerate.
+class AckNeverClearsStorage extends MemoryStorage {
+  removeItem() {
+    throw new Error('simulated: storage cannot clear the recovery journal entry');
+  }
+}
+
+// Regression fixture for the hard attempt-cap guard: every round genuinely
+// shrinks the journal by exactly one entry (never stalls under the "did the
+// count shrink" check), so only PENDING_DAY_DRAIN_ATTEMPT_LIMIT itself can stop
+// an 11-entry journal from resending forever.
+class OneRemovalPerRoundStorage extends MemoryStorage {
+  constructor(entries = []) {
+    super(entries);
+    this.allowRemovalsThisRound = 0;
+  }
+
+  removeItem(key) {
+    if (this.allowRemovalsThisRound <= 0) {
+      throw new Error('simulated: only one journal entry may clear per flush round');
+    }
+    this.allowRemovalsThisRound -= 1;
+    super.removeItem(key);
   }
 }
 
@@ -201,6 +231,26 @@ harness.bindCoreCache = value => {
 
 function pendingEntries(storage, ownerId = 'A') {
   return listPendingDayWrites(storage, { ownerId, dateKey: DATE_KEY });
+}
+
+// Writes pending-day-write records directly into storage, bypassing
+// enqueuePendingDayWrite (which would collapse them into a single merged
+// entry). This lets a test start _drainPendingDayWrites with a journal that
+// already holds several independent entries for one date.
+function seedPendingRecords(storage, { ownerId = 'A', dateKey = DATE_KEY, count }) {
+  for (let index = 0; index < count; index += 1) {
+    const writeId = `seed-${index}`;
+    const record = {
+      version: 1,
+      ownerId,
+      dateKey,
+      writeId,
+      createdAt: 1700000000000 + index,
+      payload: { note: `seed-${index}` },
+    };
+    const key = `${PENDING_DAY_WRITE_PREFIX}${encodeURIComponent(ownerId)}:${dateKey}:${encodeURIComponent(writeId)}`;
+    storage.setItem(key, JSON.stringify(record));
+  }
 }
 
 async function withSaveDay(run, { ownerId = 'A', storage = new MemoryStorage(), online = true } = {}) {
@@ -480,4 +530,58 @@ test('offline saves survive a reload and a fresh module restores both diet and w
     restoreNavigator();
     restoreStorage();
   }
+});
+
+// Regression: _drainPendingDayWrites used to loop `while (true)`, resending the
+// same payload forever whenever acknowledgePendingDayWrites could not clear the
+// journal (localStorage quota on the delete path, WebView storage limits, a
+// competing tab). The ack-stall guard must halt the resend as soon as the
+// journal stops shrinking, instead of hammering setDoc indefinitely.
+test('an ack that can never clear the journal halts the resend loop instead of looping forever', async () => {
+  const storage = new AckNeverClearsStorage();
+  await withSaveDay(async ({ save, surface }) => {
+    const result = await save.saveDay(DATE_KEY, {
+      snack: 'greek yogurt',
+      sKcal: 190,
+    }, { rethrow: true });
+
+    assert.deepEqual(result, { state: 'pending', ownerId: 'A', dateKey: DATE_KEY });
+    assert.equal(surface.setDocCalls.length, 1,
+      'the ack-stall guard must stop after the first resend once the journal stops shrinking');
+    assert.deepEqual(surface.documents.get(DAY_PATH_A), {
+      snack: 'greek yogurt',
+      sKcal: 190,
+    }, 'the server write itself still went through even though the local journal could not clear');
+    assert.equal(pendingEntries(storage).length, 1,
+      'the unacknowledgeable entry stays in the journal for a future flush attempt instead of being lost');
+  }, { storage });
+});
+
+// Regression: a journal that keeps making real progress every round (never
+// triggers the "did the count shrink" stall check) must still be bounded by
+// PENDING_DAY_DRAIN_ATTEMPT_LIMIT, or a pathological storage that only ever
+// frees one slot per round would resend forever one entry at a time.
+test('a journal that keeps shrinking but never empties is bounded by the hard attempt cap', async () => {
+  const storage = new OneRemovalPerRoundStorage();
+  seedPendingRecords(storage, { count: 11 });
+
+  await withSaveDay(async ({ save, surface }) => {
+    const originalSetDoc = surface.setDoc.bind(surface);
+    surface.setDoc = async (...args) => {
+      // Simulates the ack callback being able to clear exactly one journal
+      // entry before the storage refuses further deletes this round.
+      storage.allowRemovalsThisRound = 1;
+      return originalSetDoc(...args);
+    };
+
+    const result = await save.flushPendingDayWrites('A');
+
+    assert.equal(surface.setDocCalls.length, 10,
+      'the drain loop must stop at the hard attempt cap even though the journal keeps shrinking');
+    assert.equal(pendingEntries(storage).length, 1,
+      '11 entries minus 10 successful single-entry removals leaves exactly one behind');
+    assert.equal(result.state, 'pending');
+    assert.equal(result.pending, 1);
+    assert.equal(result.failed, 0);
+  }, { storage });
 });
