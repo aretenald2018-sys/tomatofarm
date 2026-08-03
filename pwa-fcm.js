@@ -12,6 +12,25 @@ let _deferredInstallPrompt = null;
 let _installBannerTimer = null;
 const FCM_SW_SCOPE = '/tomatofarm/firebase-cloud-messaging-push/';
 
+// 푸시 1건마다 refreshNotifCenter() 를 즉시 실행하면 _notifications +
+// _friend_requests + _accounts 풀스캔이 연속으로 터진다(알림센터 갱신 3연발).
+// 10초 trailing 디바운스로 묶어 짧은 시간에 여러 건이 몰려도 실행은 1회로
+// 수렴시키고, 실제 실행 시에는 A2 캐시를 force:true 로 우회해 최신 데이터를
+// 보장한다.
+const NOTIF_CENTER_REFRESH_DEBOUNCE_MS = 10000;
+let _notifCenterRefreshTimer = null;
+
+function _scheduleNotifCenterRefresh() {
+  if (typeof refreshNotifCenter !== 'function') return;
+  clearTimeout(_notifCenterRefreshTimer);
+  _notifCenterRefreshTimer = setTimeout(() => {
+    _notifCenterRefreshTimer = null;
+    try {
+      refreshNotifCenter({ force: true });
+    } catch (_) { /* ignore */ }
+  }, NOTIF_CENTER_REFRESH_DEBOUNCE_MS);
+}
+
 async function _getFCMServiceWorkerRegistration() {
   if (typeof navigator === 'undefined' || !navigator.serviceWorker) return null;
   if (['localhost', '127.0.0.1', ''].includes(location.hostname)) return null;
@@ -101,7 +120,7 @@ async function _registerFCMToken() {
       toastEl.textContent = body;
       document.body.appendChild(toastEl);
       setTimeout(() => { toastEl.classList.remove('show'); setTimeout(() => toastEl.remove(), 300); }, 3000);
-      if (typeof refreshNotifCenter === 'function') refreshNotifCenter();
+      _scheduleNotifCenterRefresh();
       // 포그라운드 "수신"은 "사용자가 읽었다"와 다르다. admin 지표 왜곡 방지를 위해 자동 마킹하지 않음.
     });
   } catch(e) {
@@ -156,11 +175,11 @@ async function _initFCMCapacitor() {
       toastEl.textContent = body;
       document.body.appendChild(toastEl);
       setTimeout(() => { toastEl.classList.remove('show'); setTimeout(() => toastEl.remove(), 300); }, 3000);
-      if (typeof refreshNotifCenter === 'function') refreshNotifCenter();
+      _scheduleNotifCenterRefresh();
     });
 
     PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
-      if (typeof refreshNotifCenter === 'function') refreshNotifCenter();
+      _scheduleNotifCenterRefresh();
     });
   } catch(e) {
     console.warn('[FCM-Cap] 초기화 실패:', e);
@@ -313,8 +332,6 @@ if (typeof navigator !== 'undefined' && navigator.serviceWorker) {
     import('./data.js').then(({ markNotificationRead }) => {
       try { markNotificationRead(id); } catch (_) { /* ignore */ }
     }).catch(() => {});
-    if (typeof refreshNotifCenter === 'function') {
-      try { refreshNotifCenter(); } catch (_) { /* ignore */ }
-    }
+    _scheduleNotifCenterRefresh();
   });
 }
