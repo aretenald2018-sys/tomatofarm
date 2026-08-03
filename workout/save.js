@@ -11,7 +11,7 @@ import { showCenterToast, showToast } from '../ui/toast.js';
 // ================================================================
 
 import { S }                        from './state.js';
-import { saveDay, saveRunningRoute, dateKey, isFuture, trackEvent, getExList, getDay } from '../data.js';
+import { saveDay, saveRunningRoute, dateKey, isFuture, trackEvent, getExList, getDay, RunningRouteWriteError } from '../data.js';
 import { WORKOUT_PAYLOAD_KEYS, DIET_PAYLOAD_KEYS } from './save-schema.js';
 import { deriveActivityFlagsFromDetails, deriveDietSuccessFromWorkout } from './cross-domain.js';
 import { MOVEMENTS } from '../config.js';
@@ -170,7 +170,8 @@ async function _prepareRunningRoutePayload() {
   const isGpsRecord = sourceRoute.length > 0 || (source !== 'manual' && routeInput.runRouteRef);
   if (!isGpsRecord) {
     run.routeRef = null;
-    return { source: 'manual', route: [], routeRef: null, routeSummary: run.routeSummary || null };
+    run.routeWriteFailed = false;
+    return { source: 'manual', route: [], routeRef: null, routeSummary: run.routeSummary || null, routeWriteFailed: false };
   }
 
   const existingRef = routeInput.runRouteRef == null
@@ -189,8 +190,17 @@ async function _prepareRunningRoutePayload() {
     : canonicalRoute.length === declaredPointCount);
 
   let routeRef = matchingExistingRef;
+  let routeWriteFailed = false;
   if (hasFullCapturedRoute) {
-    routeRef = assertRunningRouteReference(await saveRunningRoute(canonicalRoute));
+    try {
+      routeRef = assertRunningRouteReference(await saveRunningRoute(canonicalRoute));
+    } catch (error) {
+      // 청크 커밋 실패(네트워크 단절 등)만 흡수한다. 그 외 예외(참조 검증 실패 등
+      // 데이터 자체가 잘못된 경우)는 그대로 던져 day 문서 저장까지 막는다.
+      if (!(error instanceof RunningRouteWriteError)) throw error;
+      routeWriteFailed = true;
+      console.error('[workout/save] running route commit failed — saving day summary without the full route:', error);
+    }
   }
 
   const pointCount = _fullRoutePointCount(run.routeSummary, routeRef, canonicalRoute);
@@ -201,7 +211,8 @@ async function _prepareRunningRoutePayload() {
   const route = canonicalRoute.length ? buildRunningRoutePreview(canonicalRoute) : [];
   run.routeRef = routeRef;
   run.routeSummary = routeSummary;
-  return { source: source === 'manual' ? 'gps' : source, route, routeRef, routeSummary };
+  run.routeWriteFailed = routeWriteFailed;
+  return { source: source === 'manual' ? 'gps' : source, route, routeRef, routeSummary, routeWriteFailed };
 }
 
 function _buildWorkoutPayload(cleanEx, isDietSuccess, persistedRoute) {
