@@ -96,7 +96,7 @@ jobs:
             --region us-central1 --project exercise-management --force 2>&1)
           code=$?
           echo "$out"
-          if [ $code -ne 0 ] && echo "$out" | grep -qiE "not found|does not exist|failed to find"; then
+          if [ $code -ne 0 ] && echo "$out" | grep -qiE "not found|does not exist|failed to find|do not match any existing functions"; then
             echo "refreshWeeklyRanking 함수가 이미 없습니다 — 건너뜁니다."
             exit 0
           fi
