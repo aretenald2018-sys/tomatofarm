@@ -536,11 +536,31 @@ document.addEventListener('sheet:saved', (event) => {
 document.addEventListener('cooking:saved', renderAll);
 document.addEventListener('app:render-requested', renderAll);
 let _workoutDataRefreshTimer = null;
-document.addEventListener('data:workouts-updated', () => {
+// 디바운스 동안 합쳐진 이벤트의 날짜를 모은다. 아래 워크아웃 분기가 "열려 있는
+// 시트의 날짜만 바뀌었는가"를 판단하는 데 쓴다.
+const _workoutDataRefreshKeys = new Set();
+// 저장 성공 → Firestore 에코가 같은 날짜로 돌아오는 경로까지 전체 렌더를 돌리면
+// 열려 있는 기록 시트가 새 DOM으로 교체돼 스크롤이 맨 위로 튀고 깜빡인다
+// (세트 완료 체크가 그랬다). 시트가 제자리 갱신을 처리했으면 전체 렌더는 건너뛴다.
+async function _refreshWorkoutSurfaceForDataUpdate(changedDateKeys) {
+  try {
+    const cfg = getTabDefinition('calendar');
+    const calendarModule = await _lazy(cfg.id, cfg.module);
+    if (calendarModule.refreshWorkoutSheetForDataUpdate?.(changedDateKeys) === true) return;
+  } catch (e) {
+    console.warn('[app] workout sheet in-place refresh failed:', e);
+  }
+  await _renderWorkoutRoute(getWorkoutNavSnapshot(), 'data:workouts-updated');
+}
+document.addEventListener('data:workouts-updated', (event) => {
   scheduleSeasonDashboardWidgetSync('data-updated', 0);
+  const eventKeys = event?.detail?.changedDateKeys;
+  if (Array.isArray(eventKeys)) eventKeys.forEach(key => _workoutDataRefreshKeys.add(String(key || '')));
   if (_workoutDataRefreshTimer) clearTimeout(_workoutDataRefreshTimer);
   _workoutDataRefreshTimer = setTimeout(() => {
     _workoutDataRefreshTimer = null;
+    const changedDateKeys = [..._workoutDataRefreshKeys];
+    _workoutDataRefreshKeys.clear();
     if (_currentTab === 'home') {
       renderHome();
       return;
@@ -550,7 +570,7 @@ document.addEventListener('data:workouts-updated', () => {
       return;
     }
     if (_currentTab === 'workout') {
-      void _renderWorkoutRoute(getWorkoutNavSnapshot(), 'data:workouts-updated');
+      void _refreshWorkoutSurfaceForDataUpdate(changedDateKeys);
       return;
     }
     if (_currentTab === 'calendar') {

@@ -1341,6 +1341,29 @@ function _renderWorkoutSheetAfterSetEdit() {
   return true;
 }
 
+// data:workouts-updated 용 부분 갱신. f74aff5는 sheet:saved → renderAll 경로만
+// 막았는데, 저장이 성공하면 Firestore 실시간 리스너가 같은 날짜의 에코를 보내고
+// (data/data-load.js), app.js의 data:workouts-updated 리스너가 워크아웃 라우트를
+// 통째로 다시 그린다 — #workout-calendar-root가 새 DOM으로 교체되면서 시트
+// scrollTop이 0으로 리셋되고 그 순간 깜빡인다. 완료 체크의 증상이 그대로 되살아난
+// 두 번째 경로다.
+// 열려 있는 시트의 날짜만 바뀐 갱신은 여기서 제자리 패치로 끝내고 true를 돌린다.
+// false면 호출부가 기존대로 전체 렌더를 돈다.
+export function refreshWorkoutSheetForDataUpdate(changedDateKeys = []) {
+  if (typeof document === 'undefined') return false;
+  if (_workoutHomeView !== 'detail') return false;
+  const keys = [...new Set((Array.isArray(changedDateKeys) ? changedDateKeys : [])
+    .map(key => String(key || '').trim())
+    .filter(Boolean))];
+  // 다른 날짜가 섞였으면 월 달력의 표시까지 바뀌어야 한다. 전체 렌더에 맡긴다.
+  if (!keys.length || keys.some(key => key !== _workoutHomeSelectedKey)) return false;
+  // 세트 키패드가 열려 있는 동안엔 아무것도 갈아끼우지 않는다. 입력 중인 값과
+  // 포커스를 잃는 쪽이 표시 지연보다 나쁘다 — _saveWorkoutHomeSessionResult의
+  // 기존 가드와 같은 판단이고, 키패드를 닫는 커밋이 곧 갱신을 이어받는다.
+  if (_workoutSetKeyboardActiveInput()) return true;
+  return _patchWorkoutSheetSetSurfaces();
+}
+
 // ═════════════════════════════════════════════════════════════
 // 일자 상세 요약 모달
 // ═════════════════════════════════════════════════════════════

@@ -220,7 +220,9 @@ test('workout data updates rerender the active app tab', () => {
   const expectedBranches = [
     ['home', 'renderHome();'],
     ['diet', 'loadWorkoutDate(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());'],
-    ['workout', "void _renderWorkoutRoute(getWorkoutNavSnapshot(), 'data:workouts-updated');"],
+    // 워크아웃 탭은 열려 있는 기록 시트를 제자리에서 갈아끼우고, 그게 안 되는
+    // 갱신만 전체 라우트 렌더로 넘긴다(_refreshWorkoutSurfaceForDataUpdate).
+    ['workout', 'void _refreshWorkoutSurfaceForDataUpdate(changedDateKeys);'],
     ['calendar', 'void _lazyRenderCalendar();'],
     ['stats', 'void _lazyRenderStats();'],
   ];

@@ -1,4 +1,4 @@
-import { readAppCssSync } from './helpers/css-source.js';
+﻿import { readAppCssSync } from './helpers/css-source.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -81,6 +81,7 @@ function buildHarnessScript() {
     '_renderWorkoutExerciseSlides',
     '_patchWorkoutSheetSetSurfaces',
     '_renderWorkoutSheetAfterSetEdit',
+    'refreshWorkoutSheetForDataUpdate',
     '_clearWorkoutSetEditorsForExercise',
     '_runWorkoutHomeSheetCardAction',
     '_workoutDayExportMenuParts',
@@ -146,6 +147,8 @@ function buildHarnessScript() {
     let _workoutHomeSelectedKey = '2026-07-04';
     let _workoutHomeSessionIndex = 0;
     let _workoutHomeSheetState = 'bar';
+    // 하네스는 항상 기록 시트가 열린 상태를 세운다(detail).
+    let _workoutHomeView = 'detail';
     const _workoutOpenSetTypeMenus = new Set();
     const _workoutExpandedSetEditors = new Set();
     // 달력 분할 이후 이 상태들은 calendar/detail-template.js와 calendar/set-keyboard.js의
@@ -322,6 +325,16 @@ function buildHarnessScript() {
     document.addEventListener('sheet:saved', (event) => {
       window.__sheetSavedEvents.push(event?.detail ?? null);
       if (event?.detail?.renderHandled === true) return;
+      renderWorkoutCalendarHome();
+    });
+    // app.js의 data:workouts-updated 리스너 재현. 저장이 서버에 닿으면 Firestore
+    // 실시간 리스너가 같은 날짜의 에코를 보내고 이 경로가 워크아웃 화면을 다시
+    // 그린다. 시트가 제자리 갱신을 처리했다고 답하면 전체 렌더는 돌지 않는다.
+    window.__workoutsUpdatedEvents = [];
+    document.addEventListener('data:workouts-updated', (event) => {
+      const changedDateKeys = event?.detail?.changedDateKeys || [];
+      window.__workoutsUpdatedEvents.push(changedDateKeys);
+      if (refreshWorkoutSheetForDataUpdate(changedDateKeys) === true) return;
       renderWorkoutCalendarHome();
     });
     async function _mutateWorkoutExerciseFromSheet(targetKey, targetSessionIndex, exerciseIndex, mutator, options = {}) {
@@ -1127,4 +1140,99 @@ test('tapping the done check patches the row in place without any full calendar 
   assert.equal(result.afterOff.restTimerClears, 1);
   assert.equal(result.afterOff.sheetSavedEvents.length, 4);
   assert.ok(result.afterOff.sheetSavedEvents.every(detail => detail?.renderHandled === true));
+});
+
+// f74aff5가 막은 건 sheet:saved → renderAll 하나였다. 저장이 서버에 닿으면
+// data/data-load.js의 Firestore 실시간 리스너가 같은 날짜의 에코를 발행하고,
+// app.js의 data:workouts-updated 분기가 워크아웃 라우트를 통째로 다시 그린다 —
+// #workout-calendar-root가 새 DOM으로 교체돼 완료 체크의 "맨 위로 튀고 깜빡임"이
+// 그대로 되살아났다. 이 스위트의 하네스는 가짜 데이터 층이 에코를 내지 않아
+// 그 회귀를 못 잡았다. 여기서 에코를 직접 발행해 못박는다.
+test('a workouts-updated echo for the open sheet date patches in place instead of a full render', async () => {
+  // 실제 app.js가 워크아웃 탭 갱신을 시트 제자리 갱신으로 먼저 보내는지 소스로 확인한다.
+  assert.match(appJs, /addEventListener\('data:workouts-updated'[\s\S]{0,900}?_refreshWorkoutSurfaceForDataUpdate\(changedDateKeys\)/);
+  assert.match(appJs, /refreshWorkoutSheetForDataUpdate\?\.\(changedDateKeys\) === true\) return;/);
+
+  const result = await runHarnessPage(async (page) => {
+    await page.evaluate(() => {
+      window.__entry = {
+        name: '벤치프레스',
+        exerciseId: 'bench-press',
+        sets: [{ kg: 70, reps: 10, rir: 2, romPct: 100, setType: 'main', done: false }],
+      };
+      window.__todayKey = '2026-07-04';
+      window.__useRealSaveResult = true;
+      window._toggleWorkoutExerciseSetDoneFromSheet = window.__realToggleWorkoutSetDone;
+      window.renderWorkoutCalendarHome();
+      window.__renderCalls = 0;
+      window.__scroller = document.querySelector('.wt-day-sheet-scroll');
+      window.__sheet = document.querySelector('[data-wt-day-sheet]');
+    });
+
+    const handle = await page.waitForSelector('[data-wt-set-done-toggle][data-set-index="0"]', { visible: true });
+    const box = await handle.boundingBox();
+    assert.ok(box, 'done toggle should have a bounding box');
+    await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+    await page.waitForFunction(() => (
+      window.__entry.sets[0]?.done === true && window.__saveWorkoutDayCalls.length === 1
+    ), { timeout: 2000 });
+
+    // 저장 성공 뒤 Firestore 에코: 열려 있는 시트의 날짜 하나만 바뀌었다.
+    const afterEcho = await page.evaluate(() => {
+      document.dispatchEvent(new CustomEvent('data:workouts-updated', {
+        detail: { ownerId: 'harness-user', changedDateKeys: ['2026-07-04'], source: 'firestore' },
+      }));
+      return {
+        renderCalls: window.__renderCalls,
+        sameScroller: window.__scroller === document.querySelector('.wt-day-sheet-scroll'),
+        sameSheet: window.__sheet === document.querySelector('[data-wt-day-sheet]'),
+        rowDone: document.querySelector('[data-wt-set-swipe-row][data-set-index="0"]')?.classList.contains('is-done') ?? null,
+        checkPressed: document.querySelector('[data-wt-set-done-toggle][data-set-index="0"]')?.getAttribute('aria-pressed'),
+      };
+    });
+
+    // 다른 날짜가 섞인 갱신은 월 달력 표시까지 바뀌어야 하므로 전체 렌더로 넘어간다.
+    const afterOtherDate = await page.evaluate(() => {
+      document.dispatchEvent(new CustomEvent('data:workouts-updated', {
+        detail: { ownerId: 'harness-user', changedDateKeys: ['2026-07-04', '2026-07-05'], source: 'firestore' },
+      }));
+      return { renderCalls: window.__renderCalls };
+    });
+
+    // 세트 키패드가 열려 있는 동안의 에코는 입력을 지키기 위해 아무것도 갈아끼우지 않는다.
+    const kgHandle = await page.waitForSelector('[data-wt-set-edit-field="kg"][data-set-index="0"]', { visible: true });
+    const kgBox = await kgHandle.boundingBox();
+    assert.ok(kgBox, 'kg value should have a bounding box');
+    await page.touchscreen.tap(kgBox.x + kgBox.width / 2, kgBox.y + kgBox.height / 2);
+    await page.waitForFunction(() => document.activeElement?.matches?.('[data-wt-set-inline-input][data-field="kg"][data-set-index="0"]'));
+    const afterKeypadEcho = await page.evaluate(() => {
+      window.__renderCalls = 0;
+      const input = document.querySelector('[data-wt-set-inline-input][data-field="kg"][data-set-index="0"]');
+      window.__keypadInput = input || null;
+      document.dispatchEvent(new CustomEvent('data:workouts-updated', {
+        detail: { ownerId: 'harness-user', changedDateKeys: ['2026-07-04'], source: 'firestore' },
+      }));
+      return {
+        hadInput: !!window.__keypadInput,
+        renderCalls: window.__renderCalls,
+        sameInput: window.__keypadInput === document.querySelector('[data-wt-set-inline-input][data-field="kg"][data-set-index="0"]'),
+      };
+    });
+
+    return { afterEcho, afterOtherDate, afterKeypadEcho };
+  });
+
+  // 에코 하나로는 전체 렌더가 돌지 않고, 스크롤 컨테이너/시트 엘리먼트가 유지된다.
+  assert.equal(result.afterEcho.renderCalls, 0);
+  assert.equal(result.afterEcho.sameScroller, true);
+  assert.equal(result.afterEcho.sameSheet, true);
+  // 제자리 갱신이라도 행 상태는 캐시 모델대로 다시 그려져 완료 표시가 유지된다.
+  assert.equal(result.afterEcho.rowDone, true);
+  assert.equal(result.afterEcho.checkPressed, 'true');
+  // 다른 날짜가 섞이면 억제하지 않는다 — 전체 렌더 1회.
+  assert.equal(result.afterOtherDate.renderCalls, 1);
+  // 키패드가 열려 있으면 전체 렌더도, 입력 엘리먼트 교체도 없다.
+  assert.equal(result.afterKeypadEcho.hadInput, true);
+  assert.equal(result.afterKeypadEcho.renderCalls, 0);
+  assert.equal(result.afterKeypadEcho.sameInput, true);
 });
