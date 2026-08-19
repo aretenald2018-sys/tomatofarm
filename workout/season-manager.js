@@ -898,7 +898,6 @@ function _validateStep(step) {
   if (step === 0) {
     if (!_state.season.name.trim()) return '시즌 이름을 입력해 주세요.';
     if (_inclusiveSeasonDays(_state.season) < 7) return '시즌 기간은 최소 1주 이상이어야 합니다.';
-    if (_state.editingSeasonId && _state.season.endDate < _todayKey()) return '현재 시즌 종료일은 오늘 이전으로 바꿀 수 없습니다.';
   }
   if (step === 2) {
     if (!_state.selectedExerciseIds.size) return '목표를 설정한 운동을 한 종목 이상 선택해 주세요.';

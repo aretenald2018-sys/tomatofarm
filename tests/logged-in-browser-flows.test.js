@@ -42,7 +42,13 @@ const SIGNED_IN_USER = { id: 'harness-user', name: 'QA 사용자', isAuthenticat
 async function launchHarness(htmlPath) {
   const browser = await puppeteer.launch({
     headless: true,
-    args: ['--allow-file-access-from-files'],
+    args: [
+      '--allow-file-access-from-files',
+      // root로 도는 컨테이너(CI/웹 세션)에서는 Chromium이 샌드박스를 켤 수 없다.
+      ...(typeof process.getuid === 'function' && process.getuid() === 0
+        ? ['--no-sandbox', '--disable-setuid-sandbox']
+        : []),
+    ],
   });
   try {
     return await bootstrapHarness(browser, htmlPath);
@@ -65,7 +71,8 @@ async function bootstrapHarness(browser, htmlPath) {
   });
   await page.setRequestInterception(true);
   page.on('request', (request) => {
-    if (request.url().startsWith('file://') || request.url() === 'about:blank') {
+    // data:는 네트워크가 아니라 인라인 리소스다(예: date input의 내장 달력 아이콘).
+    if (request.url().startsWith('file://') || request.url().startsWith('data:') || request.url() === 'about:blank') {
       request.continue().catch(() => {});
       return;
     }
@@ -741,6 +748,143 @@ test('workout month calendar rail renders season week goal chips with achieved/a
     assert.equal(empty.goalsContainerCount, empty.railCount);
     assert.deepEqual(empty.emptyRailTexts, ['목표 없음']);
     assert.equal(empty.countText, null);
+
+    assert.deepEqual(harness.pageErrors, []);
+    assert.deepEqual(harness.blockedRequests, []);
+  } finally {
+    if (harness?.browser) await harness.browser.close();
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+// ── 시즌 관리 시트(종료일 수정) 하네스 ───────────────────────────
+// 종료일을 오늘 이전으로 되돌려 시즌을 소급 종료하는 흐름. 검증은 최소 기간(7일)만
+// 남기고 과거 종료를 허용하며, 오늘을 벗어난 시즌은 활성 보드를 덮어쓰지 않아야 한다.
+async function buildSeasonManageHarness(tempDir) {
+  const htmlPath = path.join(tempDir, 'season-manage.html');
+
+  const importMap = {
+    imports: {
+      [repoUrl('data.js')]: FAKE_DATA_URL,
+    },
+  };
+
+  const moduleSource = `
+      const fake = await import(${JSON.stringify(FAKE_DATA_URL)});
+      const seasonModel = await import(${JSON.stringify(repoUrl('data/season-model.js'))});
+      const boardCore = await import(${JSON.stringify(repoUrl('workout/test-v2/board-core.js'))});
+
+      const today = fake.TODAY;
+      const TODAY_KEY = fake.dateKey(today.getFullYear(), today.getMonth(), today.getDate());
+      const YESTERDAY = seasonModel.addSeasonDays(TODAY_KEY, -1);
+      const SEASON_START = seasonModel.startOfSeasonWeek(seasonModel.addSeasonDays(TODAY_KEY, -21));
+      const SEASON_END = seasonModel.addSeasonDays(TODAY_KEY, 14);
+      const SEASON_ID = 'season-manage-retro-end';
+      const GENERIC_BOARD_MARKER = 'generic-board-before-edit';
+
+      fake.resetFakeDataLayer({
+        currentUser: ${JSON.stringify(SIGNED_IN_USER)},
+        exercises: [
+          { id: 'bench-press', name: '벤치프레스', muscleId: 'chest', movementId: 'barbell_bench' },
+        ],
+      });
+      const seasonBoard = boardCore.buildBoardFromOnboarding({
+        startDate: SEASON_START,
+        selections: [{
+          exerciseId: 'bench-press', movementId: 'barbell_bench', groupId: 'chest', label: '벤치프레스',
+          tracks: { volume: { kg: 60, reps: 8 } },
+          wendler: { scheme: 'w531', oneRmKg: 95 },
+        }],
+      });
+      seasonBoard.seasonId = SEASON_ID;
+      fake.fakeDataStore.settings.season_registry = {
+        schemaVersion: 3,
+        seasons: [{
+          id: SEASON_ID,
+          name: '소급 종료 시즌',
+          startDate: SEASON_START,
+          endDate: SEASON_END,
+          clientRequestId: 'retro-end-request',
+          createdAt: 100,
+        }],
+      };
+      fake.fakeDataStore.settings['season_' + SEASON_ID + '_test_board_v2'] = seasonBoard;
+      fake.fakeDataStore.settings['season_' + SEASON_ID + '_workout_plan'] = {
+        seasonId: SEASON_ID, createdAt: 100, clientRequestId: 'retro-end-request', weeklySessionTarget: 3,
+      };
+      fake.fakeDataStore.settings['season_' + SEASON_ID + '_running_plan'] = {
+        weeklyDistanceKm: 15, weeklySessions: 3, paceGoalMode: 'fixed', targetPaceSecPerKm: 391,
+        completionGoal: 'finish', createdAt: 100,
+      };
+      // 활성 보드 문서는 별도 sentinel로 심는다. 소급 종료가 이 문서를 덮으면 안 된다.
+      fake.fakeDataStore.settings.test_board_v2 = { ...seasonBoard, marker: GENERIC_BOARD_MARKER };
+
+      const seasonManager = await import(${JSON.stringify(repoUrl('workout/season-manager.js'))});
+      seasonManager.openWorkoutSeasonWizard({ editingSeasonId: SEASON_ID });
+
+      window.__qa = {
+        todayKey: TODAY_KEY,
+        yesterday: YESTERDAY,
+        seasonId: SEASON_ID,
+        genericBoardMarker: GENERIC_BOARD_MARKER,
+        setEndDate(value) {
+          const input = document.querySelector('[data-season-field="endDate"]');
+          if (!input) return false;
+          input.value = value;
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+          return true;
+        },
+        snapshot() {
+          const registry = fake.fakeDataStore.settings.season_registry;
+          const season = (registry?.seasons || []).find(item => item.id === SEASON_ID) || null;
+          return {
+            modalHidden: document.getElementById('workout-season-modal')?.hidden ?? null,
+            toastText: document.getElementById('tds-toast')?.textContent?.trim() || null,
+            savedEndDate: season?.endDate || null,
+            updatedSeasons: JSON.parse(JSON.stringify(fake.fakeDataStore.updatedSeasons)),
+            genericBoardMarker: fake.fakeDataStore.settings.test_board_v2?.marker || null,
+            seasonBoardSeasonId: fake.fakeDataStore.settings['season_' + SEASON_ID + '_test_board_v2']?.seasonId || null,
+          };
+        },
+      };
+`;
+
+  await writeHarnessHtml(htmlPath, {
+    importMap,
+    body: '  <main id="app-root"></main>',
+    moduleSource,
+  });
+  return htmlPath;
+}
+
+test('season manage sheet saves an end date before today and keeps the active board untouched', async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), 'tomato-logged-in-season-manage-'));
+  let harness;
+  try {
+    const htmlPath = await buildSeasonManageHarness(tempDir);
+    harness = await launchHarness(htmlPath);
+    const { page } = harness;
+
+    // 관리 시트 → 기간 수정(위저드 0단계) → 종료일을 어제로.
+    await tapElement(page, '[data-season-action="go-to-wizard"][data-season-step="0"]');
+    const endDateSet = await page.evaluate(() => window.__qa.setEndDate(window.__qa.yesterday));
+    assert.equal(endDateSet, true, 'end date input should exist on step 0');
+
+    // 관리 화면으로 돌아와 저장. 예전에는 여기서 '오늘 이전' 검증에 막혔다.
+    await tapElement(page, '[data-season-action="back-to-manage"]');
+    await tapElement(page, '[data-season-action="save"]');
+    await page.waitForFunction(() => window.__qa.snapshot().updatedSeasons.length > 0
+      || (window.__qa.snapshot().toastText || '').includes('없습니다')
+      || (window.__qa.snapshot().toastText || '').includes('실패'), { timeout: 10000 });
+
+    const result = await page.evaluate(() => window.__qa.snapshot());
+    assert.equal(result.updatedSeasons.length, 1, `save should reach updateWorkoutSeason (toast: ${result.toastText})`);
+    assert.equal(result.savedEndDate, await page.evaluate(() => window.__qa.yesterday));
+    assert.equal(result.updatedSeasons[0].activated, false, 'a season ended in the past must not activate the board');
+    assert.equal(result.genericBoardMarker, await page.evaluate(() => window.__qa.genericBoardMarker),
+      'retro-ending a season must not overwrite settings.test_board_v2');
+    assert.equal(result.modalHidden, true, 'manage sheet should close after a successful save');
+    assert.match(result.toastText || '', /설정을 수정했어요/);
 
     assert.deepEqual(harness.pageErrors, []);
     assert.deepEqual(harness.blockedRequests, []);

@@ -28,8 +28,10 @@ import {
 } from '../../calc.js';
 import {
   normalizeSeasonRegistry,
+  seasonContainsDate,
   selectSeasonDecisionCache,
 } from '../../data/season-model.js';
+import { prepareWorkoutSeasonUpdate } from '../../data/season-creation.js';
 
 export { dateKey, TODAY, isFuture };
 export const calcDietMetrics = _calcDietMetrics;
@@ -63,6 +65,7 @@ function emptyStore() {
     runningRoutes: {},
     // 호출 로그 — 테스트가 "무엇이 저장됐는가"를 사실로 확인할 때 쓴다.
     savedDays: [],
+    updatedSeasons: [],
     savedNutritionItems: [],
     deletedNutritionItemIds: [],
     trackedEvents: [],
@@ -133,7 +136,28 @@ export const getSeasonWorkoutPlan = (seasonId) => clone(fakeDataStore.settings[`
 export const getSeasonTestBoardV2 = (seasonId) => clone(fakeDataStore.settings[`season_${seasonId}_test_board_v2`] || null);
 export const getSeasonRunningPlan = (seasonId) => clone(fakeDataStore.settings[`season_${seasonId}_running_plan`] || null);
 export async function createWorkoutSeason() { throw new Error('fake-data-layer: createWorkoutSeason is not wired for this harness'); }
-export async function updateWorkoutSeason() { throw new Error('fake-data-layer: updateWorkoutSeason is not wired for this harness'); }
+// data/season-store.js updateWorkoutSeason와 같은 문서 배치를 fake store에 재현한다.
+// payload 계산은 진짜 prepareWorkoutSeasonUpdate를 쓰므로 검증/정규화 회귀를 그대로 잡는다.
+export async function updateWorkoutSeason(input = {}) {
+  const seasonId = String(input.season?.id || '').trim();
+  if (!seasonId) throw new TypeError('season id is required');
+  const settings = fakeDataStore.settings;
+  const prepared = prepareWorkoutSeasonUpdate({
+    ...input,
+    registry: normalizeSeasonRegistry(settings.season_registry || {}),
+    previousBoard: settings[`season_${seasonId}_test_board_v2`] || null,
+    existingWorkoutPlan: settings[`season_${seasonId}_workout_plan`] || null,
+    existingRunningPlan: settings[`season_${seasonId}_running_plan`] || null,
+  });
+  settings.season_registry = prepared.registry;
+  settings[`season_${seasonId}_test_board_v2`] = prepared.board;
+  settings[`season_${seasonId}_workout_plan`] = prepared.workoutPlan;
+  settings[`season_${seasonId}_running_plan`] = prepared.runningPlan;
+  const activated = seasonContainsDate(prepared.season, input.todayKey || '');
+  if (activated) settings.test_board_v2 = prepared.board;
+  fakeDataStore.updatedSeasons.push({ seasonId, season: clone(prepared.season), activated, at: Date.now() });
+  return clone({ ...prepared, activated });
+}
 
 // ── 통계/기록 파생값 (진짜 calc.js 구현 사용) ────────────────────
 export const getVolumeHistory = (exerciseId) => _getVolumeHistory(getSeasonDecisionCache(), exerciseId);
