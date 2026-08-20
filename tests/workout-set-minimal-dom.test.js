@@ -370,7 +370,7 @@ function buildHarnessScript() {
 async function runHarnessPage(fn) {
   const harnessScript = buildHarnessScript();
   assert.doesNotThrow(() => new Function(harnessScript));
-  const browser = await puppeteer.launch({ headless: true });
+  const browser = await puppeteer.launch({ headless: true, args: typeof process.getuid === 'function' && process.getuid() === 0 ? ['--no-sandbox', '--disable-setuid-sandbox'] : [] });
   try {
     const page = await browser.newPage();
     await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 3, isMobile: true, hasTouch: true });

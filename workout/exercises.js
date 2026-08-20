@@ -977,10 +977,15 @@ function _isWendlerSet(set = {}) {
 
 function _maxSetTypeLabel(type, set = {}) {
   if (set?.wendlerRole === 'warmup') return '웜업';
-  if (set?.wendlerRole === 'main') return '메인';
-  if (set?.wendlerRole === 'heavy_single') return '싱글';
-  if (set?.wendlerRole === 'pr_attempt') return 'PR';
-  if (set?.wendlerRole === 'backoff') return '백오프';
+  // PR세트(AMRAP)는 야들러 용어 그대로 'PR'로 노출한다.
+  if (set?.wendlerRole === 'main') return set?.amrap === true ? 'PR' : '메인';
+  if (set?.wendlerRole === 'heavy_single') return '조커';
+  if (set?.wendlerRole === 'pr_attempt') return '1RM';
+  if (set?.wendlerRole === 'backoff') {
+    if (set?.supplementalKind === 'fsl') return 'FSL';
+    if (set?.supplementalKind === 'ssl') return 'SSL';
+    return '백오프';
+  }
   if (set?.wendlerRole === 'deload') return '회복';
   if (set?.wendlerRole === 'supplemental') {
     if (set.supplementalKind === 'bbb') return 'BBB';

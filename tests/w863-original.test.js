@@ -90,6 +90,30 @@ test('8/6/3 원본 W7은 회복 세트만 반환한다', () => {
   assert.deepEqual(rx.deload.map(set => [set.kg, set.reps, set.role]), [[50,5,'deload'], [60,5,'deload'], [70,5,'deload']]);
 });
 
+test('백오프는 기본 SSL(본세트2 무게)이고 FSL을 고르면 본세트1 무게로 낮아진다', () => {
+  const base = { profileId: 'squat', oneRmKg: 110, roundKg: 5 };
+  for (let week = 1; week <= 6; week += 1) {
+    const ssl = w863OriginalWeekPrescription(base, week);
+    const fsl = w863OriginalWeekPrescription({ ...base, backoffMode: 'fsl' }, week);
+    assert.equal(ssl.backoffMode, 'ssl');
+    assert.equal(fsl.backoffMode, 'fsl');
+    // SSL = 본세트2 무게(원본 표 그대로), FSL = 본세트1 무게. 반복수/세트수는 그대로.
+    assert.ok(ssl.backoff.every(set => set.kg === ssl.sets[1].kg), `W${week} ssl kg`);
+    assert.ok(fsl.backoff.every(set => set.kg === fsl.sets[0].kg), `W${week} fsl kg`);
+    assert.deepEqual(fsl.backoff.map(set => set.reps), ssl.backoff.map(set => set.reps));
+    assert.equal(fsl.backoff.length, 5);
+    assert.ok(ssl.backoff.every(set => set.supplementalKind === 'ssl'));
+    assert.ok(fsl.backoff.every(set => set.supplementalKind === 'fsl'));
+    // requiredSets에도 같은 백오프가 실린다(페인트 경로).
+    assert.deepEqual(
+      fsl.requiredSets.filter(set => set.role === 'backoff').map(set => set.kg),
+      fsl.backoff.map(set => set.kg),
+    );
+  }
+  // W7 디로드 주는 백오프가 없다.
+  assert.equal(w863OriginalWeekPrescription({ ...base, backoffMode: 'fsl' }, 7).backoff.length, 0);
+});
+
 test('기존 w863는 운동명으로 프로필을 마이그레이션하고 TM을 1RM으로 환산한다', () => {
   assert.equal(inferW863Profile({ label: '스모데드' }), 'deadlift');
   assert.equal(inferW863Profile({ label: '스쿼트(와이드)' }), 'squat');

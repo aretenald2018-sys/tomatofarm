@@ -484,7 +484,9 @@ export function _renderWorkoutSetRows(row, options = {}) {
     const kgText = formatWorkoutKg(set.kg);
     const repsText = formatWorkoutReps(set.reps);
     const kgDisplayText = kgText === '-' ? '미입력' : kgText;
-    const repsDisplayText = repsText === '-' ? '미입력' : repsText;
+    // PR세트(AMRAP)의 처방 반복수는 최소치다 — 완료 전까지 '8+'로 보여 최대반복 개념을 드러낸다.
+    const amrapSuffix = set.amrap === true && set.done !== true && repsText !== '-' ? '+' : '';
+    const repsDisplayText = repsText === '-' ? '미입력' : `${repsText}${amrapSuffix}`;
     const kgUnit = kgText === '-' ? '' : '<small>kg</small>';
     const repsUnit = repsText === '-' ? '' : '<small>회</small>';
     const expanded = editable && _isWorkoutSetEditorExpanded(key, sessionIndex, exerciseIndex, setIndex);

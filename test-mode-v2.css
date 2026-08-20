@@ -380,6 +380,25 @@ body:has(#tm2-sheets.tm2-open) #tm2-sheets .tm2-sheet {
 .tm2-wset-row label em { font-style: normal; color: var(--tm2-wendler); font-size: 15px; font-weight: 900; }
 .tm2-wset-row label.tm2-wset-rom input { font-size: 14px; padding-left: 4px; padding-right: 4px; }
 .tm2-wset-row label.tm2-wset-rom em { color: var(--tm2-ink4); font-size: 11px; font-weight: 800; }
+/* PR세트(AMRAP): '최소 x회 + 최대한' — 행 강조와 PR 칩 */
+.tm2-wset-row.tm2-wset-amrap { background: var(--tm2-wendler-bg); }
+.tm2-wset-row.tm2-wset-amrap.tm2-done { background: var(--tm2-now-bg); }
+.tm2-wset-row.tm2-wset-amrap input[data-tm2-wset-field="reps"] { border-color: var(--tm2-wendler); }
+.tm2-wset-pr-chip {
+  display: inline-block; margin-top: 1px; padding: 1px 4px; border-radius: 6px;
+  background: var(--tm2-wendler); color: #fff; font-size: 8.5px; font-weight: 900; letter-spacing: .4px;
+}
+/* FSL/SSL 백오프 방식 토글 */
+.tm2-wsl-toggle { display: flex; flex: none; gap: 4px; }
+.tm2-wsl-toggle button {
+  border: 1px solid #d7dce4; background: #fff; color: var(--tm2-ink3);
+  border-radius: 10px; padding: 5px 9px; font-size: 11px; font-weight: 800; line-height: 1.1;
+}
+.tm2-wsl-toggle button small { display: block; font-size: 8.5px; font-weight: 700; color: var(--tm2-ink4); }
+.tm2-wsl-toggle button.tm2-on {
+  border-color: var(--tm2-wendler); background: var(--tm2-wendler-bg); color: var(--tm2-wendler);
+}
+.tm2-wsl-toggle button.tm2-on small { color: var(--tm2-wendler); }
 .tm2-wset-remove {
   width: 28px; height: 36px; border: 0; border-radius: 8px; background: transparent;
   color: #b7bdc5; font-size: 18px; font-weight: 700;

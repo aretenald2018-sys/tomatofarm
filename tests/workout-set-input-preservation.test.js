@@ -62,7 +62,7 @@ async function runBoardSheetHarness() {
     '_ensureRoots',
   ].map(name => extractFunctionSource(boardRenderJs, name)).join('\n\n');
 
-  const browser = await puppeteer.launch({ headless: true });
+  const browser = await puppeteer.launch({ headless: true, args: typeof process.getuid === 'function' && process.getuid() === 0 ? ['--no-sandbox', '--disable-setuid-sandbox'] : [] });
   try {
     const page = await browser.newPage();
     const pageErrors = [];
@@ -172,4 +172,91 @@ test('board sheet harness: draft survives rerender, toggle patches in place, bac
   assert.equal(result.row1RowDone, true);
   assert.equal(result.closedRightAfterBlur, 0, '입력 블러 직후 백드롭 탭은 시트를 닫으면 안 된다');
   assert.equal(result.closedAfterQuietPeriod, 1, '입력과 무관한 백드롭 탭은 시트를 닫아야 한다');
+});
+
+// FSL/SSL 백오프 전환 계약: 보드 설정에 저장되고, 오늘 카드의 미완료 백오프만
+// 새 무게로 맞추며, 이미 완료한 세트는 그대로 둔다.
+async function runBackoffModeHarness() {
+  const harnessSource = extractFunctionSource(boardRenderJs, '_setW863BackoffMode');
+
+  const browser = await puppeteer.launch({ headless: true, args: typeof process.getuid === 'function' && process.getuid() === 0 ? ['--no-sandbox', '--disable-setuid-sandbox'] : [] });
+  try {
+    const page = await browser.newPage();
+    const pageErrors = [];
+    page.on('pageerror', error => pageErrors.push(String(error?.stack || error?.message || error)));
+    await page.setContent(`<!doctype html>
+      <html lang="ko">
+        <body>
+          <script>
+            var W863_ORIGINAL_VERSION = 'w863-original-v1';
+            var bm = { id: 'bm1', wendler: { templateVersion: W863_ORIGINAL_VERSION, backoffMode: 'ssl' } };
+            function benchmarkById() { return bm; }
+            var WS = { workout: { exercises: [{
+              sets: [
+                { kg: 92.5, reps: 8, wendlerRole: 'main', amrap: true, done: true },
+                { kg: 86.3, reps: 4, wendlerRole: 'backoff', supplementalKind: 'ssl', done: true },
+                { kg: 86.3, reps: 4, wendlerRole: 'backoff', supplementalKind: 'ssl', done: false },
+                { kg: 86.3, reps: 4, wendlerRole: 'backoff', supplementalKind: 'ssl', done: false },
+              ],
+            }] } };
+            var S = { card: { bmId: 'bm1', entryIdx: 0, track: 'volume', weekStart: '2026-08-17',
+              plan: { kind: 'wendler', rx: { templateVersion: W863_ORIGINAL_VERSION, backoffMode: 'ssl' } } } };
+            window.__persisted = 0; window.__saved = 0; window.__rerendered = 0; window.__toasts = [];
+            function _cellPlan() {
+              return { kind: 'wendler', rx: {
+                templateVersion: W863_ORIGINAL_VERSION,
+                backoffMode: bm.wendler.backoffMode,
+                backoff: bm.wendler.backoffMode === 'fsl'
+                  ? [{ kg: 75, pct: 59.1, supplementalKind: 'fsl' }]
+                  : [{ kg: 86.3, pct: 68.2, supplementalKind: 'ssl' }],
+              } };
+            }
+            function _stampCurrentWendlerMeta() {}
+            function _saveWorkoutDraft() { window.__saved += 1; }
+            function _rerenderWendlerCardHost() { window.__rerendered += 1; }
+            async function _persist() { window.__persisted += 1; return true; }
+            function _toast(msg) { window.__toasts.push(msg); }
+            ${harnessSource}
+          </script>
+        </body>
+      </html>`);
+
+    const result = await page.evaluate(async () => {
+      await _setW863BackoffMode('fsl');
+      const sets = WS.workout.exercises[0].sets;
+      const repeat = { mode: bm.wendler.backoffMode };
+      await _setW863BackoffMode('fsl'); // 같은 모드 재탭은 no-op
+      return {
+        mode: bm.wendler.backoffMode,
+        planMode: S.card.plan.rx.backoffMode,
+        doneBackoffKg: sets[1].kg,
+        doneBackoffKind: sets[1].supplementalKind,
+        pendingKgs: [sets[2].kg, sets[3].kg],
+        pendingKinds: [sets[2].supplementalKind, sets[3].supplementalKind],
+        mainUntouched: sets[0].kg,
+        persisted: window.__persisted,
+        saved: window.__saved,
+        rerendered: window.__rerendered,
+        repeatMode: repeat.mode,
+      };
+    });
+    return { result, pageErrors };
+  } finally {
+    await browser.close();
+  }
+}
+
+test('backoff mode switch: FSL updates pending backoff sets only and persists the board once', async () => {
+  const { result, pageErrors } = await runBackoffModeHarness();
+  assert.deepEqual(pageErrors, []);
+  assert.equal(result.mode, 'fsl');
+  assert.equal(result.planMode, 'fsl', '카드 플랜이 새 모드로 재계산되어야 한다');
+  assert.equal(result.doneBackoffKg, 86.3, '완료한 백오프 세트의 무게는 그대로여야 한다');
+  assert.equal(result.doneBackoffKind, 'ssl');
+  assert.deepEqual(result.pendingKgs, [75, 75], '미완료 백오프는 본세트1 무게로 바뀌어야 한다');
+  assert.deepEqual(result.pendingKinds, ['fsl', 'fsl']);
+  assert.equal(result.mainUntouched, 92.5);
+  assert.equal(result.persisted, 1, '같은 모드 재탭은 보드를 다시 저장하지 않는다');
+  assert.equal(result.saved, 1);
+  assert.equal(result.rerendered, 1);
 });

@@ -739,7 +739,7 @@ function _wendlerPlanSignature(plan) {
     `main:${setSig(rx.sets || [])}`,
     `singles:${setSig(rx.heavySingles || [])}`,
     `optional:${setSig(rx.optionalSets || [])}`,
-    `backoff:${setSig(rx.backoff || [])}`,
+    `backoff:${rx.backoffMode || ''}:${setSig(rx.backoff || [])}`,
     `deload:${setSig(rx.deload || [])}`,
     `supp:${supp}`,
   ].join('|');
@@ -782,6 +782,7 @@ function _setsForWorkoutCard(bm, plan) {
         romPct: 100,
         setType: s.role === 'warmup' ? 'warmup' : 'main',
         wendlerRole: s.role,
+        ...(s.supplementalKind ? { supplementalKind: s.supplementalKind } : {}),
         wendlerPct: s.pct ?? null,
         wendlerOrder: idx,
         wendlerSignature: signature,
@@ -1046,11 +1047,20 @@ function _wendlerSectionMeta(role, plan) {
   if (role === 'warmup') return { title: '준비 운동', sub: plan.rx?.templateVersion === W863_ORIGINAL_VERSION ? '원본 기준표 비례 워밍업' : 'TM 기준 워밍업' };
   if (role === 'main') {
     const top = plan.rx?.topSet;
-    return { title: '메인', sub: top?.amrap ? '마지막 세트: AMRAP' : '메인 처방 세트' };
+    return {
+      title: '본세트 + PR세트',
+      sub: top?.amrap
+        ? `마지막은 PR세트 ${top.reps}+ — 최소 ${top.reps}회, 자세가 유지되는 한 최대한 많이`
+        : '메인 처방 세트',
+    };
   }
-  if (role === 'heavy_single') return { title: '고중량 싱글', sub: '기본 포함 · 1회씩 수행' };
+  if (role === 'heavy_single') return { title: '조커 세트', sub: '선택 · 1회씩 · 컨디션 좋을 때만, RPE9에서 멈춤' };
   if (role === 'pr_attempt') return { title: 'PR 도전', sub: '당일 확인한 기준 1RM 초과 선택 세트' };
-  if (role === 'backoff') return { title: '백오프', sub: '원본 표의 마무리 볼륨 5세트' };
+  if (role === 'backoff') {
+    return plan.rx?.backoffMode === 'fsl'
+      ? { title: 'FSL 백오프', sub: '본세트1 무게 × 5세트 · 중강도 볼륨' }
+      : { title: 'SSL 백오프', sub: '본세트2 무게 × 5세트 · FSL보다 한 단계 강함' };
+  }
   if (role === 'deload') return { title: '회복', sub: 'W7 회복 세트 · 성장 지표에서 제외' };
   const supp = plan.rx?.supplemental;
   return {
@@ -1068,19 +1078,27 @@ function _wendlerSectionHtml(role, sets, plan, bm) {
     const romPct = Number(set.romPct);
     const romValue = Number.isFinite(romPct) ? Math.max(0, Math.min(100, Math.round(romPct))) : 100;
     return `
-      <div class="tm2-wset-row ${set.done ? 'tm2-done' : ''}">
+      <div class="tm2-wset-row ${set.done ? 'tm2-done' : ''} ${set.amrap ? 'tm2-wset-amrap' : ''}">
         <button type="button" class="tm2-wset-check ${set.done ? 'tm2-on' : ''}" data-action="tm2:wset-done" data-si="${idx}" aria-label="세트 완료"></button>
-        <div class="tm2-wset-no"><b>${rowIdx + 1}</b>${pct}</div>
-        <label><span>반복 횟수</span><input data-tm2-wset-field="reps" data-si="${idx}" inputmode="numeric" value="${_esc(set.reps ?? '')}">${plus}</label>
+        <div class="tm2-wset-no"><b>${rowIdx + 1}</b>${set.amrap ? '<small class="tm2-wset-pr-chip">PR</small>' : pct}</div>
+        <label><span>반복 횟수</span><input data-tm2-wset-field="reps" data-si="${idx}" inputmode="numeric" value="${_esc(set.reps ?? '')}" ${set.amrap ? 'aria-label="최소 반복 — 할 수 있는 만큼 최대한"' : ''}>${plus}</label>
         <label><span>kg</span><input data-tm2-wset-field="kg" data-si="${idx}" inputmode="decimal" value="${_esc(_fmtKg(set.kg))}"></label>
         <label class="tm2-wset-rom"><span>ROM</span><input data-tm2-wset-field="romPct" data-si="${idx}" inputmode="numeric" min="0" max="100" value="${_esc(romValue)}" aria-label="가동범위 퍼센트"><em>%</em></label>
         <button type="button" class="tm2-wset-remove" data-action="tm2:wset-remove" data-si="${idx}" aria-label="세트 삭제">×</button>
       </div>`;
   }).join('');
+  const backoffMode = plan.rx?.backoffMode === 'fsl' ? 'fsl' : 'ssl';
+  const backoffToggle = role === 'backoff' && plan.rx?.templateVersion === W863_ORIGINAL_VERSION
+    ? `<div class="tm2-wsl-toggle" role="group" aria-label="백오프 방식 선택">
+        <button type="button" data-action="tm2:w863-backoff-mode" data-mode="fsl" class="${backoffMode === 'fsl' ? 'tm2-on' : ''}" aria-pressed="${backoffMode === 'fsl'}">FSL<small>본세트1</small></button>
+        <button type="button" data-action="tm2:w863-backoff-mode" data-mode="ssl" class="${backoffMode === 'ssl' ? 'tm2-on' : ''}" aria-pressed="${backoffMode === 'ssl'}">SSL<small>본세트2</small></button>
+      </div>`
+    : '';
   return `
     <section class="tm2-wsec" data-role="${role}">
       <div class="tm2-wsec-head">
         <div><b>${_esc(title)}</b><span>${_esc(meta.sub)}</span></div>
+        ${backoffToggle}
         <button type="button" data-action="tm2:wset-add" data-role="${role}">+ 세트 추가</button>
       </div>
       <div class="tm2-wset-head"><span></span><span>세트#</span><span>반복 횟수</span><span>kg</span><span>ROM</span><span></span></div>
@@ -1150,6 +1168,35 @@ async function _confirmBoardW863Pr() {
   _saveWorkoutDraft();
   _rerenderWendlerCardHost();
   _toast('PR 도전 싱글을 오늘 세트에 추가했어요', 'success');
+}
+
+// FSL(본세트1)/SSL(본세트2) 백오프 전환 — 보드 설정에 저장하고, 오늘 카드의
+// 미완료 백오프 세트만 새 무게로 맞춘다. 이미 완료한 세트는 수행 사실이므로 두다.
+async function _setW863BackoffMode(mode) {
+  const next = mode === 'fsl' ? 'fsl' : 'ssl';
+  const bm = benchmarkById(S.board, S.card?.bmId);
+  const plan = S.card?.plan;
+  if (!bm?.wendler || plan?.kind !== 'wendler' || plan.rx?.templateVersion !== W863_ORIGINAL_VERSION) return;
+  if ((bm.wendler.backoffMode === 'fsl' ? 'fsl' : 'ssl') === next) return;
+  bm.wendler.backoffMode = next;
+  const refreshed = _cellPlan(bm, S.card.track, S.card.weekStart);
+  S.card.plan = refreshed;
+  const entry = WS.workout.exercises?.[S.card.entryIdx];
+  const target = refreshed.rx?.backoff?.[0] || null;
+  if (entry && Array.isArray(entry.sets) && target) {
+    entry.sets = entry.sets.map(set => (
+      set.wendlerRole === 'backoff' && set.done !== true
+        ? { ...set, kg: target.kg, wendlerPct: target.pct ?? null, supplementalKind: next }
+        : set
+    ));
+  }
+  _stampCurrentWendlerMeta();
+  _saveWorkoutDraft();
+  _rerenderWendlerCardHost();
+  await _persist();
+  _toast(next === 'fsl'
+    ? 'FSL 백오프로 전환 — 본세트1 무게로 5세트'
+    : 'SSL 백오프로 전환 — 본세트2 무게로 5세트', 'success');
 }
 
 function _renderWorkoutCard() {
@@ -2325,6 +2372,7 @@ async function _onAction(e) {
     case 'tm2:wset-add': _addWendlerSet(d.role); break;
     case 'tm2:wset-remove': _removeWendlerSet(Number(d.si)); break;
     case 'tm2:w863-pr-add': _confirmBoardW863Pr().catch(err => console.error('[tm2] confirm w863 PR failed', err)); break;
+    case 'tm2:w863-backoff-mode': await _setW863BackoffMode(d.mode); break;
     case 'tm2:paint': await _paintCurrent(); break;
     case 'tm2:miss-open': openMissSheet(); break;
     case 'tm2:miss-choice': S.missChoice = d.choice; _renderMissSheet(); break;

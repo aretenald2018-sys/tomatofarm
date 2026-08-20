@@ -162,7 +162,7 @@ function buildAddCarouselFocusHarnessScript() {
 }
 
 async function runAddCarouselFocusHarness() {
-  const browser = await puppeteer.launch({ headless: true });
+  const browser = await puppeteer.launch({ headless: true, args: typeof process.getuid === 'function' && process.getuid() === 0 ? ['--no-sandbox', '--disable-setuid-sandbox'] : [] });
   try {
     const page = await browser.newPage();
     const pageErrors = [];
@@ -997,7 +997,7 @@ test('day sheet added workout sets copy previous user values without completion 
   assert.match(rowsFn, /_workoutSheetInputValue\(set\.kg, 1\)/);
   assert.match(rowsFn, /_workoutSheetInputValue\(set\.reps, 0\)/);
   assert.match(rowsFn, /const kgDisplayText = kgText === '-' \? '미입력' : kgText/);
-  assert.match(rowsFn, /const repsDisplayText = repsText === '-' \? '미입력' : repsText/);
+  assert.match(rowsFn, /const repsDisplayText = repsText === '-' \? '미입력' : `\$\{repsText\}\$\{amrapSuffix\}`/);
   assert.match(rowsFn, /const expanded = editable && _isWorkoutSetEditorExpanded/);
   assert.match(rowsFn, /data-wt-sheet-card-action="toggle-set-editor"/);
   assert.match(rowsFn, /wt-max-set-editor/);

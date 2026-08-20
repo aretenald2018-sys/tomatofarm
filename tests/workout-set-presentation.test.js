@@ -29,6 +29,14 @@ test('workout set presentation keeps set type and history semantics', () => {
   assert.equal(normalizeWorkoutSetType('deload'), 'main');
   assert.equal(workoutSetTypeLabel({ wendlerRole: 'supplemental', supplementalKind: 'bbb' }), 'BBB');
   assert.equal(workoutSetTypeLabel({ wendlerRole: 'supplemental', supplementalKind: 'fsl' }), 'FSL');
+  // 야들러 용어: PR세트(AMRAP)·조커 싱글·FSL/SSL 백오프
+  assert.equal(workoutSetTypeLabel({ wendlerRole: 'main', amrap: true }), 'PR');
+  assert.equal(workoutSetTypeLabel({ wendlerRole: 'main' }), '메인');
+  assert.equal(workoutSetTypeLabel({ wendlerRole: 'heavy_single' }), '조커');
+  assert.equal(workoutSetTypeLabel({ wendlerRole: 'pr_attempt' }), '1RM');
+  assert.equal(workoutSetTypeLabel({ wendlerRole: 'backoff', supplementalKind: 'fsl' }), 'FSL');
+  assert.equal(workoutSetTypeLabel({ wendlerRole: 'backoff', supplementalKind: 'ssl' }), 'SSL');
+  assert.equal(workoutSetTypeLabel({ wendlerRole: 'backoff' }), '백오프');
   assert.equal(workoutSetTypeLabel('failure'), '실패');
   assert.equal(workoutSetTypeLabel('deload'), '디로드');
   assert.equal(workoutSetTypeClass({ wendlerRole: 'warmup' }), 'is-warmup');

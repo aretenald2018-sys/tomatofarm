@@ -44,10 +44,15 @@ export function workoutSetTypeLabel(setOrType = {}) {
   const set = setOrType && typeof setOrType === 'object' ? setOrType : {};
   const type = typeof setOrType === 'string' ? setOrType : set.setType;
   if (set.wendlerRole === 'warmup') return '웜업';
-  if (set.wendlerRole === 'main') return '메인';
-  if (set.wendlerRole === 'heavy_single') return '싱글';
-  if (set.wendlerRole === 'pr_attempt') return 'PR';
-  if (set.wendlerRole === 'backoff') return '백오프';
+  // PR세트(AMRAP): 최소 목표 이상 최대한 많이 — 야들러 용어를 그대로 쓴다.
+  if (set.wendlerRole === 'main') return set.amrap === true ? 'PR' : '메인';
+  if (set.wendlerRole === 'heavy_single') return '조커';
+  if (set.wendlerRole === 'pr_attempt') return '1RM';
+  if (set.wendlerRole === 'backoff') {
+    if (set.supplementalKind === 'fsl') return 'FSL';
+    if (set.supplementalKind === 'ssl') return 'SSL';
+    return '백오프';
+  }
   if (set.wendlerRole === 'deload') return '회복';
   if (set.wendlerRole === 'supplemental') {
     if (set.supplementalKind === 'bbb') return 'BBB';

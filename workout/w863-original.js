@@ -121,6 +121,9 @@ export function normalizeW863OriginalConfig(wendler = {}, context = {}) {
     cycleNo,
     startWeek,
     weeks: 7,
+    // 야들러 원본의 마무리 볼륨 선택지. SSL(본세트2 무게)이 기존 표 그대로의 기본값,
+    // FSL(본세트1 무게)은 한 단계 약한 버전이다. 반복수(하체 4회/상체 8회)는 공통.
+    backoffMode: wendler.backoffMode === 'fsl' ? 'fsl' : 'ssl',
     supplemental: { kind: 'none', pct: 50, sets: 5, reps: 10, timing: 'after-main' },
   };
 }
@@ -151,7 +154,18 @@ export function w863OriginalWeekPrescription(wendler = {}, weekIndex = 1, contex
   const mainSets = byRole('main');
   const heavySingles = byRole('heavy_single');
   const optionalSets = byRole('pr_attempt');
-  const backoff = byRole('backoff');
+  // 원본 표의 백오프는 본세트2 무게(SSL). FSL을 고르면 본세트1 무게로 낮춘다.
+  const backoffSource = cfg.backoffMode === 'fsl' ? mainSets[0] : (mainSets[1] || mainSets[0]);
+  const backoff = byRole('backoff').map(set => ({
+    ...set,
+    ...(backoffSource ? {
+      kg: backoffSource.kg,
+      referenceKg: backoffSource.referenceKg,
+      pct: backoffSource.pct,
+      prescribedPct: backoffSource.prescribedPct,
+    } : {}),
+    supplementalKind: cfg.backoffMode,
+  }));
   const deload = byRole('deload');
   const topSet = mainSets.at(-1) || deload.at(-1) || null;
   return {
@@ -164,6 +178,7 @@ export function w863OriginalWeekPrescription(wendler = {}, weekIndex = 1, contex
     oneRmKg: cfg.oneRmKg,
     tmKg: cfg.tmKg,
     roundKg: cfg.roundKg,
+    backoffMode: cfg.backoffMode,
     warmup: { enabled: warmupSets.length > 0, sets: warmupSets },
     sets: mainSets,
     heavySingles,

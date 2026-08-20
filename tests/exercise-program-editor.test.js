@@ -43,8 +43,8 @@ test('8/6/3 original editor and workout card expose profile, 1RM, recovery roles
   assert.match(exercisesJs, /data-wendler-supp-fields/);
   assert.match(exercisesJs, /data-action="confirm-w863-pr"/);
   assert.match(exercisesJs, /function _bindW863PrChip[\s\S]*addEventListener\('click'/);
-  assert.match(exercisesJs, /wendlerRole === 'heavy_single'[\s\S]*return '싱글'/);
-  assert.match(exercisesJs, /wendlerRole === 'backoff'[\s\S]*return '백오프'/);
+  assert.match(exercisesJs, /wendlerRole === 'heavy_single'[\s\S]*return '조커'/);
+  assert.match(exercisesJs, /wendlerRole === 'backoff'[\s\S]*return 'FSL'[\s\S]*return 'SSL'[\s\S]*return '백오프'/);
   assert.match(exercisesJs, /wendlerRole === 'deload'[\s\S]*return '회복'/);
   assert.doesNotMatch(exercisesJs, /onclick=.*confirm-w863-pr/);
 });
