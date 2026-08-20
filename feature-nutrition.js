@@ -306,9 +306,12 @@ export async function openNutritionPhotoAdd() {
   await _openNutritionEditorTab('photo');
 }
 
-// 끼니 행의 "Gemini 검색" 버튼 — 자연어로 제품을 검색해 음식 DB에 등록한다.
-export async function openNutritionGeminiRegister() {
+// 끼니 행의 "Gemini 검색" 버튼 — 자연어로 제품을 검색해 음식 DB에 등록하고,
+// 진입한 끼니에도 결과를 바로 추가한다.
+export async function openNutritionGeminiRegister(meal) {
   await _openNutritionEditorTab('gemini');
+  const { setNutritionGeminiMealTarget } = await import('./modals/nutrition-item-modal.js');
+  setNutritionGeminiMealTarget(meal);
 }
 
 // ── 즐겨찾기 제거 ─────────────────────────────────────────────────

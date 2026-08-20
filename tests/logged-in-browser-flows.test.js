@@ -762,11 +762,14 @@ export async function searchNutritionByQuery(query) {
   const moduleSource = `
       const fake = await import(${JSON.stringify(FAKE_DATA_URL)});
       const modal = await import(${JSON.stringify(repoUrl('modals/nutrition-item-modal.js'))});
+      const { S } = await import(${JSON.stringify(repoUrl('workout/state.js'))});
 
       fake.resetFakeDataLayer({ currentUser: ${JSON.stringify(SIGNED_IN_USER)} });
       document.body.insertAdjacentHTML('beforeend', modal.MODAL_HTML);
       await modal.openNutritionItemEditor(null);
       modal.switchNutritionTab('gemini');
+      // 저녁 끼니 행에서 진입한 상황 — 등록과 동시에 저녁에 추가돼야 한다.
+      modal.setNutritionGeminiMealTarget('dinner');
 
       window.__qa = {
         snapshot() {
@@ -775,7 +778,10 @@ export async function searchNutritionByQuery(query) {
             resultVisible: document.getElementById('ni-gemini-result')?.style.display !== 'none',
             groundingText: document.getElementById('ni-gemini-grounding')?.textContent?.trim() || '',
             rowCount: document.querySelectorAll('#ni-gemini-extracted .ni-grid-row').length,
+            saveBtnText: document.getElementById('ni-gemini-save-all-btn')?.textContent?.trim() || '',
             savedItems: JSON.parse(JSON.stringify(fake.fakeDataStore.savedNutritionItems)),
+            dinnerFoods: JSON.parse(JSON.stringify(S.diet.dFoods || [])),
+            dinnerKcal: S.diet.dKcal ?? null,
             queries: window.__qaGeminiQueries || [],
           };
         },
@@ -812,6 +818,8 @@ test('gemini food search renders grounded results and batch-registers checked it
     assert.match(after.groundingText, /구글 검색 근거 기반/);
     // 근거 없는 항목은 추정 경고에 이름이 올라간다.
     assert.match(after.groundingText, /핫브레이크 미니바[\s\S]*추정값/);
+    // 끼니 진입이면 저장 버튼이 "등록 + 끼니 추가"임을 드러낸다.
+    assert.match(after.saveBtnText, /등록하고 저녁에 추가/);
 
     await tapElement(page, '#ni-gemini-save-all-btn');
     await page.waitForFunction(() => window.__qa.snapshot().savedItems.length === 2, { timeout: 8000 });
@@ -823,6 +831,14 @@ test('gemini food search renders grounded results and batch-registers checked it
     assert.deepEqual(saved.savedItems[0].aliases, ['닥터유바'], '검색 별칭이 함께 저장돼야 한다');
     assert.equal(saved.savedItems[0].source, 'gemini');
     assert.equal(saved.savedItems[0].rawText, '닥터유 미니바랑 핫브레이크 미니바 영양성분 정리');
+
+    // 끼니 행에서 진입했으므로 DB 등록과 동시에 저녁에도 추가된다.
+    assert.deepEqual(
+      saved.dinnerFoods.map(food => [food.name, food.grams, food.kcal]),
+      [['닥터유 미니바', 22, 110], ['핫브레이크 미니바', 23, 115]],
+      '산출 항목이 저녁 끼니에 1회 제공량 기준으로 추가돼야 한다',
+    );
+    assert.equal(saved.dinnerKcal, 225, '저녁 매크로가 재계산돼야 한다');
 
     assert.deepEqual(harness.pageErrors, []);
     assert.deepEqual(harness.blockedRequests, []);

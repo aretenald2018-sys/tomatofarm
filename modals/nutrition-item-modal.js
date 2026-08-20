@@ -15,6 +15,14 @@ let _niCurrentTab = 'manual';
 let _niPhotoBase64 = null;
 let _niParsedData = null;
 let _niConfidence = null;  // OCR 신뢰도
+// Gemini 검색 결과를 등록과 동시에 추가할 끼니. 끼니 행의 버튼으로 열 때만 설정된다.
+let _niGeminiMealTarget = null;
+
+const _NI_MEAL_LABELS = Object.freeze({ breakfast: '아침', lunch: '점심', dinner: '저녁', snack: '간식' });
+
+export function setNutritionGeminiMealTarget(meal) {
+  _niGeminiMealTarget = _NI_MEAL_LABELS[meal] ? meal : null;
+}
 
 export const MODAL_HTML = `
 <div class="modal-backdrop" id="nutrition-item-modal" data-nutrition-item-action="close">
@@ -148,6 +156,7 @@ export async function openNutritionItemEditor(id) {
   _niCurrentTab = 'manual';
   _niPhotoBase64 = null;
   _niParsedData = null;
+  _niGeminiMealTarget = null; // 끼니 진입 경로가 다시 설정한다
 
   const modal = document.getElementById('nutrition-item-modal');
   const titleEl = document.getElementById('nutrition-item-title');
@@ -485,6 +494,11 @@ export async function searchNutritionWithGemini() {
       saveBtnId: 'ni-gemini-save-all-btn',
       source: 'gemini',
     });
+    // 끼니에서 진입했으면 저장이 등록+끼니 추가임을 버튼에 드러낸다.
+    const saveBtn = document.getElementById('ni-gemini-save-all-btn');
+    if (saveBtn && _niGeminiMealTarget) {
+      saveBtn.textContent = `💾 등록하고 ${_NI_MEAL_LABELS[_niGeminiMealTarget]}에 추가`;
+    }
   } catch (e) {
     console.error('Gemini 검색 실패:', e);
     showToast('Gemini 검색 실패: ' + e.message, 3500, 'error');
@@ -900,11 +914,30 @@ async function _saveMultipleItems(items, saveBtnId) {
         // Gemini 검색 결과의 검색 별칭 — 없으면 기존 경로 그대로 빈 배열
         aliases: Array.isArray(item.aliases) ? item.aliases.map(v => String(v).trim()).filter(Boolean) : [],
       });
-      await saveNutritionItem(entry);
+      const savedItem = await saveNutritionItem(entry);
       savedCount++;
+
+      // Gemini 검색을 끼니 행에서 열었다면 DB 등록과 동시에 그 끼니에도 추가한다.
+      // 1회 제공량(servingSize) 기준 1개 분량으로 올린다.
+      if (_niGeminiMealTarget && item._source === 'gemini') {
+        const { addMealFood } = await import('../diet/feature.js');
+        const grams = Number(item.servingSize) > 0 ? Number(item.servingSize) : 100;
+        addMealFood(_niGeminiMealTarget, {
+          id: savedItem?.id || entry.id || null,
+          name: entry.name,
+          grams,
+          kcal: Number(item.nutrition?.kcal) || 0,
+          protein: Number(item.nutrition?.protein) || 0,
+          carbs: Number(item.nutrition?.carbs) || 0,
+          fat: Number(item.nutrition?.fat) || 0,
+        });
+      }
     }
 
-    showToast(`${savedCount}개 저장 완료`, 2500, 'success');
+    const mealLabel = _niGeminiMealTarget && toSave.some(item => item._source === 'gemini')
+      ? _NI_MEAL_LABELS[_niGeminiMealTarget]
+      : null;
+    showToast(mealLabel ? `${savedCount}개 등록 + ${mealLabel}에 추가했어요` : `${savedCount}개 저장 완료`, 2500, 'success');
     closeNutritionItemModal();
 
     setTimeout(_notifyNutritionDatabaseChanged, 100);
