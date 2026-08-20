@@ -555,6 +555,8 @@ test('tapping the add/copy-set button while a set value is still dirty keeps the
 
     const sets = await page.evaluate(() => window.__qa.storedSets());
     assert.deepEqual(sets[0], { kg: 10, reps: 15, done: false }, '치던 횟수 15가 세트 추가 후에도 남아야 한다');
+    // 직전 세트 복사본은 즉시 완료(✓)로 기록된다.
+    assert.deepEqual(sets[2], { kg: 80, reps: 8, done: true }, '복사된 세트는 바로 완료 상태여야 한다');
 
     assert.deepEqual(harness.pageErrors, []);
     assert.deepEqual(harness.blockedRequests, []);

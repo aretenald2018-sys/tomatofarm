@@ -2726,12 +2726,20 @@ async function _addWorkoutExerciseSetFromSheet(key, sessionIndex, exerciseIndex)
     const ok = await _mutateWorkoutExerciseFromSheet(key, sessionIndex, exerciseIndex, (entry) => {
       const sets = Array.isArray(entry.sets) ? entry.sets : [];
       copiedPreviousSet = sets.length > 0;
-      sets.push(_defaultWorkoutSheetSet(sets[sets.length - 1]));
+      const nextSet = _defaultWorkoutSheetSet(sets[sets.length - 1]);
+      // 직전 세트 복사는 "방금 같은 무게·횟수로 한 번 더 했다"는 기록이다.
+      // 바로 완료(✓)로 표시해 탭 한 번을 줄인다. 빈 종목의 첫 세트는 아직
+      // 수행 전 입력용이므로 미완료로 둔다.
+      if (copiedPreviousSet) {
+        nextSet.done = true;
+        nextSet.completedAt = Date.now();
+      }
+      sets.push(nextSet);
       entry.sets = sets;
       clearWorkoutExerciseCompletionMarker(entry);
       return true;
     }, { preserveSheetScroll: true, optimisticRender: true });
-    if (ok) showToast(copiedPreviousSet ? '직전 세트를 복사했어요' : '세트를 추가했어요', 1200, 'success');
+    if (ok) showToast(copiedPreviousSet ? '직전 세트를 복사하고 완료로 표시했어요' : '세트를 추가했어요', 1200, 'success');
   } catch (e) {
     console.warn('[workout-calendar] sheet set add failed:', e);
     showToast('세트 추가에 실패했어요', 2200, 'error');
