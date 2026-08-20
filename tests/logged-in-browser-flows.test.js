@@ -305,6 +305,12 @@ export const estimateInOnePass = unavailable('estimateInOnePass');
         wendlerSnapshot,
         openDaySheet,
         storedSets,
+        storedFullSet: (index) => {
+          const day = fake.getCache()[KEY] || {};
+          const entry = ((day.workoutSessions || [])[0]?.exercises || [])[0] || {};
+          const set = (entry.sets || [])[index] || null;
+          return set ? JSON.parse(JSON.stringify(set)) : null;
+        },
         activeSnapshot,
         savedDayCount: () => fake.fakeDataStore.savedDays.length,
         markRow: (setIndex, token) => {
@@ -514,6 +520,56 @@ test('set keypad commits a dirty value on field switch without rerendering the r
     assert.deepEqual(afterDone.sets[0], { kg: 95, reps: 10, done: true });
     assert.equal(afterDone.keyboardMounted, false);
     assert.ok(afterDone.sheetSavedEvents > 0, 'sheet:saved should fire once the keypad is closed');
+
+    assert.deepEqual(harness.pageErrors, []);
+    assert.deepEqual(harness.blockedRequests, []);
+  } finally {
+    if (harness?.browser) await harness.browser.close();
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+// 확장 편집 패널(무게/횟수/RIR/ROM)에서 칸을 직접 탭해 옮겨 다니는 흐름.
+// 패널 입력은 readonly 키패드라 change 이벤트가 없어서, 칸 이동 시 이전 칸을
+// 커밋하지 않으면 ✓(완료) 때 마지막 칸 값만 남고 나머지가 지워진다(회귀).
+test('expanded set editor commits each field on direct tap handoff so done keeps every typed value', async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), 'tomato-logged-in-editor-handoff-'));
+  let harness;
+  try {
+    const htmlPath = await buildWorkoutSheetHarness(tempDir);
+    harness = await launchHarness(htmlPath);
+    const { page } = harness;
+
+    const editorInput = (field) => `[data-wt-day-sheet] .wt-max-set-editor [data-wt-set-input][data-set-index="1"][data-field="${field}"]`;
+
+    // 2번째 세트의 확장 편집기를 연다.
+    await tapElement(page, '[data-wt-day-sheet] [data-wt-sheet-card-action="toggle-set-editor"][data-set-index="1"]');
+    await page.waitForSelector('[data-wt-day-sheet] .wt-max-set-editor', { timeout: 5000 });
+
+    // 무게 10 입력 → 횟수 칸 직접 탭 (키패드 화살표가 아니라 필드 탭 이동).
+    await tapElement(page, editorInput('kg'));
+    await tapElement(page, '[data-wt-set-keyboard] [data-wt-set-keyboard-key="1"]');
+    await tapElement(page, '[data-wt-set-keyboard] [data-wt-set-keyboard-key="0"]');
+    await tapElement(page, editorInput('reps'));
+    await page.waitForFunction(() => window.__qa.storedFullSet(1)?.kg === 10, { timeout: 5000 });
+
+    // 횟수 15 입력 → RIR 칸 직접 탭.
+    await tapElement(page, '[data-wt-set-keyboard] [data-wt-set-keyboard-key="1"]');
+    await tapElement(page, '[data-wt-set-keyboard] [data-wt-set-keyboard-key="5"]');
+    await tapElement(page, editorInput('rir'));
+    await page.waitForFunction(() => window.__qa.storedFullSet(1)?.reps === 15, { timeout: 5000 });
+
+    // RIR 2 입력 → 키패드 ✓(완료).
+    await tapElement(page, '[data-wt-set-keyboard] [data-wt-set-keyboard-key="2"]');
+    await tapElement(page, '[data-wt-set-keyboard] [data-wt-set-keyboard-action="done"]');
+    await page.waitForFunction(() => window.__qa.storedFullSet(1)?.done === true, { timeout: 5000 });
+
+    // 준수 증상 회귀: 마지막 칸(RIR)만 남고 무게/횟수가 비면 안 된다.
+    const saved = await page.evaluate(() => window.__qa.storedFullSet(1));
+    assert.equal(saved.kg, 10, '무게가 확인(완료) 후에도 남아 있어야 한다');
+    assert.equal(saved.reps, 15, '횟수가 확인(완료) 후에도 남아 있어야 한다');
+    assert.equal(saved.rir, 2);
+    assert.equal(saved.done, true);
 
     assert.deepEqual(harness.pageErrors, []);
     assert.deepEqual(harness.blockedRequests, []);

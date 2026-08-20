@@ -1856,33 +1856,38 @@ function _bindWorkoutHomeSheetActions(root) {
     // 잠금은 이 인계가 끝나면 반드시 풀어야 한다. 커밋이 떠 있으면 커밋이,
     // 없으면 이 핸들러 끝에서 푼다. 안 풀면 키패드가 사는 내내 잠금이 남아
     // 다른 세트 행 탭에 필요한 재렌더까지 막힌다.
-    let domLockToken = null;
+    const previousInput = workoutSetKeyboardState.input?.isConnected ? workoutSetKeyboardState.input : null;
+    const targetMeta = _workoutSetKeyboardMeta(input);
+    const isInline = input.hasAttribute('data-wt-set-inline-input');
+    const switchingMountedField = isInline
+      && previousInput
+      && previousInput !== input
+      && previousInput.hasAttribute('data-wt-set-inline-input');
+    let domLockToken = switchingMountedField ? _lockWorkoutSetKeyboardDom() : null;
     let domLockHandedToCommit = false;
-    if (input.hasAttribute('data-wt-set-inline-input')) {
-      const previousInput = workoutSetKeyboardState.input?.isConnected ? workoutSetKeyboardState.input : null;
-      const targetMeta = _workoutSetKeyboardMeta(input);
+    if (isInline) {
       const inlineEditorKey = input.getAttribute('data-wt-inline-editor-key') || '';
-      const switchingMountedField = previousInput
-        && previousInput !== input
-        && previousInput.hasAttribute('data-wt-set-inline-input');
-      if (switchingMountedField) domLockToken = _lockWorkoutSetKeyboardDom();
       if (inlineEditorKey) workoutDetailState.inlineSetEditor = inlineEditorKey;
-      if (switchingMountedField && previousInput.getAttribute('data-wt-set-keyboard-dirty') === 'true') {
-        domLockHandedToCommit = true;
-        const releaseToken = domLockToken;
-        Promise.resolve(_commitWorkoutSetKeyboardInput(previousInput, {
-          closeInline: false,
-          nextTarget: targetMeta,
-          skipRender: true,
-        })).catch((error) => {
-          console.warn('[workout-calendar] mounted inline field commit failed:', error);
-        }).finally(() => {
-          _releaseWorkoutSetKeyboardDom(releaseToken);
-        });
-      }
-      if (switchingMountedField) {
-        _syncWorkoutHomeNavState({ history: 'replace', action: 'sheet:set-inline-field' });
-      }
+    }
+    // 이전 칸에 입력해 둔 값은 어떤 세트 입력으로 옮기든 즉시 상태에 커밋한다.
+    // 확장 편집 패널(무게/횟수/RIR/ROM)은 readonly 키패드 입력이라 change 이벤트가
+    // 없어서, 여기서 커밋하지 않으면 확인(완료) 시 리렌더가 값을 지워버린다.
+    if (previousInput && previousInput !== input
+      && previousInput.getAttribute('data-wt-set-keyboard-dirty') === 'true') {
+      domLockHandedToCommit = !!domLockToken;
+      const releaseToken = domLockToken;
+      Promise.resolve(_commitWorkoutSetKeyboardInput(previousInput, {
+        closeInline: false,
+        nextTarget: targetMeta,
+        skipRender: true,
+      })).catch((error) => {
+        console.warn('[workout-calendar] set field handoff commit failed:', error);
+      }).finally(() => {
+        if (releaseToken) _releaseWorkoutSetKeyboardDom(releaseToken);
+      });
+    }
+    if (switchingMountedField) {
+      _syncWorkoutHomeNavState({ history: 'replace', action: 'sheet:set-inline-field' });
     }
     _clearWorkoutSetInputOnFocus(input);
     _showWorkoutSetKeyboard(input);

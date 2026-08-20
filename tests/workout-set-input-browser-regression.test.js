@@ -235,7 +235,12 @@ export const MOVEMENTS = [];
 
     browser = await puppeteer.launch({
       headless: true,
-      args: ['--allow-file-access-from-files'],
+      args: [
+        '--allow-file-access-from-files',
+        ...(typeof process.getuid === 'function' && process.getuid() === 0
+          ? ['--no-sandbox', '--disable-setuid-sandbox']
+          : []),
+      ],
     });
     const page = await browser.newPage();
     const pageErrors = [];
