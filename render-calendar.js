@@ -19,8 +19,10 @@ import {
   getSeasonRunningPlan,
   getSeasonTestBoardV2,
   getSeasonWorkoutPlan,
+  getTestBoardV2,
   loadRunningRoute,
   saveDay,
+  saveTestBoardV2,
 } from './data.js';
 import {
   calcDietMetrics,
@@ -1731,6 +1733,8 @@ function _runWorkoutHomeSheetCardAction(action, control) {
       return _toggleWorkoutSetTypeMenuFromSheet(key, sessionIndex, exerciseIndex, setIndex);
     case 'set-set-type':
       return _setWorkoutExerciseSetTypeFromSheet(key, sessionIndex, exerciseIndex, setIndex, setType);
+    case 'set-backoff-mode':
+      return _setWorkoutBackoffModeFromSheet(key, sessionIndex, exerciseIndex, setIndex, control?.getAttribute?.('data-backoff-mode') || '');
     case 'complete-exercise':
       return _completeWorkoutExerciseFromSheet(cardId, key, sessionIndex, exerciseIndex);
     case 'edit-exercise':
@@ -2631,6 +2635,66 @@ async function _setWorkoutExerciseSetTypeFromSheet(key, sessionIndex, exerciseIn
     console.warn('[workout-calendar] sheet set type update failed:', e);
     showToast('세트 유형 변경에 실패했어요', 2200, 'error');
     return false;
+  }
+}
+
+// 하루 시트에서 웬들러(863) 백오프를 FSL(본세트1)/SSL(본세트2) 무게로 전환한다.
+// 무게는 같은 종목의 본세트에서 읽고, 미완료 백오프 세트만 바꾼다. 선택은 성장
+// 보드 설정(wendler.backoffMode)에도 저장해 다음 주 처방부터 같은 방식이 나온다.
+async function _setWorkoutBackoffModeFromSheet(key, sessionIndex, exerciseIndex, setIndex, mode) {
+  const nextMode = mode === 'fsl' ? 'fsl' : 'ssl';
+  try {
+    const targetKey = _parseDateKey(key) ? key : _workoutHomeSelectedKey;
+    const targetSessionIndex = Math.max(0, Math.min(WORKOUT_GYM_SESSION_COUNT - 1, Math.floor(Number(sessionIndex) || 0)));
+    const targetSetIndex = Math.max(0, Math.floor(Number(setIndex) || 0));
+    _workoutOpenSetTypeMenus.delete(_workoutSetEditorKey(targetKey, targetSessionIndex, exerciseIndex, targetSetIndex));
+    let targetKg = 0;
+    let exerciseId = '';
+    const ok = await _mutateWorkoutExerciseFromSheet(targetKey, targetSessionIndex, exerciseIndex, (entry) => {
+      const sets = Array.isArray(entry.sets) ? entry.sets : [];
+      const mains = sets.filter(set => set?.wendlerRole === 'main');
+      const source = nextMode === 'fsl' ? mains[0] : (mains[1] || mains[0]);
+      if (!(Number(source?.kg) > 0)) return false;
+      targetKg = Number(source.kg);
+      exerciseId = String(entry.exerciseId || '');
+      entry.sets = sets.map(set => (
+        set?.wendlerRole === 'backoff' && set.done !== true
+          ? { ...set, kg: targetKg, wendlerPct: source.wendlerPct ?? null, supplementalKind: nextMode }
+          : set
+      ));
+      return true;
+    }, { preserveSheetScroll: true });
+    if (!ok) {
+      showToast('본세트 무게를 찾지 못해 백오프 방식을 바꾸지 못했어요', 2200, 'warning');
+      return false;
+    }
+    await _syncWendlerBackoffModeToBoard(exerciseId, nextMode);
+    showToast(nextMode === 'fsl'
+      ? `FSL 백오프 — 미완료 세트를 본세트1 ${targetKg}kg로 맞췄어요`
+      : `SSL 백오프 — 미완료 세트를 본세트2 ${targetKg}kg로 맞췄어요`, 2200, 'success');
+    return true;
+  } catch (e) {
+    console.warn('[workout-calendar] backoff mode change failed:', e);
+    showToast('백오프 방식 변경에 실패했어요', 2200, 'error');
+    return false;
+  }
+}
+
+// 보드 동기화는 부가 작업이다 — 보드가 없거나 저장이 실패해도 하루 시트의
+// 변경은 유지되어야 하므로 실패는 조용히 넘긴다.
+async function _syncWendlerBackoffModeToBoard(exerciseId, mode) {
+  if (!exerciseId) return;
+  try {
+    const board = getTestBoardV2();
+    const benchmark = (board?.benchmarks || []).find(bm => (
+      bm?.program === 'wendler' && String(bm.exerciseId) === exerciseId && bm.status !== 'archived'
+    ));
+    if (!benchmark?.wendler) return;
+    if ((benchmark.wendler.backoffMode === 'fsl' ? 'fsl' : 'ssl') === mode) return;
+    benchmark.wendler.backoffMode = mode;
+    await saveTestBoardV2(board);
+  } catch (e) {
+    console.warn('[workout-calendar] backoff mode board sync skipped:', e);
   }
 }
 

@@ -242,9 +242,67 @@ export const estimateInOnePass = unavailable('estimateInOnePass');
         };
       }
 
+      // 웬들러(863) 페인트가 남긴 형태의 하루 — PR세트(AMRAP)와 백오프(SSL) 포함.
+      function seedWendler() {
+        fake.resetFakeDataLayer({
+          currentUser: ${JSON.stringify(SIGNED_IN_USER)},
+          exercises: [
+            { id: 'wide-squat', name: '스쿼트(와이드)', muscleId: 'lower', movementId: 'squat' },
+          ],
+          muscleParts: [{ id: 'lower', name: '하체', color: '#0f766e' }],
+        });
+        fake.getCache()[KEY] = {
+          workoutSessions: [{
+            id: 'session-1',
+            label: '1회차',
+            exercises: [{
+              exerciseId: 'wide-squat',
+              name: '스쿼트(와이드)',
+              muscleId: 'lower',
+              movementId: 'squat',
+              sets: [
+                { kg: 75, reps: 8, romPct: 100, setType: 'main', wendlerRole: 'main', done: true },
+                { kg: 86.3, reps: 8, romPct: 100, setType: 'main', wendlerRole: 'main', done: true },
+                { kg: 92.5, reps: 8, romPct: 100, setType: 'main', wendlerRole: 'main', amrap: true, done: false },
+                { kg: 86.3, reps: 4, romPct: 100, setType: 'main', wendlerRole: 'backoff', supplementalKind: 'ssl', done: true },
+                { kg: 86.3, reps: 4, romPct: 100, setType: 'main', wendlerRole: 'backoff', supplementalKind: 'ssl', done: false },
+                { kg: 86.3, reps: 4, romPct: 100, setType: 'main', wendlerRole: 'backoff', supplementalKind: 'ssl', done: false },
+              ],
+            }],
+          }],
+        };
+        fake.fakeDataStore.settings.test_board_v2 = {
+          benchmarks: [{
+            id: 'bm-squat', exerciseId: 'wide-squat', program: 'wendler', status: 'active',
+            label: '스쿼트(와이드)', groupId: 'lower',
+            wendler: { templateVersion: 'w863-original-v1', backoffMode: 'ssl' },
+          }],
+        };
+        S.shared.date = { y: today.getFullYear(), m: today.getMonth(), d: 1 };
+        window.__qaSheetSavedEvents = 0;
+      }
+
+      function wendlerSnapshot() {
+        const day = fake.getCache()[KEY] || {};
+        const entry = ((day.workoutSessions || [])[0]?.exercises || [])[0] || {};
+        return {
+          sets: (entry.sets || []).map(set => ({
+            kg: set.kg, reps: set.reps, role: set.wendlerRole || '', kind: set.supplementalKind || '', done: set.done === true,
+          })),
+          boardMode: fake.fakeDataStore.settings.test_board_v2?.benchmarks?.[0]?.wendler?.backoffMode || null,
+          chipLabels: Array.from(document.querySelectorAll('[data-wt-day-sheet] .wt-max-set-type small'))
+            .map(node => node.textContent.trim()),
+          repsTexts: Array.from(document.querySelectorAll('[data-wt-day-sheet] [data-wt-set-edit-field="reps"]'))
+            .map(node => node.textContent.replace(/\\s+/g, '').trim()),
+          backoffModeOptionCount: document.querySelectorAll('[data-wt-sheet-card-action="set-backoff-mode"]').length,
+        };
+      }
+
       window.__qa = {
         key: KEY,
         seed,
+        seedWendler,
+        wendlerSnapshot,
         openDaySheet,
         storedSets,
         activeSnapshot,
@@ -524,6 +582,49 @@ test('tapping another set row after switching fields inside a row still opens th
       () => window.__qa.storedSets()[0]?.kg === 95 && window.__qa.storedSets()[0]?.reps === 12,
       { timeout: 5000 },
     );
+
+    assert.deepEqual(harness.pageErrors, []);
+    assert.deepEqual(harness.blockedRequests, []);
+  } finally {
+    if (harness?.browser) await harness.browser.close();
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('day sheet shows PR(8+) and switches wendler backoff between FSL and SSL from the set type menu', async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), 'tomato-logged-in-backoff-mode-'));
+  let harness;
+  try {
+    const htmlPath = await buildWorkoutSheetHarness(tempDir);
+    harness = await launchHarness(htmlPath);
+    const { page } = harness;
+
+    await page.evaluate(() => {
+      window.__qa.seedWendler();
+      window.__qa.openDaySheet();
+    });
+
+    // PR세트(AMRAP): 유형 칩 'PR' + 처방 반복수 '8+' 노출.
+    const before = await page.evaluate(() => window.__qa.wendlerSnapshot());
+    assert.equal(before.chipLabels[2], 'PR');
+    assert.match(before.repsTexts[2], /^8\+/);
+    assert.deepEqual(before.chipLabels.slice(3), ['SSL', 'SSL', 'SSL']);
+
+    // 백오프 세트의 유형 메뉴에 FSL/SSL 선택지가 뜬다.
+    await tapElement(page, '[data-wt-day-sheet] [data-wt-sheet-card-action="toggle-set-type"][data-set-index="4"]');
+    const menu = await page.evaluate(() => window.__qa.wendlerSnapshot());
+    assert.equal(menu.backoffModeOptionCount, 2, 'FSL/SSL 두 옵션이 메뉴에 있어야 한다');
+
+    await tapElement(page, '[data-wt-sheet-card-action="set-backoff-mode"][data-backoff-mode="fsl"]');
+    await page.waitForFunction(() => window.__qa.wendlerSnapshot().boardMode === 'fsl', { timeout: 8000 });
+
+    const after = await page.evaluate(() => window.__qa.wendlerSnapshot());
+    // 미완료 백오프(4,5)만 본세트1 무게(75kg)로 바뀌고, 완료한 백오프(3)는 그대로.
+    assert.deepEqual(after.sets.map(set => set.kg), [75, 86.3, 92.5, 86.3, 75, 75]);
+    assert.deepEqual(after.sets.map(set => set.kind), ['', '', '', 'ssl', 'fsl', 'fsl']);
+    assert.deepEqual(after.chipLabels.slice(3), ['SSL', 'FSL', 'FSL']);
+    // 보드 벤치마크에도 저장되어 다음 주 처방부터 FSL이 나온다.
+    assert.equal(after.boardMode, 'fsl');
 
     assert.deepEqual(harness.pageErrors, []);
     assert.deepEqual(harness.blockedRequests, []);

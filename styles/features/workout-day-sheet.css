@@ -794,6 +794,21 @@
 .wt-max-set-type-option.is-active {
   background: #f1f5f9;
 }
+/* 웬들러 백오프 방식(FSL/SSL) — 세트 유형 메뉴 하단 구분 섹션 */
+.wt-max-set-type-menu-note {
+  margin-top: 4px;
+  padding: 6px 8px 2px;
+  border-top: 1px solid #e8edf4;
+  color: #64748b;
+  font-size: 10.5px;
+  font-weight: 800;
+}
+.wt-max-set-type-option.is-backoff-mode b {
+  color: #7a3ea8;
+}
+.wt-max-set-type-option.is-backoff-mode.is-active {
+  background: #f1e9fb;
+}
 .wt-max-rom-inline {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) 26px;

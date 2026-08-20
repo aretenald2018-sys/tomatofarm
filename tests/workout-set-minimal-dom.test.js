@@ -74,6 +74,7 @@ function buildHarnessScript() {
     '_renderWorkoutSetInput',
     '_renderWorkoutSetInlineInput',
     '_renderWorkoutSetAddRow',
+    '_workoutBackoffModeOptions',
     '_renderWorkoutSetTypeMenu',
     '_renderWorkoutSetRows',
     '_workoutPreviousSetSummary',

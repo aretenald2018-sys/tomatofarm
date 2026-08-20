@@ -452,7 +452,33 @@ export function _renderWorkoutSetAddRow(key, sessionIndex, exerciseIndex, cardId
   `;
 }
 
-export function _renderWorkoutSetTypeMenu(key, sessionIndex, exerciseIndex, setIndex, currentType = 'main') {
+// 웬들러(863) 백오프 세트에서만 노출되는 FSL/SSL 선택지. 무게는 같은 종목의
+// 본세트1·2에서 그대로 읽으므로 보드 없이도 하루 시트 단독으로 동작한다.
+function _workoutBackoffModeOptions(key, sessionIndex, exerciseIndex, setIndex, set = {}, sets = []) {
+  if (set?.wendlerRole !== 'backoff') return '';
+  const mains = (Array.isArray(sets) ? sets : []).filter(item => item?.wendlerRole === 'main');
+  const fslKg = _num(mains[0]?.kg);
+  const sslKg = _num(mains[1]?.kg);
+  if (!(fslKg > 0) || !(sslKg > 0)) return '';
+  const currentMode = set.supplementalKind === 'fsl' || set.supplementalKind === 'ssl'
+    ? set.supplementalKind
+    : (_num(set.kg) === fslKg ? 'fsl' : _num(set.kg) === sslKg ? 'ssl' : '');
+  const options = [
+    { mode: 'fsl', label: `FSL 백오프 · 본세트1 ${formatWorkoutKg(fslKg)}kg` },
+    { mode: 'ssl', label: `SSL 백오프 · 본세트2 ${formatWorkoutKg(sslKg)}kg` },
+  ];
+  return `
+      <div class="wt-max-set-type-menu-note">백오프 방식 — 미완료 백오프 전체에 적용</div>
+      ${options.map(option => `
+        <button type="button" class="wt-max-set-type-option is-backoff-mode ${option.mode === currentMode ? 'is-active' : ''}" data-wt-sheet-card-action="set-backoff-mode" data-backoff-mode="${option.mode}" data-date-key="${_esc(key)}" data-session-index="${sessionIndex}" data-exercise-index="${exerciseIndex}" data-set-index="${setIndex}" aria-pressed="${option.mode === currentMode ? 'true' : 'false'}">
+          <b>${option.mode === 'fsl' ? 'F' : 'S'}</b>
+          <span>${_esc(option.label)}</span>
+          <i aria-hidden="true">i</i>
+        </button>
+      `).join('')}`;
+}
+
+export function _renderWorkoutSetTypeMenu(key, sessionIndex, exerciseIndex, setIndex, currentType = 'main', context = {}) {
   const normalized = normalizeWorkoutSetType(currentType);
   return `
     <div class="wt-max-set-type-menu" data-wt-set-type-menu="${_esc(_workoutSetEditorKey(key, sessionIndex, exerciseIndex, setIndex))}">
@@ -463,6 +489,7 @@ export function _renderWorkoutSetTypeMenu(key, sessionIndex, exerciseIndex, setI
           <i aria-hidden="true">i</i>
         </button>
       `).join('')}
+      ${_workoutBackoffModeOptions(key, sessionIndex, exerciseIndex, setIndex, context.set, context.sets)}
     </div>
   `;
 }
@@ -526,7 +553,7 @@ export function _renderWorkoutSetRows(row, options = {}) {
                <i class="wt-max-set-remove" aria-hidden="true">×</i>
                <i class="wt-max-set-expand" aria-hidden="true">⌄</i>`}
         </div>
-        ${typeMenuOpen ? _renderWorkoutSetTypeMenu(key, sessionIndex, exerciseIndex, setIndex, setTypeValue) : ''}
+        ${typeMenuOpen ? _renderWorkoutSetTypeMenu(key, sessionIndex, exerciseIndex, setIndex, setTypeValue, { set, sets }) : ''}
         ${expanded ? `
           <div class="wt-max-set-editor" data-wt-set-editor-panel="${_esc(_workoutSetEditorKey(key, sessionIndex, exerciseIndex, setIndex))}">
             <label><span>무게</span>${_renderWorkoutSetInput(key, sessionIndex, exerciseIndex, setIndex, 'kg', _workoutSheetInputValue(set.kg, 1), '무게', '0.5')}<em>kg</em></label>
