@@ -728,26 +728,35 @@ test('day sheet shows PR(8+) and switches wendler backoff between FSL and SSL fr
 });
 
 // ── 음식 등록 Gemini 검색 하네스 ─────────────────────────────────
-// 자연어 요청 → (스텁된) 그라운딩 검색 → 편집 그리드 → 일괄 등록까지
-// 실제 nutrition-item-modal 경로로 돈다. ai.js만 canned 결과로 대체.
+// 자연어 요청 → (스텁된) 캐스케이드(식약처DB → 그라운딩 검색 → 못 찾음)
+// → 편집 그리드 → 일괄 등록까지 실제 nutrition-item-modal 경로로 돈다.
+// ai.js만 canned 결과로 대체하되, 모달이 주입하는 로컬 DB 매처(matchLocal)가
+// 실제로 호출 가능하고 실패 시 조용히 null로 강등되는지도 함께 검증한다.
 async function buildGeminiFoodSearchHarness(tempDir) {
   const htmlPath = path.join(tempDir, 'gemini-food-search.html');
 
   const stubAiUrl = await writeStub(tempDir, 'stub-ai-gemini.js', `
-export async function searchNutritionByQuery(query) {
+export async function searchNutritionByQuery(query, options = {}) {
   window.__qaGeminiQueries = (window.__qaGeminiQueries || []).concat(query);
+  window.__qaMatchLocalProvided = typeof options.matchLocal === 'function';
+  // 모달이 주입한 매처를 실제로 한 번 호출한다. 하네스에서는 CSV fetch가
+  // 실패할 수 있는데, 그 경우에도 throw 없이 null로 강등돼야 한다.
+  window.__qaMatchLocalResult = window.__qaMatchLocalProvided
+    ? await options.matchLocal({ name: '한끼통살 양념치킨맛', brand: null, searchTerms: [] })
+    : 'not-a-function';
   return {
     grounded: true,
     provider: 'gemini',
     sources: [{ uri: 'https://example.com/dryou', title: '닥터유 공식' }],
     items: [
+      { name: '한끼통살 핫양념치킨맛', brand: '주식회사 와이앤비푸드', unit: '100g', servingSize: 100, servingUnit: 'g', totalAmount: null,
+        nutrition: { kcal: 125, protein: 19, carbs: 8, fat: 2.1, fiber: 0, sugar: 0, sodium: 470 },
+        aliases: ['한끼통살 양념치킨맛'], basis: 'db', confidence: 1, language: 'ko' },
       { name: '닥터유 미니바', brand: '오리온', unit: '1개(22g)', servingSize: 22, servingUnit: 'g', totalAmount: null,
         nutrition: { kcal: 110, protein: 2, carbs: 11, fat: 6, fiber: 0, sugar: 8, sodium: 40 },
         aliases: ['닥터유바'], basis: 'label', confidence: 0.9, language: 'ko' },
-      { name: '핫브레이크 미니바', brand: '해태', unit: '1개(23g)', servingSize: 23, servingUnit: 'g', totalAmount: null,
-        nutrition: { kcal: 115, protein: 2, carbs: 13, fat: 6, fiber: 0, sugar: 9, sodium: 35 },
-        aliases: [], basis: 'estimate', confidence: 0.5, language: 'ko' },
     ],
+    notFound: ['황금올리브 치킨'],
   };
 }
 `);
@@ -778,6 +787,10 @@ export async function searchNutritionByQuery(query) {
             resultVisible: document.getElementById('ni-gemini-result')?.style.display !== 'none',
             groundingText: document.getElementById('ni-gemini-grounding')?.textContent?.trim() || '',
             rowCount: document.querySelectorAll('#ni-gemini-extracted .ni-grid-row').length,
+            rowBadges: Array.from(document.querySelectorAll('#ni-gemini-extracted .ni-grid-basis'))
+              .map(el => el.dataset.basis),
+            matchLocalProvided: window.__qaMatchLocalProvided ?? null,
+            matchLocalResult: window.__qaMatchLocalResult === undefined ? 'unset' : window.__qaMatchLocalResult,
             saveBtnText: document.getElementById('ni-gemini-save-all-btn')?.textContent?.trim() || '',
             savedItems: JSON.parse(JSON.stringify(fake.fakeDataStore.savedNutritionItems)),
             dinnerFoods: JSON.parse(JSON.stringify(S.diet.dFoods || [])),
@@ -815,9 +828,16 @@ test('gemini food search renders grounded results and batch-registers checked it
 
     const after = await page.evaluate(() => window.__qa.snapshot());
     assert.deepEqual(after.queries, ['닥터유 미니바랑 핫브레이크 미니바 영양성분 정리']);
-    assert.match(after.groundingText, /구글 검색 근거 기반/);
-    // 근거 없는 항목은 추정 경고에 이름이 올라간다.
-    assert.match(after.groundingText, /핫브레이크 미니바[\s\S]*추정값/);
+    // 모달이 로컬 식약처 DB 매처를 주입하고, 하네스처럼 CSV를 못 읽는 환경에서도
+    // throw 없이 null로 강등돼야 한다 (실제 앱에서는 여기서 라벨값 매칭이 일어난다).
+    assert.equal(after.matchLocalProvided, true, '모달이 matchLocal을 주입해야 한다');
+    assert.equal(after.matchLocalResult, null, 'CSV 로드 실패 시 조용히 null이어야 한다');
+    // 수치 출처가 헤더와 행 배지에 드러난다: 식약처DB / 검색근거 / 못 찾음.
+    assert.match(after.groundingText, /식약처DB 1개/);
+    assert.match(after.groundingText, /검색근거 1개/);
+    assert.match(after.groundingText, /못 찾음: 황금올리브 치킨/);
+    assert.match(after.groundingText, /수치를 지어내지 않았어요[\s\S]*사진 탭/);
+    assert.deepEqual(after.rowBadges, ['db', 'label'], '항목마다 출처 배지가 붙어야 한다');
     // 끼니 진입이면 저장 버튼이 "등록 + 끼니 추가"임을 드러낸다.
     assert.match(after.saveBtnText, /등록하고 저녁에 추가/);
 
@@ -825,20 +845,23 @@ test('gemini food search renders grounded results and batch-registers checked it
     await page.waitForFunction(() => window.__qa.snapshot().savedItems.length === 2, { timeout: 8000 });
 
     const saved = await page.evaluate(() => window.__qa.snapshot());
-    assert.deepEqual(saved.savedItems.map(item => item.name), ['닥터유 미니바', '핫브레이크 미니바']);
-    assert.equal(saved.savedItems[0].nutrition.kcal, 110);
-    assert.equal(saved.savedItems[0].servingSize, 22);
-    assert.deepEqual(saved.savedItems[0].aliases, ['닥터유바'], '검색 별칭이 함께 저장돼야 한다');
+    assert.deepEqual(saved.savedItems.map(item => item.name), ['한끼통살 핫양념치킨맛', '닥터유 미니바']);
+    // 식약처DB 항목은 100g 라벨 신고값 그대로 저장된다.
+    assert.equal(saved.savedItems[0].nutrition.kcal, 125);
+    assert.equal(saved.savedItems[0].servingSize, 100);
+    assert.deepEqual(saved.savedItems[0].aliases, ['한끼통살 양념치킨맛'], '요청 표기가 별칭으로 저장돼야 한다');
     assert.equal(saved.savedItems[0].source, 'gemini');
     assert.equal(saved.savedItems[0].rawText, '닥터유 미니바랑 핫브레이크 미니바 영양성분 정리');
+    assert.equal(saved.savedItems[1].nutrition.kcal, 110);
+    assert.equal(saved.savedItems[1].servingSize, 22);
 
     // 끼니 행에서 진입했으므로 DB 등록과 동시에 저녁에도 추가된다.
     assert.deepEqual(
       saved.dinnerFoods.map(food => [food.name, food.grams, food.kcal]),
-      [['닥터유 미니바', 22, 110], ['핫브레이크 미니바', 23, 115]],
+      [['한끼통살 핫양념치킨맛', 100, 125], ['닥터유 미니바', 22, 110]],
       '산출 항목이 저녁 끼니에 1회 제공량 기준으로 추가돼야 한다',
     );
-    assert.equal(saved.dinnerKcal, 225, '저녁 매크로가 재계산돼야 한다');
+    assert.equal(saved.dinnerKcal, 235, '저녁 매크로가 재계산돼야 한다');
 
     assert.deepEqual(harness.pageErrors, []);
     assert.deepEqual(harness.blockedRequests, []);

@@ -122,7 +122,7 @@ export const MODAL_HTML = `
       <div class="ex-editor-form">
         <div><div class="ex-editor-label">어떤 제품을 등록할까요? *</div></div>
         <textarea class="ex-editor-input" id="ni-gemini-query" style="min-height:72px;font-size:13px" placeholder="예: 닥터유 미니바랑 핫브레이크 미니바 영양성분 정리"></textarea>
-        <div style="font-size:11px;color:var(--text-tertiary);margin-top:4px">구글 검색 근거로 제품 라벨 값을 찾아 정리합니다. 여러 제품을 한 번에 요청할 수 있어요.</div>
+        <div style="font-size:11px;color:var(--text-tertiary);margin-top:4px">식약처 식품DB의 라벨 신고값을 먼저 찾고, 없는 제품만 구글 검색 근거로 정리합니다. 어디서도 확인 못 한 제품은 수치 없이 알려드려요.</div>
         <button style="width:100%;margin-top:8px;padding:10px;border:none;border-radius:12px;background:var(--primary);color:#fff;font-size:14px;font-weight:600;cursor:pointer;" data-nutrition-item-action="gemini-search">✨ 검색해서 정리하기</button>
 
         <div id="ni-gemini-analyzing" style="display:none;text-align:center;padding:20px;color:var(--muted)">
@@ -470,7 +470,19 @@ export async function searchNutritionWithGemini() {
 
   try {
     const { searchNutritionByQuery } = await import('../ai.js');
-    const { items, grounded, sources } = await searchNutritionByQuery(query);
+    // 로컬 식약처 DB 매처 주입 — CSV는 첫 매칭 시도 때만 로드(캐시됨).
+    // 후보 전부가 DB에서 잡히면 그라운딩 검색 호출 자체가 생략된다.
+    const matchLocal = async (candidate) => {
+      const [{ loadCSVDatabase }, { matchFoodInDb, dbRowToNutritionItem }] = await Promise.all([
+        import('../fatsecret-api.js'),
+        import('../utils/food-db-match.js'),
+      ]);
+      const csvPath = window.location.pathname.replace(/\/[^/]*$/, '') + '/public/data/foods.csv';
+      const rows = await loadCSVDatabase(csvPath).catch(() => []);
+      const hit = matchFoodInDb(rows || [], candidate);
+      return hit ? dbRowToNutritionItem(hit.row, candidate) : null;
+    };
+    const { items, notFound, grounded, sources } = await searchNutritionByQuery(query, { matchLocal });
 
     items.forEach(item => {
       item.rawText = query; // provenance: 어떤 요청으로 등록됐는지 보존
@@ -478,26 +490,38 @@ export async function searchNutritionWithGemini() {
     });
 
     const grounding = document.getElementById('ni-gemini-grounding');
-    const estimated = items.filter(item => item.basis === 'estimate');
-    if (grounded) {
+    const dbCount = items.filter(item => item.basis === 'db').length;
+    const labelCount = items.filter(item => item.basis === 'label').length;
+    const badgeParts = [];
+    if (dbCount) badgeParts.push(`🏛️ <b style="color:var(--gym)">식약처DB ${dbCount}개</b> (라벨 신고값 그대로)`);
+    if (labelCount) {
       const sourceLinks = (sources || []).slice(0, 3)
         .map(s => `<a href="${String(s.uri).replace(/"/g, '&quot;')}" target="_blank" rel="noopener" style="color:var(--accent)">${(s.title || '출처').replace(/</g, '&lt;')}</a>`)
         .join(' · ');
-      grounding.innerHTML = `🔎 <b style="color:var(--gym)">구글 검색 근거 기반</b>${sourceLinks ? ` — ${sourceLinks}` : ''}`
-        + (estimated.length ? `<div style="color:var(--diet-bad);margin-top:4px">⚠️ ${estimated.map(i => i.name).join(', ')}: 근거를 못 찾아 추정값 — 저장 전 확인하세요</div>` : '');
-    } else {
-      grounding.innerHTML = '⚠️ <b style="color:var(--diet-bad)">검색 근거 없음 — 전부 모델 추정값입니다.</b> 값을 확인·수정한 뒤 저장하세요.';
+      badgeParts.push(`🔎 <b style="color:var(--accent)">검색근거 ${labelCount}개</b>${sourceLinks ? ` — ${sourceLinks}` : ''}`);
     }
+    const notFoundNames = (notFound || []).filter(Boolean);
+    const notFoundHtml = notFoundNames.length
+      ? `<div style="color:var(--diet-bad);margin-top:4px">❓ 못 찾음: ${notFoundNames.map(n => String(n).replace(/</g, '&lt;')).join(', ')}`
+        + '<div style="color:var(--muted);font-weight:400;margin-top:2px">수치를 지어내지 않았어요. 포장의 영양성분표를 📷 사진 탭으로 촬영·등록해주세요.</div></div>'
+      : '';
+    grounding.innerHTML = (badgeParts.length ? badgeParts.join('<br>') : (items.length ? '' : '⚠️ <b style="color:var(--diet-bad)">확인된 제품이 없어요.</b>'))
+      + notFoundHtml;
 
     result.style.display = 'block';
-    _renderInlineGrid(items, document.getElementById('ni-gemini-extracted'), {
-      saveBtnId: 'ni-gemini-save-all-btn',
-      source: 'gemini',
-    });
-    // 끼니에서 진입했으면 저장이 등록+끼니 추가임을 버튼에 드러낸다.
-    const saveBtn = document.getElementById('ni-gemini-save-all-btn');
-    if (saveBtn && _niGeminiMealTarget) {
-      saveBtn.textContent = `💾 등록하고 ${_NI_MEAL_LABELS[_niGeminiMealTarget]}에 추가`;
+    const extracted = document.getElementById('ni-gemini-extracted');
+    if (items.length) {
+      _renderInlineGrid(items, extracted, {
+        saveBtnId: 'ni-gemini-save-all-btn',
+        source: 'gemini',
+      });
+      // 끼니에서 진입했으면 저장이 등록+끼니 추가임을 버튼에 드러낸다.
+      const saveBtn = document.getElementById('ni-gemini-save-all-btn');
+      if (saveBtn && _niGeminiMealTarget) {
+        saveBtn.textContent = `💾 등록하고 ${_NI_MEAL_LABELS[_niGeminiMealTarget]}에 추가`;
+      }
+    } else {
+      extracted.innerHTML = ''; // 수치 없는 요청은 그리드/저장 버튼을 만들지 않는다
     }
   } catch (e) {
     console.error('Gemini 검색 실패:', e);
@@ -797,6 +821,12 @@ function _renderInlineGrid(items, extracted, { saveBtnId, source }) {
     const n = Number(v);
     return Number.isFinite(n) ? n : 0;
   };
+  // 수치 출처 배지 — Gemini 캐스케이드 항목만 basis를 가진다.
+  const _basisBadge = (item) => {
+    if (item.basis === 'db') return '<span class="ni-grid-basis" data-basis="db" style="font-size:10px;font-weight:700;color:var(--gym);background:var(--gym-dim);border-radius:999px;padding:2px 6px;white-space:nowrap">🏛️ 식약처DB</span>';
+    if (item.basis === 'label') return '<span class="ni-grid-basis" data-basis="label" style="font-size:10px;font-weight:700;color:var(--accent);background:var(--bg-secondary);border:1px solid var(--border);border-radius:999px;padding:2px 6px;white-space:nowrap">🔎 검색근거</span>';
+    return '';
+  };
   const _input = (idx, field, value, step, placeholder) =>
     `<input class="ni-grid-input" data-idx="${idx}" data-field="${field}" type="number" step="${step}" inputmode="decimal" value="${value}" placeholder="${placeholder}" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--text);font-size:12px;text-align:right">`;
 
@@ -810,6 +840,7 @@ function _renderInlineGrid(items, extracted, { saveBtnId, source }) {
         <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
           <input type="checkbox" class="ni-grid-skip" data-idx="${i}" checked style="width:18px;height:18px;flex-shrink:0;accent-color:var(--accent)">
           <input class="ni-grid-input" data-idx="${i}" data-field="name" type="text" value="${(item.name || '항목 ' + (i + 1)).replace(/"/g, '&quot;')}" placeholder="이름" style="flex:1;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--text);font-size:13px;font-weight:600">
+          ${_basisBadge(item)}
           <span style="font-size:10px;color:var(--muted);white-space:nowrap">${Math.round((item.confidence || 0.8) * 100)}%</span>
         </div>
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;font-size:10px;color:var(--muted2)">

@@ -182,23 +182,50 @@ language는 ko, ja, en, other 중 하나.`;
   return data;
 }
 
-// ── Gemini 검색 (Google Search 그라운딩) — 제품명만으로 영양성분 정리 ──
-// "닥터유 미니바랑 핫브레이크 미니바 영양성분 정리" 같은 자연어 요청을 받아
-// 검색 근거 기반으로 제품별 영양성분을 구조화해 돌려준다.
-// 반환: { items: [...파싱 아이템 shape...], grounded, provider, sources }
-// grounded=false(검색 근거 없음/프록시 구버전/Groq fallback)면 호출부가
-// "추정" 배지로 표시해 사용자가 값을 확인하고 저장하게 한다.
-export async function searchNutritionByQuery(query) {
-  const q = String(query || '').trim();
-  if (!q) throw new Error('검색어를 입력해주세요');
-  const prompt = `사용자 요청: "${q}"
+// ── Gemini 검색 캐스케이드 — 제품명 추출 → 식약처DB → 그라운딩 검색 ──
+// 원칙: LLM이 영양 수치를 "생성"하는 경로를 없앤다. 수치의 출처는
+//  ① 로컬 식약처 foods.csv 라벨 신고값 (basis "db", 환각 0)
+//  ② Google 검색 그라운딩으로 확인한 라벨 값 (basis "label" + sources)
+// 뿐이며, 어느 쪽에서도 확인 못 한 제품은 수치 없이 notFound로 돌려보내
+// 호출부가 사진인식(영양성분표 촬영) 경로를 안내한다.
 
-너는 한국 시판 식품의 영양성분 조사원이다. 요청에 언급된 각 제품을 Google 검색으로 찾아,
-제조사 공식 정보나 판매 페이지의 영양성분표(라벨 신고값)를 기준으로 정리하라.
+// 1단계: 자연어 요청에서 제품명 후보만 추출 (수치 생성 금지, JSON 강제).
+export async function extractFoodCandidates(query) {
+  const prompt = `사용자 요청: "${query}"
 
-규칙:
-- 제품마다 검색해서 확인한 라벨 값을 쓴다. 검색으로 확인하지 못한 제품은 일반 지식으로
-  추정하되 basis를 "estimate"로 표기한다. 라벨 값 확인 시 basis는 "label".
+요청에 언급된 시판 식품/제품을 식별하라. **영양 수치는 어떤 것도 출력하지 않는다.**
+각 제품마다 식약처 식품DB(정식 제품명 표기) 검색에 쓸 이름 변형(searchTerms)을 1~4개 만든다:
+맛/수식어 표기 변형(예: 양념→핫양념), 띄어쓰기 변형, 브랜드 포함/제외 등.
+
+**JSON만 출력. 다른 텍스트 금지:**
+{"products":[{"name":"제품명","brand":"제조사 또는 null","searchTerms":["이름 변형1","이름 변형2"]}]}`;
+
+  const { data } = await _callGeminiJSON([{ text: prompt }], 1024);
+  const products = (Array.isArray(data?.products) ? data.products : [])
+    .filter(p => p && typeof p.name === 'string' && p.name.trim())
+    .map(p => ({
+      name: p.name.trim(),
+      brand: typeof p.brand === 'string' ? p.brand.trim() || null : null,
+      searchTerms: (Array.isArray(p.searchTerms) ? p.searchTerms : [])
+        .map(t => String(t || '').trim()).filter(Boolean).slice(0, 4),
+    }))
+    .slice(0, 10);
+  return products;
+}
+
+// 2단계에서 놓친 제품만 그라운딩 검색. 근거를 못 찾으면 수치를 만들지 말고
+// notFound로 반환하도록 프롬프트와 후처리 양쪽에서 강제한다.
+async function _searchMissesGrounded(query, missNames) {
+  const prompt = `다음 제품들의 영양성분을 Google 검색으로 찾아라: ${missNames.join(', ')}
+(사용자 원 요청: "${query}")
+
+너는 한국 시판 식품의 영양성분 조사원이다. 제조사 공식 정보나 판매 페이지의
+영양성분표(라벨 신고값)를 검색으로 확인한 제품만 items에 넣는다.
+
+규칙 (위반 금지):
+- **검색으로 라벨 값을 확인하지 못한 제품은 절대 수치를 만들지 말고 notFound 배열에
+  이름만 넣는다.** 일반 지식·기억으로 수치를 채우는 것은 금지다.
+- items의 basis는 항상 "label"이다.
 - 1개(1봉/1포) 단위 제품은 1회 제공량 기준으로: unit="1개(Ng)", servingSize=N.
   그 외에는 unit="100g", servingSize=100.
 - 단위는 g 통일, 나트륨(sodium)만 mg 그대로.
@@ -221,18 +248,81 @@ export async function searchNutritionByQuery(query) {
       "confidence": 0.9,
       "language": "ko"
     }
-  ]
+  ],
+  "notFound": ["라벨 값을 확인 못 한 제품명"]
 }`;
 
   const { data, provider, grounded, sources } = await callGeminiGroundedJSON([{ text: prompt }], 4096);
-  const items = (Array.isArray(data?.items) ? data.items : (data?.name ? [data] : []))
+  const rawItems = (Array.isArray(data?.items) ? data.items : (data?.name ? [data] : []))
     .filter(item => item && item.name);
-  if (!items.length) throw new Error('제품 정보를 찾지 못했습니다. 제품명을 더 구체적으로 적어주세요.');
-  for (const item of items) {
-    // 검색 근거가 없으면 라벨 주장도 추정으로 강등한다.
-    if (!grounded) item.basis = 'estimate';
-    if (!(Number(item.confidence) > 0)) item.confidence = grounded ? 0.85 : 0.5;
-    if (item.basis === 'estimate') item.confidence = Math.min(Number(item.confidence) || 0.5, 0.6);
+  const notFound = (Array.isArray(data?.notFound) ? data.notFound : [])
+    .map(n => String(n || '').trim()).filter(Boolean);
+
+  if (!grounded) {
+    // 근거 자체가 없으면(프록시 구버전/Groq fallback 포함) 응답의 모든 수치는
+    // 모델 기억일 뿐이다 — 아이템을 버리고 전부 notFound로 강등한다.
+    return { items: [], notFound: missNames.slice(), provider, grounded: false, sources: [] };
   }
-  return { items, provider, grounded, sources };
+  const items = [];
+  for (const item of rawItems) {
+    const hasNumbers = item.nutrition && Number(item.nutrition.kcal) > 0;
+    if (item.basis !== 'label' || !hasNumbers) {
+      notFound.push(String(item.name).trim());
+      continue;
+    }
+    if (!(Number(item.confidence) > 0)) item.confidence = 0.85;
+    items.push(item);
+  }
+  return { items, notFound, provider, grounded, sources };
+}
+
+// 캐스케이드 본체.
+// options.matchLocal: async (candidate) => 아이템 | null — 호출부(모달)가
+//   로컬 식약처 DB 매처를 주입한다 (ai 계층은 CSV 로딩/DOM을 모른다).
+// 반환: { items, notFound, grounded, provider, sources }
+//   grounded는 그라운딩 검색을 실제 수행했을 때만 boolean, DB만으로 끝나면 null.
+export async function searchNutritionByQuery(query, { matchLocal } = {}) {
+  const q = String(query || '').trim();
+  if (!q) throw new Error('검색어를 입력해주세요');
+
+  // 1) 제품명 후보 추출. 실패하면 요청 전체를 후보 1개로 사용.
+  let candidates;
+  try {
+    candidates = await extractFoodCandidates(q);
+  } catch (err) {
+    console.warn('[nutrition] 제품명 추출 실패, 원문으로 진행:', err?.message || err);
+    candidates = [];
+  }
+  if (!candidates.length) candidates = [{ name: q, brand: null, searchTerms: [] }];
+
+  // 2) 로컬 식약처 DB 매칭 — 히트는 라벨 신고값 그대로.
+  const items = [];
+  const misses = [];
+  for (const candidate of candidates) {
+    let hit = null;
+    if (typeof matchLocal === 'function') {
+      try { hit = await matchLocal(candidate); } catch (err) {
+        console.warn('[nutrition] 로컬 DB 매칭 실패:', err?.message || err);
+      }
+    }
+    if (hit) items.push(hit);
+    else misses.push(candidate);
+  }
+
+  // 3) 놓친 제품만 그라운딩 검색. 전부 DB 히트면 호출 자체를 생략(비용 0).
+  let notFound = [];
+  let provider = null;
+  let grounded = null;
+  let sources = [];
+  if (misses.length) {
+    const missNames = misses.map(c => c.name);
+    const result = await _searchMissesGrounded(q, missNames);
+    items.push(...result.items);
+    notFound = result.notFound;
+    provider = result.provider;
+    grounded = result.grounded;
+    sources = result.sources;
+  }
+
+  return { items, notFound, provider, grounded, sources };
 }
