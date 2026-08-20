@@ -118,6 +118,7 @@ function buildHarnessScript() {
     '_completeWorkoutSetKeyboardInput',
     '_moveWorkoutSetKeyboardFocus',
     '_bindWorkoutSetSwipeDelete',
+    '_commitPendingWorkoutSetKeyboardInput',
     '_bindWorkoutHomeSheetActions',
     '_focusWorkoutSetInlineFieldFromSheet',
     '_cancelWorkoutSetInlineFieldFromSheet',

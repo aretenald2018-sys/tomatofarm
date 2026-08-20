@@ -529,6 +529,41 @@ test('set keypad commits a dirty value on field switch without rerendering the r
   }
 });
 
+// 입력 도중(마지막 칸이 아직 dirty) 시트의 버튼을 바로 탭하는 흐름.
+// 여기서는 + (직전 세트 복사) 버튼 — 액션이 상태를 읽고 리렌더하기 전에
+// 치던 값이 커밋되지 않으면 마지막 칸 값이 사라진다(회귀).
+test('tapping the add/copy-set button while a set value is still dirty keeps the typed value', async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), 'tomato-logged-in-dirty-action-'));
+  let harness;
+  try {
+    const htmlPath = await buildWorkoutSheetHarness(tempDir);
+    harness = await launchHarness(htmlPath);
+    const { page } = harness;
+
+    // 무게 10 입력 → 커밋(칸 이동) → 횟수 15 입력(커밋 전 dirty 상태 유지).
+    await tapElement(page, editFieldSelector(0, 'kg'));
+    await tapElement(page, '[data-wt-set-keyboard] [data-wt-set-keyboard-key="1"]');
+    await tapElement(page, '[data-wt-set-keyboard] [data-wt-set-keyboard-key="0"]');
+    await tapElement(page, inlineInputSelector(0, 'reps'));
+    await page.waitForFunction(() => window.__qa.storedSets()[0]?.kg === 10, { timeout: 5000 });
+    await tapElement(page, '[data-wt-set-keyboard] [data-wt-set-keyboard-key="1"]');
+    await tapElement(page, '[data-wt-set-keyboard] [data-wt-set-keyboard-key="5"]');
+
+    // 횟수가 dirty인 채로 + (직전 세트 복사) 버튼을 바로 탭한다.
+    await tapElement(page, '[data-wt-day-sheet] .wt-max-set-add-row');
+    await page.waitForFunction(() => window.__qa.storedSets().length === 3, { timeout: 5000 });
+
+    const sets = await page.evaluate(() => window.__qa.storedSets());
+    assert.deepEqual(sets[0], { kg: 10, reps: 15, done: false }, '치던 횟수 15가 세트 추가 후에도 남아야 한다');
+
+    assert.deepEqual(harness.pageErrors, []);
+    assert.deepEqual(harness.blockedRequests, []);
+  } finally {
+    if (harness?.browser) await harness.browser.close();
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 // 확장 편집 패널(무게/횟수/RIR/ROM)에서 칸을 직접 탭해 옮겨 다니는 흐름.
 // 패널 입력은 readonly 키패드라 change 이벤트가 없어서, 칸 이동 시 이전 칸을
 // 커밋하지 않으면 ✓(완료) 때 마지막 칸 값만 남고 나머지가 지워진다(회귀).

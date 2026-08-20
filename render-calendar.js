@@ -1845,6 +1845,18 @@ async function _importWorkoutRunningRecord(input, key) {
   }
 }
 
+// 키패드로 치는 중인(dirty) 세트 입력을 즉시 상태에 커밋한다. 세트 입력 자체를
+// 탭한 경우는 focusin 인계가 nextTarget까지 챙겨 커밋하므로 여기서는 건너뛴다.
+function _commitPendingWorkoutSetKeyboardInput(clickTarget = null) {
+  const input = workoutSetKeyboardState.input?.isConnected ? workoutSetKeyboardState.input : null;
+  if (!input || input.getAttribute('data-wt-set-keyboard-dirty') !== 'true') return;
+  if (clickTarget?.closest?.(WORKOUT_SHEET_SET_INPUT_SELECTOR)) return;
+  Promise.resolve(_commitWorkoutSetKeyboardInput(input, { closeInline: false, skipRender: true }))
+    .catch((error) => {
+      console.warn('[workout-calendar] pending set input commit failed:', error);
+    });
+}
+
 function _bindWorkoutHomeSheetActions(root) {
   const sheet = root?.querySelector?.('[data-wt-day-sheet]');
   if (!sheet) return;
@@ -1963,6 +1975,11 @@ function _bindWorkoutHomeSheetActions(root) {
   }, true);
   sheet.addEventListener('click', (event) => {
     const target = event.target instanceof Element ? event.target : event.target?.parentElement;
+    // 입력 도중 시트의 버튼(지난 기록 복사·세트 추가·완료 토글·세트 삭제 등)을
+    // 바로 탭해도 치던 값이 사라지면 안 된다. 액션이 상태를 읽기 전에 dirty
+    // 입력을 커밋한다 — 커밋의 상태 반영은 첫 await 전에 동기로 끝나므로,
+    // 아래 액션들이 곧바로 최신 상태를 읽는다.
+    _commitPendingWorkoutSetKeyboardInput(target);
     if (!target?.closest?.('[data-wt-day-export-menu], [data-wt-sheet-card-action="toggle-export-menu"]')) {
       _closeWorkoutDayExportMenu(sheet);
     }
