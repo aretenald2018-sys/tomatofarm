@@ -13,7 +13,7 @@
 //  4. 두 컬럼이 다 보이면 1회 제공량당을 우선하고, 100g당 값은 `per100` 필드에 보조로 기록.
 // ================================================================
 
-import { _callGeminiJSON } from './llm-core.js';
+import { _callGeminiJSON, callGeminiGroundedJSON } from './llm-core.js';
 
 const _NUTRITION_RULES_KO = `═══ STEP 1: 식품 엔티티 식별 ═══
 "엔티티" = 독립된 식품/제품/메뉴 1개. 표의 행/열 구조가 아니라 **서로 다른 식품의 수**만 센다.
@@ -180,4 +180,59 @@ language는 ko, ja, en, other 중 하나.`;
 
   const { data } = await _callGeminiJSON([{ text: prompt }], 100);
   return data;
+}
+
+// ── Gemini 검색 (Google Search 그라운딩) — 제품명만으로 영양성분 정리 ──
+// "닥터유 미니바랑 핫브레이크 미니바 영양성분 정리" 같은 자연어 요청을 받아
+// 검색 근거 기반으로 제품별 영양성분을 구조화해 돌려준다.
+// 반환: { items: [...파싱 아이템 shape...], grounded, provider, sources }
+// grounded=false(검색 근거 없음/프록시 구버전/Groq fallback)면 호출부가
+// "추정" 배지로 표시해 사용자가 값을 확인하고 저장하게 한다.
+export async function searchNutritionByQuery(query) {
+  const q = String(query || '').trim();
+  if (!q) throw new Error('검색어를 입력해주세요');
+  const prompt = `사용자 요청: "${q}"
+
+너는 한국 시판 식품의 영양성분 조사원이다. 요청에 언급된 각 제품을 Google 검색으로 찾아,
+제조사 공식 정보나 판매 페이지의 영양성분표(라벨 신고값)를 기준으로 정리하라.
+
+규칙:
+- 제품마다 검색해서 확인한 라벨 값을 쓴다. 검색으로 확인하지 못한 제품은 일반 지식으로
+  추정하되 basis를 "estimate"로 표기한다. 라벨 값 확인 시 basis는 "label".
+- 1개(1봉/1포) 단위 제품은 1회 제공량 기준으로: unit="1개(Ng)", servingSize=N.
+  그 외에는 unit="100g", servingSize=100.
+- 단위는 g 통일, 나트륨(sodium)만 mg 그대로.
+- 같은 제품의 맛/변형이 여럿이면 요청이 특정하지 않는 한 기본(오리지널) 1개만.
+- 검색 별칭(aliases)에 흔히 부르는 이름을 1~3개 넣는다.
+
+**JSON만 출력. 다른 텍스트 금지:**
+{
+  "items": [
+    {
+      "name": "제품 정식 명칭",
+      "brand": "제조사 또는 null",
+      "unit": "1개(22g)",
+      "servingSize": 22,
+      "servingUnit": "g",
+      "totalAmount": null,
+      "nutrition": { "kcal": 0, "protein": 0, "carbs": 0, "fat": 0, "fiber": 0, "sugar": 0, "sodium": 0 },
+      "aliases": ["별칭1"],
+      "basis": "label",
+      "confidence": 0.9,
+      "language": "ko"
+    }
+  ]
+}`;
+
+  const { data, provider, grounded, sources } = await callGeminiGroundedJSON([{ text: prompt }], 4096);
+  const items = (Array.isArray(data?.items) ? data.items : (data?.name ? [data] : []))
+    .filter(item => item && item.name);
+  if (!items.length) throw new Error('제품 정보를 찾지 못했습니다. 제품명을 더 구체적으로 적어주세요.');
+  for (const item of items) {
+    // 검색 근거가 없으면 라벨 주장도 추정으로 강등한다.
+    if (!grounded) item.basis = 'estimate';
+    if (!(Number(item.confidence) > 0)) item.confidence = grounded ? 0.85 : 0.5;
+    if (item.basis === 'estimate') item.confidence = Math.min(Number(item.confidence) || 0.5, 0.6);
+  }
+  return { items, provider, grounded, sources };
 }

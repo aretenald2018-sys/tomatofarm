@@ -22,11 +22,12 @@ export const MODAL_HTML = `
     <div class="sheet-handle"></div>
     <div class="modal-title" id="nutrition-item-title" style="font-size:17px;font-weight:700;">음식 정보 등록</div>
 
-    <!-- 탭: 수기입력 / 사진인식 / 텍스트파싱 -->
+    <!-- 탭: 수기입력 / 사진인식 / 텍스트파싱 / Gemini 검색 -->
     <div class="ni-tabs">
       <button class="ni-tab-btn active" id="ni-tab-manual" data-tab="manual">수기입력</button>
       <button class="ni-tab-btn" id="ni-tab-photo" data-tab="photo">사진인식</button>
       <button class="ni-tab-btn" id="ni-tab-text" data-tab="text">텍스트파싱</button>
+      <button class="ni-tab-btn" id="ni-tab-gemini" data-tab="gemini">✨ Gemini</button>
     </div>
 
     <!-- ═══ TAB 1: 수기 입력 ═══ -->
@@ -108,6 +109,25 @@ export const MODAL_HTML = `
       </div>
     </div>
 
+    <!-- ═══ TAB 4: Gemini 검색 (Google Search 그라운딩) ═══ -->
+    <div class="ni-tab-content" id="ni-tab-content-gemini">
+      <div class="ex-editor-form">
+        <div><div class="ex-editor-label">어떤 제품을 등록할까요? *</div></div>
+        <textarea class="ex-editor-input" id="ni-gemini-query" style="min-height:72px;font-size:13px" placeholder="예: 닥터유 미니바랑 핫브레이크 미니바 영양성분 정리"></textarea>
+        <div style="font-size:11px;color:var(--text-tertiary);margin-top:4px">구글 검색 근거로 제품 라벨 값을 찾아 정리합니다. 여러 제품을 한 번에 요청할 수 있어요.</div>
+        <button style="width:100%;margin-top:8px;padding:10px;border:none;border-radius:12px;background:var(--primary);color:#fff;font-size:14px;font-weight:600;cursor:pointer;" data-nutrition-item-action="gemini-search">✨ 검색해서 정리하기</button>
+
+        <div id="ni-gemini-analyzing" style="display:none;text-align:center;padding:20px;color:var(--muted)">
+          <div style="width:24px;height:24px;border:3px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:ni-spin 0.8s linear infinite;margin:0 auto 8px;"></div>
+          <div>제품 검색·정리 중...</div>
+        </div>
+        <div id="ni-gemini-result" style="display:none;border:1px solid var(--border);border-radius:8px;padding:12px;margin-top:12px;background:var(--bg-secondary)">
+          <div id="ni-gemini-grounding" style="font-size:12px;margin-bottom:8px"></div>
+          <div id="ni-gemini-extracted"></div>
+        </div>
+      </div>
+    </div>
+
     <!-- 공통 저장/취소 버튼 -->
     <div class="ex-editor-actions">
       <button class="tds-btn cancel-btn ghost md" id="ni-delete-btn" data-nutrition-item-action="delete" style="display:none;color:var(--diet-bad)">삭제</button>
@@ -137,6 +157,10 @@ export async function openNutritionItemEditor(id) {
   document.getElementById('ni-tab-manual').classList.add('active');
   document.querySelectorAll('.ni-tab-content').forEach(c => c.classList.remove('active'));
   document.getElementById('ni-tab-content-manual').classList.add('active');
+
+  // Gemini 검색 탭은 이전 결과를 비운다 (검색어는 재검색 편의상 유지)
+  const geminiResult = document.getElementById('ni-gemini-result');
+  if (geminiResult) geminiResult.style.display = 'none';
 
   // 탭 버튼 클릭 이벤트 리스너 (event delegation)
   const tabsContainer = document.querySelector('.ni-tabs');
@@ -414,6 +438,56 @@ export async function analyzeNutritionText() {
   } catch (e) {
     console.error('텍스트 분석 실패:', e);
     showToast('텍스트 분석 실패: ' + e.message, 3500, 'error');
+  } finally {
+    analyzing.style.display = 'none';
+  }
+}
+
+// ═════════════════════════════════════════════════════════════
+// Gemini 검색 (Google Search 그라운딩) — 제품명만으로 정리·등록
+// ═════════════════════════════════════════════════════════════
+
+export async function searchNutritionWithGemini() {
+  const query = document.getElementById('ni-gemini-query').value.trim();
+  if (!query) {
+    showToast('제품명을 입력해주세요', 2500, 'warning');
+    return;
+  }
+
+  const analyzing = document.getElementById('ni-gemini-analyzing');
+  const result = document.getElementById('ni-gemini-result');
+  analyzing.style.display = 'block';
+  result.style.display = 'none';
+
+  try {
+    const { searchNutritionByQuery } = await import('../ai.js');
+    const { items, grounded, sources } = await searchNutritionByQuery(query);
+
+    items.forEach(item => {
+      item.rawText = query; // provenance: 어떤 요청으로 등록됐는지 보존
+      item._source = 'gemini';
+    });
+
+    const grounding = document.getElementById('ni-gemini-grounding');
+    const estimated = items.filter(item => item.basis === 'estimate');
+    if (grounded) {
+      const sourceLinks = (sources || []).slice(0, 3)
+        .map(s => `<a href="${String(s.uri).replace(/"/g, '&quot;')}" target="_blank" rel="noopener" style="color:var(--accent)">${(s.title || '출처').replace(/</g, '&lt;')}</a>`)
+        .join(' · ');
+      grounding.innerHTML = `🔎 <b style="color:var(--gym)">구글 검색 근거 기반</b>${sourceLinks ? ` — ${sourceLinks}` : ''}`
+        + (estimated.length ? `<div style="color:var(--diet-bad);margin-top:4px">⚠️ ${estimated.map(i => i.name).join(', ')}: 근거를 못 찾아 추정값 — 저장 전 확인하세요</div>` : '');
+    } else {
+      grounding.innerHTML = '⚠️ <b style="color:var(--diet-bad)">검색 근거 없음 — 전부 모델 추정값입니다.</b> 값을 확인·수정한 뒤 저장하세요.';
+    }
+
+    result.style.display = 'block';
+    _renderInlineGrid(items, document.getElementById('ni-gemini-extracted'), {
+      saveBtnId: 'ni-gemini-save-all-btn',
+      source: 'gemini',
+    });
+  } catch (e) {
+    console.error('Gemini 검색 실패:', e);
+    showToast('Gemini 검색 실패: ' + e.message, 3500, 'error');
   } finally {
     analyzing.style.display = 'none';
   }
@@ -823,6 +897,8 @@ async function _saveMultipleItems(items, saveBtnId) {
         confidence: item.confidence || 0.8,
         photoUrl: item.photoUrl || null,
         rawText: item.rawText || null, // provenance 보존
+        // Gemini 검색 결과의 검색 별칭 — 없으면 기존 경로 그대로 빈 배열
+        aliases: Array.isArray(item.aliases) ? item.aliases.map(v => String(v).trim()).filter(Boolean) : [],
       });
       await saveNutritionItem(entry);
       savedCount++;
@@ -855,6 +931,7 @@ function _bindNutritionItemActions(root = document) {
     if (action === 'click-input') document.getElementById(control.dataset.inputId || '')?.click();
     if (action === 'clear-photo') clearNutritionPhoto();
     if (action === 'analyze-text') void analyzeNutritionText();
+    if (action === 'gemini-search') void searchNutritionWithGemini();
     if (action === 'delete') void deleteNutritionItemFromModal();
     if (action === 'save') void saveNutritionItemFromModal();
   });

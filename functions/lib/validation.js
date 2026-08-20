@@ -11,10 +11,11 @@ function invalid(message) {
 }
 
 function validateGeminiRequest(data = {}) {
-  const { parts, maxTokens = 2000, responseMimeType } = data || {};
+  const { parts, maxTokens = 2000, responseMimeType, withSearch } = data || {};
   if (!Array.isArray(parts) || parts.length === 0) invalid("parts 배열이 필요합니다.");
   if (Buffer.byteLength(JSON.stringify(parts), "utf8") > MAX_GEMINI_REQUEST_BYTES) invalid("요청 크기가 너무 큽니다.");
 
+  const useSearch = withSearch === true;
   const parsedMaxTokens = Number(maxTokens);
   const generationConfig = {
     maxOutputTokens: Number.isFinite(parsedMaxTokens)
@@ -22,10 +23,17 @@ function validateGeminiRequest(data = {}) {
       : 2000,
     thinkingConfig: { thinkingBudget: 0 },
   };
-  if (typeof responseMimeType === "string" && responseMimeType.trim()) {
+  // Google Search 그라운딩과 JSON 강제 출력(responseMimeType)은 함께 쓸 수 없다.
+  // 그라운딩 요청은 텍스트로 받고 클라이언트가 _cleanJSON으로 파싱한다.
+  if (!useSearch && typeof responseMimeType === "string" && responseMimeType.trim()) {
     generationConfig.responseMimeType = responseMimeType.trim();
   }
-  return { parts, generationConfig, wantJSON: generationConfig.responseMimeType === "application/json" };
+  return {
+    parts,
+    generationConfig,
+    wantJSON: generationConfig.responseMimeType === "application/json",
+    withSearch: useSearch,
+  };
 }
 
 function validateOcrRequest(data = {}) {

@@ -727,6 +727,111 @@ test('day sheet shows PR(8+) and switches wendler backoff between FSL and SSL fr
   }
 });
 
+// ── 음식 등록 Gemini 검색 하네스 ─────────────────────────────────
+// 자연어 요청 → (스텁된) 그라운딩 검색 → 편집 그리드 → 일괄 등록까지
+// 실제 nutrition-item-modal 경로로 돈다. ai.js만 canned 결과로 대체.
+async function buildGeminiFoodSearchHarness(tempDir) {
+  const htmlPath = path.join(tempDir, 'gemini-food-search.html');
+
+  const stubAiUrl = await writeStub(tempDir, 'stub-ai-gemini.js', `
+export async function searchNutritionByQuery(query) {
+  window.__qaGeminiQueries = (window.__qaGeminiQueries || []).concat(query);
+  return {
+    grounded: true,
+    provider: 'gemini',
+    sources: [{ uri: 'https://example.com/dryou', title: '닥터유 공식' }],
+    items: [
+      { name: '닥터유 미니바', brand: '오리온', unit: '1개(22g)', servingSize: 22, servingUnit: 'g', totalAmount: null,
+        nutrition: { kcal: 110, protein: 2, carbs: 11, fat: 6, fiber: 0, sugar: 8, sodium: 40 },
+        aliases: ['닥터유바'], basis: 'label', confidence: 0.9, language: 'ko' },
+      { name: '핫브레이크 미니바', brand: '해태', unit: '1개(23g)', servingSize: 23, servingUnit: 'g', totalAmount: null,
+        nutrition: { kcal: 115, protein: 2, carbs: 13, fat: 6, fiber: 0, sugar: 9, sodium: 35 },
+        aliases: [], basis: 'estimate', confidence: 0.5, language: 'ko' },
+    ],
+  };
+}
+`);
+
+  const importMap = {
+    imports: {
+      [repoUrl('data.js')]: FAKE_DATA_URL,
+      [repoUrl('ai.js')]: stubAiUrl,
+    },
+  };
+
+  const moduleSource = `
+      const fake = await import(${JSON.stringify(FAKE_DATA_URL)});
+      const modal = await import(${JSON.stringify(repoUrl('modals/nutrition-item-modal.js'))});
+
+      fake.resetFakeDataLayer({ currentUser: ${JSON.stringify(SIGNED_IN_USER)} });
+      document.body.insertAdjacentHTML('beforeend', modal.MODAL_HTML);
+      await modal.openNutritionItemEditor(null);
+      modal.switchNutritionTab('gemini');
+
+      window.__qa = {
+        snapshot() {
+          return {
+            geminiTabActive: document.getElementById('ni-tab-content-gemini')?.classList.contains('active') === true,
+            resultVisible: document.getElementById('ni-gemini-result')?.style.display !== 'none',
+            groundingText: document.getElementById('ni-gemini-grounding')?.textContent?.trim() || '',
+            rowCount: document.querySelectorAll('#ni-gemini-extracted .ni-grid-row').length,
+            savedItems: JSON.parse(JSON.stringify(fake.fakeDataStore.savedNutritionItems)),
+            queries: window.__qaGeminiQueries || [],
+          };
+        },
+        setQuery(value) {
+          const input = document.getElementById('ni-gemini-query');
+          if (!input) return false;
+          input.value = value;
+          return true;
+        },
+      };
+`;
+
+  await writeHarnessHtml(htmlPath, { importMap, body: '', moduleSource });
+  return htmlPath;
+}
+
+test('gemini food search renders grounded results and batch-registers checked items', async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), 'tomato-logged-in-gemini-food-'));
+  let harness;
+  try {
+    const htmlPath = await buildGeminiFoodSearchHarness(tempDir);
+    harness = await launchHarness(htmlPath);
+    const { page } = harness;
+
+    const before = await page.evaluate(() => window.__qa.snapshot());
+    assert.equal(before.geminiTabActive, true, '모달이 Gemini 탭으로 열려야 한다');
+
+    await page.evaluate(() => window.__qa.setQuery('닥터유 미니바랑 핫브레이크 미니바 영양성분 정리'));
+    await tapElement(page, '[data-nutrition-item-action="gemini-search"]');
+    await page.waitForFunction(() => window.__qa.snapshot().rowCount === 2, { timeout: 8000 });
+
+    const after = await page.evaluate(() => window.__qa.snapshot());
+    assert.deepEqual(after.queries, ['닥터유 미니바랑 핫브레이크 미니바 영양성분 정리']);
+    assert.match(after.groundingText, /구글 검색 근거 기반/);
+    // 근거 없는 항목은 추정 경고에 이름이 올라간다.
+    assert.match(after.groundingText, /핫브레이크 미니바[\s\S]*추정값/);
+
+    await tapElement(page, '#ni-gemini-save-all-btn');
+    await page.waitForFunction(() => window.__qa.snapshot().savedItems.length === 2, { timeout: 8000 });
+
+    const saved = await page.evaluate(() => window.__qa.snapshot());
+    assert.deepEqual(saved.savedItems.map(item => item.name), ['닥터유 미니바', '핫브레이크 미니바']);
+    assert.equal(saved.savedItems[0].nutrition.kcal, 110);
+    assert.equal(saved.savedItems[0].servingSize, 22);
+    assert.deepEqual(saved.savedItems[0].aliases, ['닥터유바'], '검색 별칭이 함께 저장돼야 한다');
+    assert.equal(saved.savedItems[0].source, 'gemini');
+    assert.equal(saved.savedItems[0].rawText, '닥터유 미니바랑 핫브레이크 미니바 영양성분 정리');
+
+    assert.deepEqual(harness.pageErrors, []);
+    assert.deepEqual(harness.blockedRequests, []);
+  } finally {
+    if (harness?.browser) await harness.browser.close();
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 // ── 종합 캘린더(체중 표시) 하네스 ────────────────────────────────
 // 체중은 입력한 날에만 보여야 한다. 입력 없는 날에 직전 값이 이월 표시되던
 // 회귀를 실제 renderCalendar 경로로 잡는다.

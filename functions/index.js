@@ -498,7 +498,7 @@ exports.geminiProxy = onCall(
     } catch (error) {
       throw new HttpsError("invalid-argument", error.message);
     }
-    const { parts, generationConfig, wantJSON } = validated;
+    const { parts, generationConfig, wantJSON, withSearch } = validated;
 
     const _fnStart = Date.now();
 
@@ -530,6 +530,8 @@ exports.geminiProxy = onCall(
           body: JSON.stringify({
             contents: [{ role: "user", parts }],
             generationConfig,
+            // Google Search 그라운딩 — 영양성분 같은 사실 조회를 웹 근거로 답한다.
+            ...(withSearch ? { tools: [{ google_search: {} }] } : {}),
           }),
         }
       );
@@ -600,6 +602,7 @@ exports.geminiProxy = onCall(
             body: JSON.stringify({
               contents: [{ role: "user", parts: retryParts }],
               generationConfig,
+              ...(withSearch ? { tools: [{ google_search: {} }] } : {}),
             }),
           }
         );
@@ -633,7 +636,17 @@ exports.geminiProxy = onCall(
     });
 
     _bumpApiUsage("gemini_proxy");
-    return { text, provider: "gemini" };
+    // 그라운딩 결과 근거 URL — 클라이언트가 "검색 근거 기반/추정" 배지를 가른다.
+    const groundingChunks = candidate?.groundingMetadata?.groundingChunks || [];
+    const sources = groundingChunks
+      .map((chunk) => ({ uri: chunk?.web?.uri || null, title: chunk?.web?.title || null }))
+      .filter((s) => s.uri)
+      .slice(0, 10);
+    return {
+      text,
+      provider: "gemini",
+      ...(withSearch ? { grounded: sources.length > 0, sources } : {}),
+    };
   }
 );
 

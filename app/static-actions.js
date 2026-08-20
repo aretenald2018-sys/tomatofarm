@@ -41,7 +41,7 @@ import {
   openNutritionPhotoUpload,
   wtAddFrequentFoodSuggestion,
 } from '../workout/index.js';
-import { openNutritionSearch } from '../feature-nutrition.js';
+import { openNutritionSearch, openNutritionGeminiRegister } from '../feature-nutrition.js';
 import {
   wtSwitchType,
   uploadMealPhoto,
@@ -108,6 +108,7 @@ export function registerStaticActions() {
     'diet:submit-setup': () => submitDietSetup(),
     'diet:toggle-row': (control) => toggleDietMealRow(control),
     'diet:add-food': (control) => openNutritionSearch(control.dataset.meal),
+    'diet:gemini-search': () => openNutritionGeminiRegister(),
     'diet:skip-meal': (_control, _event, meal) => wtSkipMeal(meal),
     'diet:add-frequent-food': (control) => wtAddFrequentFoodSuggestion(control.dataset.meal, control.dataset.suggestionKey),
     'diet:click-input': (_control, event, id) => { event.stopPropagation(); clickInput(id); },

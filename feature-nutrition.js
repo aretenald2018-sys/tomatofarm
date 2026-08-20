@@ -306,6 +306,11 @@ export async function openNutritionPhotoAdd() {
   await _openNutritionEditorTab('photo');
 }
 
+// 끼니 행의 "Gemini 검색" 버튼 — 자연어로 제품을 검색해 음식 DB에 등록한다.
+export async function openNutritionGeminiRegister() {
+  await _openNutritionEditorTab('gemini');
+}
+
 // ── 즐겨찾기 제거 ─────────────────────────────────────────────────
 export async function removeFromFavorites(itemId) {
   try {

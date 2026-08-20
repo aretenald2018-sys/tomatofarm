@@ -28,7 +28,7 @@ export { deriveMuscleIdsForItem } from './ai/muscles.js';
 export { getDietRec, getWorkoutRec } from './ai/diet-rec.js';
 
 // 영양정보 파싱
-export { parseNutritionFromImage, parseNutritionFromText, detectLanguage } from './ai/nutrition.js';
+export { parseNutritionFromImage, parseNutritionFromText, detectLanguage, searchNutritionByQuery } from './ai/nutrition.js';
 
 // 기구 파싱 (전문가 모드)
 export { parseEquipmentFromText, parseEquipmentFromImage } from './ai/equipment.js';

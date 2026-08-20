@@ -111,15 +111,33 @@ async function _withTimeout(promise, ms = 25000) {
 
 // 서버(geminiProxy Cloud Function)가 자체적으로 Groq fallback을 수행.
 // 응답에 provider 필드 포함 ('gemini' or 'groq'). 후속 UI는 이 값으로 판단.
-export async function _callGeminiProxy(parts, { maxTokens = 400, responseMimeType } = {}) {
+export async function _callGeminiProxy(parts, { maxTokens = 400, responseMimeType, withSearch } = {}) {
   const data = await _withTimeout(callGeminiProxy({
     parts,
     maxTokens,
     responseMimeType,
+    ...(withSearch ? { withSearch: true } : {}),
   }));
   const text = data?.text;
   if (!text) throw new Error('Gemini 응답을 파싱할 수 없습니다.');
-  return { text, provider: data?.provider || 'gemini' };
+  return {
+    text,
+    provider: data?.provider || 'gemini',
+    grounded: data?.grounded === true,
+    sources: Array.isArray(data?.sources) ? data.sources : [],
+  };
+}
+
+// ── 공통 Gemini 호출 (Google Search 그라운딩) ─────────────────────
+// 그라운딩과 JSON 강제 출력은 함께 쓸 수 없어 텍스트로 받고 _cleanJSON으로
+// 파싱한다. 배포 전(구버전 프록시)에는 withSearch가 무시되어 grounded=false
+// 로 내려오므로 호출부가 "추정" 배지로 안전하게 격하된다.
+export async function callGeminiGroundedJSON(parts, maxTokens = 2000) {
+  const { text, provider, grounded, sources } = await _callGeminiProxy(parts, {
+    maxTokens,
+    withSearch: true,
+  });
+  return { data: _cleanJSON(text), provider, grounded: grounded && provider === 'gemini', sources };
 }
 
 // ── 공통 Gemini 호출 (텍스트) — 서버가 Groq fallback 자동 처리 ────────
