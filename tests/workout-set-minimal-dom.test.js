@@ -136,6 +136,8 @@ function buildHarnessScript() {
     '_copyPreviousWorkoutSetForSheet',
     '_copyPreviousWorkoutRecordSetsForSheet',
     '_copyPreviousWorkoutExerciseSetsFromSheet',
+    '_undoPreviousWorkoutSetCopyFromSheet',
+    '_setWorkoutTrackModeFromSheet',
   ];
   const sourceBundle = [
     setPresentationJs.replace(/^export /gmu, ''),
@@ -233,6 +235,12 @@ function buildHarnessScript() {
     function activeWorkoutTrack() { return 'M'; }
     function workoutTrackLabel() { return '중량'; }
     function _previousWorkoutRecordForRow() { return window.__previousRecord || null; }
+    function _clonePlain(value) { return value == null ? value : JSON.parse(JSON.stringify(value)); }
+    function normalizeWorkoutTrack(value) { return value === 'H' || value === 'M' ? value : ''; }
+    function isWendlerWorkoutEntry(entry = {}) {
+      if (entry?.recommendationMeta?.program === 'wendler' || entry?.maxPrescription?.program === 'wendler') return true;
+      return (entry?.sets || []).some(set => !!set?.wendlerRole);
+    }
     function _workoutEntryName(entry = {}) { return String(entry?.name || entry?.exerciseId || ''); }
     function getCache() { return window.__cache || {}; }
     function getDietPlan() { return null; }
@@ -361,8 +369,9 @@ function buildHarnessScript() {
     }
     window._wtCalUpdateExerciseSet = _updateWorkoutExerciseSetFromSheet;
     window.__copyPreviousWorkoutRecordSets = _copyPreviousWorkoutRecordSetsForSheet;
-    window.showToast = (message, duration, type) => {
-      window.__lastToast = { message, duration, type };
+    window.showToast = (message, duration, type, opts = null) => {
+      window.__lastToast = { message, duration, type, hasUndo: typeof opts?.onAction === 'function' && opts?.action === '실행 취소' };
+      window.__lastToastAction = opts?.onAction || null;
     };
     window.renderWorkoutCalendarHome = renderWorkoutCalendarHome;
     window.__harnessReady = true;
@@ -948,12 +957,24 @@ test('previous workout card copies every set value but resets completion state',
     };
     window.renderWorkoutCalendarHome();
     const copyCard = document.querySelector('[data-wt-sheet-card-action="copy-previous-sets"]');
+    const copyIsCompactChip = copyCard?.classList.contains('wt-max-last-copy-chip') === true
+      && copyCard?.closest('.wt-max-last-head') != null;
     copyCard?.click();
     await new Promise(resolve => setTimeout(resolve, 0));
-    return {
-      copiedSets: window.__entry.sets,
+    const afterCopy = {
+      copiedSets: JSON.parse(JSON.stringify(window.__entry.sets)),
       completionMarkerCleared: !('exerciseCompletedAt' in window.__entry),
       toast: window.__lastToast,
+      copyIsCompactChip,
+    };
+    // 오탭 복구: 토스트의 실행 취소가 복사 전 세트와 완료 마커를 되살린다.
+    window.__lastToastAction?.();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    return {
+      ...afterCopy,
+      undoneSets: window.__entry.sets,
+      undoneCompletedAt: window.__entry.exerciseCompletedAt ?? null,
+      undoToast: window.__lastToast,
     };
   });
 
@@ -982,11 +1003,68 @@ test('previous workout card copies every set value but resets completion state',
     },
   ]);
   assert.equal(result.completionMarkerCleared, true);
+  // 오탭 방지 1: 블록 전체가 아니라 작은 칩만 복사 버튼이다.
+  assert.equal(result.copyIsCompactChip, true, '복사 버튼은 지난 기록 헤더의 칩이어야 한다');
+  // 오탭 방지 2: 토스트에 실행 취소가 붙는다.
   assert.deepEqual(result.toast, {
     message: '지난 기록 2세트를 가져왔어요',
-    duration: 1400,
+    duration: 5000,
     type: 'success',
+    hasUndo: true,
   });
+  // 실행 취소는 복사 전 세트와 완료 마커를 그대로 복원한다.
+  assert.deepEqual(result.undoneSets, [{ kg: 20, reps: 5, done: false }]);
+  assert.equal(result.undoneCompletedAt, 999);
+  assert.equal(result.undoToast.message, '복사 전 세트로 되돌렸어요');
+});
+
+test('track graph row tap reclassifies a non-wendler record and skips wendler entries', async () => {
+  const result = await runHarness(async () => {
+    // 하네스의 _renderWorkoutTrackGraph는 빈 스텁이라 카드에는 줄이 없다.
+    // 실제 카드 액션 배선(_runWorkoutHomeSheetCardAction → _setWorkoutTrackModeFromSheet)을
+    // 검증하기 위해 같은 속성의 컨트롤을 시트 안에 직접 세운다.
+    window.__entry = {
+      name: '벤치프레스',
+      exerciseId: 'bench-press',
+      sets: [{ kg: 60, reps: 10, done: true }],
+    };
+    window.renderWorkoutCalendarHome();
+    const sheet = document.querySelector('[data-wt-day-sheet] .wt-day-sheet-scroll');
+    sheet.insertAdjacentHTML('beforeend', '<div class="ex-max-track-graph-row" data-wt-sheet-card-action="set-track-mode" data-track="H" data-date-key="2026-07-04" data-session-index="0" data-exercise-index="0"></div>');
+    document.querySelector('[data-wt-sheet-card-action="set-track-mode"]').click();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    const afterToggle = {
+      meta: JSON.parse(JSON.stringify(window.__entry.recommendationMeta || null)),
+      sets: JSON.parse(JSON.stringify(window.__entry.sets)),
+      toast: window.__lastToast,
+    };
+
+    // 웬들러 기록은 W 고정 — 탭해도 분류 메타를 만들지 않는다.
+    window.__entry = {
+      name: '스쿼트(와이드)',
+      exerciseId: 'squat-wide',
+      sets: [{ kg: 97.5, reps: 4, done: true, wendlerRole: 'main' }],
+    };
+    window.renderWorkoutCalendarHome();
+    const sheet2 = document.querySelector('[data-wt-day-sheet] .wt-day-sheet-scroll');
+    sheet2.insertAdjacentHTML('beforeend', '<div class="ex-max-track-graph-row" data-wt-sheet-card-action="set-track-mode" data-track="H" data-date-key="2026-07-04" data-session-index="0" data-exercise-index="0"></div>');
+    window.__lastToast = null;
+    document.querySelector('[data-wt-sheet-card-action="set-track-mode"]').click();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    return {
+      afterToggle,
+      wendlerMeta: window.__entry.recommendationMeta ?? null,
+      wendlerToast: window.__lastToast,
+    };
+  });
+
+  assert.equal(result.afterToggle.meta?.track, 'H', '탭한 트랙이 기록 분류 메타에 저장돼야 한다');
+  assert.equal(result.afterToggle.meta?.userTrackOverride, true);
+  // 세트 자체(무게/횟수/완료)는 손대지 않는다 — 기록 편집이 아니라 분류 전환이다.
+  assert.deepEqual(result.afterToggle.sets, [{ kg: 60, reps: 10, done: true }]);
+  assert.equal(result.afterToggle.toast?.message, '강도 트랙 기록으로 바꿨어요');
+  assert.equal(result.wendlerMeta, null, '웬들러 기록에는 트랙 메타를 쓰지 않는다');
+  assert.equal(result.wendlerToast, null, '웬들러에서는 전환 토스트도 없다');
 });
 
 test('set type menu click mutates only the target set type and clears completion marker', async () => {

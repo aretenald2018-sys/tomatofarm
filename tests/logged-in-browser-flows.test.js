@@ -282,6 +282,52 @@ export const estimateInOnePass = unavailable('estimateInOnePass');
         window.__qaSheetSavedEvents = 0;
       }
 
+      // 트랙 그래프 검증용: 지난 볼륨/강도 세션이 쌓인 비웬들러 종목 하루.
+      function seedTrackHistory() {
+        seed();
+        const dayAt = (offset) => {
+          const d = new Date(today.getTime() - offset * 86400000);
+          return fake.dateKey(d.getFullYear(), d.getMonth(), d.getDate());
+        };
+        // 실제 저장 형태(upsertWorkoutSession)는 workoutSessions와 함께
+        // day 루트에 exercises 집계를 남긴다 — 트랙 히스토리는 이 집계를 읽는다.
+        const benchDay = (kg, reps, setCount) => {
+          const entry = {
+            exerciseId: 'bench-press', name: '벤치프레스', muscleId: 'chest', movementId: 'horizontal-press',
+            sets: Array.from({ length: setCount }, () => ({ kg, reps, rir: 2, romPct: 100, setType: 'main', done: true })),
+          };
+          return {
+            workoutSessions: [{ id: 'session-1', label: '1회차', exercises: [entry] }],
+            exercises: [JSON.parse(JSON.stringify(entry))],
+          };
+        };
+        fake.getCache()[dayAt(9)] = benchDay(57.5, 12, 3); // 볼륨(M)
+        fake.getCache()[dayAt(7)] = benchDay(60, 12, 3);   // 볼륨(M)
+        fake.getCache()[dayAt(5)] = benchDay(62.5, 12, 3); // 볼륨(M)
+        fake.getCache()[dayAt(3)] = benchDay(80, 5, 4);    // 강도(H)
+        fake.getCache()[dayAt(2)] = benchDay(82.5, 5, 4);  // 강도(H)
+        // 오늘은 완료 세트가 있어야 카드 머리에 "오늘 N 트랙" 문구가 뜬다.
+        fake.getCache()[KEY] = benchDay(80, 10, 2);
+      }
+
+      function trackGraphSnapshot() {
+        const rows = Array.from(document.querySelectorAll('[data-wt-day-sheet] .wt-max-track-graph .ex-max-track-graph-row'));
+        const entry = (((fake.getCache()[KEY] || {}).workoutSessions || [])[0]?.exercises || [])[0] || {};
+        return {
+          unified: document.querySelector('[data-wt-day-sheet] .wt-max-track-graph.is-wendler') != null,
+          tracks: rows.map(row => row.dataset.track),
+          activeTracks: rows.filter(row => row.classList.contains('is-active')).map(row => row.dataset.track),
+          chips: rows.map(row => row.querySelector('.ex-max-track-graph-chip')?.textContent.trim() || ''),
+          values: rows.map(row => row.querySelector('.ex-max-track-graph-value')?.textContent.trim() || ''),
+          sparkCount: rows.filter(row => row.querySelector('.wt-max-spark-svg path')).length,
+          toggleActions: rows.map(row => row.getAttribute('data-wt-sheet-card-action') || ''),
+          trackText: document.querySelector('[data-wt-day-sheet] .wt-max-plan-goal em')?.textContent.trim() || '',
+          trackMeta: entry.recommendationMeta ? JSON.parse(JSON.stringify(entry.recommendationMeta)) : null,
+          copyChip: document.querySelector('[data-wt-day-sheet] .wt-max-last-copy-chip') != null,
+          fullBlockCopyButton: document.querySelector('[data-wt-day-sheet] button.wt-max-last-copy') != null,
+        };
+      }
+
       function wendlerSnapshot() {
         const day = fake.getCache()[KEY] || {};
         const entry = ((day.workoutSessions || [])[0]?.exercises || [])[0] || {};
@@ -302,7 +348,9 @@ export const estimateInOnePass = unavailable('estimateInOnePass');
         key: KEY,
         seed,
         seedWendler,
+        seedTrackHistory,
         wendlerSnapshot,
+        trackGraphSnapshot,
         openDaySheet,
         storedSets,
         storedFullSet: (index) => {
@@ -718,6 +766,58 @@ test('day sheet shows PR(8+) and switches wendler backoff between FSL and SSL fr
     assert.deepEqual(after.chipLabels.slice(3), ['SSL', 'FSL', 'FSL']);
     // 보드 벤치마크에도 저장되어 다음 주 처방부터 FSL이 나온다.
     assert.equal(after.boardMode, 'fsl');
+
+    assert.deepEqual(harness.pageErrors, []);
+    assert.deepEqual(harness.blockedRequests, []);
+  } finally {
+    if (harness?.browser) await harness.browser.close();
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('day sheet unifies the wendler track graph and lets non-wendler rows switch tracks', async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), 'tomato-logged-in-track-graph-'));
+  let harness;
+  try {
+    const htmlPath = await buildWorkoutSheetHarness(tempDir);
+    harness = await launchHarness(htmlPath);
+    const { page } = harness;
+
+    // ── 웬들러 종목: 볼륨/강도 두 줄 대신 웬들러 단일 트랙 ──
+    await page.evaluate(() => { window.__qa.seedWendler(); window.__qa.openDaySheet(); });
+    await page.waitForSelector('[data-wt-day-sheet] .wt-max-track-graph', { timeout: 8000 });
+    const wendlerGraph = await page.evaluate(() => window.__qa.trackGraphSnapshot());
+    assert.equal(wendlerGraph.unified, true, '웬들러는 통합(is-wendler) 그래프여야 한다');
+    assert.deepEqual(wendlerGraph.tracks, ['W']);
+    assert.deepEqual(wendlerGraph.chips, ['웬들러']);
+    assert.deepEqual(wendlerGraph.activeTracks, ['W']);
+    assert.match(wendlerGraph.values[0], /\d+kg/, '웬들러 값은 메인 세트 e1RM(kg)이다');
+    assert.deepEqual(wendlerGraph.toggleActions, [''], '웬들러 줄은 트랙 전환 대상이 아니다');
+    assert.match(wendlerGraph.trackText, /웬들러 트랙/);
+
+    // ── 비웬들러 종목: 두 줄 + 탭 전환, 히스토리 기반 그래프 ──
+    await page.evaluate(() => { window.__qa.seedTrackHistory(); window.__qa.openDaySheet(); });
+    await page.waitForSelector('[data-wt-day-sheet] .ex-max-track-graph-row[data-track="H"]', { timeout: 8000 });
+    const before = await page.evaluate(() => window.__qa.trackGraphSnapshot());
+    assert.equal(before.unified, false);
+    assert.deepEqual(before.tracks, ['M', 'H']);
+    assert.deepEqual(before.chips, ['볼륨', '강도']);
+    assert.equal(before.sparkCount, 2, '두 줄 모두 스파크라인이 그려져야 한다');
+    assert.match(before.values[0], /(t|kg)/, '볼륨 줄은 총볼륨 값을 보여야 한다');
+    assert.match(before.values[1], /kg/, '강도 줄은 추정 1RM 값을 보여야 한다');
+    assert.deepEqual(before.toggleActions, ['set-track-mode', 'set-track-mode'], '비웬들러 줄은 탭 전환 대상이다');
+    assert.deepEqual(before.activeTracks, ['M'], '10회 기록이라 기본은 볼륨 트랙');
+    // 지난 기록 복사는 전체 블록 버튼이 아니라 칩이어야 한다(오탭 방지).
+    assert.equal(before.copyChip, true);
+    assert.equal(before.fullBlockCopyButton, false);
+
+    // 강도 줄 탭 → 이 날 기록의 트랙 분류가 강도로 저장되고 UI가 따라온다.
+    await tapElement(page, '[data-wt-day-sheet] .ex-max-track-graph-row[data-track="H"]');
+    await page.waitForFunction(() => window.__qa.trackGraphSnapshot().trackMeta?.track === 'H', { timeout: 8000 });
+    const after = await page.evaluate(() => window.__qa.trackGraphSnapshot());
+    assert.deepEqual(after.activeTracks, ['H'], '강도 줄이 활성 표시로 바뀌어야 한다');
+    assert.equal(after.trackMeta.userTrackOverride, true);
+    assert.match(after.trackText, /강도 트랙/);
 
     assert.deepEqual(harness.pageErrors, []);
     assert.deepEqual(harness.blockedRequests, []);

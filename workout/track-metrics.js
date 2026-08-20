@@ -2,6 +2,8 @@ import { toFiniteNumber as _num } from '../utils/number.js';
 import {
   estimateSet1RM,
   getTrackMetricHistory,
+  getWendlerMetricHistory,
+  isWendlerWorkoutEntry,
   normalizeWorkoutTrack,
 } from '../calc.js';
 
@@ -16,7 +18,22 @@ function _formatWeight(value) {
   return number > 0 ? _fmtNum(number, 1) : '-';
 }
 
+// 캘린더 read-model row(setDetails/rawSetDetails)와 원본 엔트리(sets) 어느 쪽이
+// 와도 calc의 웬들러 판정을 그대로 쓸 수 있게 shape을 맞춘다. setDetails는
+// 완료 세트만 담으므로, 아직 하나도 안 친 처방 날을 위해 rawSetDetails를 우선한다.
+export function isWendlerTrackRow(row = {}) {
+  const sets = [row?.rawSetDetails, row?.setDetails, row?.sets]
+    .find(list => Array.isArray(list) && list.length) || [];
+  return isWendlerWorkoutEntry({
+    recommendationMeta: row?.recommendationMeta || null,
+    maxPrescription: row?.maxPrescription || null,
+    sets,
+  });
+}
+
 export function activeWorkoutTrack(row = {}, bestSet = null) {
+  // 웬들러 기록은 볼륨/강도 이분화 밖의 단일 트랙(W)으로 다룬다.
+  if (isWendlerTrackRow(row)) return 'W';
   const explicit = normalizeWorkoutTrack(
     row?.recommendationMeta?.track ||
     row?.maxPrescription?.benchmarkTrack ||
@@ -29,13 +46,14 @@ export function activeWorkoutTrack(row = {}, bestSet = null) {
 }
 
 export function workoutTrackLabel(track) {
+  if (track === 'W') return '웬들러';
   return track === 'H' ? '강도' : '볼륨';
 }
 
 export function formatWorkoutTrackValue(track, value) {
   const number = _num(value);
-  if (number <= 0) return track === 'H' ? '추정1RM' : '총볼륨';
-  if (track === 'H') return `${Math.round(number)}kg`;
+  if (number <= 0) return track === 'W' ? 'e1RM' : (track === 'H' ? '추정1RM' : '총볼륨');
+  if (track === 'H' || track === 'W') return `${Math.round(number)}kg`;
   if (number >= 1000) return `${_fmtNum(number / 1000, 1)}t`;
   return `${Math.round(number)}kg`;
 }
@@ -59,7 +77,9 @@ function _workoutTrackDeltaClass(delta) {
 
 export function workoutTrackHistoryPoints(row, track, { cache = {}, exList = [] } = {}) {
   if (!row?.exerciseId) return [];
-  const history = getTrackMetricHistory(cache, exList, row.exerciseId);
+  const history = track === 'W'
+    ? getWendlerMetricHistory(cache, exList, row.exerciseId)
+    : getTrackMetricHistory(cache, exList, row.exerciseId);
   const points = Array.isArray(history?.[track]) ? history[track] : [];
   const currentKey = String(row?.dateKey || '');
   const scoped = currentKey
@@ -68,20 +88,28 @@ export function workoutTrackHistoryPoints(row, track, { cache = {}, exList = [] 
   return scoped.slice(-6);
 }
 
+// 웬들러 fallback은 메인 세트만 본다 — 백오프/웜업 e1RM이 섞이면
+// 히스토리(calcWendlerSessionMetric)와 다른 값이 그려진다.
+function _wendlerSourceSets(sets) {
+  const main = sets.filter(set => set?.wendlerRole === 'main');
+  return main.length ? main : sets;
+}
+
 export function workoutFallbackSparkValues(row, track = 'M') {
   const sets = Array.isArray(row?.setDetails) ? row.setDetails : [];
-  const raw = sets.map((set) => {
+  const source = track === 'W' ? _wendlerSourceSets(sets) : sets;
+  const raw = source.map((set) => {
     const kg = _num(set.kg);
-    if (track === 'H') return estimateSet1RM(set) || kg;
+    if (track === 'H' || track === 'W') return estimateSet1RM(set) || kg;
     return Math.max(0, kg * _num(set.reps));
   }).filter(value => value > 0);
   return raw.length >= 2 ? raw : raw.length === 1 ? [raw[0], raw[0], raw[0]] : [0, 1, 0];
 }
 
 function _workoutFallbackTrackValue(row, bestSet, track = 'M') {
-  if (track !== 'H') return _num(row?.volume);
+  if (track !== 'H' && track !== 'W') return _num(row?.volume);
   const sets = Array.isArray(row?.setDetails) ? row.setDetails : [];
-  const values = sets
+  const values = (track === 'W' ? _wendlerSourceSets(sets) : sets)
     .map(set => estimateSet1RM(set) || _num(set.kg))
     .filter(value => value > 0);
   if (values.length) return Math.max(...values);
@@ -90,7 +118,7 @@ function _workoutFallbackTrackValue(row, bestSet, track = 'M') {
 
 export function buildWorkoutTrackTrend(row, bestSet, { cache = {}, exList = [] } = {}, requestedTrack = null) {
   const activeTrack = activeWorkoutTrack(row, bestSet);
-  const track = requestedTrack === 'H' || requestedTrack === 'M' ? requestedTrack : activeTrack;
+  const track = ['H', 'M', 'W'].includes(requestedTrack) ? requestedTrack : activeTrack;
   const points = workoutTrackHistoryPoints(row, track, { cache, exList });
   const latest = points.length ? points[points.length - 1] : null;
   const fallbackValue = _workoutFallbackTrackValue(row, bestSet, track);

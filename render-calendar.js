@@ -26,6 +26,8 @@ import {
 } from './data.js';
 import {
   calcDietMetrics,
+  isWendlerWorkoutEntry,
+  normalizeWorkoutTrack,
   SUBPATTERN_TO_MAJOR,
 } from './calc.js';
 import { dateKey, TODAY, isFuture, isBeforeStart } from './data/data-date.js';
@@ -1735,6 +1737,8 @@ function _runWorkoutHomeSheetCardAction(action, control) {
       return _setWorkoutExerciseSetTypeFromSheet(key, sessionIndex, exerciseIndex, setIndex, setType);
     case 'set-backoff-mode':
       return _setWorkoutBackoffModeFromSheet(key, sessionIndex, exerciseIndex, setIndex, control?.getAttribute?.('data-backoff-mode') || '');
+    case 'set-track-mode':
+      return _setWorkoutTrackModeFromSheet(key, sessionIndex, exerciseIndex, control?.getAttribute?.('data-track') || '');
     case 'complete-exercise':
       return _completeWorkoutExerciseFromSheet(cardId, key, sessionIndex, exerciseIndex);
     case 'edit-exercise':
@@ -2768,10 +2772,15 @@ function _copyPreviousWorkoutRecordSetsForSheet(previousRecord = null) {
   return details.map(set => _copyPreviousWorkoutSetForSheet(set));
 }
 
+// 전체 세트 복사는 입력 중인 세트를 통째로 덮어쓰는 파괴적 액션이다.
+// 실수 방지 UX: (a) 카드에서 탭 대상은 전체 블록이 아니라 작은 칩 버튼,
+// (b) 덮어쓴 직후 토스트의 '실행 취소'로 이전 세트를 그대로 복원할 수 있다.
 async function _copyPreviousWorkoutExerciseSetsFromSheet(key, sessionIndex, exerciseIndex) {
   const targetKey = _parseDateKey(key) ? key : _workoutHomeSelectedKey;
   let copiedSetCount = 0;
   let previousRecordMissing = false;
+  let undoSets = null;
+  let undoCompletedAt = null;
   try {
     const ok = await _mutateWorkoutExerciseFromSheet(targetKey, sessionIndex, exerciseIndex, (entry) => {
       const previousRecord = _previousWorkoutRecordForRow(getCache(), {
@@ -2785,6 +2794,8 @@ async function _copyPreviousWorkoutExerciseSetsFromSheet(key, sessionIndex, exer
         previousRecordMissing = true;
         return false;
       }
+      undoSets = _clonePlain(entry.sets) || [];
+      undoCompletedAt = Number.isFinite(Number(entry.exerciseCompletedAt)) ? Number(entry.exerciseCompletedAt) : null;
       entry.sets = copiedSets;
       copiedSetCount = copiedSets.length;
       clearWorkoutExerciseCompletionMarker(entry);
@@ -2795,11 +2806,66 @@ async function _copyPreviousWorkoutExerciseSetsFromSheet(key, sessionIndex, exer
       if (previousRecordMissing) showToast('복사할 지난 세트 기록이 없어요', 1800, 'warning');
       return false;
     }
-    showToast(`지난 기록 ${copiedSetCount}세트를 가져왔어요`, 1400, 'success');
+    showToast(`지난 기록 ${copiedSetCount}세트를 가져왔어요`, 5000, 'success', {
+      action: '실행 취소',
+      onAction: () => {
+        void _undoPreviousWorkoutSetCopyFromSheet(targetKey, sessionIndex, exerciseIndex, undoSets, undoCompletedAt);
+      },
+    });
     return true;
   } catch (e) {
     console.warn('[workout-calendar] previous set copy failed:', e);
     showToast('지난 기록 세트를 가져오지 못했어요', 2200, 'error');
+    return false;
+  }
+}
+
+async function _undoPreviousWorkoutSetCopyFromSheet(key, sessionIndex, exerciseIndex, undoSets, undoCompletedAt) {
+  try {
+    const ok = await _mutateWorkoutExerciseFromSheet(key, sessionIndex, exerciseIndex, (entry) => {
+      entry.sets = _clonePlain(undoSets) || [];
+      if (undoCompletedAt != null) entry.exerciseCompletedAt = undoCompletedAt;
+      else clearWorkoutExerciseCompletionMarker(entry);
+      _clearWorkoutSetEditorsForExercise(key, sessionIndex, exerciseIndex);
+      return true;
+    }, { preserveSheetScroll: true });
+    if (ok) showToast('복사 전 세트로 되돌렸어요', 1400, 'success');
+  } catch (e) {
+    console.warn('[workout-calendar] previous set copy undo failed:', e);
+    showToast('되돌리기에 실패했어요', 2200, 'error');
+  }
+}
+
+// 비웬들러 종목의 트랙(볼륨/강도) 분류를 그래프 줄 탭으로 전환한다.
+// 세트나 처방은 건드리지 않고 기록의 분류 메타만 바꾼다 — 지난 날짜의
+// 기록 편집기에서 수행 내용을 다시 쓰는 것은 금지.
+async function _setWorkoutTrackModeFromSheet(key, sessionIndex, exerciseIndex, track) {
+  const nextTrack = normalizeWorkoutTrack(track);
+  if (nextTrack !== 'H' && nextTrack !== 'M') return false;
+  let unchanged = false;
+  try {
+    const ok = await _mutateWorkoutExerciseFromSheet(key, sessionIndex, exerciseIndex, (entry) => {
+      if (isWendlerWorkoutEntry(entry)) { unchanged = true; return false; }
+      const current = normalizeWorkoutTrack(
+        entry.recommendationMeta?.track
+        || entry.maxPrescription?.benchmarkTrack
+        || entry.maxPrescription?.track
+        || entry.maxTrackPreference
+      );
+      if (current === nextTrack) { unchanged = true; return false; }
+      entry.recommendationMeta = {
+        ...(entry.recommendationMeta || {}),
+        track: nextTrack,
+        userTrackOverride: true,
+        trackChangedAt: Date.now(),
+      };
+      return true;
+    }, { preserveSheetScroll: true, optimisticRender: true });
+    if (ok) showToast(`${nextTrack === 'H' ? '강도' : '볼륨'} 트랙 기록으로 바꿨어요`, 1400, 'success');
+    return ok || unchanged;
+  } catch (e) {
+    console.warn('[workout-calendar] sheet track mode change failed:', e);
+    showToast('트랙 전환에 실패했어요', 2200, 'error');
     return false;
   }
 }

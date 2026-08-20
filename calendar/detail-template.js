@@ -335,7 +335,7 @@ export function _renderWorkoutSparkline(row, trend = null) {
   const historyValues = (Array.isArray(trend?.points) ? trend.points : [])
     .map(point => _num(point?.value))
     .filter(value => value > 0);
-  const raw = historyValues.length >= 2 ? historyValues : workoutFallbackSparkValues(row, trend?.track === 'H' ? 'H' : 'M');
+  const raw = historyValues.length >= 2 ? historyValues : workoutFallbackSparkValues(row, ['H', 'W'].includes(trend?.track) ? trend.track : 'M');
   const values = raw.length >= 2 ? raw : raw.length === 1 ? [raw[0], raw[0], raw[0]] : [0, 1, 0];
   const min = Math.min(...values);
   const max = Math.max(...values);
@@ -349,8 +349,8 @@ export function _renderWorkoutSparkline(row, trend = null) {
   const path = _smoothPath(points);
   const firstPt = points[0];
   const lastPt = points[points.length - 1];
-  const track = trend?.track === 'H' ? 'H' : 'M';
-  const color = track === 'H' ? '#be123c' : '#2563eb';
+  const track = ['H', 'W'].includes(trend?.track) ? trend.track : 'M';
+  const color = track === 'W' ? '#0f766e' : track === 'H' ? '#be123c' : '#2563eb';
   const fillId = `wt-history-track-${track}-${_workoutTrackGraphSeq++}`;
   const fillPath = `${path} L ${Math.round(lastPt.x * 10) / 10} 32 L ${Math.round(firstPt.x * 10) / 10} 32 Z`;
   return `
@@ -366,14 +366,14 @@ export function _renderWorkoutSparkline(row, trend = null) {
   `;
 }
 
-export function _renderWorkoutTrackGraphRow(row, bestSet, track, activeTrack) {
+export function _renderWorkoutTrackGraphRow(row, bestSet, track, activeTrack, actionAttrs = '') {
   const trend = buildWorkoutTrackTrend(row, bestSet, {
     cache: getCache(),
     exList: getExList(),
   }, track);
   const delta = trend.delta || '';
   return `
-    <div class="ex-max-track-graph-row ${track === activeTrack ? 'is-active' : ''}" data-track="${track}">
+    <div class="ex-max-track-graph-row ${track === activeTrack ? 'is-active' : ''}" data-track="${track}"${actionAttrs}>
       <span class="ex-max-track-graph-chip">${_esc(trend.trackLabel)}</span>
       <span class="wt-max-spark">${_renderWorkoutSparkline(row, trend)}</span>
       <span class="ex-max-track-graph-value">${_esc(trend.valueLabel)}${delta ? `<small class="${_esc(trend.deltaClass)}">${_esc(delta)}</small>` : ''}</span>
@@ -381,12 +381,25 @@ export function _renderWorkoutTrackGraphRow(row, bestSet, track, activeTrack) {
   `;
 }
 
-export function _renderWorkoutTrackGraph(row, bestSet) {
+// 웬들러 기록은 볼륨/강도 이분화가 무의미하므로(메인 세트 e1RM 단일 지표)
+// W 트랙 한 줄로 통합한다. 비웬들러는 두 줄을 유지하되, 줄을 탭하면 그 날
+// 기록의 트랙 분류(볼륨셋/강도셋)를 바꿀 수 있게 카드 액션을 단다.
+export function _renderWorkoutTrackGraph(row, bestSet, context = null) {
   const activeTrack = activeWorkoutTrack(row, bestSet);
+  if (activeTrack === 'W') {
+    return `
+      <div class="ex-max-track-graph wt-max-track-graph is-wendler" title="웬들러 기록은 볼륨/강도와 분리해 메인 세트 e1RM 하나로 그립니다.">
+        ${_renderWorkoutTrackGraphRow(row, bestSet, 'W', 'W')}
+      </div>
+    `;
+  }
+  const toggleAttrs = (track) => (context
+    ? ` data-wt-sheet-card-action="set-track-mode" data-date-key="${_esc(context.key)}" data-session-index="${context.sessionIndex}" data-exercise-index="${context.exerciseIndex}" role="button" tabindex="0" aria-label="${workoutTrackLabel(track)} 트랙으로 기록"`
+    : '');
   return `
-    <div class="ex-max-track-graph wt-max-track-graph" title="볼륨 트랙은 총볼륨, 강도 트랙은 추정 1RM으로 따로 그립니다.">
-      ${_renderWorkoutTrackGraphRow(row, bestSet, 'M', activeTrack)}
-      ${_renderWorkoutTrackGraphRow(row, bestSet, 'H', activeTrack)}
+    <div class="ex-max-track-graph wt-max-track-graph" title="볼륨 트랙은 총볼륨, 강도 트랙은 추정 1RM으로 따로 그립니다. 줄을 탭하면 오늘 기록의 트랙이 바뀝니다.">
+      ${_renderWorkoutTrackGraphRow(row, bestSet, 'M', activeTrack, toggleAttrs('M'))}
+      ${_renderWorkoutTrackGraphRow(row, bestSet, 'H', activeTrack, toggleAttrs('H'))}
     </div>
   `;
 }
@@ -653,17 +666,17 @@ export function _renderWorkoutExerciseDetailCard(key, sessionIndex, row, index) 
           <em>${_esc(trackText)}</em>
         </div>
         <div class="wt-max-trend">
-          ${_renderWorkoutTrackGraph(row, bestSet)}
+          ${_renderWorkoutTrackGraph(row, bestSet, { key, sessionIndex, exerciseIndex: originalIndex })}
         </div>
       </div>
       <div class="wt-max-last">
-        ${Array.isArray(row?.previousRecord?.setDetails) && row.previousRecord.setDetails.length > 0 ? `
-          <button type="button" class="wt-max-last-copy" data-wt-sheet-card-action="copy-previous-sets" data-date-key="${_esc(key)}" data-session-index="${sessionIndex}" data-exercise-index="${originalIndex}" aria-label="지난 기록 ${row.previousRecord.setDetails.length}세트 전체 복사">
-            <span>${_esc(previousSummary.label)}<em>전체 세트 복사</em></span>
-        ` : `
+        <div class="wt-max-last-head">
           <span>${_esc(previousSummary.label)}</span>
-        `}
-        <strong>${_esc(previousSummary.summary)}</strong>${Array.isArray(row?.previousRecord?.setDetails) && row.previousRecord.setDetails.length > 0 ? '</button>' : ''}
+          ${Array.isArray(row?.previousRecord?.setDetails) && row.previousRecord.setDetails.length > 0
+    ? `<button type="button" class="wt-max-last-copy-chip" data-wt-sheet-card-action="copy-previous-sets" data-date-key="${_esc(key)}" data-session-index="${sessionIndex}" data-exercise-index="${originalIndex}" aria-label="지난 기록 ${row.previousRecord.setDetails.length}세트 전체 세트 복사">전체 세트 복사</button>`
+    : ''}
+        </div>
+        <strong>${_esc(previousSummary.summary)}</strong>
       </div>
       ${row.note ? `<div class="wt-max-note">${_esc(row.note)}</div>` : ''}
       <div class="wt-max-collapsed-note">모든 세트 완료 · 카드가 접혔어요</div>
