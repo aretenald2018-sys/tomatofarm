@@ -727,6 +727,88 @@ test('day sheet shows PR(8+) and switches wendler backoff between FSL and SSL fr
   }
 });
 
+// ── 종합 캘린더(체중 표시) 하네스 ────────────────────────────────
+// 체중은 입력한 날에만 보여야 한다. 입력 없는 날에 직전 값이 이월 표시되던
+// 회귀를 실제 renderCalendar 경로로 잡는다.
+async function buildSummaryCalendarHarness(tempDir) {
+  const htmlPath = path.join(tempDir, 'summary-calendar.html');
+
+  // render-calendar.js → workout/expert.js → ai.js 체인은 Firebase를 초기화하므로 끊는다.
+  const stubAiUrl = await writeStub(tempDir, 'stub-ai.js', `
+function unavailable(name) {
+  return async () => { throw new Error('harness: ai.js.' + name + ' is not available offline'); };
+}
+export const parseEquipmentFromText = unavailable('parseEquipmentFromText');
+export const parseEquipmentFromImage = unavailable('parseEquipmentFromImage');
+export const estimateInOnePass = unavailable('estimateInOnePass');
+`);
+
+  const importMap = {
+    imports: {
+      [repoUrl('data.js')]: FAKE_DATA_URL,
+      [repoUrl('ai.js')]: stubAiUrl,
+    },
+  };
+
+  const moduleSource = `
+      const fake = await import(${JSON.stringify(FAKE_DATA_URL)});
+      const calendar = await import(${JSON.stringify(repoUrl('render-calendar.js'))});
+
+      const today = fake.TODAY;
+      const KEY_OF = (day) => fake.dateKey(today.getFullYear(), today.getMonth(), day);
+
+      fake.resetFakeDataLayer({
+        currentUser: ${JSON.stringify(SIGNED_IN_USER)},
+        // 준수 시나리오: 1일 77 · 2일 76 · 6일 79만 입력, 3~5일은 미입력.
+        bodyCheckins: [
+          { date: KEY_OF(1), weight: 77 },
+          { date: KEY_OF(2), weight: 76 },
+          { date: KEY_OF(6), weight: 79 },
+        ],
+      });
+
+      calendar.renderCalendar();
+
+      window.__qa = {
+        weightTexts() {
+          return Array.from(document.querySelectorAll('#calendar-root .cal-cell:not(.cal-cell-empty)'))
+            .map(cell => cell.querySelectorAll('.cal-metric-val')[2]?.textContent?.trim() ?? null);
+        },
+      };
+`;
+
+  await writeHarnessHtml(htmlPath, {
+    importMap,
+    body: '  <main id="calendar-root"></main>',
+    moduleSource,
+  });
+  return htmlPath;
+}
+
+test('summary calendar shows weight only on recorded days and leaves missing days blank', async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), 'tomato-logged-in-weight-blank-'));
+  let harness;
+  try {
+    const htmlPath = await buildSummaryCalendarHarness(tempDir);
+    harness = await launchHarness(htmlPath);
+    const { page } = harness;
+
+    const weights = await page.evaluate(() => window.__qa.weightTexts());
+    assert.ok(weights.length >= 6, `expected a full month of cells, got ${weights.length}`);
+    assert.equal(weights[0], '77.0');
+    assert.equal(weights[1], '76.0');
+    // 미입력일은 직전 체중을 이월하지 않고 빈칸(—)이어야 한다.
+    assert.deepEqual(weights.slice(2, 5), ['—', '—', '—']);
+    assert.equal(weights[5], '79.0');
+
+    assert.deepEqual(harness.pageErrors, []);
+    assert.deepEqual(harness.blockedRequests, []);
+  } finally {
+    if (harness?.browser) await harness.browser.close();
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 // ── 운동 달력 월 그리드(주차 목표 레일) 하네스 ───────────────────
 // 레일은 시즌 설정 → buildSeasonOverview → 칩 렌더까지 세 단계를 지난다.
 // 소스 문자열 검사로는 "칩이 실제로 그려졌는가"를 알 수 없으므로 진짜 렌더로 본다.

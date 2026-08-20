@@ -25,6 +25,16 @@ export function _weightAt(sortedCheckins, key) {
   return null;
 }
 
+// 그날 실제로 입력한 체중만 돌려준다. 표시용 — 입력이 없는 날은 빈칸으로
+// 보여야 하므로 _weightAt(이월)과 달리 과거 값을 끌어오지 않는다.
+export function _weightRecordedAt(sortedCheckins, key) {
+  for (let i = sortedCheckins.length - 1; i >= 0; i--) {
+    if (sortedCheckins[i].date === key) return sortedCheckins[i].weight;
+    if (sortedCheckins[i].date < key) break;
+  }
+  return null;
+}
+
 export function _shiftDateKey(key, days) {
   const [y, m, d] = key.split('-').map(n => parseInt(n, 10));
   const dt = new Date(y, m - 1, d);
@@ -58,10 +68,12 @@ export function _maxWeakMetrics(day) {
 // 한 날짜의 전체 메트릭 계산
 // ═════════════════════════════════════════════════════════════
 export function _dayMetrics(key, day, plan, metrics, checkins) {
-  // 체중 (stepwise)
-  const weight = _weightAt(checkins, key);
-  const bodyWeight = weight != null
-    ? weight
+  // 계산용 체중(stepwise 이월): 소모 칼로리·체중 방향 점수는 값이 필요하다.
+  const stepWeight = _weightAt(checkins, key);
+  // 표시용 체중: 그날 입력한 값만. 없는 날은 캘린더/상세에서 빈칸으로 보인다.
+  const weight = _weightRecordedAt(checkins, key);
+  const bodyWeight = stepWeight != null
+    ? stepWeight
     : (getLatestCheckinWeight() ?? plan?.weight ?? 70);
 
   // 섭취 칼로리
@@ -91,10 +103,11 @@ export function _dayMetrics(key, day, plan, metrics, checkins) {
     weightDirSign = plan.targetWeight < plan.weight ? -1
                   : plan.targetWeight > plan.weight ? +1 : 0;
   }
-  if (weight != null) {
+  // 방향 점수는 기존대로 이월(stepwise) 체중으로 계산해 점수 이력이 변하지 않는다.
+  if (stepWeight != null) {
     const prevKey = _shiftDateKey(key, -7);
     const prevW = _weightAt(checkins, prevKey);
-    if (prevW != null) weightDeltaKg = weight - prevW;
+    if (prevW != null) weightDeltaKg = stepWeight - prevW;
   }
 
   // 점수
