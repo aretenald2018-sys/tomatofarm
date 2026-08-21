@@ -587,7 +587,9 @@ test('day sheet exercise cards render as a horizontal carousel instead of a vert
   assert.match(cards, /function _renderWorkoutExerciseDetailCarousel\(key, sessionIndex, exercises = \[\]\)/);
   assert.match(cards, /class="wt-day-exercise-carousel \$\{count > 1 \? 'has-multiple' : 'is-single'\}"/);
   assert.match(cards, /class="wt-day-exercise-carousel-track" data-wt-day-exercise-carousel-track/);
-  assert.match(cards, /data-wt-day-exercise-slide="\$\{index\}"/);
+  // 슈퍼세트 도입 후 슬라이드 번호는 (묶음이 반영된) 슬라이드 모델 인덱스다.
+  assert.match(cards, /data-wt-day-exercise-slide="\$\{slideIndex\}"/);
+  assert.match(cards, /const count = _workoutExerciseSlideModels\(rows\)\.length/);
   assert.doesNotMatch(cards, /\.\.\.wx\.exercises\.map/);
   assert.match(styleCss, /\.wt-day-exercise-carousel-track\s*\{[\s\S]*display:\s*flex;[\s\S]*overflow-x:\s*auto;[\s\S]*scroll-snap-type:\s*x mandatory;[\s\S]*touch-action:\s*pan-x pan-y;/);
   assert.match(styleCss, /\.wt-day-exercise-slide\s*\{[\s\S]*scroll-snap-align:\s*start;[\s\S]*scroll-snap-stop:\s*always;/);

@@ -107,6 +107,7 @@
   './ai/nutrition.js',
   './utils/nutrition-text-parser.js',
   './utils/food-db-match.js',
+  './utils/haptics.js',
   './ai/equipment.js',
   './ai/routine.js',
   './ai/meal-artifact-filter.js',

@@ -18648,6 +18648,160 @@ body.lz-running-record-modal-open {
   }
 }
 
+/* ── 슈퍼세트 통합 카드 ─────────────────────────────────────────
+   묶인 종목들이 카드 하나로 합쳐지고 세트가 수행 순서대로 교차된다.
+   행 소속은 왼쪽 색 악센트(--wt-ss-accent)와 멤버 스트립 색 점으로 구분. */
+.wt-max-card-kicker { position: relative; }
+.wt-max-card-kicker .wt-max-card-kicker-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.wt-max-card-kicker button.wt-ss-link-btn {
+  font-size: 14px;
+}
+.wt-max-card-kicker button.wt-ss-link-btn.is-linked {
+  color: #2563eb;
+}
+.wt-max-card-kicker button.wt-ss-unlink-btn {
+  width: auto;
+  height: 28px;
+  margin: 0;
+  padding: 0 10px;
+  border: 1px solid #d7dee9;
+  border-radius: 999px;
+  background: #f4f6fa;
+  color: #5f6b7a;
+  font-size: 10px;
+  font-weight: 800;
+}
+.wt-ss-link-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  min-width: 220px;
+  padding: 6px;
+  border: 1px solid #d7dee9;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.16);
+}
+.wt-ss-link-menu-note {
+  padding: 6px 8px;
+  color: #8b93a3;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 14px;
+}
+.wt-ss-link-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 40px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #0b1220;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+.wt-ss-link-option:active { background: #f1f6ff; }
+.wt-ss-link-option span { font-weight: 800; }
+.wt-ss-link-option.is-unlink { color: #dc2626; }
+.wt-ss-card-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px;
+  font-size: 17px;
+  line-height: 22px;
+}
+.wt-ss-card-name span { color: var(--wt-ss-accent, #0b1220); }
+.wt-ss-card-name i {
+  color: #8b93a3;
+  font-size: 13px;
+  font-style: normal;
+  font-weight: 800;
+}
+.wt-ss-members {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid #e3e9f2;
+  border-radius: 10px;
+  background: #f9fbfe;
+}
+.wt-ss-member {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.wt-ss-member-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--wt-ss-accent, #2563eb);
+}
+.wt-ss-member-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.wt-ss-member-info b {
+  color: #0b1220;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wt-ss-member-info em {
+  color: #5f6b7a;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 14px;
+}
+.wt-ss-member-graph {
+  flex: none;
+  width: 150px;
+  min-width: 0;
+}
+.wt-ss-member-graph .ex-max-track-graph-row { margin: 0; }
+/* 교차 세트 행: 왼쪽 색 악센트로 소속 종목을 드러낸다 */
+.wt-ss-set-list .wt-max-set-row.wt-ss-set-row {
+  border-left: 3px solid var(--wt-ss-accent, #2563eb);
+  border-radius: 8px;
+  padding-left: 5px;
+}
+.wt-ss-set-add-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-left: 3px solid var(--wt-ss-accent, #2563eb);
+}
+.wt-ss-set-add-row em {
+  color: #5f6b7a;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* SOURCE: styles/features/calendar-score-modal.css */
 /* ── 상세 모달: 점수 카드 + 항목별 breakdown ── */
 .cal-score-card {

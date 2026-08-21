@@ -5,8 +5,9 @@ import {
   getCache,
   getExList,
   getLatestCheckinWeight,
-  getSeasonDecisionCache,
+  getSeasonRegistry,
 } from '../data.js';
+import { selectSeasonGraphCache } from '../data/season-model.js';
 import {
   getWorkoutSessions,
   hasWorkoutGymCardData,
@@ -92,6 +93,8 @@ export const _workoutDetailCollapsed = new Set();
 export const _workoutExerciseCompletionStamps = new Map();
 export const _workoutExpandedSetEditors = new Set();
 export const _workoutOpenSetTypeMenus = new Set();
+// 슈퍼세트 묶기 메뉴 열림 상태 — `${key}:${sessionIndex}:${exerciseIndex}` 키.
+export const _workoutOpenSupersetMenus = new Set();
 export const workoutDetailState = {
   editingCardId: null,
   inlineSetEditor: null,
@@ -273,22 +276,64 @@ export function _renderWorkoutDetailCards(key, sessionIndex, wx) {
   return `<div class="wt-day-card-list">${exerciseCards}${activityCards.join('')}</div>`;
 }
 
+// 슈퍼세트로 묶인 종목들은 캐러셀에서 슬라이드 하나(통합 카드)로 합쳐진다.
+// 슬라이드 구성은 렌더와 부분 갱신(_patchWorkoutSheetSetSurfaces)이 같은
+// 판단을 해야 하므로 여기 한 곳에서만 만든다.
+export function _workoutExerciseSlideModels(exercises = []) {
+  const rows = Array.isArray(exercises) ? exercises : [];
+  const groups = new Map();
+  rows.forEach((row) => {
+    const groupId = !row?.cardio && row?.supersetGroup ? String(row.supersetGroup) : '';
+    if (!groupId) return;
+    if (!groups.has(groupId)) groups.set(groupId, []);
+    groups.get(groupId).push(row);
+  });
+  const emitted = new Set();
+  const slides = [];
+  rows.forEach((row, index) => {
+    const groupId = !row?.cardio && row?.supersetGroup ? String(row.supersetGroup) : '';
+    if (groupId && (groups.get(groupId)?.length || 0) >= 2) {
+      if (emitted.has(groupId)) return;
+      emitted.add(groupId);
+      slides.push({ type: 'superset', groupId, rows: groups.get(groupId), index });
+      return;
+    }
+    slides.push({ type: 'single', row, index });
+  });
+  return slides;
+}
+
 // 세트 값 편집은 카드 안쪽만 바꾼다. 캐러셀 껍데기를 남긴 채 슬라이드만
 // 갈아끼울 수 있도록 슬라이드 마크업을 따로 만든다.
 export function _renderWorkoutExerciseSlides(key, sessionIndex, exercises = []) {
   const rows = Array.isArray(exercises) ? exercises : [];
-  const count = rows.length;
-  return rows.map((row, index) => `
-    <div class="wt-day-exercise-slide" data-wt-day-exercise-slide="${index}" aria-label="${index + 1}/${count} ${_esc(row?.name || '운동종목')}">
-      ${_renderWorkoutExerciseDetailCard(key, sessionIndex, row, index)}
+  const slides = _workoutExerciseSlideModels(rows);
+  const count = slides.length;
+  // 묶기 후보: 같은 세션의 다른 근력 종목 전부(이미 묶인 종목 포함 — 3종목
+  // 슈퍼세트는 묶인 종목에 하나 더 연결해서 만든다).
+  const linkCandidates = rows
+    .filter(row => row && !row.cardio)
+    .map(row => ({ exerciseIndex: row.originalIndex, name: row.name || '운동' }));
+  return slides.map((slide, slideIndex) => {
+    const label = slide.type === 'superset'
+      ? slide.rows.map(row => row?.name || '운동').join(' + ')
+      : (slide.row?.name || '운동종목');
+    const card = slide.type === 'superset'
+      ? _renderWorkoutSupersetDetailCard(key, sessionIndex, slide)
+      : _renderWorkoutExerciseDetailCard(key, sessionIndex, slide.row, slide.index, { linkCandidates });
+    return `
+    <div class="wt-day-exercise-slide" data-wt-day-exercise-slide="${slideIndex}" aria-label="${slideIndex + 1}/${count} ${_esc(label)}">
+      ${card}
     </div>
-  `).join('');
+  `;
+  }).join('');
 }
 
 export function _renderWorkoutExerciseDetailCarousel(key, sessionIndex, exercises = []) {
   const rows = Array.isArray(exercises) ? exercises : [];
   if (!rows.length) return '';
-  const count = rows.length;
+  // 슈퍼세트로 합쳐진 뒤의 실제 슬라이드 수 기준으로 단일/복수 레이아웃을 고른다.
+  const count = _workoutExerciseSlideModels(rows).length;
   const slides = _renderWorkoutExerciseSlides(key, sessionIndex, rows);
   return `
     <section class="wt-day-exercise-carousel ${count > 1 ? 'has-multiple' : 'is-single'}" aria-label="운동종목 카드">
@@ -368,11 +413,11 @@ export function _renderWorkoutSparkline(row, trend = null) {
 }
 
 export function _renderWorkoutTrackGraphRow(row, bestSet, track, activeTrack, actionAttrs = '') {
-  // 그래프 히스토리는 이 날짜가 속한 시즌(종목별 구간 포함)으로 자른다 —
-  // 새 시즌이 시작되면 카드 그래프도 새 시즌 기록으로만 그려진다.
-  // 시즌이 관리하지 않는 종목은 전체 기록 유지(selectSeasonDecisionCache 정책).
+  // 그래프 히스토리는 이 날짜가 속한 시즌 구간으로 항상 자른다 — 시즌이
+  // 관리하지 않는 종목도 기간으로는 잘라서, 새 시즌 첫날(직전 시즌 종료
+  // 이후 포함)의 그래프는 과거를 끌고 오지 않고 처음부터 시작한다.
   const trend = buildWorkoutTrackTrend(row, bestSet, {
-    cache: getSeasonDecisionCache(row?.dateKey || null, row?.exerciseId || null),
+    cache: selectSeasonGraphCache(getCache(), getSeasonRegistry(), row?.dateKey || '', { exerciseId: row?.exerciseId || '' }),
     exList: getExList(),
   }, track);
   const delta = trend.delta || '';
@@ -461,10 +506,13 @@ export function _renderWorkoutSetInlineInput(key, sessionIndex, exerciseIndex, s
   return `<input type="text" inputmode="none" pattern="[0-9.]*" readonly min="0" step="${_esc(step)}" value="${_esc(value)}" class="wt-max-set-value-input" aria-label="${_esc(label)}" data-wt-set-input data-wt-set-keyboard-input data-wt-set-inline-input data-wt-inline-editor-key="${_esc(inlineKey)}" data-date-key="${_esc(key)}" data-session-index="${sessionIndex}" data-exercise-index="${exerciseIndex}" data-set-index="${setIndex}" data-field="${_esc(safeField)}" data-wt-set-clear-on-focus>`;
 }
 
-export function _renderWorkoutSetAddRow(key, sessionIndex, exerciseIndex, cardId = '') {
+export function _renderWorkoutSetAddRow(key, sessionIndex, exerciseIndex, cardId = '', options = {}) {
+  // 슈퍼세트 통합 카드에서는 + 행이 종목마다 하나씩이라 라벨로 구분한다.
+  const label = String(options?.label || '').trim();
+  const accent = options?.color ? ` style="--wt-ss-accent:${_esc(options.color)}"` : '';
   return `
-    <button type="button" class="wt-max-set-add-row" data-wt-sheet-card-action="add-exercise-set" data-date-key="${_esc(key)}" data-session-index="${sessionIndex}" data-exercise-index="${exerciseIndex}" aria-label="세트 추가">
-      <span aria-hidden="true">+</span>
+    <button type="button" class="wt-max-set-add-row${label ? ' wt-ss-set-add-row' : ''}" data-wt-sheet-card-action="add-exercise-set" data-date-key="${_esc(key)}" data-session-index="${sessionIndex}" data-exercise-index="${exerciseIndex}" aria-label="${label ? `${_esc(label)} 세트 추가` : '세트 추가'}"${accent}>
+      <span aria-hidden="true">+</span>${label ? `<em>${_esc(label)}</em>` : ''}
     </button>
   `;
 }
@@ -522,7 +570,20 @@ export function _renderWorkoutSetRows(row, options = {}) {
     : (Array.isArray(row?.setDetails) ? row.setDetails : []);
   const addRow = _renderWorkoutSetAddRow(key, sessionIndex, exerciseIndex, cardId);
   if (!sets.length) return `<div class="wt-max-empty-sets">세트 상세 기록이 없습니다</div>${addRow}`;
-  const rows = sets.map((set) => {
+  const rows = sets.map((set) => _renderWorkoutSetRowItem(set, { editable, key, sessionIndex, exerciseIndex, sets })).join('');
+  return `${rows}${addRow}`;
+}
+
+// 세트 한 줄. 단일 카드와 슈퍼세트 통합 카드(다른 종목의 행이 교차로 섞임)가
+// 같은 마크업을 쓴다 — 행의 모든 컨트롤이 (exerciseIndex, setIndex)를 직접
+// 들고 있어 어느 카드에 있든 같은 액션 경로를 탄다. member는 슈퍼세트에서
+// 행이 어느 종목 것인지 드러내는 색 악센트다.
+export function _renderWorkoutSetRowItem(set, context = {}) {
+  const { editable, key, sessionIndex, exerciseIndex, sets } = context;
+  const member = context.member || null;
+  const memberClass = member ? ' wt-ss-set-row' : '';
+  const memberStyle = member ? ` style="--wt-ss-accent:${_esc(member.color)}"` : '';
+  {
     const setIndex = Math.max(0, Math.floor(Number(set.setIndex) || 0));
     const rom = Math.max(0, Math.min(100, Math.round(_num(set.romPct) || 100)));
     const kgText = formatWorkoutKg(set.kg);
@@ -554,7 +615,7 @@ export function _renderWorkoutSetRows(row, options = {}) {
       ? `<span class="wt-max-set-value is-inline-editing ${repsInline ? 'is-active' : ''}">${_renderWorkoutSetInlineInput(key, sessionIndex, exerciseIndex, setIndex, 'reps', _workoutSheetInputValue(set.reps, 0), '반복', '1')}</span>`
       : `<button type="button" class="wt-max-set-value" data-wt-set-edit-field="reps" data-date-key="${_esc(key)}" data-session-index="${sessionIndex}" data-exercise-index="${exerciseIndex}" data-set-index="${setIndex}" aria-label="횟수 수정"><b>${_esc(repsDisplayText)}${repsUnit}</b></button>`;
     return `
-      <div class="wt-max-set-row ${set.done ? 'is-done' : ''} ${editable ? 'is-editing' : ''} ${expanded ? 'is-expanded-editor' : ''} ${typeMenuOpen ? 'is-type-menu-open' : ''}"${swipeAttrs}>
+      <div class="wt-max-set-row${memberClass} ${set.done ? 'is-done' : ''} ${editable ? 'is-editing' : ''} ${expanded ? 'is-expanded-editor' : ''} ${typeMenuOpen ? 'is-type-menu-open' : ''}"${swipeAttrs}${memberStyle}>
         <div class="wt-max-set-main">
           ${editable
             ? `<button type="button" class="wt-max-set-check wt-max-set-toggle" data-wt-set-done-toggle data-date-key="${_esc(key)}" data-session-index="${sessionIndex}" data-exercise-index="${exerciseIndex}" data-set-index="${setIndex}" aria-pressed="${set.done ? 'true' : 'false'}" aria-label="세트 완료 토글">✓</button>
@@ -581,8 +642,7 @@ export function _renderWorkoutSetRows(row, options = {}) {
         ` : ''}
       </div>
     `;
-  }).join('');
-  return `${rows}${addRow}`;
+  }
 }
 
 export function _isWorkoutExerciseCompletionStamped(cardId, row = null) {
@@ -639,13 +699,47 @@ export function _renderWorkoutCardioDetailCard(key, sessionIndex, row, index) {
 // 카드 머리의 목표 문구. 처방이 있으면 처방을 적고, 없으면 오늘 최고 세트를
 // 적되 그렇게 말한다. 오늘 내 세트를 "성공 기준"이라고 부르면 무엇을 하든
 // 기준을 채운 것처럼 보여서, 주간 목표가 왜 안 켜지는지 읽을 수 없다.
-export function _renderWorkoutExerciseDetailCard(key, sessionIndex, row, index) {
+export function _workoutSupersetMenuKey(key, sessionIndex, exerciseIndex) {
+  return [
+    _parseDateKey(key) ? key : workoutDetailRuntime.getSelectedKey(),
+    Math.max(0, Math.floor(Number(sessionIndex) || 0)),
+    Math.max(0, Math.floor(Number(exerciseIndex) || 0)),
+  ].join(':');
+}
+
+// 슈퍼세트 묶기 진입점. 같은 세션의 다른 근력 종목이 있어야 열린다.
+function _renderWorkoutSupersetLinkControl(key, sessionIndex, row, linkCandidates = []) {
+  const originalIndex = Number.isFinite(Number(row?.originalIndex)) ? Number(row.originalIndex) : 0;
+  const candidates = (Array.isArray(linkCandidates) ? linkCandidates : [])
+    .filter(candidate => Number(candidate?.exerciseIndex) !== originalIndex);
+  if (!candidates.length && !row?.supersetGroup) return '';
+  const menuOpen = _workoutOpenSupersetMenus.has(_workoutSupersetMenuKey(key, sessionIndex, originalIndex));
+  const button = `<button type="button" class="wt-ss-link-btn ${row?.supersetGroup ? 'is-linked' : ''}" data-wt-sheet-card-action="toggle-superset-menu" data-date-key="${_esc(key)}" data-session-index="${sessionIndex}" data-exercise-index="${originalIndex}" aria-expanded="${menuOpen ? 'true' : 'false'}" aria-label="슈퍼세트로 묶기">🔗</button>`;
+  if (!menuOpen) return button;
+  const menu = `
+    <div class="wt-ss-link-menu" data-wt-superset-menu>
+      <div class="wt-ss-link-menu-note">함께 번갈아 수행할 종목을 고르면 카드 하나로 합쳐져요</div>
+      ${candidates.map(candidate => `
+        <button type="button" class="wt-ss-link-option" data-wt-sheet-card-action="link-superset" data-date-key="${_esc(key)}" data-session-index="${sessionIndex}" data-exercise-index="${originalIndex}" data-partner-index="${Number(candidate.exerciseIndex) || 0}">
+          🔗 <span>${_esc(candidate.name)}</span>와 묶기
+        </button>
+      `).join('')}
+      ${row?.supersetGroup ? `
+        <button type="button" class="wt-ss-link-option is-unlink" data-wt-sheet-card-action="unlink-superset" data-date-key="${_esc(key)}" data-session-index="${sessionIndex}" data-exercise-index="${originalIndex}">묶기 해제</button>
+      ` : ''}
+    </div>
+  `;
+  return `${button}${menu}`;
+}
+
+export function _renderWorkoutExerciseDetailCard(key, sessionIndex, row, index, context = {}) {
   if (row?.cardio) return _renderWorkoutCardioDetailCard(key, sessionIndex, row, index);
   const cardId = `ex:${key}:${sessionIndex}:${index}`;
   const stamped = _isWorkoutExerciseCompletionStamped(cardId, row);
   const collapsed = stamped && workoutDetailState.editingCardId !== cardId;
   const editing = !collapsed;
   const originalIndex = Number.isFinite(Number(row.originalIndex)) ? Number(row.originalIndex) : index;
+  const linkControl = _renderWorkoutSupersetLinkControl(key, sessionIndex, row, context?.linkCandidates);
   const bestSet = bestWorkoutSet(row);
   const bestKg = bestSet ? formatWorkoutKg(bestSet.kg) : '-';
   const bestReps = bestSet ? formatWorkoutReps(bestSet.reps) : '-';
@@ -660,7 +754,10 @@ export function _renderWorkoutExerciseDetailCard(key, sessionIndex, row, index) 
       ${stamped ? '<div class="wt-max-complete-stamp" aria-hidden="true">완료</div>' : ''}
       <div class="wt-max-card-kicker">
         <span><i></i>추천 종목 · 선택 헬스장</span>
-        <button type="button" data-wt-sheet-card-action="delete-exercise" data-date-key="${_esc(key)}" data-session-index="${sessionIndex}" data-exercise-index="${originalIndex}" aria-label="운동 삭제">×</button>
+        <span class="wt-max-card-kicker-actions">
+          ${linkControl}
+          <button type="button" data-wt-sheet-card-action="delete-exercise" data-date-key="${_esc(key)}" data-session-index="${sessionIndex}" data-exercise-index="${originalIndex}" aria-label="운동 삭제">×</button>
+        </span>
       </div>
       <div class="wt-max-card-name">${_esc(row.name)}</div>
       <div class="wt-max-plan">
@@ -689,6 +786,101 @@ export function _renderWorkoutExerciseDetailCard(key, sessionIndex, row, index) 
         ${collapsed
           ? `<button type="button" class="wt-max-action-primary is-muted" data-wt-sheet-card-action="edit-exercise" data-card-id="${_esc(cardId)}">수정하기</button>`
           : `<button type="button" class="wt-max-action-primary" data-wt-sheet-card-action="complete-exercise" data-card-id="${_esc(cardId)}" data-date-key="${_esc(key)}" data-session-index="${sessionIndex}" data-exercise-index="${originalIndex}">종목완료</button>`}
+      </div>
+    </article>
+  `;
+}
+
+// 슈퍼세트 통합 카드의 완료 스탬프: 멤버 전원이 종목완료여야 접힌다.
+export function _isWorkoutSupersetCompletionStamped(cardId, rows = []) {
+  if (rows.length && rows.every(row => isWorkoutExerciseComplete(row))) return true;
+  _workoutExerciseCompletionStamps.delete(cardId);
+  return false;
+}
+
+const _WT_SS_COLORS = ['#2563eb', '#0f766e', '#7c3aed', '#b45309'];
+
+// 슈퍼세트 통합 카드 — 묶인 종목들을 카드 하나로 합치고 세트를 수행 순서
+// (1라운드 = 각 종목 1세트)대로 교차 배치한다. 좌우 스와이프 없이 위에서
+// 아래로 체크만 하며 내려가는 것이 목적. 데이터는 종목별 엔트리 그대로이고
+// (통계·그래프·히스토리 불변) 렌더링만 합친다.
+export function _renderWorkoutSupersetDetailCard(key, sessionIndex, slide) {
+  const rows = Array.isArray(slide?.rows) ? slide.rows : [];
+  const groupId = String(slide?.groupId || '');
+  const cardId = `ss:${key}:${sessionIndex}:${groupId}`;
+  const stamped = _isWorkoutSupersetCompletionStamped(cardId, rows);
+  const collapsed = stamped && workoutDetailState.editingCardId !== cardId;
+  const editing = !collapsed;
+  const members = rows.map((row, memberIndex) => ({
+    row,
+    color: _WT_SS_COLORS[memberIndex % _WT_SS_COLORS.length],
+    originalIndex: Number.isFinite(Number(row?.originalIndex)) ? Number(row.originalIndex) : memberIndex,
+  }));
+  const firstIndex = members[0]?.originalIndex ?? 0;
+
+  const memberStrips = members.map(({ row, color }) => {
+    const bestSet = bestWorkoutSet(row);
+    const hasSetDetails = Array.isArray(row?.setDetails) && row.setDetails.length > 0;
+    const goalText = hasSetDetails
+      ? `${formatWorkoutKg(bestSet?.kg)}kg × ${formatWorkoutReps(bestSet?.reps)}회`
+      : '세트 입력 대기';
+    const activeTrack = activeWorkoutTrack(row, bestSet);
+    return `
+      <div class="wt-ss-member" style="--wt-ss-accent:${color}">
+        <span class="wt-ss-member-dot" aria-hidden="true"></span>
+        <div class="wt-ss-member-info">
+          <b>${_esc(row.name)}</b>
+          <em>${_esc(goalText)}</em>
+        </div>
+        <div class="wt-ss-member-graph">${_renderWorkoutTrackGraphRow(row, bestSet, activeTrack, activeTrack)}</div>
+      </div>
+    `;
+  }).join('');
+
+  const memberSets = members.map(({ row }) => (editing
+    ? (Array.isArray(row?.rawSetDetails) ? row.rawSetDetails : [])
+    : (Array.isArray(row?.setDetails) ? row.setDetails : [])));
+  const maxSets = Math.max(0, ...memberSets.map(list => list.length));
+  let interleaved = '';
+  for (let position = 0; position < maxSets; position += 1) {
+    members.forEach((member, memberIndex) => {
+      const sets = memberSets[memberIndex];
+      const set = sets[position];
+      if (!set) return;
+      interleaved += _renderWorkoutSetRowItem(set, {
+        editable: editing,
+        key,
+        sessionIndex,
+        exerciseIndex: member.originalIndex,
+        sets,
+        member: { color: member.color },
+      });
+    });
+  }
+  const addRows = editing
+    ? members.map(member => _renderWorkoutSetAddRow(key, sessionIndex, member.originalIndex, cardId, { label: member.row?.name || '운동', color: member.color })).join('')
+    : '';
+  const setList = interleaved
+    ? `${interleaved}${addRows}`
+    : `<div class="wt-max-empty-sets">세트 상세 기록이 없습니다</div>${addRows}`;
+
+  return `
+    <article class="wt-day-ex-card wt-max-read-card wt-ss-card ${collapsed ? 'is-collapsed' : 'is-expanded'} ${editing ? 'is-editing' : ''} ${stamped ? 'is-complete-stamped' : ''}">
+      ${stamped ? '<div class="wt-max-complete-stamp" aria-hidden="true">완료</div>' : ''}
+      <div class="wt-max-card-kicker">
+        <span><i></i>🔗 슈퍼세트 · ${rows.length}종목</span>
+        <span class="wt-max-card-kicker-actions">
+          <button type="button" class="wt-ss-unlink-btn" data-wt-sheet-card-action="unlink-superset" data-date-key="${_esc(key)}" data-session-index="${sessionIndex}" data-exercise-index="${firstIndex}" aria-label="슈퍼세트 해제">묶기 해제</button>
+        </span>
+      </div>
+      <div class="wt-max-card-name wt-ss-card-name">${members.map(({ row, color }) => `<span style="--wt-ss-accent:${color}">${_esc(row?.name || '운동')}</span>`).join('<i aria-hidden="true">+</i>')}</div>
+      <div class="wt-ss-members">${memberStrips}</div>
+      <div class="wt-max-collapsed-note">슈퍼세트 완료 · 카드가 접혔어요</div>
+      <div class="wt-max-set-list wt-ss-set-list">${setList}</div>
+      <div class="wt-max-actions wt-max-actions--single">
+        ${collapsed
+    ? `<button type="button" class="wt-max-action-primary is-muted" data-wt-sheet-card-action="edit-exercise" data-card-id="${_esc(cardId)}">수정하기</button>`
+    : `<button type="button" class="wt-max-action-primary" data-wt-sheet-card-action="complete-superset" data-card-id="${_esc(cardId)}" data-date-key="${_esc(key)}" data-session-index="${sessionIndex}" data-exercise-indexes="${members.map(member => member.originalIndex).join(',')}">슈퍼세트 완료</button>`}
       </div>
     </article>
   `;

@@ -11,6 +11,7 @@ import {
   seasonContainsExerciseDate,
   seasonExerciseRange,
   selectSeasonDecisionCache,
+  selectSeasonGraphCache,
   findSeasonForDate,
   seasonStatus,
   startOfSeasonWeek,
@@ -177,5 +178,55 @@ test('decision cache는 종목별 구간을 적용하고, 시즌에 없는 종�
   assert.deepEqual(
     Object.keys(selectSeasonDecisionCache(cache, registry, '2026-08-15')),
     ['2026-07-10', '2026-08-10'],
+  );
+});
+
+test('그래프 캐시는 시즌 미관리 종목도 기간으로 자르고, 시즌 밖 날짜는 이웃 시즌 사이 구간을 쓴다', () => {
+  const registry = { seasons: [WINDOWED_SEASON] };
+  const cache = {
+    '2026-06-10': { pre: true },
+    '2026-07-10': { a: 1 },
+    '2026-08-10': { b: 2 },
+    '2026-09-10': { post: true },
+  };
+  // 결정 캐시와 갈라지는 지점: 시즌에 없는 종목(deadlift)도 그래프는
+  // 날짜가 속한 시즌 기간으로 자른다 — 새 시즌 그래프에 과거가 섞이지 않는다.
+  assert.deepEqual(
+    Object.keys(selectSeasonGraphCache(cache, registry, '2026-08-15', { exerciseId: 'deadlift' })),
+    ['2026-07-10', '2026-08-10'],
+  );
+  // 시즌이 관리하는 종목은 종목별 구간을 우선한다.
+  assert.deepEqual(
+    Object.keys(selectSeasonGraphCache(cache, registry, '2026-07-15', { exerciseId: 'bench' })),
+    ['2026-07-10'],
+  );
+  // 시즌 종료 후(9월): 직전 시즌 종료 다음날부터의 새 구간 — 과거 기록 제외.
+  assert.deepEqual(
+    Object.keys(selectSeasonGraphCache(cache, registry, '2026-09-15', { exerciseId: 'deadlift' })),
+    ['2026-09-10'],
+  );
+  // 첫 시즌 시작 전(6월): 시즌 이전 구간만.
+  assert.deepEqual(
+    Object.keys(selectSeasonGraphCache(cache, registry, '2026-06-15')),
+    ['2026-06-10'],
+  );
+  // 시즌 사이 구간: 두 시즌 사이 날짜는 양쪽 경계로 자른다.
+  const twoSeasons = { seasons: [
+    { id: 'a', name: 'A', startDate: '2026-04-01', endDate: '2026-05-31' },
+    { id: 'b', name: 'B', startDate: '2026-09-01', endDate: '2026-10-31' },
+  ] };
+  const between = {
+    '2026-05-10': { inA: true },
+    '2026-07-10': { gap: true },
+    '2026-09-10': { inB: true },
+  };
+  assert.deepEqual(
+    Object.keys(selectSeasonGraphCache(between, twoSeasons, '2026-07-20')),
+    ['2026-07-10'],
+  );
+  // 시즌이 아예 없으면 전체 기록 그대로.
+  assert.deepEqual(
+    Object.keys(selectSeasonGraphCache(cache, { seasons: [] }, '2026-08-15')),
+    Object.keys(cache),
   );
 });

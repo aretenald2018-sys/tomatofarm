@@ -251,6 +251,37 @@ export function filterCacheToSeasonExercise(cache = {}, season, exerciseId) {
   );
 }
 
+// 그래프 전용 시즌 절단. 결정 캐시(selectSeasonDecisionCache)는 시즌이 관리하지
+// 않는 종목에 전체 기록을 돌려주지만(처방·추천이 과거 맥락을 잃지 않도록),
+// 카드 "추이 그래프"는 다르다: 새 시즌 첫날의 그래프는 종목이 시즌 목록에
+// 있든 없든 처음부터 시작해야 한다. 그래서 여기서는 날짜가 속한 구간으로
+// 항상 자른다 — 시즌 안이면 그 시즌(종목별 구간 우선), 시즌 밖이면 이웃
+// 시즌 사이의 현재 구간(직전 시즌 종료 다음날 ~ 다음 시즌 시작 전날).
+export function selectSeasonGraphCache(cache = {}, registry = {}, referenceDateKey, options = {}) {
+  const normalized = normalizeSeasonRegistry(registry);
+  const source = cache && typeof cache === 'object' ? cache : {};
+  if (!normalized.seasons.length) return source;
+  if (!isSeasonDateKey(referenceDateKey)) return {};
+  const exerciseId = String(options?.exerciseId || '').trim();
+  if (exerciseId) {
+    const scoped = findSeasonForDate(normalized, referenceDateKey, { exerciseId });
+    if (scoped) return filterCacheToSeasonExercise(source, scoped, exerciseId);
+  }
+  const season = findSeasonForDate(normalized, referenceDateKey);
+  if (season) return filterCacheToSeason(source, season);
+  let previousEnd = '';
+  let nextStart = '';
+  for (const item of normalized.seasons) {
+    if (item.endDate < referenceDateKey && item.endDate > previousEnd) previousEnd = item.endDate;
+    if (item.startDate > referenceDateKey && (!nextStart || item.startDate < nextStart)) nextStart = item.startDate;
+  }
+  return Object.fromEntries(Object.entries(source).filter(([dateKey]) => (
+    isSeasonDateKey(dateKey)
+    && (!previousEnd || dateKey > previousEnd)
+    && (!nextStart || dateKey < nextStart)
+  )));
+}
+
 export function selectSeasonDecisionCache(cache = {}, registry = {}, referenceDateKey, options = {}) {
   const exerciseId = String(options?.exerciseId || '').trim();
   const normalized = normalizeSeasonRegistry(registry);

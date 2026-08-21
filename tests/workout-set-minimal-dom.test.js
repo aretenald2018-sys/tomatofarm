@@ -77,8 +77,12 @@ function buildHarnessScript() {
     '_workoutBackoffModeOptions',
     '_renderWorkoutSetTypeMenu',
     '_renderWorkoutSetRows',
+    '_renderWorkoutSetRowItem',
     '_workoutPreviousSetSummary',
+    '_workoutSupersetMenuKey',
+    '_renderWorkoutSupersetLinkControl',
     '_renderWorkoutExerciseDetailCard',
+    '_workoutExerciseSlideModels',
     '_renderWorkoutExerciseSlides',
     '_patchWorkoutSheetSetSurfaces',
     '_renderWorkoutSheetAfterSetEdit',
@@ -159,6 +163,12 @@ function buildHarnessScript() {
     // 달력 분할 이후 이 상태들은 calendar/detail-template.js와 calendar/set-keyboard.js의
     // 모듈 상태 객체에 산다. 하네스도 같은 모양으로 넣어줘야 떼어온 함수가 그대로 돈다.
     const workoutDetailState = { editingCardId: null, inlineSetEditor: null };
+    const _workoutOpenSupersetMenus = new Set();
+    function _renderWorkoutSupersetDetailCard() { return ''; }
+    // utils/haptics.js 경계 스텁 — 호출 횟수만 기록해 촉각 피드백 배선을 검증한다.
+    function hapticTick(durationMs) {
+      window.__hapticCalls = (window.__hapticCalls || []).concat(Number(durationMs) || 0);
+    }
     const workoutSetKeyboardState = { input: null, domLocked: false };
     const workoutSetKeyboardDomLocks = new Set();
     let workoutSetKeyboardDomLockSeq = 0;
@@ -858,11 +868,16 @@ test('custom workout set keypad enters values and moves left or right across inl
       firstCompletedAtIsNumber: Number.isFinite(Number(window.__entry.sets[0]?.completedAt)),
       keyboardOpenClass: document.documentElement.classList.contains('wt-set-keyboard-open'),
       sheetPadded: document.querySelector('[data-wt-day-sheet]')?.classList.contains('has-set-keyboard') || false,
+      hapticCalls: window.__hapticCalls || [],
     }));
     hidden.elapsedMs = Date.now() - doneStartedAt;
 
     return { shown, typedKg, afterNextMove, afterPrevMove, afterPrev, hidden };
   });
+
+  // 키패드 입력마다 촉각 피드백이 배선돼야 한다 (숫자 8ms, 완료 12ms).
+  assert.ok(result.hidden.hapticCalls.filter(ms => ms === 8).length >= 4, '숫자 키 탭마다 약한 진동이 호출돼야 한다');
+  assert.ok(result.hidden.hapticCalls.includes(12), '입력 완료(✓)는 조금 또렷한 진동이어야 한다');
 
   assert.deepEqual(result.shown, {
     field: 'kg',

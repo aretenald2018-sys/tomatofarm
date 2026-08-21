@@ -199,6 +199,7 @@ export function _exerciseRows(day, lookup = _buildWorkoutLookup(), key = null, o
         recommendationMeta: entry?.recommendationMeta || null,
         maxPrescription: entry?.maxPrescription || null,
         maxTrackPreference: lib?.maxTrackPreference || null,
+        supersetGroup: !cardio && entry?.supersetGroup ? String(entry.supersetGroup) : null,
         exerciseCompletedAt: workoutExerciseCompletionStampAt(entry),
         setCount: sets.length,
         volume,

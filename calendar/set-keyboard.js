@@ -1,4 +1,5 @@
 import { toFiniteNumber as _num } from '../utils/number.js';
+import { hapticTick } from '../utils/haptics.js';
 import { showToast } from '../ui/toast.js';
 import { clearWorkoutExerciseCompletionMarker } from '../workout/exercise-completion.js';
 import {
@@ -238,6 +239,8 @@ export function _ensureWorkoutSetKeyboard() {
     event.stopPropagation();
     const key = button.getAttribute('data-wt-set-keyboard-key');
     const action = button.getAttribute('data-wt-set-keyboard-action');
+    // 무게·횟수 입력의 촉각 피드백 — 숫자/지움은 약하게, 완료(✓)는 조금 또렷하게.
+    hapticTick(action === 'done' ? 12 : 8);
     if (key != null) {
       _applyWorkoutSetKeyboardKey(key);
       return;

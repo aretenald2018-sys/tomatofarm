@@ -343,6 +343,65 @@ export const estimateInOnePass = unavailable('estimateInOnePass');
         };
       }
 
+      // 슈퍼세트 통합 카드 검증용: 같은 세션에 근력 종목 2개.
+      function seedSuperset() {
+        fake.resetFakeDataLayer({
+          currentUser: ${JSON.stringify(SIGNED_IN_USER)},
+          exercises: [
+            { id: 'bench-press', name: '벤치프레스', muscleId: 'chest', movementId: 'horizontal-press' },
+            { id: 'barbell-row', name: '바벨로우', muscleId: 'back', movementId: 'horizontal-pull' },
+          ],
+          muscleParts: [
+            { id: 'chest', name: '가슴', color: '#334155' },
+            { id: 'back', name: '등', color: '#0f766e' },
+          ],
+        });
+        fake.getCache()[KEY] = {
+          workoutSessions: [{
+            id: 'session-1',
+            label: '1회차',
+            exercises: [
+              {
+                exerciseId: 'bench-press', name: '벤치프레스', muscleId: 'chest', movementId: 'horizontal-press',
+                sets: [
+                  { kg: 80, reps: 10, rir: 2, romPct: 100, setType: 'main', done: false },
+                  { kg: 80, reps: 8, rir: 2, romPct: 100, setType: 'main', done: false },
+                ],
+              },
+              {
+                exerciseId: 'barbell-row', name: '바벨로우', muscleId: 'back', movementId: 'horizontal-pull',
+                sets: [
+                  { kg: 60, reps: 12, rir: 2, romPct: 100, setType: 'main', done: false },
+                  { kg: 60, reps: 10, rir: 2, romPct: 100, setType: 'main', done: false },
+                ],
+              },
+            ],
+          }],
+        };
+        S.shared.date = { y: today.getFullYear(), m: today.getMonth(), d: 1 };
+        window.__qaSheetSavedEvents = 0;
+      }
+
+      function supersetSnapshot() {
+        const day = fake.getCache()[KEY] || {};
+        const entries = ((day.workoutSessions || [])[0]?.exercises) || [];
+        return {
+          slideCount: document.querySelectorAll('[data-wt-day-sheet] .wt-day-exercise-slide').length,
+          ssCard: document.querySelector('[data-wt-day-sheet] .wt-ss-card') != null,
+          menuOpen: document.querySelector('[data-wt-day-sheet] [data-wt-superset-menu]') != null,
+          groups: entries.map(entry => entry.supersetGroup || null),
+          rowOrder: Array.from(document.querySelectorAll('[data-wt-day-sheet] .wt-ss-card [data-wt-set-done-toggle]'))
+            .map(btn => btn.getAttribute('data-exercise-index') + ':' + btn.getAttribute('data-set-index')),
+          accentRows: document.querySelectorAll('[data-wt-day-sheet] .wt-ss-card .wt-ss-set-row').length,
+          memberNames: Array.from(document.querySelectorAll('[data-wt-day-sheet] .wt-ss-member-info b')).map(node => node.textContent.trim()),
+          addRowLabels: Array.from(document.querySelectorAll('[data-wt-day-sheet] .wt-ss-set-add-row em')).map(node => node.textContent.trim()),
+          entrySets: entries.map(entry => (entry.sets || []).map(set => ({ kg: set.kg, reps: set.reps, done: set.done === true }))),
+          completedMarkers: entries.map(entry => Number.isFinite(Number(entry.exerciseCompletedAt))),
+          stamped: document.querySelector('[data-wt-day-sheet] .wt-ss-card.is-complete-stamped') != null,
+          editButton: document.querySelector('[data-wt-day-sheet] .wt-ss-card [data-wt-sheet-card-action="edit-exercise"]') != null,
+        };
+      }
+
       function wendlerSnapshot() {
         const day = fake.getCache()[KEY] || {};
         const entry = ((day.workoutSessions || [])[0]?.exercises || [])[0] || {};
@@ -365,6 +424,8 @@ export const estimateInOnePass = unavailable('estimateInOnePass');
         seedWendler,
         seedTrackHistory,
         seedTrackHistorySeason,
+        seedSuperset,
+        supersetSnapshot,
         wendlerSnapshot,
         trackGraphSnapshot,
         openDaySheet,
@@ -850,6 +911,73 @@ test('day sheet unifies the wendler track graph and lets non-wendler rows switch
       `새 시즌: 볼륨 값은 시즌 내 기록만 반영해야 한다 (got ${seasonScoped.values[0]})`);
     // 시즌 안(3·2일 전)의 강도 세션은 계속 그려진다.
     assert.match(seasonScoped.values[1], /kg/, '시즌 내 강도 기록은 유지돼야 한다');
+
+    assert.deepEqual(harness.pageErrors, []);
+    assert.deepEqual(harness.blockedRequests, []);
+  } finally {
+    if (harness?.browser) await harness.browser.close();
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+// ── 슈퍼세트 통합 카드 ───────────────────────────────────────────
+// 두 종목을 묶으면 카드 하나로 합쳐지고 세트가 수행 순서(A1 B1 A2 B2)로
+// 교차된다. 체크·세트 추가·완료·해제가 전부 통합 카드에서 굴러가야 한다.
+test('superset link merges two cards with interleaved sets and drives check/add/complete/unlink', async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), 'tomato-logged-in-superset-'));
+  let harness;
+  try {
+    const htmlPath = await buildWorkoutSheetHarness(tempDir);
+    harness = await launchHarness(htmlPath);
+    const { page } = harness;
+
+    await page.evaluate(() => { window.__qa.seedSuperset(); window.__qa.openDaySheet(); });
+    await page.waitForSelector('[data-wt-day-sheet] .wt-ss-link-btn', { timeout: 8000 });
+    const before = await page.evaluate(() => window.__qa.supersetSnapshot());
+    assert.equal(before.slideCount, 2, '묶기 전에는 종목마다 카드 하나');
+    assert.equal(before.ssCard, false);
+
+    // 🔗 → 파트너 선택 → 통합 카드.
+    await tapElement(page, '[data-wt-day-sheet] .wt-ss-link-btn');
+    await page.waitForFunction(() => window.__qa.supersetSnapshot().menuOpen, { timeout: 8000 });
+    await tapElement(page, '[data-wt-sheet-card-action="link-superset"][data-partner-index="1"]');
+    await page.waitForFunction(() => window.__qa.supersetSnapshot().ssCard, { timeout: 8000 });
+
+    const linked = await page.evaluate(() => window.__qa.supersetSnapshot());
+    assert.equal(linked.slideCount, 1, '묶인 두 종목은 슬라이드 하나로 합쳐진다');
+    assert.ok(linked.groups[0] && linked.groups[0] === linked.groups[1], '두 엔트리에 같은 그룹이 저장돼야 한다');
+    assert.deepEqual(linked.rowOrder, ['0:0', '1:0', '0:1', '1:1'], '세트가 수행 순서대로 교차돼야 한다');
+    assert.equal(linked.accentRows, 4, '모든 교차 행에 소속 색 악센트가 붙는다');
+    assert.deepEqual(linked.memberNames, ['벤치프레스', '바벨로우']);
+    assert.deepEqual(linked.addRowLabels, ['벤치프레스', '바벨로우'], '+ 행은 종목별로 라벨이 붙는다');
+
+    // 통합 카드에서 바벨로우 1세트 체크 — 스와이프 없이 B 종목에 기록된다.
+    await tapElement(page, '[data-wt-day-sheet] .wt-ss-card [data-wt-set-done-toggle][data-exercise-index="1"][data-set-index="0"]');
+    await page.waitForFunction(() => window.__qa.supersetSnapshot().entrySets[1][0].done === true, { timeout: 8000 });
+
+    // 바벨로우 + 행: 직전 세트 복사(원본 체크 + 복사본 미체크)도 통합 카드에서 동작.
+    await tapElement(page, '[data-wt-day-sheet] .wt-ss-set-add-row[data-exercise-index="1"]');
+    await page.waitForFunction(() => window.__qa.supersetSnapshot().entrySets[1].length === 3, { timeout: 8000 });
+    const added = await page.evaluate(() => window.__qa.supersetSnapshot());
+    assert.equal(added.entrySets[1][1].done, true, '+는 복사 원본(직전 세트)을 완료로 표시한다');
+    assert.deepEqual(added.entrySets[1][2], { kg: 60, reps: 10, done: false }, '복사본은 값만 복사된 미완료 행');
+    assert.deepEqual(added.entrySets[0].map(set => set.done), [false, false], '벤치 세트는 건드리지 않는다');
+
+    // 슈퍼세트 완료 → 두 종목 모두 완료 마커 + 카드 접힘.
+    await tapElement(page, '[data-wt-sheet-card-action="complete-superset"]');
+    await page.waitForFunction(() => window.__qa.supersetSnapshot().stamped, { timeout: 8000 });
+    const completed = await page.evaluate(() => window.__qa.supersetSnapshot());
+    assert.deepEqual(completed.completedMarkers, [true, true], '멤버 전원이 종목완료 처리돼야 한다');
+    assert.equal(completed.editButton, true, '접힌 카드는 수정하기로 다시 연다');
+
+    // 수정하기 → 묶기 해제 → 카드 두 장으로 복귀, 그룹 제거.
+    await tapElement(page, '[data-wt-day-sheet] .wt-ss-card [data-wt-sheet-card-action="edit-exercise"]');
+    await page.waitForSelector('[data-wt-day-sheet] .wt-ss-unlink-btn', { timeout: 8000 });
+    await tapElement(page, '[data-wt-day-sheet] .wt-ss-unlink-btn');
+    await page.waitForFunction(() => window.__qa.supersetSnapshot().slideCount === 2, { timeout: 8000 });
+    const unlinked = await page.evaluate(() => window.__qa.supersetSnapshot());
+    assert.deepEqual(unlinked.groups, [null, null], '해제하면 그룹 필드가 제거된다');
+    assert.equal(unlinked.ssCard, false);
 
     assert.deepEqual(harness.pageErrors, []);
     assert.deepEqual(harness.blockedRequests, []);

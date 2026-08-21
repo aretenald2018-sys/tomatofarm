@@ -4,6 +4,7 @@ import { sumDayNutrient } from './diet/day-nutrition.js';
 import { parseDateKey as _parseDateKey } from './utils/date-key.js';
 import { KOREAN_WEEKDAYS } from './utils/weekdays.js';
 import { showToast } from './ui/toast.js';
+import { hapticTick } from './utils/haptics.js';
 // ================================================================
 // render-calendar.js — 캘린더 탭
 // 월별 그리드로 일자별 100점 만점 점수 + (섭취kcal/소모kcal/체중) 표시
@@ -132,12 +133,15 @@ import {
   _workoutExerciseCompletionStamps,
   _workoutExpandedSetEditors,
   _workoutOpenSetTypeMenus,
+  _workoutOpenSupersetMenus,
   _workoutSetEditorKey,
   _workoutSetInlineFieldKey,
+  _workoutSupersetMenuKey,
   configureWorkoutDetailTemplate,
   workoutDetailState,
   _renderWorkoutHomeDetailHtml,
   _renderWorkoutExerciseSlides,
+  _workoutExerciseSlideModels,
   _renderWorkoutDetailSummaryCard,
   _workoutHomeDetailModel,
 } from './calendar/detail-template.js';
@@ -1321,9 +1325,10 @@ function _patchWorkoutSheetSetSurfaces() {
     checkins: _sortedCheckins(),
     key,
   });
-  // 종목이 사라지거나 늘어난 변화는 캐러셀 껍데기까지 바뀐다. 전체 렌더에 맡긴다.
+  // 종목이 사라지거나 늘어난 변화(슈퍼세트 묶기/해제로 슬라이드 수가 바뀌는
+  // 경우 포함)는 캐러셀 껍데기까지 바뀐다. 전체 렌더에 맡긴다.
   const rows = Array.isArray(model.wx?.exercises) ? model.wx.exercises : [];
-  if (!rows.length || rows.length !== track.children.length) return false;
+  if (!rows.length || _workoutExerciseSlideModels(rows).length !== track.children.length) return false;
 
   const scrollLeft = track.scrollLeft;
   track.innerHTML = _renderWorkoutExerciseSlides(key, model.sessionIndex, rows);
@@ -1741,6 +1746,14 @@ function _runWorkoutHomeSheetCardAction(action, control) {
       return _setWorkoutTrackModeFromSheet(key, sessionIndex, exerciseIndex, control?.getAttribute?.('data-track') || '');
     case 'complete-exercise':
       return _completeWorkoutExerciseFromSheet(cardId, key, sessionIndex, exerciseIndex);
+    case 'complete-superset':
+      return _completeWorkoutSupersetFromSheet(cardId, key, sessionIndex, control?.getAttribute?.('data-exercise-indexes') || '');
+    case 'toggle-superset-menu':
+      return _toggleWorkoutSupersetMenuFromSheet(key, sessionIndex, exerciseIndex);
+    case 'link-superset':
+      return _linkWorkoutSupersetFromSheet(key, sessionIndex, exerciseIndex, control?.getAttribute?.('data-partner-index'));
+    case 'unlink-superset':
+      return _unlinkWorkoutSupersetFromSheet(key, sessionIndex, exerciseIndex);
     case 'edit-exercise':
       _editWorkoutExerciseCard(cardId);
       return true;
@@ -2904,6 +2917,7 @@ async function _removeWorkoutExerciseSetFromSheet(key, sessionIndex, exerciseInd
 
 async function _toggleWorkoutExerciseSetDoneFromSheet(key, sessionIndex, exerciseIndex, setIndex) {
   try {
+    hapticTick(12); // 세트 완료 체크의 촉각 피드백
     let savedDone = false;
     const ok = await _mutateWorkoutExerciseFromSheet(key, sessionIndex, exerciseIndex, (entry) => {
       const sets = Array.isArray(entry.sets) ? entry.sets : [];
@@ -2945,7 +2959,10 @@ async function _toggleWorkoutExerciseSetDoneFromSheet(key, sessionIndex, exercis
 //
 // 성공했을 때만 색칠한다. 미달이면 아무것도 하지 않는다 — 계획 조정은 보드의
 // 일이고, 여기서 조정 시트를 띄우면 기록 흐름을 가로챈다.
-async function _completeWorkoutExerciseFromSheet(cardId, key, sessionIndex, exerciseIndex) {
+async function _completeWorkoutExerciseFromSheet(cardId, key, sessionIndex, exerciseIndex, options = {}) {
+  // partOfSuperset: 슈퍼세트 완료 루프의 한 걸음 — 토스트·스탬프·렌더는
+  // 루프를 끝낸 _completeWorkoutSupersetFromSheet가 한 번만 처리한다.
+  const partOfSuperset = options?.partOfSuperset === true;
   try {
     let completedCount = 0;
     let lastCompletedSetIndex = null;
@@ -2967,24 +2984,110 @@ async function _completeWorkoutExerciseFromSheet(cardId, key, sessionIndex, exer
         return nextSet;
       });
       if (!completedCount) {
-        showToast('완료할 세트를 먼저 입력해 주세요', 1800, 'warning');
+        if (!partOfSuperset) showToast('완료할 세트를 먼저 입력해 주세요', 1800, 'warning');
         return false;
       }
       entry.sets = nextSets;
       markWorkoutExerciseEntryComplete(entry, now);
       return true;
     }, { preserveSheetScroll: true, optimisticRender: true });
-    if (!ok) return;
+    if (!ok) return false;
     if (lastCompletedSetIndex != null) {
       await _syncWorkoutRestAfterSheetSet(key, sessionIndex, exerciseIndex, lastCompletedSetIndex, true);
     }
+    if (partOfSuperset) return true;
     if (workoutDetailState.editingCardId === cardId) workoutDetailState.editingCardId = null;
     _markWorkoutExerciseCompletionStamp(cardId);
     renderWorkoutCalendarHome();
     showToast('종목 기록을 저장했어요', 1200, 'success');
+    return true;
   } catch (e) {
     console.warn('[workout-calendar] exercise complete failed:', e);
     showToast('종목 완료 저장에 실패했어요', 2200, 'error');
+    return false;
+  }
+}
+
+// 슈퍼세트 완료 — 멤버 종목을 차례로 종목완료 처리하고 통합 카드를 접는다.
+async function _completeWorkoutSupersetFromSheet(cardId, key, sessionIndex, exerciseIndexesAttr) {
+  const indexes = [...new Set(String(exerciseIndexesAttr || '')
+    .split(',')
+    .map(value => Math.max(0, Math.floor(Number(value))))
+    .filter(value => Number.isFinite(value)))];
+  if (!indexes.length) return false;
+  let completedAny = false;
+  for (const exerciseIndex of indexes) {
+    const ok = await _completeWorkoutExerciseFromSheet(cardId, key, sessionIndex, exerciseIndex, { partOfSuperset: true });
+    completedAny = completedAny || ok === true;
+  }
+  if (!completedAny) {
+    showToast('완료할 세트를 먼저 입력해 주세요', 1800, 'warning');
+    return true;
+  }
+  if (workoutDetailState.editingCardId === cardId) workoutDetailState.editingCardId = null;
+  _markWorkoutExerciseCompletionStamp(cardId);
+  renderWorkoutCalendarHome();
+  showToast('슈퍼세트 기록을 저장했어요', 1200, 'success');
+  return true;
+}
+
+function _toggleWorkoutSupersetMenuFromSheet(key, sessionIndex, exerciseIndex) {
+  const menuKey = _workoutSupersetMenuKey(key, sessionIndex, exerciseIndex);
+  if (_workoutOpenSupersetMenus.has(menuKey)) _workoutOpenSupersetMenus.delete(menuKey);
+  else {
+    _workoutOpenSupersetMenus.clear(); // 한 번에 한 메뉴만
+    _workoutOpenSupersetMenus.add(menuKey);
+  }
+  _renderWorkoutSheetAfterSetEdit();
+  return true;
+}
+
+// 두 종목을 슈퍼세트로 묶는다. 어느 쪽이든 이미 그룹이 있으면 그 그룹에
+// 합류시켜 3종목 이상도 가능하다. 그룹은 그 날 세션 엔트리에 저장된다.
+async function _linkWorkoutSupersetFromSheet(key, sessionIndex, exerciseIndex, partnerIndexAttr) {
+  const partnerIndex = Math.max(0, Math.floor(Number(partnerIndexAttr)));
+  if (!Number.isFinite(partnerIndex)) return false;
+  _workoutOpenSupersetMenus.clear();
+  try {
+    let linkedNames = [];
+    const ok = await _mutateWorkoutExerciseFromSheet(key, sessionIndex, exerciseIndex, (entry, session) => {
+      const exercises = Array.isArray(session?.exercises) ? session.exercises : [];
+      const partner = exercises[partnerIndex];
+      if (!partner || partner === entry) return false;
+      const groupId = String(entry.supersetGroup || partner.supersetGroup || `ss-${Date.now()}`);
+      entry.supersetGroup = groupId;
+      partner.supersetGroup = groupId;
+      linkedNames = exercises
+        .filter(item => item?.supersetGroup === groupId)
+        .map(item => _workoutEntryName(item) || '운동');
+      return true;
+    }, { preserveSheetScroll: true });
+    if (ok) showToast(`슈퍼세트로 묶었어요: ${linkedNames.join(' + ')}`, 1800, 'success');
+    return ok;
+  } catch (e) {
+    console.warn('[workout-calendar] superset link failed:', e);
+    showToast('슈퍼세트 묶기에 실패했어요', 2200, 'error');
+    return false;
+  }
+}
+
+async function _unlinkWorkoutSupersetFromSheet(key, sessionIndex, exerciseIndex) {
+  _workoutOpenSupersetMenus.clear();
+  try {
+    const ok = await _mutateWorkoutExerciseFromSheet(key, sessionIndex, exerciseIndex, (entry, session) => {
+      const groupId = String(entry?.supersetGroup || '');
+      if (!groupId) return false;
+      (Array.isArray(session?.exercises) ? session.exercises : []).forEach((item) => {
+        if (item && String(item.supersetGroup || '') === groupId) delete item.supersetGroup;
+      });
+      return true;
+    }, { preserveSheetScroll: true });
+    if (ok) showToast('슈퍼세트를 해제했어요', 1400, 'success');
+    return ok;
+  } catch (e) {
+    console.warn('[workout-calendar] superset unlink failed:', e);
+    showToast('슈퍼세트 해제에 실패했어요', 2200, 'error');
+    return false;
   }
 }
 
