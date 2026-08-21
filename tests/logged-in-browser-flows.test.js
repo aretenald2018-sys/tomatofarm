@@ -282,13 +282,14 @@ export const estimateInOnePass = unavailable('estimateInOnePass');
         window.__qaSheetSavedEvents = 0;
       }
 
+      function dayAt(offset) {
+        const d = new Date(today.getTime() - offset * 86400000);
+        return fake.dateKey(d.getFullYear(), d.getMonth(), d.getDate());
+      }
+
       // 트랙 그래프 검증용: 지난 볼륨/강도 세션이 쌓인 비웬들러 종목 하루.
       function seedTrackHistory() {
         seed();
-        const dayAt = (offset) => {
-          const d = new Date(today.getTime() - offset * 86400000);
-          return fake.dateKey(d.getFullYear(), d.getMonth(), d.getDate());
-        };
         // 실제 저장 형태(upsertWorkoutSession)는 workoutSessions와 함께
         // day 루트에 exercises 집계를 남긴다 — 트랙 히스토리는 이 집계를 읽는다.
         const benchDay = (kg, reps, setCount) => {
@@ -308,6 +309,20 @@ export const estimateInOnePass = unavailable('estimateInOnePass');
         fake.getCache()[dayAt(2)] = benchDay(82.5, 5, 4);  // 강도(H)
         // 오늘은 완료 세트가 있어야 카드 머리에 "오늘 N 트랙" 문구가 뜬다.
         fake.getCache()[KEY] = benchDay(80, 10, 2);
+      }
+
+      // 새 시즌이 4일 전에 시작된 상황 — 그래프는 시즌 시작 이후 기록만 써야 한다.
+      function seedTrackHistorySeason() {
+        seedTrackHistory();
+        fake.fakeDataStore.settings.season_registry = {
+          seasons: [{
+            id: 'season-new',
+            name: '새 시즌',
+            startDate: dayAt(4),
+            endDate: dayAt(0),
+            exerciseIds: ['bench-press'],
+          }],
+        };
       }
 
       function trackGraphSnapshot() {
@@ -349,6 +364,7 @@ export const estimateInOnePass = unavailable('estimateInOnePass');
         seed,
         seedWendler,
         seedTrackHistory,
+        seedTrackHistorySeason,
         wendlerSnapshot,
         trackGraphSnapshot,
         openDaySheet,
@@ -603,8 +619,9 @@ test('tapping the add/copy-set button while a set value is still dirty keeps the
 
     const sets = await page.evaluate(() => window.__qa.storedSets());
     assert.deepEqual(sets[0], { kg: 10, reps: 15, done: false }, '치던 횟수 15가 세트 추가 후에도 남아야 한다');
-    // 직전 세트 복사본은 값만 채우고 미완료로 남는다 — 완료(✓)는 수행 후 직접 찍는다.
-    assert.deepEqual(sets[2], { kg: 80, reps: 8, done: false }, '복사된 세트는 자동 체크되지 않아야 한다');
+    // +는 방금 수행한 원본 세트에 ✓를 찍고, 복사본은 미완료로 남긴다.
+    assert.deepEqual(sets[1], { kg: 80, reps: 8, done: true }, '복사 원본 세트가 완료로 표시돼야 한다');
+    assert.deepEqual(sets[2], { kg: 80, reps: 8, done: false }, '복사본은 자동 체크되지 않아야 한다');
 
     assert.deepEqual(harness.pageErrors, []);
     assert.deepEqual(harness.blockedRequests, []);
@@ -818,6 +835,21 @@ test('day sheet unifies the wendler track graph and lets non-wendler rows switch
     assert.deepEqual(after.activeTracks, ['H'], '강도 줄이 활성 표시로 바뀌어야 한다');
     assert.equal(after.trackMeta.userTrackOverride, true);
     assert.match(after.trackText, /강도 트랙/);
+
+    // ── 새 시즌 시작 후: 그래프는 시즌 시작 이후 기록만 쓴다 ──
+    // 시즌 없는 상태의 볼륨 줄은 9~5일 전 히스토리와 오늘을 잇는 추세라
+    // 직전 대비 증감(%)이 붙는다 (2250 → 오늘 1600, -29%).
+    assert.equal(before.values[0], '1.6t-29%',
+      `시즌 없음: 볼륨 추세가 시즌 이전 기록까지 포함해야 한다 (got ${before.values[0]})`);
+    await page.evaluate(() => { window.__qa.seedTrackHistorySeason(); window.__qa.openDaySheet(); });
+    await page.waitForSelector('[data-wt-day-sheet] .ex-max-track-graph-row[data-track="H"]', { timeout: 8000 });
+    const seasonScoped = await page.evaluate(() => window.__qa.trackGraphSnapshot());
+    // 시즌 시작(4일 전) 이전의 볼륨 세션(9·7·5일 전)이 그래프에서 빠지면
+    // 시즌 내 볼륨 데이터는 오늘 하루뿐 — 비교 대상이 없어 증감이 사라진다.
+    assert.equal(seasonScoped.values[0], '1.6t',
+      `새 시즌: 볼륨 값은 시즌 내 기록만 반영해야 한다 (got ${seasonScoped.values[0]})`);
+    // 시즌 안(3·2일 전)의 강도 세션은 계속 그려진다.
+    assert.match(seasonScoped.values[1], /kg/, '시즌 내 강도 기록은 유지돼야 한다');
 
     assert.deepEqual(harness.pageErrors, []);
     assert.deepEqual(harness.blockedRequests, []);

@@ -127,10 +127,16 @@ export function hasExerciseRecord(y, m, d) {
 export function getSeasonRegistry() {
   return normalizeSeasonRegistry(fakeDataStore.settings.season_registry || {});
 }
-export function getSeasonDecisionCache(referenceDateKey = null) {
+export function getSeasonDecisionCache(referenceDateKey = null, exerciseId = null) {
   const todayKey = dateKey(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate());
   const reference = /^\d{4}-\d{2}-\d{2}$/.test(String(referenceDateKey || '')) ? String(referenceDateKey) : todayKey;
-  return selectSeasonDecisionCache(fakeDataStore.cache, fakeDataStore.settings.season_registry || {}, reference);
+  const scope = String(exerciseId || '').trim();
+  return selectSeasonDecisionCache(
+    fakeDataStore.cache,
+    fakeDataStore.settings.season_registry || {},
+    reference,
+    scope ? { exerciseId: scope } : {},
+  );
 }
 export const getSeasonWorkoutPlan = (seasonId) => clone(fakeDataStore.settings[`season_${seasonId}_workout_plan`] || null);
 export const getSeasonTestBoardV2 = (seasonId) => clone(fakeDataStore.settings[`season_${seasonId}_test_board_v2`] || null);

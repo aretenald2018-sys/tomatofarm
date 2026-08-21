@@ -2727,19 +2727,36 @@ async function _syncWendlerBackoffModeToBoard(exerciseId, mode) {
 async function _addWorkoutExerciseSetFromSheet(key, sessionIndex, exerciseIndex) {
   try {
     let copiedPreviousSet = false;
+    let checkedPreviousSet = false;
     const ok = await _mutateWorkoutExerciseFromSheet(key, sessionIndex, exerciseIndex, (entry) => {
       const sets = Array.isArray(entry.sets) ? entry.sets : [];
       copiedPreviousSet = sets.length > 0;
-      // 직전 세트 복사는 값만 미리 채워주는 입력 보조다. 완료(✓)는 실제로
-      // 수행한 뒤 사용자가 직접 찍는다 — 자동 체크는 안 한 세트를 한 것처럼
-      // 기록하는 오염이라 뺐다(2026-08-20 사용자 요청으로 자동 체크 철회).
       const nextSet = _defaultWorkoutSheetSet(sets[sets.length - 1]);
+      // +(직전 세트 복사)는 "방금 그 세트를 마치고 다음 세트를 준비한다"는
+      // 제스처다. 완료(✓)는 방금 수행한 원본 세트에 찍고, 복사본은 아직
+      // 수행 전이므로 미완료로 둔다. (복사본 자동 체크는 사용자 요청으로 철회)
+      if (copiedPreviousSet) {
+        const prevSet = sets[sets.length - 1];
+        if (prevSet.done !== true) {
+          prevSet.done = true;
+          prevSet.completedAt = Date.now();
+          checkedPreviousSet = true;
+        }
+      }
       sets.push(nextSet);
       entry.sets = sets;
       clearWorkoutExerciseCompletionMarker(entry);
       return true;
     }, { preserveSheetScroll: true, optimisticRender: true });
-    if (ok) showToast(copiedPreviousSet ? '직전 세트를 복사했어요' : '세트를 추가했어요', 1200, 'success');
+    if (ok) {
+      showToast(
+        copiedPreviousSet
+          ? (checkedPreviousSet ? '직전 세트를 완료로 표시하고 복사했어요' : '직전 세트를 복사했어요')
+          : '세트를 추가했어요',
+        1200,
+        'success'
+      );
+    }
   } catch (e) {
     console.warn('[workout-calendar] sheet set add failed:', e);
     showToast('세트 추가에 실패했어요', 2200, 'error');

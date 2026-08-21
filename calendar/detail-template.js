@@ -5,6 +5,7 @@ import {
   getCache,
   getExList,
   getLatestCheckinWeight,
+  getSeasonDecisionCache,
 } from '../data.js';
 import {
   getWorkoutSessions,
@@ -367,8 +368,11 @@ export function _renderWorkoutSparkline(row, trend = null) {
 }
 
 export function _renderWorkoutTrackGraphRow(row, bestSet, track, activeTrack, actionAttrs = '') {
+  // 그래프 히스토리는 이 날짜가 속한 시즌(종목별 구간 포함)으로 자른다 —
+  // 새 시즌이 시작되면 카드 그래프도 새 시즌 기록으로만 그려진다.
+  // 시즌이 관리하지 않는 종목은 전체 기록 유지(selectSeasonDecisionCache 정책).
   const trend = buildWorkoutTrackTrend(row, bestSet, {
-    cache: getCache(),
+    cache: getSeasonDecisionCache(row?.dateKey || null, row?.exerciseId || null),
     exList: getExList(),
   }, track);
   const delta = trend.delta || '';

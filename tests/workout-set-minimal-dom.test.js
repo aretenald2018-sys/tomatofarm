@@ -1019,8 +1019,23 @@ test('previous workout card copies every set value but resets completion state',
   assert.equal(result.undoToast.message, '복사 전 세트로 되돌렸어요');
 });
 
-test('add-set row copies previous values but leaves the new set unchecked', async () => {
+test('add-set row checks the copied original and leaves the new copy unchecked', async () => {
   const result = await runHarness(async () => {
+    // 시나리오 1: 원본이 미완료 상태에서 + — 원본에 ✓, 복사본은 미완료.
+    window.__entry = {
+      name: '벤치프레스',
+      exerciseId: 'bench-press',
+      sets: [{ kg: 60, reps: 10, setType: 'main', done: false }],
+    };
+    window.renderWorkoutCalendarHome();
+    document.querySelector('[data-wt-sheet-card-action="add-exercise-set"]').click();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    const uncheckedOriginal = {
+      sets: JSON.parse(JSON.stringify(window.__entry.sets)),
+      toast: window.__lastToast,
+    };
+
+    // 시나리오 2: 원본이 이미 완료(✓) — 원본 완료시각을 건드리지 않고 복사만.
     window.__entry = {
       name: '벤치프레스',
       exerciseId: 'bench-press',
@@ -1030,19 +1045,31 @@ test('add-set row copies previous values but leaves the new set unchecked', asyn
     document.querySelector('[data-wt-sheet-card-action="add-exercise-set"]').click();
     await new Promise(resolve => setTimeout(resolve, 0));
     return {
-      sets: JSON.parse(JSON.stringify(window.__entry.sets)),
-      toast: window.__lastToast,
+      uncheckedOriginal,
+      doneOriginal: {
+        sets: JSON.parse(JSON.stringify(window.__entry.sets)),
+        toast: window.__lastToast,
+      },
     };
   });
 
-  assert.equal(result.sets.length, 2);
-  const added = result.sets[1];
-  assert.equal(added.kg, 60, '직전 세트 무게를 복사한다');
-  assert.equal(added.reps, 10, '직전 세트 횟수를 복사한다');
-  // 자동 체크 철회: 복사로 생긴 행은 사용자가 수행 후 직접 체크한다.
-  assert.equal(added.done, false, '새 행은 미완료로 남아야 한다');
-  assert.equal('completedAt' in added, false, '완료 시각도 기록하지 않는다');
-  assert.equal(result.toast.message, '직전 세트를 복사했어요');
+  // 시나리오 1: 원본에 ✓와 완료시각이 찍히고, 복사본은 값만 복사된 미완료 행.
+  const first = result.uncheckedOriginal;
+  assert.equal(first.sets.length, 2);
+  assert.equal(first.sets[0].done, true, '+는 방금 수행한 원본 세트를 완료로 표시한다');
+  assert.ok(Number(first.sets[0].completedAt) > 0, '원본에 완료 시각이 기록된다');
+  assert.equal(first.sets[1].kg, 60, '직전 세트 무게를 복사한다');
+  assert.equal(first.sets[1].reps, 10, '직전 세트 횟수를 복사한다');
+  assert.equal(first.sets[1].done, false, '복사본은 미완료로 남아야 한다');
+  assert.equal('completedAt' in first.sets[1], false, '복사본에 완료 시각을 기록하지 않는다');
+  assert.equal(first.toast.message, '직전 세트를 완료로 표시하고 복사했어요');
+
+  // 시나리오 2: 이미 완료된 원본은 그대로(완료시각 유지), 복사본만 추가.
+  const second = result.doneOriginal;
+  assert.equal(second.sets.length, 2);
+  assert.equal(second.sets[0].completedAt, 111, '이미 완료된 원본의 완료 시각은 유지된다');
+  assert.equal(second.sets[1].done, false, '복사본은 미완료로 남아야 한다');
+  assert.equal(second.toast.message, '직전 세트를 복사했어요');
 });
 
 test('track graph row tap reclassifies a non-wendler record and skips wendler entries', async () => {
