@@ -380,6 +380,8 @@ function buildHarnessScript() {
     }
     window._wtCalUpdateExerciseSet = _updateWorkoutExerciseSetFromSheet;
     window.__copyPreviousWorkoutRecordSets = _copyPreviousWorkoutRecordSetsForSheet;
+    window.__ssMenus = _workoutOpenSupersetMenus;
+    window.__renderSupersetLinkControl = _renderWorkoutSupersetLinkControl;
     window.showToast = (message, duration, type, opts = null) => {
       window.__lastToast = { message, duration, type, hasUndo: typeof opts?.onAction === 'function' && opts?.action === '실행 취소' };
       window.__lastToastAction = opts?.onAction || null;
@@ -1085,6 +1087,47 @@ test('add-set row checks the copied original and leaves the new copy unchecked',
   assert.equal(second.sets[0].completedAt, 111, '이미 완료된 원본의 완료 시각은 유지된다');
   assert.equal(second.sets[1].done, false, '복사본은 미완료로 남아야 한다');
   assert.equal(second.toast.message, '직전 세트를 복사했어요');
+});
+
+// 실제 앱 CSS를 입힌 상태로 링크 메뉴 레이아웃을 잰다. 메뉴가 킥커 안에
+// 렌더되면서 전역 `.wt-max-card-kicker button`(44px 원형)에 옵션 버튼이
+// 찌그러져 글자가 세로로 흘렀던 회귀를 픽셀 크기로 고정한다.
+test('superset link menu options stay full-width inside the kicker (no 44px squash)', async () => {
+  const result = await runHarnessPage(async (page) => {
+    return page.evaluate(() => {
+      window.__ssMenus.add('2026-07-04:0:0');
+      const control = window.__renderSupersetLinkControl('2026-07-04', 0, { originalIndex: 0, name: '케이블 크런치' }, [
+        { exerciseIndex: 0, name: '케이블 크런치' },
+        { exerciseIndex: 1, name: '행잉 레그 레이즈' },
+        { exerciseIndex: 2, name: '와이드 풀업' },
+      ]);
+      document.body.innerHTML = `
+        <main id="workout-calendar-root"><section data-wt-day-sheet>
+          <article class="wt-day-ex-card wt-max-read-card is-expanded is-editing" style="width:360px">
+            <div class="wt-max-card-kicker">
+              <span><i></i>추천 종목 · 선택 헬스장</span>
+              <span class="wt-max-card-kicker-actions">${control}</span>
+            </div>
+          </article>
+        </section></main>`;
+      const options = Array.from(document.querySelectorAll('.wt-ss-link-option'));
+      const menu = document.querySelector('.wt-ss-link-menu');
+      return {
+        optionCount: options.length,
+        optionWidths: options.map(el => el.offsetWidth),
+        optionHeights: options.map(el => el.offsetHeight),
+        menuWidth: menu?.offsetWidth || 0,
+        singleLine: options.map(el => el.offsetHeight < 60),
+      };
+    });
+  });
+
+  assert.equal(result.optionCount, 2, '자기 자신을 제외한 후보만 나온다');
+  assert.ok(result.menuWidth >= 220, `메뉴 폭이 확보돼야 한다 (got ${result.menuWidth})`);
+  result.optionWidths.forEach((width) => {
+    assert.ok(width >= 180, `옵션 버튼이 전역 킥커 버튼 규칙(44px)에 찌그러지면 안 된다 (got ${width})`);
+  });
+  result.singleLine.forEach((ok) => assert.equal(ok, true, '옵션 텍스트가 세로로 흘러넘치면 안 된다'));
 });
 
 test('track graph row tap reclassifies a non-wendler record and skips wendler entries', async () => {

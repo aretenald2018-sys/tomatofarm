@@ -18681,11 +18681,16 @@ body.lz-running-record-modal-open {
   right: 0;
   z-index: 30;
   min-width: 220px;
+  max-width: min(320px, calc(100vw - 56px));
   padding: 6px;
   border: 1px solid #d7dee9;
   border-radius: 12px;
   background: #fff;
   box-shadow: 0 12px 28px rgba(15, 23, 42, 0.16);
+}
+.wt-ss-link-menu .wt-ss-link-option span {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .wt-ss-link-menu-note {
   padding: 6px 8px;
@@ -18694,12 +18699,18 @@ body.lz-running-record-modal-open {
   font-weight: 600;
   line-height: 14px;
 }
-.wt-ss-link-option {
+/* 메뉴는 .wt-max-card-kicker 안에 렌더되므로, 전역 킥커 버튼 규칙
+   (.wt-max-card-kicker button — width/height 44px 원형, margin 음수,
+   font-size 20px)이 옵션 버튼을 덮친다. 더 높은 특이도로 전부 되돌린다. */
+.wt-ss-link-menu .wt-ss-link-option,
+.wt-max-card-kicker button.wt-ss-link-option {
   display: flex;
   align-items: center;
   gap: 6px;
   width: 100%;
+  height: auto;
   min-height: 40px;
+  margin: 0;
   padding: 0 8px;
   border: 0;
   border-radius: 9px;
@@ -18707,12 +18718,14 @@ body.lz-running-record-modal-open {
   color: #0b1220;
   font-size: 12px;
   font-weight: 700;
+  line-height: 16px;
   text-align: left;
+  white-space: nowrap;
   cursor: pointer;
 }
-.wt-ss-link-option:active { background: #f1f6ff; }
-.wt-ss-link-option span { font-weight: 800; }
-.wt-ss-link-option.is-unlink { color: #dc2626; }
+.wt-ss-link-menu .wt-ss-link-option:active { background: #f1f6ff; }
+.wt-ss-link-menu .wt-ss-link-option span { font-weight: 800; }
+.wt-ss-link-menu .wt-ss-link-option.is-unlink { color: #dc2626; }
 .wt-ss-card-name {
   display: flex;
   flex-wrap: wrap;
