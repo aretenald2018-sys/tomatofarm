@@ -138,6 +138,7 @@ function buildHarnessScript() {
     '_copyPreviousWorkoutExerciseSetsFromSheet',
     '_undoPreviousWorkoutSetCopyFromSheet',
     '_setWorkoutTrackModeFromSheet',
+    '_addWorkoutExerciseSetFromSheet',
   ];
   const sourceBundle = [
     setPresentationJs.replace(/^export /gmu, ''),
@@ -1016,6 +1017,32 @@ test('previous workout card copies every set value but resets completion state',
   assert.deepEqual(result.undoneSets, [{ kg: 20, reps: 5, done: false }]);
   assert.equal(result.undoneCompletedAt, 999);
   assert.equal(result.undoToast.message, '복사 전 세트로 되돌렸어요');
+});
+
+test('add-set row copies previous values but leaves the new set unchecked', async () => {
+  const result = await runHarness(async () => {
+    window.__entry = {
+      name: '벤치프레스',
+      exerciseId: 'bench-press',
+      sets: [{ kg: 60, reps: 10, setType: 'main', done: true, completedAt: 111 }],
+    };
+    window.renderWorkoutCalendarHome();
+    document.querySelector('[data-wt-sheet-card-action="add-exercise-set"]').click();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    return {
+      sets: JSON.parse(JSON.stringify(window.__entry.sets)),
+      toast: window.__lastToast,
+    };
+  });
+
+  assert.equal(result.sets.length, 2);
+  const added = result.sets[1];
+  assert.equal(added.kg, 60, '직전 세트 무게를 복사한다');
+  assert.equal(added.reps, 10, '직전 세트 횟수를 복사한다');
+  // 자동 체크 철회: 복사로 생긴 행은 사용자가 수행 후 직접 체크한다.
+  assert.equal(added.done, false, '새 행은 미완료로 남아야 한다');
+  assert.equal('completedAt' in added, false, '완료 시각도 기록하지 않는다');
+  assert.equal(result.toast.message, '직전 세트를 복사했어요');
 });
 
 test('track graph row tap reclassifies a non-wendler record and skips wendler entries', async () => {

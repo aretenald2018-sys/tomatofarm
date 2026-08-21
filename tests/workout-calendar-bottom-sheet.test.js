@@ -962,7 +962,7 @@ test('day sheet set inputs preserve keyboard next focus without restoring the ch
   assert.match(updateFn, /\{ preserveInput: true, sourceInput, ignoreSourceInput: true \}/);
 });
 
-test('day sheet added workout sets copy previous user values and mark the copied set done', () => {
+test('day sheet added workout sets copy previous user values but stay unchecked', () => {
   const defaultsStart = calendarJs.indexOf('function _defaultWorkoutSheetSet');
   const defaultsEnd = calendarJs.indexOf('async function _mutateWorkoutExerciseFromSheet', defaultsStart);
   const updateStart = calendarJs.indexOf('async function _updateWorkoutExerciseSetFromSheet');
@@ -990,11 +990,14 @@ test('day sheet added workout sets copy previous user values and mark the copied
   assert.doesNotMatch(defaults, /completedAt|exerciseCompletedAt|wendlerRole|wendlerPct|supplementalKind|amrap/);
   assert.match(addFn, /copiedPreviousSet = sets\.length > 0/);
   assert.match(addFn, /const nextSet = _defaultWorkoutSheetSet\(sets\[sets\.length - 1\]\)/);
-  // 직전 세트 복사는 즉시 완료(✓)로 기록한다. 빈 종목의 첫 세트는 미완료 유지.
-  assert.match(addFn, /if \(copiedPreviousSet\) \{[\s\S]*nextSet\.done = true;[\s\S]*nextSet\.completedAt = Date\.now\(\);[\s\S]*\}/);
+  // 직전 세트 복사는 값만 채우는 입력 보조 — 완료(✓)는 사용자가 직접 찍는다.
+  // (자동 체크는 안 한 세트를 한 것처럼 기록해 2026-08-20 사용자 요청으로 철회.)
+  assert.doesNotMatch(addFn, /nextSet\.done = true/);
+  assert.doesNotMatch(addFn, /nextSet\.completedAt/);
   assert.match(addFn, /sets\.push\(nextSet\)/);
   assert.match(addFn, /\{ preserveSheetScroll: true, optimisticRender: true \}/);
-  assert.match(addFn, /직전 세트를 복사하고 완료로 표시했어요/);
+  assert.match(addFn, /직전 세트를 복사했어요/);
+  assert.doesNotMatch(addFn, /완료로 표시했어요/);
   assert.match(updateFn, /safeField === 'kg'[\s\S]*allowEmpty: true/);
   assert.match(updateFn, /safeField === 'reps'[\s\S]*allowEmpty: true/);
   assert.match(rowsFn, /_workoutSheetInputValue\(set\.kg, 1\)/);
