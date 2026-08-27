@@ -335,6 +335,7 @@ export const estimateInOnePass = unavailable('estimateInOnePass');
           chips: rows.map(row => row.querySelector('.ex-max-track-graph-chip')?.textContent.trim() || ''),
           values: rows.map(row => row.querySelector('.ex-max-track-graph-value')?.textContent.trim() || ''),
           sparkCount: rows.filter(row => row.querySelector('.wt-max-spark-svg path')).length,
+          emptyLabels: rows.map(row => row.querySelector('.ex-max-track-graph-empty')?.textContent.trim() || ''),
           toggleActions: rows.map(row => row.getAttribute('data-wt-sheet-card-action') || ''),
           trackText: document.querySelector('[data-wt-day-sheet] .wt-max-plan-goal em')?.textContent.trim() || '',
           trackMeta: entry.recommendationMeta ? JSON.parse(JSON.stringify(entry.recommendationMeta)) : null,
@@ -911,6 +912,10 @@ test('day sheet unifies the wendler track graph and lets non-wendler rows switch
       `새 시즌: 볼륨 값은 시즌 내 기록만 반영해야 한다 (got ${seasonScoped.values[0]})`);
     // 시즌 안(3·2일 전)의 강도 세션은 계속 그려진다.
     assert.match(seasonScoped.values[1], /kg/, '시즌 내 강도 기록은 유지돼야 한다');
+    // 시즌 내 기록이 하루뿐인 볼륨 줄은 가짜 곡선(오늘 세트별 폴백) 대신
+    // '1회 기록'을 보여준다 — 새 시즌 첫날 곡선이 과거 추이로 읽히던 혼란 방지.
+    assert.equal(seasonScoped.emptyLabels[0], '1회 기록', '시즌 1일째 볼륨 줄은 시작 상태 문구여야 한다');
+    assert.equal(seasonScoped.emptyLabels[1], '', '히스토리 2일 이상인 강도 줄은 곡선을 유지한다');
 
     assert.deepEqual(harness.pageErrors, []);
     assert.deepEqual(harness.blockedRequests, []);

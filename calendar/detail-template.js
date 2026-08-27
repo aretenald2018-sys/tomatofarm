@@ -40,7 +40,6 @@ import {
   activeWorkoutTrack,
   buildWorkoutTrackTrend,
   formatWorkoutTrackValue,
-  workoutFallbackSparkValues,
   workoutTrackLabel,
 } from '../workout/track-metrics.js';
 import {
@@ -381,8 +380,14 @@ export function _renderWorkoutSparkline(row, trend = null) {
   const historyValues = (Array.isArray(trend?.points) ? trend.points : [])
     .map(point => _num(point?.value))
     .filter(value => value > 0);
-  const raw = historyValues.length >= 2 ? historyValues : workoutFallbackSparkValues(row, ['H', 'W'].includes(trend?.track) ? trend.track : 'M');
-  const values = raw.length >= 2 ? raw : raw.length === 1 ? [raw[0], raw[0], raw[0]] : [0, 1, 0];
+  // (시즌 구간 내) 히스토리가 2일 미만이면 곡선을 그리지 않는다. 예전에는
+  // 오늘 세트별 값으로 폴백 곡선을 그렸는데, 새 시즌 첫날에 그 곡선이
+  // 과거 추이처럼 읽히는 혼란이 있었다(운동 탭 카드와도 불일치). 운동 탭과
+  // 같은 문구로 시작 상태를 드러낸다 — 값 라벨은 옆에서 계속 보여준다.
+  if (historyValues.length < 2) {
+    return `<span class="ex-max-track-graph-empty">${historyValues.length ? '1회 기록' : '기록 없음'}</span>`;
+  }
+  const values = historyValues;
   const min = Math.min(...values);
   const max = Math.max(...values);
   const spread = Math.max(1, max - min);
