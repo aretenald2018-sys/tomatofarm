@@ -16682,6 +16682,14 @@ body.lz-running-record-modal-open {
   line-height: 17px;
   font-weight: 800;
 }
+/* 지난 기록 요약은 항상 한 줄 — 세트가 많아 길어지면 말줄임 처리한다 */
+.wt-max-last strong {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 /* 지난 기록 블록 전체가 버튼이면 스크롤 중 오탭으로 세트가 덮어써진다.
    요약은 평문으로 두고, 복사는 오른쪽의 작은 칩 버튼만 탭 대상으로 한다. */
 .wt-max-last-head {

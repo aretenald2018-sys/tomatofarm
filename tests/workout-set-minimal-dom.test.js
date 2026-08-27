@@ -1089,6 +1089,47 @@ test('add-set row checks the copied original and leaves the new copy unchecked',
   assert.equal(second.toast.message, '직전 세트를 복사했어요');
 });
 
+// 지난 기록 요약은 세트가 많아도 항상 한 줄 + 말줄임이어야 한다.
+test('previous record summary stays on a single ellipsized line', async () => {
+  const result = await runHarnessPage(async (page) => {
+    return page.evaluate(() => {
+      window.__entry = { name: '스쿼트(와이드)', exerciseId: 'wide-squat', sets: [{ kg: 75, reps: 8, done: false }] };
+      window.__previousRecord = {
+        dateLabel: '17일 전',
+        setDetails: [
+          { kg: 75, reps: 8, setType: 'main', done: true },
+          { kg: 86.3, reps: 8, setType: 'main', done: true },
+          { kg: 92.5, reps: 8, setType: 'main', done: true },
+          { kg: 103.8, reps: 1, setType: 'main', done: true },
+          { kg: 110, reps: 1, setType: 'main', done: true },
+          { kg: 86.3, reps: 4, setType: 'main', done: true },
+          { kg: 86.3, reps: 4, setType: 'main', done: true },
+        ],
+      };
+      window.renderWorkoutCalendarHome();
+      const sheet = document.querySelector('[data-wt-day-sheet]');
+      sheet.style.width = '360px';
+      const summary = document.querySelector('.wt-max-last strong');
+      const style = getComputedStyle(summary);
+      return {
+        text: summary.textContent,
+        offsetHeight: summary.offsetHeight,
+        lineHeight: parseFloat(style.lineHeight) || 17,
+        whiteSpace: style.whiteSpace,
+        textOverflow: style.textOverflow,
+        overflowing: summary.scrollWidth > summary.clientWidth,
+      };
+    });
+  });
+
+  assert.ok(result.text.length > 40, '요약이 실제로 길어야 검증이 의미 있다');
+  assert.equal(result.whiteSpace, 'nowrap');
+  assert.equal(result.textOverflow, 'ellipsis');
+  assert.ok(result.offsetHeight <= result.lineHeight + 4,
+    `요약이 한 줄 높이여야 한다 (height ${result.offsetHeight}, line ${result.lineHeight})`);
+  assert.equal(result.overflowing, true, '넘친 부분이 말줄임으로 잘려야 한다');
+});
+
 // 실제 앱 CSS를 입힌 상태로 링크 메뉴 레이아웃을 잰다. 메뉴가 킥커 안에
 // 렌더되면서 전역 `.wt-max-card-kicker button`(44px 원형)에 옵션 버튼이
 // 찌그러져 글자가 세로로 흘렀던 회귀를 픽셀 크기로 고정한다.
