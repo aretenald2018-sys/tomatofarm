@@ -102,7 +102,11 @@ export function _restoreWorkoutSheetCarouselToSlide(slideIndex = null, options =
   if (options?.remember !== false) {
     _rememberWorkoutSheetCarouselSlide(options?.key ?? workoutSheetStateRuntime.getSelectedKey(), options?.sessionIndex ?? workoutSheetStateRuntime.getSessionIndex(), index);
   }
+  const snapshotKey = _workoutSheetCarouselSnapshotKey(options?.key, options?.sessionIndex);
+  const remembered = _workoutSheetCarouselSnapshots.get(snapshotKey);
   const restore = () => {
+    if (_workoutSheetCarouselSnapshotKey() !== snapshotKey
+      || _workoutSheetCarouselSnapshots.get(snapshotKey) !== remembered) return;
     const root = _workoutHomeScrollRoot();
     const sheet = root?.querySelector?.('[data-wt-day-sheet]')
       || document.querySelector?.('#workout-calendar-root [data-wt-day-sheet]');
@@ -149,9 +153,12 @@ export function _rememberWorkoutSheetCarouselState(key = workoutSheetStateRuntim
 
 export function _restoreRememberedWorkoutSheetCarousel(key = workoutSheetStateRuntime.getSelectedKey(), sessionIndex = workoutSheetStateRuntime.getSessionIndex()) {
   if (typeof document === 'undefined') return;
-  const state = _workoutSheetCarouselSnapshots.get(_workoutSheetCarouselSnapshotKey(key, sessionIndex));
+  const snapshotKey = _workoutSheetCarouselSnapshotKey(key, sessionIndex);
+  const state = _workoutSheetCarouselSnapshots.get(snapshotKey);
   if (!state) return;
   const restore = () => {
+    if (_workoutSheetCarouselSnapshotKey() !== snapshotKey
+      || _workoutSheetCarouselSnapshots.get(snapshotKey) !== state) return;
     const root = _workoutHomeScrollRoot();
     const sheet = root?.querySelector?.('[data-wt-day-sheet]')
       || document.querySelector?.('#workout-calendar-root [data-wt-day-sheet]');

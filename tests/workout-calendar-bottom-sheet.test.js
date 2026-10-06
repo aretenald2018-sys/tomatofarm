@@ -543,7 +543,8 @@ test('day sheet remembers exercise carousel slide across close and reopen', () =
   assert.match(helpers, /_workoutSheetCarouselSnapshots\.set\(_workoutSheetCarouselSnapshotKey\(key, sessionIndex\), state\)/);
   assert.match(helpers, /const state = _captureWorkoutSheetCarouselState\(targetSheet\)/);
   assert.match(helpers, /return _rememberWorkoutSheetCarouselSlide\(key, sessionIndex, state\.slideIndex\)/);
-  assert.match(helpers, /_workoutSheetCarouselSnapshots\.get\(_workoutSheetCarouselSnapshotKey\(key, sessionIndex\)\)/);
+  assert.match(helpers, /const snapshotKey = _workoutSheetCarouselSnapshotKey\(key, sessionIndex\)/);
+  assert.match(helpers, /_workoutSheetCarouselSnapshots\.get\(snapshotKey\)/);
   assert.match(setStateFn, /_currentWorkoutHomeSheetState\(\) !== 'bar' && next === 'bar'[\s\S]*_rememberWorkoutSheetCarouselState\(_workoutHomeSelectedKey, _workoutHomeSessionIndex\)/);
   assert.match(toggleFn, /renderWorkoutCalendarHome\(\);[\s\S]*_restoreRememberedWorkoutSheetCarousel\(_workoutHomeSelectedKey, _workoutHomeSessionIndex\)/);
   assert.match(openFn, /renderWorkoutCalendarHome\(\);[\s\S]*_restoreRememberedWorkoutSheetCarousel\(nextKey, _workoutHomeSessionIndex\)/);
