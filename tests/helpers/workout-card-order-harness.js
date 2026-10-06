@@ -19,7 +19,7 @@ export async function buildWorkoutCardOrderHarnessHtml(baseUrl = pathToFileURL(r
   const aiStub = dataModule('export const parseEquipmentFromText = async () => null; export const parseEquipmentFromImage = async () => null; export const estimateInOnePass = async () => null;');
   const imports = { [url('data.js')]: dataStub, [url('ai.js')]: aiStub };
   const tokens = await readFile(new URL('../../styles/tokens.css', import.meta.url), 'utf8');
-  const html = `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  const html = `<!doctype html><html lang="ko"><head><meta charset="utf-8"><link rel="icon" href="data:,"><meta name="viewport" content="width=device-width,initial-scale=1">
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' data: file:; style-src 'self' 'unsafe-inline'; img-src 'self' data: file:; font-src 'self'; connect-src 'none'; worker-src 'none'">
     <script type="importmap">${JSON.stringify({ imports })}</script><style>${tokens}\n${readAppCssSync()}\nbody { margin:0; font-family: sans-serif; } #workout-calendar-root { height:100vh; overflow:auto; }</style></head>
     <body><details open id="qa-panel" style="position:fixed;top:0;right:0;z-index:99999;max-width:100%;background:#fff;border:1px solid #aaa;font:11px monospace"><summary>합성 데이터 검증 · 외부 연결 차단</summary>

@@ -113,11 +113,14 @@ test('RIR controls preserve zero/missing/decimals, follow moved cards, and fit p
   assert.equal(moved.day.workoutSessions[0].exercises[1].exerciseId, 'A');
   assert.equal(moved.day.workoutSessions[0].exercises[1].sets[0].rir, 3.25);
   assert.equal(moved.day.workoutSessions[0].exercises[0].sets[0].rir, 2);
-  await page.evaluate(() => { window.__qa.setRir(0, 0, 0); window.__qa.setRir(0, 1, null); });
-  assert.equal(await page.$eval(rirButton(0, 0, -1), element => element.disabled), true);
-  assert.equal(await page.$eval('[data-wt-set-rir-row][data-exercise-index="0"][data-set-index="1"] output', node => node.textContent), '미입력');
-  await tap(page, rirButton(0, 1));
-  assert.equal((await page.evaluate(() => window.__qa.snapshot())).day.workoutSessions[0].exercises[0].sets[1].rir, 2.5);
+  // Seed boundary values on the card the user just moved and is still viewing.
+  // Reopening intentionally restores that card; do not race it by scrolling a
+  // different, offscreen card into view during fixture setup.
+  await page.evaluate(() => { window.__qa.setRir(1, 0, 0); window.__qa.setRir(1, 1, null); });
+  assert.equal(await page.$eval(rirButton(1, 0, -1), element => element.disabled), true);
+  assert.equal(await page.$eval('[data-wt-set-rir-row][data-exercise-index="1"][data-set-index="1"] output', node => node.textContent), '미입력');
+  await tap(page, rirButton(1, 1));
+  assert.equal((await page.evaluate(() => window.__qa.snapshot())).day.workoutSessions[0].exercises[1].sets[1].rir, 2.5);
   for (const [width, height] of [[390, 844], [768, 1024]]) {
     await page.setViewport({ width, height, isMobile: true, hasTouch: true });
     await page.evaluate(() => window.__qa.open());
