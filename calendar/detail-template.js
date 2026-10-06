@@ -1,3 +1,4 @@
+import { readWorkoutRir } from './rir-stepper.js';
 import { toFiniteNumber as _num } from '../utils/number.js';
 import { escapeHtml as _esc } from '../utils/escape-html.js';
 import { parseDateKey as _parseDateKey } from '../utils/date-key.js';
@@ -42,10 +43,6 @@ import {
   formatWorkoutTrackValue,
   workoutTrackLabel,
 } from '../workout/track-metrics.js';
-import {
-  formatWorkoutCompletionElapsed,
-  latestWorkoutCompletionAt,
-} from '../workout/completion-metrics.js';
 import { isWorkoutExerciseComplete } from '../workout/exercise-completion.js';
 import {
   bestWorkoutSet,
@@ -80,6 +77,7 @@ const WORKOUT_SET_TYPE_OPTIONS = [
 ];
 
 const workoutDetailRuntime = {
+  getRestSummary: () => ({ value: '—', running: false }),
   getSelectedKey: () => '',
   getSessionIndex: () => 0,
   setSessionIndex: () => {},
@@ -143,6 +141,7 @@ export function _workoutHomeDetailModel({ cache, plan, checkins, key }) {
     wx.primaryLabel = wx.labels[0] || '';
     wx.hasWorkout = true;
   }
+  wx.sessionIndex = sessionIndex;
   return { lookup, sessions, runningInfo, runningActive, sessionIndex, wx };
 }
 
@@ -211,13 +210,13 @@ export function _renderWorkoutDayExportDock(key, { solo = false } = {}) {
 }
 
 export function _renderWorkoutDetailSummaryCard(wx) {
-  const lastCompletedAt = latestWorkoutCompletionAt(wx);
+  const rest = workoutDetailRuntime.getRestSummary(wx);
   const metrics = [
     { label: '운동시간', value: wx?.durationSec ? _formatDurationShort(wx.durationSec) : '—' },
     {
       label: '휴식',
-      value: formatWorkoutCompletionElapsed(lastCompletedAt),
-      attrs: lastCompletedAt ? ` data-wt-last-complete-elapsed data-completed-at="${lastCompletedAt}"` : '',
+      value: rest.value,
+      attrs: ` data-wt-rest-summary data-date-key="${_esc(wx?.key || '')}" data-session-index="${Number(wx?.sessionIndex) || 0}"${rest.running ? ' data-wt-rest-live="true"' : ''}`,
     },
     { label: '세트', value: wx?.setCount ? `${wx.setCount}세트` : '—' },
     { label: '볼륨', value: wx?.volume > 0 ? formatWorkoutTrackValue('M', wx.volume) : '—' },
@@ -320,8 +319,17 @@ export function _renderWorkoutExerciseSlides(key, sessionIndex, exercises = []) 
     const card = slide.type === 'superset'
       ? _renderWorkoutSupersetDetailCard(key, sessionIndex, slide)
       : _renderWorkoutExerciseDetailCard(key, sessionIndex, slide.row, slide.index, { linkCandidates });
+    const firstRow = slide.type === 'superset' ? slide.rows[0] : slide.row;
+    const originalIndex = Number.isInteger(Number(firstRow?.originalIndex)) ? Number(firstRow.originalIndex) : slide.index;
+    const orderControls = count > 1 ? `
+      <div class="wt-exercise-order" role="group" aria-label="${_esc(label)} 종목 순서">
+        <button type="button" data-wt-sheet-card-action="move-exercise-card" data-date-key="${_esc(key)}" data-session-index="${sessionIndex}" data-exercise-index="${originalIndex}" data-order-direction="-1" aria-label="${_esc(label)} 앞 순서로 이동" ${slideIndex === 0 ? 'disabled' : ''}>← 앞으로</button>
+        <span>${slide.type === 'superset' ? '슈퍼세트' : '종목'} 순서 ${slideIndex + 1} / ${count}</span>
+        <button type="button" data-wt-sheet-card-action="move-exercise-card" data-date-key="${_esc(key)}" data-session-index="${sessionIndex}" data-exercise-index="${originalIndex}" data-order-direction="1" aria-label="${_esc(label)} 뒤 순서로 이동" ${slideIndex === count - 1 ? 'disabled' : ''}>뒤로 →</button>
+      </div>` : '';
     return `
     <div class="wt-day-exercise-slide" data-wt-day-exercise-slide="${slideIndex}" aria-label="${slideIndex + 1}/${count} ${_esc(label)}">
+      ${orderControls}
       ${card}
     </div>
   `;
@@ -460,6 +468,23 @@ export function _renderWorkoutTrackGraph(row, bestSet, context = null) {
 
 export function _renderWorkoutSetInput(key, sessionIndex, exerciseIndex, setIndex, field, value, label, step = '1') {
   return `<input type="text" inputmode="none" pattern="[0-9.]*" readonly min="0" step="${_esc(step)}" value="${_esc(value)}" aria-label="${_esc(label)}" data-wt-set-input data-wt-set-keyboard-input data-date-key="${_esc(key)}" data-session-index="${sessionIndex}" data-exercise-index="${exerciseIndex}" data-set-index="${setIndex}" data-field="${_esc(field)}" data-wt-set-clear-on-focus>`;
+}
+
+// Always mounted below the primary set controls; no expanded editor is needed.
+export function _renderWorkoutSetRirStepper(key, sessionIndex, exerciseIndex, setIndex, value) {
+  const rir = readWorkoutRir(value);
+  const attrs = `data-date-key="${_esc(key)}" data-session-index="${sessionIndex}" data-exercise-index="${exerciseIndex}" data-set-index="${setIndex}"`;
+  return `
+    <div class="wt-max-set-rir" data-wt-set-rir-row ${attrs}>
+      <span class="wt-max-set-rir-label">RIR</span>
+      <div class="wt-max-set-rir-control" role="group" aria-label="${setIndex + 1}세트 RIR 조절" title="미입력일 때는 RIR 2를 기준으로 조절합니다 (− 1.5 / + 2.5)">
+        <button type="button" data-wt-set-rir-step="-1" ${attrs} aria-label="${setIndex + 1}세트 RIR 0.5 줄이기"${rir === 0 ? ' disabled' : ''}>−</button>
+        <output data-wt-set-rir-value aria-live="polite" aria-atomic="true" aria-label="RIR ${rir == null ? '미입력' : rir}"${rir == null ? ' class="is-missing"' : ''}>${rir == null ? '미입력' : _esc(rir)}</output>
+        <button type="button" data-wt-set-rir-step="1" ${attrs} aria-label="${setIndex + 1}세트 RIR 0.5 늘리기"${rir === 10 ? ' disabled' : ''}>+</button>
+      </div>
+      <small class="wt-max-set-rir-hint">0.5씩</small>
+    </div>
+  `;
 }
 
 export function _workoutSetEditorKey(key, sessionIndex, exerciseIndex, setIndex) {
@@ -636,12 +661,13 @@ export function _renderWorkoutSetRowItem(set, context = {}) {
                <i class="wt-max-set-remove" aria-hidden="true">×</i>
                <i class="wt-max-set-expand" aria-hidden="true">⌄</i>`}
         </div>
+        ${editable ? _renderWorkoutSetRirStepper(key, sessionIndex, exerciseIndex, setIndex, set.rir) : ''}
         ${typeMenuOpen ? _renderWorkoutSetTypeMenu(key, sessionIndex, exerciseIndex, setIndex, setTypeValue, { set, sets }) : ''}
         ${expanded ? `
           <div class="wt-max-set-editor" data-wt-set-editor-panel="${_esc(_workoutSetEditorKey(key, sessionIndex, exerciseIndex, setIndex))}">
             <label><span>무게</span>${_renderWorkoutSetInput(key, sessionIndex, exerciseIndex, setIndex, 'kg', _workoutSheetInputValue(set.kg, 1), '무게', '0.5')}<em>kg</em></label>
             <label><span>횟수</span>${_renderWorkoutSetInput(key, sessionIndex, exerciseIndex, setIndex, 'reps', _workoutSheetInputValue(set.reps, 0), '반복', '1')}<em>회</em></label>
-            <label><span>RIR</span>${_renderWorkoutSetInput(key, sessionIndex, exerciseIndex, setIndex, 'rir', set.rir == null ? '2' : _fmtNum(set.rir, 1), 'RIR', '0.5')}</label>
+            <label><span>RIR</span>${_renderWorkoutSetInput(key, sessionIndex, exerciseIndex, setIndex, 'rir', readWorkoutRir(set.rir) ?? '', 'RIR', '0.5')}</label>
             <label class="wt-max-set-editor-rom"><span>ROM</span>${_renderWorkoutSetInput(key, sessionIndex, exerciseIndex, setIndex, 'romPct', rom, 'ROM', '1')}<em>%</em></label>
           </div>
         ` : ''}

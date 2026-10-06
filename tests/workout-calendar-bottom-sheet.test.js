@@ -254,7 +254,11 @@ test('sheet tap toggles directly between bar and full without drag or suppressio
   assert.doesNotMatch(calendarJs, /function _startWorkoutHomeSheetDrag/);
   assert.doesNotMatch(calendarJs, /_handleWorkoutHomeSheetHandleClick/);
   assert.doesNotMatch(calendarJs, /function _handleWorkoutHomeSheetKey/);
-  assert.doesNotMatch(calendarJs, /pointerdown|pointermove|pointerup|pointercancel/);
+  // RIR buttons protect an open keypad on pointerdown; that scoped input guard
+  // is not a sheet-drag controller. The sheet toggle itself remains tap-only.
+  assert.doesNotMatch(extractFunctionSource(calendarJs, '_toggleWorkoutHomeSheet'), /pointerdown|pointermove|pointerup|pointercancel/);
+  assert.doesNotMatch(calendarJs, /pointermove/);
+  assert.match(calendarJs, /addEventListener\('pointerdown', protectRirInput, true\)/);
   assert.doesNotMatch(calendarJs, /_consumeWorkoutHomeSuppressedClick/);
   assert.doesNotMatch(calendarJs, /_suppressWorkoutHomeSheetClick/);
   assert.doesNotMatch(calendarJs, /SuppressSheetClick|suppressNextSheetClick/);
@@ -640,7 +644,8 @@ test('workout keypad keeps digit entry local and commits once with an optimistic
   assert.doesNotMatch(markDirty, /saveDay|_updateWorkoutExerciseSetFromSheet|queue/i);
   assert.doesNotMatch(calendarJs, /_workoutSetKeyboardDraftQueues|_queueWorkoutSetKeyboardInputDraft|_flushWorkoutSetKeyboardInputDraft/);
   assert.match(commit, /skipRender: options\?\.skipRender === true/);
-  assert.match(complete, /\{ preserveSheetScroll: true, optimisticRender: true \}/);
+  assert.match(complete, /_commitWorkoutSetKeyboardInput\(input, \{ closeInline: true \}\)/);
+  assert.doesNotMatch(complete, /done = true|completedAt|mutateExercise/);
   assert.match(calendarJs, /if \(_workoutSetKeyboardActiveInput\(\)\) return;[\s\S]*document\.dispatchEvent\(new CustomEvent\('sheet:saved'\)\)/);
   assert.match(move, /const commitPromise = Promise\.resolve\(_commitWorkoutSetKeyboardInput/);
   assert.match(move, /const targetAlreadyMounted = inlineMove && !!_workoutSetKeyboardRenderedInput\(target\)/);
@@ -964,7 +969,7 @@ test('day sheet set inputs preserve keyboard next focus without restoring the ch
   assert.match(updateFn, /\{ preserveInput: true, sourceInput, ignoreSourceInput: true \}/);
 });
 
-test('day sheet added workout sets check the copied original and keep the copy unchecked', () => {
+test('day sheet added workout sets preserve the original and keep the copy unchecked', () => {
   const defaultsStart = calendarJs.indexOf('function _defaultWorkoutSheetSet');
   const defaultsEnd = calendarJs.indexOf('async function _mutateWorkoutExerciseFromSheet', defaultsStart);
   const updateStart = calendarJs.indexOf('async function _updateWorkoutExerciseSetFromSheet');
@@ -992,15 +997,12 @@ test('day sheet added workout sets check the copied original and keep the copy u
   assert.doesNotMatch(defaults, /completedAt|exerciseCompletedAt|wendlerRole|wendlerPct|supplementalKind|amrap/);
   assert.match(addFn, /copiedPreviousSet = sets\.length > 0/);
   assert.match(addFn, /const nextSet = _defaultWorkoutSheetSet\(sets\[sets\.length - 1\]\)/);
-  // +는 "방금 그 세트를 마쳤다"는 제스처: 완료(✓)는 원본 세트에 찍고
-  // 복사본은 수행 전이므로 미완료로 남긴다.
-  assert.match(addFn, /prevSet\.done = true/);
-  assert.match(addFn, /prevSet\.completedAt = Date\.now\(\)/);
+  // +는 입력 계획을 추가할 뿐 수행 완료를 기록하지 않는다.
+  assert.doesNotMatch(extractFunctionSource(calendarJs, '_addWorkoutExerciseSetFromSheet'), /\.done = true|completedAt =/);
   assert.doesNotMatch(addFn, /nextSet\.done = true/);
   assert.doesNotMatch(addFn, /nextSet\.completedAt/);
   assert.match(addFn, /sets\.push\(nextSet\)/);
   assert.match(addFn, /\{ preserveSheetScroll: true, optimisticRender: true \}/);
-  assert.match(addFn, /직전 세트를 완료로 표시하고 복사했어요/);
   assert.match(addFn, /직전 세트를 복사했어요/);
   assert.match(updateFn, /safeField === 'kg'[\s\S]*allowEmpty: true/);
   assert.match(updateFn, /safeField === 'reps'[\s\S]*allowEmpty: true/);

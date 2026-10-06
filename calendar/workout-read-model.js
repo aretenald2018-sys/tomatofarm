@@ -1,3 +1,4 @@
+import { readWorkoutRir } from './rir-stepper.js';
 import { toFiniteNumber as _num } from '../utils/number.js';
 import { getCache, getExList, getMuscleParts } from '../data.js';
 import { calcBurnedKcal, SUBPATTERN_TO_MAJOR } from '../calc.js';
@@ -142,7 +143,7 @@ export function _workoutRecordFromEntry(key, entry = {}) {
       kg: _num(set.kg),
       reps: _num(set.reps),
       rpe: _num(set.rpe),
-      rir: Number.isFinite(Number(set.rir)) ? Number(set.rir) : null,
+      rir: readWorkoutRir(set.rir),
       romPct: Number.isFinite(Number(set.romPct)) ? Number(set.romPct) : 100,
       setType: set.setType || 'main',
       wendlerRole: set.wendlerRole || '',
@@ -210,7 +211,7 @@ export function _exerciseRows(day, lookup = _buildWorkoutLookup(), key = null, o
           kg: _num(set.kg),
           reps: _num(set.reps),
           rpe: _num(set.rpe),
-          rir: Number.isFinite(Number(set.rir)) ? Number(set.rir) : null,
+          rir: readWorkoutRir(set.rir),
           romPct: Number.isFinite(Number(set.romPct)) ? Number(set.romPct) : 100,
           setType: set.setType || 'main',
           wendlerRole: set.wendlerRole || '',
@@ -225,7 +226,7 @@ export function _exerciseRows(day, lookup = _buildWorkoutLookup(), key = null, o
           kg: _workoutSheetRawNumber(set.kg),
           reps: _workoutSheetRawNumber(set.reps),
           rpe: _num(set.rpe),
-          rir: Number.isFinite(Number(set.rir)) ? Number(set.rir) : null,
+          rir: readWorkoutRir(set.rir),
           romPct: Number.isFinite(Number(set.romPct)) ? Number(set.romPct) : 100,
           setType: set.setType || 'main',
           wendlerRole: set.wendlerRole || '',

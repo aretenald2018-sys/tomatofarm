@@ -1,7 +1,5 @@
-import { toFiniteNumber as _num } from '../utils/number.js';
 import { hapticTick } from '../utils/haptics.js';
 import { showToast } from '../ui/toast.js';
-import { clearWorkoutExerciseCompletionMarker } from '../workout/exercise-completion.js';
 import {
   WORKOUT_SHEET_SET_INPUT_SELECTOR,
   _workoutHomeScrollRoot,
@@ -395,6 +393,7 @@ export function _commitWorkoutSetKeyboardInput(input, options = {}) {
     input,
     {
       nextInlineEditorKey,
+      preserveInlineEditor: options?.closeInline === false && !nextTarget,
       optimisticRender: true,
       skipRender: options?.skipRender === true,
     }
@@ -402,41 +401,8 @@ export function _commitWorkoutSetKeyboardInput(input, options = {}) {
 }
 
 export function _commitWorkoutSetKeyboardDone(input) {
-  if (!input?.matches?.(WORKOUT_SHEET_SET_INPUT_SELECTOR)) return Promise.resolve(false);
-  const meta = _workoutSetKeyboardMeta(input);
-  if (!meta) return false;
-  const safeField = ['kg', 'reps', 'rir', 'romPct'].includes(String(meta.field || '')) ? String(meta.field) : 'kg';
-  const dirty = input.getAttribute('data-wt-set-keyboard-dirty') === 'true';
-  const pendingValue = input.getAttribute('data-wt-set-keyboard-pending-value');
-  const value = pendingValue == null ? input.value : pendingValue;
-  input.removeAttribute('data-wt-set-keyboard-dirty');
-  input.removeAttribute('data-wt-set-keyboard-cursor');
-  input.removeAttribute('data-wt-set-keyboard-pending-value');
-  if (input.hasAttribute('data-wt-set-inline-input')) {
-    const inlineEditorKey = input.getAttribute('data-wt-inline-editor-key') || '';
-    if (inlineEditorKey && workoutDetailState.inlineSetEditor === inlineEditorKey) workoutDetailState.inlineSetEditor = null;
-  }
-  return workoutSetKeyboardRuntime.mutateExercise(meta.key, meta.sessionIndex, meta.exerciseIndex, (entry) => {
-    const sets = Array.isArray(entry.sets) ? entry.sets : [];
-    const targetIndex = Math.max(0, Math.floor(Number(meta.setIndex) || 0));
-    while (sets.length <= targetIndex) sets.push(workoutSetKeyboardRuntime.defaultSet(sets[sets.length - 1]));
-    const nextSet = { ...(sets[targetIndex] || workoutSetKeyboardRuntime.defaultSet(sets[sets.length - 1])) };
-    if (dirty) {
-      if (safeField === 'kg') nextSet.kg = workoutSetKeyboardRuntime.setWorkoutSheetNumber(value, _num(nextSet.kg), { min: 0, allowEmpty: true });
-      if (safeField === 'reps') nextSet.reps = workoutSetKeyboardRuntime.setWorkoutSheetNumber(value, _num(nextSet.reps), { min: 0, integer: true, allowEmpty: true });
-      if (safeField === 'rir') nextSet.rir = workoutSetKeyboardRuntime.setWorkoutSheetNumber(value, Number.isFinite(Number(nextSet.rir)) ? Number(nextSet.rir) : 2, { min: 0, max: 10 });
-      if (safeField === 'romPct') nextSet.romPct = workoutSetKeyboardRuntime.setWorkoutSheetNumber(value, Number.isFinite(Number(nextSet.romPct)) ? Number(nextSet.romPct) : 100, { min: 0, max: 100, integer: true });
-    }
-    const wasDone = nextSet.done === true;
-    nextSet.done = true;
-    if (!wasDone || !Number.isFinite(Number(nextSet.completedAt))) nextSet.completedAt = Date.now();
-    if (!Number.isFinite(Number(nextSet.romPct))) nextSet.romPct = 100;
-    if (!Number.isFinite(Number(nextSet.rir))) nextSet.rir = 2;
-    sets[targetIndex] = nextSet;
-    entry.sets = sets;
-    clearWorkoutExerciseCompletionMarker(entry);
-    return true;
-  }, { preserveSheetScroll: true, optimisticRender: true });
+  // 키패드의 ✓는 입력 확정이다. 수행 완료는 행의 체크/종목완료만 담당한다.
+  return _commitWorkoutSetKeyboardInput(input, { closeInline: true });
 }
 
 export function _completeWorkoutSetKeyboardInput() {
@@ -446,10 +412,20 @@ export function _completeWorkoutSetKeyboardInput() {
     return Promise.resolve(false);
   }
   _resetWorkoutSetKeyboardDomLock();
+  const hadPendingValue = input.getAttribute('data-wt-set-keyboard-dirty') === 'true';
   const commitPromise = Promise.resolve(_commitWorkoutSetKeyboardDone(input))
+    .then((result) => {
+      // Earlier field handoffs already saved but deferred the app notification
+      // while the keypad was open. Closing an unchanged field flushes that
+      // notification without another data write or a completion timestamp.
+      if (!hadPendingValue && !_workoutSetKeyboardActiveInput() && typeof document !== 'undefined') {
+        document.dispatchEvent(new CustomEvent('sheet:saved', { detail: { renderHandled: true } }));
+      }
+      return result;
+    })
     .catch((e) => {
       console.warn('[workout-calendar] set keyboard complete failed:', e);
-      showToast('세트 완료에 실패했어요', 2200, 'error');
+      showToast('입력 저장에 실패했어요', 2200, 'error');
       return false;
     });
   _clearWorkoutSetKeyboardSurface(input);
@@ -505,6 +481,7 @@ export function _bindWorkoutSetSwipeDelete(sheet) {
     'textarea',
     'label',
     '[data-wt-set-type-menu]',
+    '[data-wt-set-rir-row]',
   ].join(',');
   sheet.addEventListener('touchstart', (event) => {
     if (event.touches.length !== 1) return;

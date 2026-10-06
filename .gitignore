@@ -183,5 +183,8 @@ android/wear/src/main/res/values/**
 mockups/
 mockup-*.html
 
+# Locally generated synthetic card-order browser fixture.
+/tests/fixtures/card-order-local.html
+
 # Windows env var가 bash에서 expand 안 돼 생긴 잔재
 %SystemDrive%/

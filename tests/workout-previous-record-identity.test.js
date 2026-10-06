@@ -1,3 +1,4 @@
+import { readWorkoutRir } from '../calendar/rir-stepper.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -25,7 +26,7 @@ function extractFunctionSource(source, name) {
 // 원본 소스를 그대로 떼어와 최소 스텁 위에서 실행한다.
 function buildPreviousRecordApi(cache = {}) {
   const factory = new Function('stubs', `
-    const { cache } = stubs;
+    const { cache, readWorkoutRir } = stubs;
     function _num(value) {
       const number = Number(value);
       return Number.isFinite(number) ? number : 0;
@@ -51,7 +52,7 @@ function buildPreviousRecordApi(cache = {}) {
     ${extractFunctionSource(calendarJs, '_previousWorkoutRecordForRow')}
     return { _workoutEntryMatchesRow, _previousWorkoutRecordForRow };
   `);
-  return factory({ cache });
+  return factory({ cache, readWorkoutRir });
 }
 
 const ARSENAL = { exerciseId: 'ex_arsenal_fly', movementId: 'chest_fly', name: 'Arsenal 체스트플라이 머신 아스날' };

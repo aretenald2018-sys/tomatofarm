@@ -1,4 +1,4 @@
-﻿import { readAppCssSync } from './helpers/css-source.js';
+import { readAppCssSync } from './helpers/css-source.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -19,6 +19,7 @@ const calendarJs = [
   '../calendar/detail-template.js',
   '../calendar/sheet-state.js',
   '../calendar/set-keyboard.js',
+  '../calendar/rir-stepper.js',
 ].map(path => readFileSync(new URL(path, import.meta.url), 'utf8')).join('\n\n');
 const setPresentationJs = readFileSync(new URL('../workout/set-presentation.js', import.meta.url), 'utf8');
 const appJs = readFileSync(new URL('../app.js', import.meta.url), 'utf8');
@@ -61,6 +62,13 @@ function extractConstArraySource(source, name) {
 
 function buildHarnessScript() {
   const functionNames = [
+    'readWorkoutRir',
+    'stepWorkoutRir',
+    '_renderWorkoutSetRirStepper',
+    '_beginWorkoutRirGesture',
+    '_deferWorkoutRirGestureRefresh',
+    '_patchWorkoutSetRirControl',
+    '_stepWorkoutSetRirFromSheet',
     '_workoutSheetInputValue',
     '_workoutSheetRawNumber',
     '_workoutSetEditorKey',
@@ -158,6 +166,7 @@ function buildHarnessScript() {
     let _workoutHomeSheetState = 'bar';
     // 하네스는 항상 기록 시트가 열린 상태를 세운다(detail).
     let _workoutHomeView = 'detail';
+    let _workoutRirGesture = null;
     const _workoutOpenSetTypeMenus = new Set();
     const _workoutExpandedSetEditors = new Set();
     // 달력 분할 이후 이 상태들은 calendar/detail-template.js와 calendar/set-keyboard.js의
@@ -283,6 +292,7 @@ function buildHarnessScript() {
     window.__restTimelineCalls = [];
     function _isTodayKey(key) { return key === window.__todayKey; }
     function _isSameWorkoutStateDate() { return true; }
+    function _mountWorkoutSummaryElapsedTimers() {}
     function wtRefreshWorkoutTimelineDuration(context) { window.__restTimelineCalls.push(context); }
     function wtRestTimerStart(seconds, context, meta) { window.__restTimerStarts.push({ context, meta }); }
     function wtRestTimerClearSetRecord(entryIdx, setIdx) { window.__restTimerClears.push({ entryIdx, setIdx }); }
@@ -454,7 +464,7 @@ test('minimal set row opens right editor and left M/W/D/F menu in a browser DOM'
   assert.equal(result.collapsed.hasEditor, false);
   assert.equal(result.collapsed.typeText, '1메인');
   assert.deepEqual(result.collapsed.valueText, ['40kg', '10회']);
-  assert.equal(result.collapsed.hasRirText, false);
+  assert.equal(result.collapsed.hasRirText, true);
   assert.equal(result.collapsed.hasRomText, false);
   assert.deepEqual(result.expanded.fields, ['kg', 'reps', 'rir', 'romPct']);
   assert.equal(result.expanded.editorOpen, true);
@@ -491,6 +501,7 @@ test('mobile set row exposes editable kg/reps values and swipe delete targets in
       removeLabel: remove?.getAttribute('aria-label') ?? '',
       removeBeforeExpand: !!(remove && expand && remove.compareDocumentPosition(expand) & Node.DOCUMENT_POSITION_FOLLOWING),
       rowHeight: row?.getBoundingClientRect().height ?? 0,
+      rirHeight: row?.querySelector('[data-wt-set-rir-row]')?.getBoundingClientRect().height ?? 0,
       controlHeight: check?.getBoundingClientRect().height ?? 0,
     };
   });
@@ -502,9 +513,9 @@ test('mobile set row exposes editable kg/reps values and swipe delete targets in
   assert.equal(result.removeAction, '');
   assert.match(result.removeLabel, /세트 삭제/);
   assert.equal(result.removeBeforeExpand, true);
-  assert.equal(result.rowHeight, 38);
+  assert.equal(result.rowHeight - result.rirHeight, 38);
   assert.equal(result.controlHeight, 32);
-  assert.ok(Math.abs((result.rowHeight / 54) - 0.7) < 0.01);
+  assert.ok(result.rirHeight >= 44, 'always-visible RIR controls add a full touch row');
 });
 
 test('mobile set row inline editing clears values and only right-to-left swipe removes sets', async () => {
@@ -928,8 +939,8 @@ test('custom workout set keypad enters values and moves left or right across inl
   )));
   assert.equal(result.hidden.sets[0].kg, 80);
   assert.equal(result.hidden.sets[0].reps, 15);
-  assert.equal(result.hidden.sets[0].done, true);
-  assert.equal(result.hidden.firstCompletedAtIsNumber, true);
+  assert.equal(result.hidden.sets[0].done, false);
+  assert.equal(result.hidden.firstCompletedAtIsNumber, false);
   assert.deepEqual(result.hidden.sets[1], { kg: 40, reps: 12, rir: 2, romPct: 100, setType: 'main', done: false });
   assert.equal(result.hidden.keyboardOpenClass, false);
   assert.equal(result.hidden.sheetPadded, false);
@@ -1036,9 +1047,9 @@ test('previous workout card copies every set value but resets completion state',
   assert.equal(result.undoToast.message, '복사 전 세트로 되돌렸어요');
 });
 
-test('add-set row checks the copied original and leaves the new copy unchecked', async () => {
+test('add-set row preserves original completion and leaves the new copy unchecked', async () => {
   const result = await runHarness(async () => {
-    // 시나리오 1: 원본이 미완료 상태에서 + — 원본에 ✓, 복사본은 미완료.
+    // 시나리오 1: +는 원본과 복사본을 모두 미완료로 유지한다.
     window.__entry = {
       name: '벤치프레스',
       exerciseId: 'bench-press',
@@ -1070,16 +1081,16 @@ test('add-set row checks the copied original and leaves the new copy unchecked',
     };
   });
 
-  // 시나리오 1: 원본에 ✓와 완료시각이 찍히고, 복사본은 값만 복사된 미완료 행.
+  // 시나리오 1: 완료 상태는 건드리지 않고 값만 복사한다.
   const first = result.uncheckedOriginal;
   assert.equal(first.sets.length, 2);
-  assert.equal(first.sets[0].done, true, '+는 방금 수행한 원본 세트를 완료로 표시한다');
-  assert.ok(Number(first.sets[0].completedAt) > 0, '원본에 완료 시각이 기록된다');
+  assert.equal(first.sets[0].done, false, '+는 원본을 완료 처리하지 않는다');
+  assert.equal('completedAt' in first.sets[0], false, '원본에 완료 시각을 만들지 않는다');
   assert.equal(first.sets[1].kg, 60, '직전 세트 무게를 복사한다');
   assert.equal(first.sets[1].reps, 10, '직전 세트 횟수를 복사한다');
   assert.equal(first.sets[1].done, false, '복사본은 미완료로 남아야 한다');
   assert.equal('completedAt' in first.sets[1], false, '복사본에 완료 시각을 기록하지 않는다');
-  assert.equal(first.toast.message, '직전 세트를 완료로 표시하고 복사했어요');
+  assert.equal(first.toast.message, '직전 세트를 복사했어요');
 
   // 시나리오 2: 이미 완료된 원본은 그대로(완료시각 유지), 복사본만 추가.
   const second = result.doneOriginal;

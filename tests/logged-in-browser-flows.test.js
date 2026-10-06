@@ -116,10 +116,11 @@ ${moduleSource}
 // 실제 모바일 탭. 커스텀 키패드는 touchstart에서 preventDefault로 포커스를
 // 지키기 때문에 마우스 클릭이 아니라 터치로 눌러야 실제 경로를 탄다.
 async function tapElement(page, selector) {
-  const box = await page.evaluate((sel) => {
+  const box = await page.evaluate(async (sel) => {
     const el = document.querySelector(sel);
     if (!el) return null;
     el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     const rect = el.getBoundingClientRect();
     return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, width: rect.width, height: rect.height };
   }, selector);
@@ -637,13 +638,13 @@ test('set keypad commits a dirty value on field switch without rerendering the r
 
     // 키패드 ✓로 마무리하면 그때는 정상적으로 렌더/저장 신호가 나가야 한다.
     await tapElement(page, '[data-wt-set-keyboard] [data-wt-set-keyboard-action="done"]');
-    await page.waitForFunction(() => window.__qa.storedSets()[0]?.done === true, { timeout: 5000 });
+    await page.waitForFunction(() => !document.querySelector('[data-wt-set-keyboard]'), { timeout: 5000 });
     await page.waitForFunction(() => window.__qaSheetSavedEvents > 0, { timeout: 5000 });
     const afterDone = await page.evaluate(() => ({
       ...window.__qa.activeSnapshot(),
       keyboardMounted: !!document.querySelector('[data-wt-set-keyboard]'),
     }));
-    assert.deepEqual(afterDone.sets[0], { kg: 95, reps: 10, done: true });
+    assert.deepEqual(afterDone.sets[0], { kg: 95, reps: 10, done: false });
     assert.equal(afterDone.keyboardMounted, false);
     assert.ok(afterDone.sheetSavedEvents > 0, 'sheet:saved should fire once the keypad is closed');
 
@@ -681,8 +682,8 @@ test('tapping the add/copy-set button while a set value is still dirty keeps the
 
     const sets = await page.evaluate(() => window.__qa.storedSets());
     assert.deepEqual(sets[0], { kg: 10, reps: 15, done: false }, '치던 횟수 15가 세트 추가 후에도 남아야 한다');
-    // +는 방금 수행한 원본 세트에 ✓를 찍고, 복사본은 미완료로 남긴다.
-    assert.deepEqual(sets[1], { kg: 80, reps: 8, done: true }, '복사 원본 세트가 완료로 표시돼야 한다');
+    // +는 원본의 완료 상태를 보존하고 복사본도 미완료로 둔다.
+    assert.deepEqual(sets[1], { kg: 80, reps: 8, done: false }, '복사 원본의 완료 상태를 변경하면 안 된다');
     assert.deepEqual(sets[2], { kg: 80, reps: 8, done: false }, '복사본은 자동 체크되지 않아야 한다');
 
     assert.deepEqual(harness.pageErrors, []);
@@ -726,14 +727,15 @@ test('expanded set editor commits each field on direct tap handoff so done keeps
     // RIR 2 입력 → 키패드 ✓(완료).
     await tapElement(page, '[data-wt-set-keyboard] [data-wt-set-keyboard-key="2"]');
     await tapElement(page, '[data-wt-set-keyboard] [data-wt-set-keyboard-action="done"]');
-    await page.waitForFunction(() => window.__qa.storedFullSet(1)?.done === true, { timeout: 5000 });
+    await page.waitForFunction(() => !document.querySelector('[data-wt-set-keyboard]'), { timeout: 5000 });
 
     // 준수 증상 회귀: 마지막 칸(RIR)만 남고 무게/횟수가 비면 안 된다.
     const saved = await page.evaluate(() => window.__qa.storedFullSet(1));
     assert.equal(saved.kg, 10, '무게가 확인(완료) 후에도 남아 있어야 한다');
     assert.equal(saved.reps, 15, '횟수가 확인(완료) 후에도 남아 있어야 한다');
     assert.equal(saved.rir, 2);
-    assert.equal(saved.done, true);
+    assert.equal(saved.done, false);
+    assert.equal(saved.completedAt, undefined);
 
     assert.deepEqual(harness.pageErrors, []);
     assert.deepEqual(harness.blockedRequests, []);
@@ -960,11 +962,11 @@ test('superset link merges two cards with interleaved sets and drives check/add/
     await tapElement(page, '[data-wt-day-sheet] .wt-ss-card [data-wt-set-done-toggle][data-exercise-index="1"][data-set-index="0"]');
     await page.waitForFunction(() => window.__qa.supersetSnapshot().entrySets[1][0].done === true, { timeout: 8000 });
 
-    // 바벨로우 + 행: 직전 세트 복사(원본 체크 + 복사본 미체크)도 통합 카드에서 동작.
+    // 바벨로우 + 행: 원본 완료 상태를 보존하고 미완료 세트를 복사한다.
     await tapElement(page, '[data-wt-day-sheet] .wt-ss-set-add-row[data-exercise-index="1"]');
     await page.waitForFunction(() => window.__qa.supersetSnapshot().entrySets[1].length === 3, { timeout: 8000 });
     const added = await page.evaluate(() => window.__qa.supersetSnapshot());
-    assert.equal(added.entrySets[1][1].done, true, '+는 복사 원본(직전 세트)을 완료로 표시한다');
+    assert.equal(added.entrySets[1][1].done, false, '+는 복사 원본의 완료 상태를 변경하지 않는다');
     assert.deepEqual(added.entrySets[1][2], { kg: 60, reps: 10, done: false }, '복사본은 값만 복사된 미완료 행');
     assert.deepEqual(added.entrySets[0].map(set => set.done), [false, false], '벤치 세트는 건드리지 않는다');
 

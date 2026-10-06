@@ -1,3 +1,4 @@
+import { readWorkoutRir, stepWorkoutRir } from './calendar/rir-stepper.js';
 import { toFiniteNumber as _num } from './utils/number.js';
 import { escapeHtml as _esc } from './utils/escape-html.js';
 import { sumDayNutrient } from './diet/day-nutrition.js';
@@ -63,7 +64,13 @@ import {
   updateWorkoutCalendarState,
 } from './workout/navigation-stack.js';
 import { normalizeWorkoutExerciseSelectionDetail } from './workout/exercise-entry-actions.js';
-import { wtOpenExerciseEditor, wtOpenExercisePicker } from './workout/exercises.js';
+import {
+  moveWorkoutExerciseCard,
+  remapWorkoutExercisePositionKey,
+  remapWorkoutRestOrigin,
+  remapWorkoutRestRecords,
+} from './workout/exercise-card-order.js';
+import { wtOpenExerciseEditor, wtOpenExercisePicker, wtRemapWorkoutExerciseCardReferences } from './workout/exercises.js';
 import { wtMountRunningSession, wtOpenRunningSession } from './workout/running-session.js';
 import { openWorkoutSeasonWizard } from './workout/season-manager.js';
 import { loadWorkoutDate as loadWorkoutSessionDate } from './workout/load.js';
@@ -71,7 +78,7 @@ import { tm2OpenBenchmarkSettings, tm2OpenBoard } from './workout/test-v2/entry.
 import {
   formatWorkoutTrackValue,
 } from './workout/track-metrics.js';
-import { formatWorkoutCompletionElapsed } from './workout/completion-metrics.js';
+import { workoutRestSummary } from './workout/completion-metrics.js';
 import {
   clearWorkoutExerciseCompletionMarker,
   isCompletableWorkoutExerciseSet,
@@ -151,6 +158,7 @@ import {
   _captureWorkoutSheetScrollState,
   _positionOpenWorkoutSetTypeMenu,
   _rememberRenderedWorkoutSheetCarousel,
+  _rememberWorkoutSheetCarouselSlide,
   _rememberWorkoutSheetCarouselState,
   _requestWorkoutSheetPendingCarouselFocus,
   _restoreRememberedWorkoutSheetCarousel,
@@ -528,6 +536,7 @@ async function _syncWorkoutRestAfterSheetSet(key, sessionIndex, exerciseIndex, s
   // 메타데이터만 쓴다. renderHandled 없이 저장하면 sheet:saved → renderAll이
   // 시트를 다시 그려 완료 체크 때마다 화면이 맨 위로 튀고 깜빡인다.
   await saveWorkoutDay({ silent: true, renderHandled: true });
+  _mountWorkoutSummaryElapsedTimers();
   return true;
 }
 
@@ -632,7 +641,7 @@ async function _saveWorkoutHomeSessionResult(key, result, options = {}) {
     // next keypad field. Avoid app-level renderAll() replacing that live input;
     // the final field commit will dispatch the normal saved event when idle.
     if (_workoutSetKeyboardActiveInput()) return;
-    if (patchedInPlace) {
+    if (patchedInPlace || options?.renderHandled === true) {
       // 완료 체크처럼 부분 갱신이 이미 화면을 맞춘 저장에 app.js의 sheet:saved
       // 리스너(renderAll)까지 태우면 시트가 통째로 교체돼 스크롤이 0으로 튀고
       // 깜빡인다. 위젯 동기화 같은 다른 리스너는 계속 들어야 하므로 이벤트는
@@ -1219,6 +1228,7 @@ function _registerWorkoutRunningMapPayload(row = {}) {
 }
 
 configureWorkoutDetailTemplate({
+  getRestSummary: wx => _workoutRestSummaryForSheet(wx?.key, wx?.sessionIndex, wx?.day),
   getSelectedKey: () => _workoutHomeSelectedKey,
   getSessionIndex: () => _workoutHomeSessionIndex,
   setSessionIndex: (index) => { _workoutHomeSessionIndex = index; },
@@ -1275,10 +1285,23 @@ function _showWorkoutRunningRoute(control, mapId) {
   return true;
 }
 
+function _workoutRestSummaryForSheet(key, sessionIndex, session = null) {
+  const index = Math.max(0, Math.floor(Number(sessionIndex) || 0));
+  const active = _isSameWorkoutStateDate(key)
+    && Math.max(0, Math.floor(Number(S.workout?.sessionIndex) || 0)) === index;
+  const source = active && S.workout.restTimer?.running
+    ? S.workout
+    : (session || _workoutHomeSessionAt(key, index).session);
+  return workoutRestSummary(source, { activeRest: active ? S.workout.restTimer : null });
+}
+
 function _syncWorkoutSummaryElapsedTimers(root = document) {
   const scope = root?.querySelectorAll ? root : document;
-  scope.querySelectorAll('[data-wt-last-complete-elapsed]').forEach((node) => {
-    node.textContent = formatWorkoutCompletionElapsed(node.getAttribute('data-completed-at'));
+  scope.querySelectorAll('[data-wt-rest-summary]').forEach((node) => {
+    const rest = _workoutRestSummaryForSheet(node.getAttribute('data-date-key'), node.getAttribute('data-session-index'));
+    node.textContent = rest.value;
+    if (rest.running) node.setAttribute('data-wt-rest-live', 'true');
+    else node.removeAttribute('data-wt-rest-live');
   });
 }
 
@@ -1294,10 +1317,10 @@ function _mountWorkoutSummaryElapsedTimers(root = document) {
   const scope = root?.querySelectorAll ? root : document;
   _syncWorkoutSummaryElapsedTimers(scope);
   _clearWorkoutSummaryElapsedTimer();
-  if (!document.querySelector('[data-wt-last-complete-elapsed]')) return;
+  if (!document.querySelector('[data-wt-rest-live]')) return;
   const timerApi = typeof window !== 'undefined' ? window : globalThis;
   _workoutSummaryElapsedTimer = timerApi.setInterval?.(() => {
-    if (!document.querySelector('[data-wt-last-complete-elapsed]')) {
+    if (!document.querySelector('[data-wt-rest-live]')) {
       _clearWorkoutSummaryElapsedTimer();
       return;
     }
@@ -1350,6 +1373,48 @@ function _renderWorkoutSheetAfterSetEdit() {
   return true;
 }
 
+// A save echo can arrive between pointerdown and click, or between rapid taps.
+// Defer only this sheet's remote refresh until the short RIR gesture is quiet;
+// then reconcile the latest cache normally (never replay an old save snapshot).
+let _workoutRirGesture = null;
+function _beginWorkoutRirGesture(key, sessionIndex, held = false) {
+  if (typeof window === 'undefined') return;
+  const previous = _workoutRirGesture;
+  if (previous?.timer != null) window.clearTimeout(previous.timer);
+  previous?.release?.();
+  const gesture = {
+    key, sessionIndex: Number(sessionIndex), until: held ? Infinity : Date.now() + 500,
+    needsRefresh: previous?.key === key && previous?.sessionIndex === Number(sessionIndex) && previous.needsRefresh,
+    timer: null,
+  };
+  _workoutRirGesture = gesture;
+  if (held) {
+    const finish = () => {
+      if (_workoutRirGesture === gesture) _beginWorkoutRirGesture(key, sessionIndex);
+    };
+    const events = ['pointerup', 'pointercancel', 'mouseup', 'blur'];
+    events.forEach(type => window.addEventListener?.(type, finish, true));
+    gesture.release = () => events.forEach(type => window.removeEventListener?.(type, finish, true));
+    return;
+  }
+  gesture.timer = window.setTimeout(() => {
+    if (_workoutRirGesture !== gesture) return;
+    _workoutRirGesture = null;
+    if (gesture.needsRefresh && key === _workoutHomeSelectedKey && gesture.sessionIndex === _workoutHomeSessionIndex) {
+      refreshWorkoutSheetForDataUpdate([key]);
+    }
+  }, 500);
+}
+
+function _deferWorkoutRirGestureRefresh(keys) {
+  const gesture = _workoutRirGesture;
+  if (!gesture || Date.now() >= gesture.until
+    || gesture.key !== _workoutHomeSelectedKey || gesture.sessionIndex !== _workoutHomeSessionIndex
+    || keys.some(key => key !== gesture.key)) return false;
+  gesture.needsRefresh = true;
+  return true;
+}
+
 // data:workouts-updated 용 부분 갱신. f74aff5는 sheet:saved → renderAll 경로만
 // 막았는데, 저장이 성공하면 Firestore 실시간 리스너가 같은 날짜의 에코를 보내고
 // (data/data-load.js), app.js의 data:workouts-updated 리스너가 워크아웃 라우트를
@@ -1370,6 +1435,7 @@ export function refreshWorkoutSheetForDataUpdate(changedDateKeys = []) {
   // 포커스를 잃는 쪽이 표시 지연보다 나쁘다 — _saveWorkoutHomeSessionResult의
   // 기존 가드와 같은 판단이고, 키패드를 닫는 커밋이 곧 갱신을 이어받는다.
   if (_workoutSetKeyboardActiveInput()) return true;
+  if (_deferWorkoutRirGestureRefresh(keys)) return true;
   return _patchWorkoutSheetSetSurfaces();
 }
 
@@ -1730,6 +1796,8 @@ function _runWorkoutHomeSheetCardAction(action, control) {
       return true;
     case 'add-exercise-set':
       return _addWorkoutExerciseSetFromSheet(key, sessionIndex, exerciseIndex);
+    case 'move-exercise-card':
+      return _moveWorkoutExerciseCardFromSheet(key, sessionIndex, exerciseIndex, control?.getAttribute?.('data-order-direction'));
     case 'copy-previous-sets':
       return _copyPreviousWorkoutExerciseSetsFromSheet(key, sessionIndex, exerciseIndex);
     case 'edit-set-field':
@@ -1878,6 +1946,19 @@ function _bindWorkoutHomeSheetActions(root) {
   const sheet = root?.querySelector?.('[data-wt-day-sheet]');
   if (!sheet) return;
   _bindWorkoutSetSwipeDelete(sheet);
+  const protectRirInput = (event) => {
+    const button = event.target?.closest?.('[data-wt-set-rir-step]')
+      || event.target?.closest?.('[data-wt-sheet-card-action="move-exercise-card"]');
+    if (!button || !sheet.contains(button) || button.disabled) return;
+    if (button.hasAttribute('data-wt-set-rir-step')) {
+      _beginWorkoutRirGesture(button.getAttribute('data-date-key'), button.getAttribute('data-session-index'), true);
+    }
+    // Keep the current keypad input, cursor and unsaved draft through the tap.
+    // The click below changes only RIR; it must not trigger a blur commit.
+    if (_workoutSetKeyboardActiveInput() && event.cancelable) event.preventDefault();
+  };
+  sheet.addEventListener('pointerdown', protectRirInput, true);
+  sheet.addEventListener('mousedown', protectRirInput, true);
   sheet.addEventListener('focusin', (event) => {
     const target = event.target instanceof Element ? event.target : event.target?.parentElement;
     const input = target?.closest?.(WORKOUT_SHEET_SET_INPUT_SELECTOR);
@@ -1959,11 +2040,15 @@ function _bindWorkoutHomeSheetActions(root) {
     const target = event.target instanceof Element ? event.target : event.target?.parentElement;
     const input = target?.closest?.(WORKOUT_SHEET_SET_INPUT_SELECTOR);
     if (!input || !sheet.contains(input)) return;
+    if (event.relatedTarget?.closest?.('[data-wt-set-rir-step]')) return;
+    if (event.relatedTarget?.closest?.('[data-wt-sheet-card-action="move-exercise-card"]')) return;
     window.setTimeout?.(() => {
       const active = document.activeElement;
       if (active?.matches?.(WORKOUT_SHEET_SET_INPUT_SELECTOR)) return;
       if (active?.closest?.('[data-wt-set-keyboard]')) return;
       if (active?.closest?.('[data-wt-set-edit-field]')) return;
+      if (active?.closest?.('[data-wt-set-rir-step]')) return;
+      if (active?.closest?.('[data-wt-sheet-card-action="move-exercise-card"]')) return;
       _hideWorkoutSetKeyboard({ commit: true });
     }, 0);
   }, true);
@@ -1992,6 +2077,15 @@ function _bindWorkoutHomeSheetActions(root) {
   }, true);
   sheet.addEventListener('click', (event) => {
     const target = event.target instanceof Element ? event.target : event.target?.parentElement;
+    const rirStep = target?.closest?.('[data-wt-set-rir-step]');
+    if (rirStep && sheet.contains(rirStep)) {
+      event.preventDefault();
+      event.stopPropagation();
+      Promise.resolve(_stepWorkoutSetRirFromSheet(rirStep)).catch(error => {
+        console.warn('[workout-calendar] RIR step failed:', error);
+      });
+      return;
+    }
     // 입력 도중 시트의 버튼(지난 기록 복사·세트 추가·완료 토글·세트 삭제 등)을
     // 바로 탭해도 치던 값이 사라지면 안 된다. 액션이 상태를 읽기 전에 dirty
     // 입력을 커밋한다 — 커밋의 상태 반영은 첫 await 전에 동기로 끝나므로,
@@ -2609,6 +2703,165 @@ async function _mutateWorkoutExerciseFromSheet(key, sessionIndex, exerciseIndex,
   return true;
 }
 
+// Reorder whole carousel cards, keeping superset membership and every set intact.
+// The sheet save path applies its optimistic cache/state before its first await;
+// positional references must move in that same synchronous turn.
+let _workoutCardOrderRevision = 0;
+async function _moveWorkoutExerciseCardFromSheet(key, sessionIndex, exerciseIndex, direction) {
+  const targetSessionIndex = Number(sessionIndex);
+  const sourceIndex = Number(exerciseIndex);
+  const step = Number(direction);
+  if (!_parseDateKey(key) || key !== _workoutHomeSelectedKey
+    || !Number.isInteger(targetSessionIndex) || targetSessionIndex !== _workoutHomeSessionIndex
+    || !Number.isInteger(sourceIndex) || ![-1, 1].includes(step)) return false;
+  try {
+    const input = _workoutSetKeyboardActiveInput();
+    const inputState = _captureWorkoutSheetInputState(input);
+    const scrollState = inputState || _captureWorkoutSheetScrollState();
+    if (input?.getAttribute?.('data-wt-set-keyboard-dirty') === 'true') {
+      // The normal click owner has already done this. Keep direct/keyboard
+      // callers safe too; the value reaches the local cache synchronously.
+      Promise.resolve(_commitWorkoutSetKeyboardInput(input, { closeInline: false, skipRender: true }))
+        .catch(error => console.warn('[workout-calendar] reorder input commit failed:', error));
+    }
+    const { day, session, index } = _workoutHomeSessionAt(key, targetSessionIndex, 1);
+    const rows = _workoutMetrics(key, session, 70, _buildWorkoutLookup(), { includeDraftExercises: true }).exercises;
+    const cards = _workoutExerciseSlideModels(rows).map(slide => (
+      (slide.type === 'superset' ? slide.rows : [slide.row]).map(row => Number(row.originalIndex))
+    ));
+    const moved = moveWorkoutExerciseCard(session.exercises, cards, sourceIndex, step);
+    if (!moved.changed) return false;
+    const result = upsertWorkoutSession(day, { ...session, exercises: moved.exercises }, index, { now: Date.now() });
+    if (Array.isArray(day.restBetweenSets)) {
+      result.aggregate.restBetweenSets = remapWorkoutRestRecords(day.restBetweenSets, result.aggregate.exercises);
+    }
+    const remapKey = value => remapWorkoutExercisePositionKey(value, key, index, moved.entryIndexMap, moved.rowIndexMap);
+    for (const set of [_workoutExpandedSetEditors, _workoutOpenSetTypeMenus, _workoutOpenSupersetMenus, _workoutDetailCollapsed]) {
+      const next = [...set].map(remapKey);
+      set.clear();
+      next.forEach(value => set.add(value));
+    }
+    const stamps = [..._workoutExerciseCompletionStamps].map(([id, stamp]) => [remapKey(id), stamp]);
+    _workoutExerciseCompletionStamps.clear();
+    stamps.forEach(([id, stamp]) => _workoutExerciseCompletionStamps.set(id, stamp));
+    workoutDetailState.editingCardId = remapKey(workoutDetailState.editingCardId);
+    workoutDetailState.inlineSetEditor = remapKey(workoutDetailState.inlineSetEditor);
+    const activeSessionIndex = Number(S.workout?.sessionIndex) || 0;
+    if (_isSameWorkoutStateDate(key) && activeSessionIndex === index) {
+      const rest = S.workout.restTimer;
+      if (rest?.origin) rest.origin = remapWorkoutRestOrigin(rest.origin, moved.entryIndexMap);
+      else if (rest && Number.isInteger(rest.entryIdx)) rest.entryIdx = moved.entryIndexMap[rest.entryIdx] ?? rest.entryIdx;
+    }
+    _hideWorkoutSetKeyboard({ commit: false });
+    const revision = ++_workoutCardOrderRevision;
+    const savePromise = _saveWorkoutHomeSessionResult(key, result, {
+      sessionIndex: index, optimisticRender: true, skipRender: true, renderHandled: true,
+    });
+    if (_isSameWorkoutStateDate(key) && activeSessionIndex === index) {
+      wtRemapWorkoutExerciseCardReferences(moved.entryIndexMap);
+    }
+    // Save/state is already updated here. Render once; follow the same card to
+    // its new slot rather than restoring an old positional carousel snapshot.
+    _rememberWorkoutSheetCarouselSlide(key, index, moved.targetCardIndex);
+    _renderWorkoutSheetAfterSetEdit();
+    // Immediate + guarded next-frame restore only: delayed add-card carousel
+    // callbacks would carry obsolete indexes through rapid consecutive moves.
+    const nextScroll = { ...scrollState, carouselSlideIndex: moved.targetCardIndex, carouselScrollLeft: null };
+    _restoreWorkoutSheetScrollState(nextScroll);
+    _rememberWorkoutSheetCarouselState(key, index);
+    const restoreFocus = () => {
+      if (revision !== _workoutCardOrderRevision || key !== _workoutHomeSelectedKey || index !== _workoutHomeSessionIndex) return;
+      const sheet = _workoutHomeScrollRoot()?.querySelector?.('[data-wt-day-sheet]');
+      const nextEntryIndex = moved.entryIndexMap[Number(inputState?.exerciseIndex)];
+      const field = inputState?.field;
+      const focused = inputState && Number.isInteger(nextEntryIndex)
+        ? sheet?.querySelector?.(`[data-wt-set-input][data-exercise-index="${nextEntryIndex}"][data-set-index="${Number(inputState.setIndex)}"][data-field="${_workoutSheetSelectorValue(field)}"]`)
+        : null;
+      if (focused) {
+        focused.removeAttribute('data-wt-set-clear-on-focus');
+        focused.focus({ preventScroll: true });
+        if (inputState.selectionStart != null && inputState.selectionEnd != null) {
+          focused.setSelectionRange?.(inputState.selectionStart, inputState.selectionEnd);
+        }
+      } else {
+        const slide = sheet?.querySelector?.(`[data-wt-day-exercise-slide="${moved.targetCardIndex}"]`);
+        const button = slide?.querySelector?.(`[data-order-direction="${step}"]:not(:disabled)`)
+          || slide?.querySelector?.('[data-order-direction]:not(:disabled)');
+        button?.focus?.({ preventScroll: true });
+      }
+      _restoreWorkoutSheetScrollState(nextScroll);
+    };
+    restoreFocus();
+    window.requestAnimationFrame?.(restoreFocus);
+    await savePromise;
+    if (revision === _workoutCardOrderRevision && key === _workoutHomeSelectedKey && index === _workoutHomeSessionIndex) {
+      showToast('종목 순서를 바꿨어요', 1200, 'success');
+    }
+    return true;
+  } catch (error) {
+    console.warn('[workout-calendar] exercise card reorder failed:', error);
+    showToast('종목 순서 저장에 실패했어요', 2200, 'error');
+    return false;
+  }
+}
+
+function _patchWorkoutSetRirControl(control, value) {
+  const row = control?.closest?.('[data-wt-set-rir-row]');
+  if (!row?.isConnected) return;
+  const rir = readWorkoutRir(value);
+  const output = row.querySelector('[data-wt-set-rir-value]');
+  if (output) {
+    output.textContent = rir == null ? '미입력' : String(rir);
+    output.classList.toggle('is-missing', rir == null);
+    output.setAttribute('aria-label', `RIR ${rir == null ? '미입력' : rir}`);
+  }
+  row.querySelectorAll('[data-wt-set-rir-step]').forEach(button => {
+    button.disabled = Number(button.getAttribute('data-wt-set-rir-step')) < 0 ? rir === 0 : rir === 10;
+  });
+  // Keep the optional expanded RIR editor in sync, without touching kg/reps/ROM
+  // drafts or replacing any mounted input, button, row or card.
+  row.closest('.wt-max-set-row')?.querySelectorAll('[data-wt-set-input][data-field="rir"]').forEach(input => {
+    input.value = rir == null ? '' : String(rir);
+    input.removeAttribute('data-wt-set-keyboard-dirty');
+    input.removeAttribute('data-wt-set-keyboard-pending-value');
+    input.setAttribute('data-wt-set-keyboard-cursor', String(input.value.length));
+  });
+}
+
+async function _stepWorkoutSetRirFromSheet(control) {
+  if (!control?.isConnected || control.disabled) return false;
+  const key = control.getAttribute('data-date-key');
+  const sessionIndex = Number(control.getAttribute('data-session-index'));
+  const exerciseIndex = Number(control.getAttribute('data-exercise-index'));
+  const setIndex = Number(control.getAttribute('data-set-index'));
+  const direction = Number(control.getAttribute('data-wt-set-rir-step'));
+  if (!_parseDateKey(key) || key !== _workoutHomeSelectedKey
+    || !Number.isInteger(sessionIndex) || sessionIndex !== _workoutHomeSessionIndex
+    || !Number.isInteger(exerciseIndex) || exerciseIndex < 0
+    || !Number.isInteger(setIndex) || setIndex < 0 || ![-1, 1].includes(direction)) return false;
+  const { session } = _workoutHomeSessionAt(key, sessionIndex, 1);
+  const set = session.exercises?.[exerciseIndex]?.sets?.[setIndex];
+  if (!set) return false;
+  const activeInput = _workoutSetKeyboardActiveInput();
+  const activeMeta = _workoutSetKeyboardMeta(activeInput);
+  const editsSameRir = activeInput?.getAttribute('data-wt-set-keyboard-dirty') === 'true'
+    && _sameWorkoutSetKeyboardTarget(activeMeta, { key, sessionIndex: String(sessionIndex), exerciseIndex: String(exerciseIndex), setIndex: String(setIndex), field: 'rir' });
+  const current = editsSameRir ? readWorkoutRir(activeInput.value) : readWorkoutRir(set.rir);
+  const next = stepWorkoutRir(current, direction);
+  _beginWorkoutRirGesture(key, sessionIndex);
+  if (next === readWorkoutRir(set.rir) && !editsSameRir) {
+    _patchWorkoutSetRirControl(control, next);
+    return false;
+  }
+  // The existing save path updates the optimistic cache before its first await.
+  // Each rapid click therefore reads the last tap, not its old DOM text.
+  const save = _updateWorkoutExerciseSetFromSheet(key, sessionIndex, exerciseIndex, setIndex, 'rir', next, null, {
+    rirStepper: true, optimisticRender: true, skipRender: true, renderHandled: true,
+  });
+  _patchWorkoutSetRirControl(control, next);
+  return save;
+}
+
 async function _updateWorkoutExerciseSetFromSheet(key, sessionIndex, exerciseIndex, setIndex, field, value, sourceInput = null, options = {}) {
   const safeField = String(field || '');
   if (!['kg', 'reps', 'rir', 'romPct'].includes(safeField)) return;
@@ -2619,24 +2872,28 @@ async function _updateWorkoutExerciseSetFromSheet(key, sessionIndex, exerciseInd
     workoutDetailState.inlineSetEditor = nextInlineEditorKey || null;
   }
   try {
-    await _mutateWorkoutExerciseFromSheet(key, sessionIndex, exerciseIndex, (entry) => {
+    return await _mutateWorkoutExerciseFromSheet(key, sessionIndex, exerciseIndex, (entry) => {
       const sets = Array.isArray(entry.sets) ? entry.sets : [];
       const targetIndex = Math.max(0, Math.floor(Number(setIndex) || 0));
+      if (options?.rirStepper === true && !sets[targetIndex]) return false;
       while (sets.length <= targetIndex) sets.push(_defaultWorkoutSheetSet(sets[sets.length - 1]));
       const nextSet = { ...(sets[targetIndex] || _defaultWorkoutSheetSet(sets[sets.length - 1])) };
       if (safeField === 'kg') nextSet.kg = _setWorkoutSheetNumber(value, _num(nextSet.kg), { min: 0, allowEmpty: true });
       if (safeField === 'reps') nextSet.reps = _setWorkoutSheetNumber(value, _num(nextSet.reps), { min: 0, integer: true, allowEmpty: true });
-      if (safeField === 'rir') nextSet.rir = _setWorkoutSheetNumber(value, Number.isFinite(Number(nextSet.rir)) ? Number(nextSet.rir) : 2, { min: 0, max: 10 });
+      if (safeField === 'rir') nextSet.rir = options?.rirStepper === true
+        ? readWorkoutRir(value)
+        : _setWorkoutSheetNumber(value, Number.isFinite(Number(nextSet.rir)) ? Number(nextSet.rir) : 2, { min: 0, max: 10 });
       if (safeField === 'romPct') nextSet.romPct = _setWorkoutSheetNumber(value, Number.isFinite(Number(nextSet.romPct)) ? Number(nextSet.romPct) : 100, { min: 0, max: 100, integer: true });
       sets[targetIndex] = nextSet;
       entry.sets = sets;
-      clearWorkoutExerciseCompletionMarker(entry);
+      if (!(safeField === 'rir' && options?.rirStepper === true)) clearWorkoutExerciseCompletionMarker(entry);
       return true;
     }, options?.optimisticRender
       ? {
         preserveSheetScroll: true,
         optimisticRender: true,
         skipRender: options?.skipRender === true,
+        ...(options?.renderHandled === true ? { renderHandled: true } : {}),
       }
       : isInlineSource
         ? { preserveSheetScroll: true }
@@ -2644,6 +2901,7 @@ async function _updateWorkoutExerciseSetFromSheet(key, sessionIndex, exerciseInd
   } catch (e) {
     console.warn('[workout-calendar] sheet set update failed:', e);
     showToast('세트 수정에 실패했어요', 2200, 'error');
+    return false;
   }
 }
 
@@ -2740,22 +2998,11 @@ async function _syncWendlerBackoffModeToBoard(exerciseId, mode) {
 async function _addWorkoutExerciseSetFromSheet(key, sessionIndex, exerciseIndex) {
   try {
     let copiedPreviousSet = false;
-    let checkedPreviousSet = false;
     const ok = await _mutateWorkoutExerciseFromSheet(key, sessionIndex, exerciseIndex, (entry) => {
       const sets = Array.isArray(entry.sets) ? entry.sets : [];
       copiedPreviousSet = sets.length > 0;
       const nextSet = _defaultWorkoutSheetSet(sets[sets.length - 1]);
-      // +(직전 세트 복사)는 "방금 그 세트를 마치고 다음 세트를 준비한다"는
-      // 제스처다. 완료(✓)는 방금 수행한 원본 세트에 찍고, 복사본은 아직
-      // 수행 전이므로 미완료로 둔다. (복사본 자동 체크는 사용자 요청으로 철회)
-      if (copiedPreviousSet) {
-        const prevSet = sets[sets.length - 1];
-        if (prevSet.done !== true) {
-          prevSet.done = true;
-          prevSet.completedAt = Date.now();
-          checkedPreviousSet = true;
-        }
-      }
+      // 추가/복사는 계획 편집이다. 원본의 완료 상태와 시각은 그대로 둔다.
       sets.push(nextSet);
       entry.sets = sets;
       clearWorkoutExerciseCompletionMarker(entry);
@@ -2764,7 +3011,7 @@ async function _addWorkoutExerciseSetFromSheet(key, sessionIndex, exerciseIndex)
     if (ok) {
       showToast(
         copiedPreviousSet
-          ? (checkedPreviousSet ? '직전 세트를 완료로 표시하고 복사했어요' : '직전 세트를 복사했어요')
+          ? '직전 세트를 복사했어요'
           : '세트를 추가했어요',
         1200,
         'success'

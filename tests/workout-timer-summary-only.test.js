@@ -36,14 +36,13 @@ test('workout duration remains in the top-right summary card', () => {
   assert.match(summary, /wx\?\.durationSec/);
 });
 
-test('workout summary card shows elapsed rest since the latest completed set', () => {
+test('workout summary card uses bounded real rest metadata rather than last completion elapsed', () => {
   const summary = sliceByFirstBrace(calendarDetailTemplateJs, 'function _renderWorkoutDetailSummaryCard');
-  assert.match(calendarDetailTemplateJs, /from '\.\.\/workout\/completion-metrics\.js'/);
-  assert.match(summary, /const lastCompletedAt = latestWorkoutCompletionAt\(wx\)/);
+  assert.match(summary, /workoutDetailRuntime\.getRestSummary\(wx\)/);
   assert.match(summary, /label:\s*'휴식'/);
-  assert.match(summary, /formatWorkoutCompletionElapsed\(lastCompletedAt\)/);
-  assert.match(summary, /data-wt-last-complete-elapsed/);
-  assert.match(summary, /data-completed-at="\$\{lastCompletedAt\}"/);
+  assert.match(summary, /data-wt-rest-summary/);
+  assert.match(calendarJs, /workoutRestSummary\(source/);
+  assert.doesNotMatch(summary, /latestWorkoutCompletionAt|formatWorkoutCompletionElapsed/);
   assert.match(calendarJs, /function _mountWorkoutSummaryElapsedTimers/);
   assert.match(calendarJs, /_mountWorkoutSummaryElapsedTimers\(root\)/);
 });

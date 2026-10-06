@@ -150,6 +150,20 @@ let _pendingWorkoutNumberInputTarget = null;
 let _activeWorkoutEntryIdx = 0;
 let _exerciseEditorReturnToPicker = true;
 
+// The day sheet can reorder the shared exercise array without mounting this
+// legacy editor. Keep its private cursor and embedded owners on the same entry.
+export function wtRemapWorkoutExerciseCardReferences(entryIndexMap = []) {
+  const nextActive = entryIndexMap[_activeWorkoutEntryIdx];
+  if (Number.isInteger(nextActive)) _activeWorkoutEntryIdx = nextActive;
+  _pendingWorkoutNumberInputTarget = null;
+  const slots = [..._embeddedMaxCards].map(([index, slot]) => [entryIndexMap[index], slot]);
+  _embeddedMaxCards.clear();
+  slots.forEach(([index, slot]) => {
+    if (!Number.isInteger(index) || !slot?.container?.isConnected) return;
+    renderEmbeddedMaxExerciseCard(slot.container, index, slot.options);
+  });
+}
+
 function _isEmbeddedMaxEntry(entryIdx) {
   const slot = _embeddedMaxCards.get(entryIdx);
   return !!slot?.container?.isConnected;
